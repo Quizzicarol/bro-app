@@ -1,0 +1,64 @@
+name: bro_app
+description: "Bro - Plataforma P2P para pagamento de contas com Bitcoin via Lightning Network"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Lightning Network - Breez SDK Spark (Nodeless, self-custodial)
+  breez_sdk_spark_flutter:
+    git:
+      url: https://github.com/breez/breez-sdk-spark-flutter
+  bip39: ^1.0.6
+
+  # Crypto & Nostr
+  crypto: ^3.0.3
+  nostr: ^1.5.0
+
+  # State Management
+  provider: ^6.1.1
+
+  # QR Code
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^5.2.3
+
+  # HTTP & API
+  http: ^1.1.2
+  dio: ^5.4.0
+  web_socket_channel: ^2.4.0
+
+  # Image
+  image_picker: ^1.0.7
+
+  # Storage
+  shared_preferences: ^2.2.2
+  path_provider: ^2.1.2
+
+  # Utils
+  intl: ^0.19.0
+  uuid: ^4.3.3
+
+  # UI Components
+  cupertino_icons: ^1.0.6
+  confetti: ^0.7.0
+  bolt11_decoder: ^1.0.2
+  
+  # Google Fonts (para Fredoka e Inter)
+  google_fonts: ^6.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/images/
+    - assets/logo.png

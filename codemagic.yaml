@@ -1,0 +1,231 @@
+# Disable default workflow - use only custom workflows below
+definitions:
+  instance_types:
+    mac_mini: &mac_mini
+      instance_type: mac_mini_m2
+
+workflows:
+  ios-workflow:
+    name: iOS Build
+    
+    instance_type: mac_mini_m2
+    
+    max_build_duration: 60
+    
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      
+      vars:
+        BUNDLE_ID: "com.bitcoincoders.pagaconta"
+        XCODE_PROJECT: "Runner.xcodeproj"
+        XCODE_SCHEME: "Runner"
+        BREEZ_API_KEY: "REDACTED_BREEZ_CERTIFICATE"
+        
+      groups:
+        - apple_credentials
+        
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: ios-build
+          include: true
+          
+    scripts:
+      - name: Setup Flutter
+        script: |
+          flutter --version
+          flutter doctor -v
+          
+      - name: Install dependencies
+        script: |
+          flutter pub get
+          
+      - name: Install iOS Pods
+        script: |
+          cd ios
+          pod install --repo-update
+          cd ..
+      
+      - name: Set up code signing
+        script: |
+          xcode-project use-profiles
+          
+      - name: Build iOS for development/preview
+        script: |
+          flutter build ipa --release \
+            --export-options-plist=ios/ExportOptions.plist
+            
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      
+    publishing:
+      email:
+        recipients:
+          - carol.odo@hotmail.com
+        notify:
+          success: true
+          failure: true
+
+  default-workflow:
+    name: iOS Simulator Preview
+    
+    instance_type: mac_mini_m2
+    
+    max_build_duration: 30
+    
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+        
+    scripts:
+      - name: Setup Flutter
+        script: |
+          flutter --version
+          flutter doctor -v
+          
+      - name: Install dependencies
+        script: |
+          flutter pub get
+          
+      - name: Install iOS Pods
+        script: |
+          cd ios
+          pod install --repo-update
+          cd ..
+          
+      - name: Build iOS Simulator App
+        script: |
+          flutter build ios --simulator --debug
+          
+    artifacts:
+      - build/ios/iphonesimulator/*.app
+      
+    publishing:
+      email:
+        recipients:
+          - carol.odo@hotmail.com
+        notify:
+          success: true
+          failure: true
+
+  web-workflow:
+    name: Web Build (Preview no Navegador)
+    
+    instance_type: linux_x2
+    
+    max_build_duration: 30
+    
+    environment:
+      flutter: stable
+      
+      vars:
+        GITHUB_TOKEN: Encrypted(...) # Configurar no Codemagic
+        
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: web-build
+          include: true
+        
+    scripts:
+      - name: Setup Flutter
+        script: |
+          flutter --version
+          flutter config --enable-web
+          
+      - name: Install dependencies
+        script: |
+          flutter pub get
+          
+      - name: Build Web
+        script: |
+          flutter build web --release --web-renderer canvaskit
+          
+      - name: Deploy to GitHub Pages
+        script: |
+          cd build/web
+          git init
+          git config user.name "Codemagic CI"
+          git config user.email "ci@codemagic.io"
+          git add .
+          git commit -m "Deploy web build"
+          git push --force https://Quizzicarol:$GITHUB_TOKEN@github.com/Quizzicarol/paga-conta-mobile.git HEAD:gh-pages
+          
+    artifacts:
+      - build/web/**
+      
+    publishing:
+      email:
+        recipients:
+          - carol.odo@hotmail.com
+        notify:
+          success: true
+          failure: true
+      
+      scripts:
+        - name: Show preview URL
+          script: |
+            echo "Preview disponível em: https://quizzicarol.github.io/paga-conta-mobile/"
+
+  android-workflow:
+    name: Android Build
+    
+    instance_type: linux_x2
+    
+    max_build_duration: 60
+    
+    environment:
+      flutter: stable
+      
+      vars:
+        PACKAGE_NAME: "com.bitcoincoders.pagaconta"
+        
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: develop
+          include: true
+        
+    scripts:
+      - name: Setup Flutter
+        script: |
+          flutter --version
+          flutter doctor -v
+          
+      - name: Install dependencies
+        script: |
+          flutter pub get
+          
+      - name: Build APK
+        script: |
+          flutter build apk --release
+          
+      - name: Build AAB
+        script: |
+          flutter build appbundle --release
+          
+    artifacts:
+      - build/app/outputs/flutter-apk/app-release.apk
+      - build/app/outputs/bundle/release/app-release.aab
+      
+    publishing:
+      email:
+        recipients:
+          - carol.odo@hotmail.com
+        notify:
+          success: true
+          failure: true

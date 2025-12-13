@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../services/storage_service.dart';
 import '../services/haptic_service.dart';
 import '../providers/theme_provider.dart';
+import 'admin_wallet_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -455,6 +456,92 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           onTap: () => Navigator.pushNamed(context, '/nip06-backup'),
                         ),
                       ],
+                    ),
+                  ),
+
+                                    const SizedBox(height: 30),
+
+                  // Admin Wallet
+                  const Text(
+                    'Administracao',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.deepPurple,
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+
+                  Card(
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: ListTile(
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.account_balance_wallet, color: Colors.amber),
+                      ),
+                      title: const Text('Admin Wallet'),
+                      subtitle: const Text('Gerenciar saldo e enderecos'),
+                      trailing: const Icon(Icons.chevron_right),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 10,
+                      ),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const AdminWalletScreen(),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 30),
+
+                  // Admin Wallet
+                  const Text(
+                    'Administracao',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.deepPurple,
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+
+                  Card(
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: ListTile(
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.account_balance_wallet, color: Colors.amber),
+                      ),
+                      title: const Text('Admin Wallet'),
+                      subtitle: const Text('Gerenciar saldo e enderecos'),
+                      trailing: const Icon(Icons.chevron_right),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 10,
+                      ),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const AdminWalletScreen(),
+                        ),
+                      ),
                     ),
                   ),
 

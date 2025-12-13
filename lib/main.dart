@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
@@ -10,6 +10,7 @@ import 'screens/provider_my_orders_screen.dart';
 import 'screens/provider_order_history_screen.dart';
 import 'screens/provider_balance_screen.dart';
 import 'screens/platform_balance_screen.dart';
+import 'screens/platform_admin_screen.dart';
 import 'screens/order_status_screen.dart';
 import 'screens/user_orders_screen.dart';
 import 'screens/nostr_messages_screen.dart';
@@ -195,6 +196,7 @@ class BroApp extends StatelessWidget {
               '/provider-order-detail': (context) => const ProviderOrderDetailScreen(orderId: 'temp', providerId: 'temp'),
               '/provider-balance': (context) => const ProviderBalanceScreen(),
               '/platform-balance': (context) => const PlatformBalanceScreen(),
+                '/admin-bro-2024': (context) => const PlatformAdminScreen(),
             },
           );
             },

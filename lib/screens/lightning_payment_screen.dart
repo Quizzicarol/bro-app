@@ -7,6 +7,7 @@ import 'dart:async';
 import '../providers/breez_provider_export.dart';
 import '../providers/order_provider.dart';
 import '../services/api_service.dart';
+import '../services/platform_fee_service.dart';
 
 class LightningPaymentScreen extends StatefulWidget {
   final String invoice;
@@ -94,6 +95,20 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
         orderId: widget.orderId,
         status: 'confirmed',
       );
+
+      // Registrar taxa da plataforma (2%)
+      try {
+        await PlatformFeeService.recordFee(
+          orderId: widget.orderId,
+          transactionBrl: widget.totalBrl,
+          transactionSats: widget.amountSats,
+          providerPubkey: widget.receiver ?? 'unknown',
+          clientPubkey: 'client', // TODO: pegar do contexto
+        );
+        debugPrint(' Taxa da plataforma registrada: \ BRL');
+      } catch (e) {
+        debugPrint(' Erro ao registrar taxa: \');
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

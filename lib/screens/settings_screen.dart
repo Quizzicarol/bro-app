@@ -1,10 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
 import '../services/storage_service.dart';
-import '../services/haptic_service.dart';
-import '../providers/theme_provider.dart';
-import 'admin_wallet_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -17,8 +13,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _showSeed = false;
   String? _mnemonic;
   bool _isLoading = true;
-  bool _hapticEnabled = true;
-  final HapticService _haptic = HapticService();
 
   @override
   void initState() {
@@ -290,78 +284,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                   const SizedBox(height: 30),
 
-                  // Aparencia
-                  const Text(
-                    'Aparencia',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.deepPurple,
-                    ),
-                  ),
-                  const SizedBox(height: 15),
-
-                  Card(
-                    elevation: 2,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: Column(
-                      children: [
-                        Consumer<ThemeProvider>(
-                          builder: (context, themeProvider, _) {
-                            return SwitchListTile(
-                              secondary: Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: Colors.orange.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Icon(
-                                  themeProvider.isDarkMode ? Icons.dark_mode : Icons.light_mode,
-                                  color: Colors.orange,
-                                ),
-                              ),
-                              title: const Text('Tema Escuro'),
-                              subtitle: Text(themeProvider.isDarkMode ? 'Ativado' : 'Desativado'),
-                              value: themeProvider.isDarkMode,
-                              onChanged: (value) {
-                                _haptic.toggle();
-                                themeProvider.setDarkMode(value);
-                              },
-                            );
-                          },
-                        ),
-                        const Divider(height: 1),
-                        SwitchListTile(
-                          secondary: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(
-                              Icons.vibration,
-                              color: Colors.blue,
-                            ),
-                          ),
-                          title: const Text('Feedback Haptico'),
-                          subtitle: Text(_hapticEnabled ? 'Vibracao sutil em acoes' : 'Desativado'),
-                          value: _hapticEnabled,
-                          onChanged: (value) {
-                            setState(() {
-                              _hapticEnabled = value;
-                            });
-                            _haptic.setEnabled(value);
-                            if (value) _haptic.toggle();
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 30),
-
                   // Nostr & Privacidade
                   const Text(
                     'Nostr & Privacidade',
@@ -456,92 +378,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           onTap: () => Navigator.pushNamed(context, '/nip06-backup'),
                         ),
                       ],
-                    ),
-                  ),
-
-                                    const SizedBox(height: 30),
-
-                  // Admin Wallet
-                  const Text(
-                    'Administracao',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.deepPurple,
-                    ),
-                  ),
-                  const SizedBox(height: 15),
-
-                  Card(
-                    elevation: 2,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: ListTile(
-                      leading: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.amber.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(Icons.account_balance_wallet, color: Colors.amber),
-                      ),
-                      title: const Text('Admin Wallet'),
-                      subtitle: const Text('Gerenciar saldo e enderecos'),
-                      trailing: const Icon(Icons.chevron_right),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 10,
-                      ),
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const AdminWalletScreen(),
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 30),
-
-                  // Admin Wallet
-                  const Text(
-                    'Administracao',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.deepPurple,
-                    ),
-                  ),
-                  const SizedBox(height: 15),
-
-                  Card(
-                    elevation: 2,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: ListTile(
-                      leading: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.amber.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(Icons.account_balance_wallet, color: Colors.amber),
-                      ),
-                      title: const Text('Admin Wallet'),
-                      subtitle: const Text('Gerenciar saldo e enderecos'),
-                      trailing: const Icon(Icons.chevron_right),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 10,
-                      ),
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const AdminWalletScreen(),
-                        ),
-                      ),
                     ),
                   ),
 

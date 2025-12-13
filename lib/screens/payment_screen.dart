@@ -1,4 +1,4 @@
-import 'dart:math';
+﻿import 'dart:math';
 import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -28,6 +28,26 @@ class _PaymentScreenState extends State<PaymentScreen> {
   bool _isProcessing = false;
   Map<String, dynamic>? _billData;
   Map<String, dynamic>? _conversionData;
+
+  /// Mascara o nome do beneficiário para privacidade
+  /// Mostra apenas o primeiro nome e hachurado o resto
+  String _maskBeneficiaryName(String fullName) {
+    if (fullName.isEmpty) return '';
+    
+    final parts = fullName.trim().split(' ');
+    if (parts.isEmpty) return fullName;
+    
+    final firstName = parts[0];
+    if (parts.length == 1) {
+      // Se só tem um nome, mostra as 3 primeiras letras + ***
+      if (firstName.length <= 3) return firstName;
+      return '${firstName.substring(0, 3)}***';
+    }
+    
+    // Mostra primeiro nome + resto hachurado
+    final restMasked = parts.skip(1).map((p) => '***').join(' ');
+    return '$firstName $restMasked';
+  }
   bool _autoDetectionEnabled = true;
 
   @override
@@ -463,7 +483,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   leading: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFF6B35),
+                      color: const Color(0xFFFF6B6B),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Icon(Icons.bolt, color: Colors.white, size: 28),
@@ -582,7 +602,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         // Create Lightning invoice and navigate to Lightning payment screen with timeout
         final invoiceData = await breezProvider.createInvoice(
           amountSats: amountSats,
-          description: 'Paga Conta ${order.id}',
+          description: 'Bro ${order.id}',
         ).timeout(
           const Duration(seconds: 30),
           onTimeout: () {
@@ -860,7 +880,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 children: [
                   Icon(
                     billType == 'pix' ? Icons.pix : Icons.receipt,
-                    color: const Color(0xFFFF6B35),
+                    color: const Color(0xFFFF6B6B),
                   ),
                   const SizedBox(width: 8),
                   Text(
@@ -874,11 +894,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 ],
               ),
               const Divider(height: 24, color: Color(0x33FF6B35)),
-              _InfoRow(label: 'Valor', value: 'R\$ $valueStr'),
+              _InfoRow(label: 'Valor', value: 'R\$ $valueStr', labelColor: const Color(0xB3FFFFFF), valueColor: Colors.white),
               if (_billData!['merchantName'] != null)
-                _InfoRow(label: 'Beneficiário', value: _billData!['merchantName'] as String),
+                _InfoRow(label: 'Beneficiario', value: _maskBeneficiaryName(_billData!['merchantName'] as String), labelColor: const Color(0xB3FFFFFF), valueColor: Colors.white),
               if (_billData!['type'] != null)
-                _InfoRow(label: 'Tipo', value: _billData!['type'] as String),
+                _InfoRow(label: 'Tipo', value: _billData!['type'] as String, labelColor: const Color(0xB3FFFFFF), valueColor: Colors.white),
             ],
           ),
         ),
@@ -1002,7 +1022,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         label: const Text('Pagar com Bitcoin', style: TextStyle(fontSize: 16)),
         style: ElevatedButton.styleFrom(
           padding: const EdgeInsets.symmetric(vertical: 16),
-          backgroundColor: const Color(0xFFFF6B35),
+          backgroundColor: const Color(0xFFFF6B6B),
         ),
       ),
     ];
@@ -1013,8 +1033,9 @@ class _InfoRow extends StatelessWidget {
   final String label;
   final String value;
   final Color? valueColor;
+  final Color? labelColor;
 
-  const _InfoRow({required this.label, required this.value, this.valueColor});
+  const _InfoRow({required this.label, required this.value, this.valueColor, this.labelColor});
 
   @override
   Widget build(BuildContext context) {
@@ -1023,8 +1044,21 @@ class _InfoRow extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: TextStyle(color: Colors.grey.shade800, fontSize: 14)),
-          Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: valueColor ?? Colors.grey.shade900)),
+          Flexible(
+            flex: 2,
+            child: Text(label, style: TextStyle(color: labelColor ?? Colors.grey.shade800, fontSize: 14)),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            flex: 3,
+            child: Text(
+              value,
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: valueColor ?? Colors.grey.shade900),
+              textAlign: TextAlign.end,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 2,
+            ),
+          ),
         ],
       ),
     );

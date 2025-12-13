@@ -54,7 +54,7 @@ class BitcoinPaymentModal extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [Color(0xFFFF6B35), Color(0xFFFF8F65)],
+          colors: [Color(0xFFFF6B6B), Color(0xFFFF8A8A)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -139,7 +139,7 @@ class BitcoinPaymentModal extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             decoration: const BoxDecoration(
               gradient: LinearGradient(
-                colors: [Color(0xFFFF6B35), Color(0xFFFF8F65)],
+                colors: [Color(0xFFFF6B6B), Color(0xFFFF8A8A)],
               ),
               borderRadius: BorderRadius.only(
                 topLeft: Radius.circular(16),
@@ -215,7 +215,7 @@ class BitcoinPaymentModal extends StatelessWidget {
                       ),
                       IconButton(
                         icon: const Icon(Icons.copy, size: 18),
-                        color: const Color(0xFFFF6B35),
+                        color: const Color(0xFFFF6B6B),
                         onPressed: () {
                           Clipboard.setData(ClipboardData(text: btcAddress));
                         },

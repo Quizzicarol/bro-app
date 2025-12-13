@@ -169,7 +169,7 @@ class _EscrowManagementScreenState extends State<EscrowManagementScreen> {
         gradient: LinearGradient(
           colors: hasCollateral
               ? [const Color(0xFF4CAF50), const Color(0xFF45A049)]
-              : [const Color(0xFFFF6B35), const Color(0xFFFF8F65)],
+              : [const Color(0xFFFF6B6B), const Color(0xFFFF8A8A)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -178,7 +178,7 @@ class _EscrowManagementScreenState extends State<EscrowManagementScreen> {
           BoxShadow(
             color: hasCollateral
                 ? const Color(0xFF4CAF50).withAlpha(77)
-                : const Color(0xFFFF6B35).withAlpha(77),
+                : const Color(0xFFFF6B6B).withAlpha(77),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),

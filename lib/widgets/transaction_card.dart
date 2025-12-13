@@ -74,7 +74,7 @@ class TransactionCard extends StatelessWidget {
                       Text(
                         amount,
                         style: const TextStyle(
-                          color: Color(0xFFFF6B35),
+                          color: Color(0xFFFF6B6B),
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
                         ),
@@ -141,7 +141,7 @@ class EmptyTransactionState extends StatelessWidget {
   const EmptyTransactionState({
     Key? key,
     this.title = 'Nenhuma transação ainda',
-    this.subtitle = 'Clique em "Pagar Nova Conta" para começar',
+    this.subtitle = 'Clique em "Nova Transação" para começar',
     this.onAction,
   }) : super(key: key);
 
@@ -156,7 +156,7 @@ class EmptyTransactionState extends StatelessWidget {
           Icon(
             Icons.inbox_outlined,
             size: 64,
-            color: const Color(0xFFFF6B35).withOpacity(0.3),
+            color: const Color(0xFFFF6B6B).withOpacity(0.3),
           ),
           const SizedBox(height: 20),
           

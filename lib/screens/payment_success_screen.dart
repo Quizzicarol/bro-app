@@ -62,7 +62,7 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> with Single
               confettiController: _confettiController,
               blastDirectionality: BlastDirectionality.explosive,
               colors: const [
-                Color(0xFFFF6B35),
+                Color(0xFFFF6B6B),
                 Color(0xFF4CAF50),
                 Color(0xFF2196F3),
                 Color(0xFFFFC107),
@@ -160,7 +160,7 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> with Single
                                   style: const TextStyle(
                                     fontSize: 40,
                                     fontWeight: FontWeight.bold,
-                                    color: Color(0xFFFF6B35),
+                                    color: Color(0xFFFF6B6B),
                                   ),
                                 ),
                                 const SizedBox(height: 8),
@@ -219,7 +219,7 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> with Single
                               color: const Color(0x1AFF6B35),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: const Color(0xFFFF6B35),
+                                color: const Color(0xFFFF6B6B),
                               ),
                             ),
                             child: Column(
@@ -229,14 +229,14 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> with Single
                                   children: [
                                     Icon(
                                       Icons.info_outline,
-                                      color: Color(0xFFFF6B35),
+                                      color: Color(0xFFFF6B6B),
                                       size: 20,
                                     ),
                                     SizedBox(width: 8),
                                     Text(
                                       'Próximos Passos',
                                       style: TextStyle(
-                                        color: Color(0xFFFF6B35),
+                                        color: Color(0xFFFF6B6B),
                                         fontSize: 16,
                                         fontWeight: FontWeight.bold,
                                       ),
@@ -267,7 +267,7 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> with Single
                                   label: const Text('Início'),
                                   style: OutlinedButton.styleFrom(
                                     foregroundColor: Colors.white,
-                                    side: const BorderSide(color: Color(0xFFFF6B35)),
+                                    side: const BorderSide(color: Color(0xFFFF6B6B)),
                                     padding: const EdgeInsets.symmetric(vertical: 16),
                                   ),
                                 ),
@@ -285,7 +285,7 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> with Single
                                   icon: const Icon(Icons.list_alt),
                                   label: const Text('Minhas Ordens'),
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFFFF6B35),
+                                    backgroundColor: const Color(0xFFFF6B6B),
                                     foregroundColor: Colors.white,
                                     padding: const EdgeInsets.symmetric(vertical: 16),
                                   ),
@@ -315,7 +315,7 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> with Single
         children: [
           const Text(
             '•  ',
-            style: TextStyle(color: Color(0xFFFF6B35), fontSize: 14),
+            style: TextStyle(color: Color(0xFFFF6B6B), fontSize: 14),
           ),
           Expanded(
             child: Text(

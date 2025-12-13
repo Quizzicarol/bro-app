@@ -144,7 +144,7 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
         ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B35)))
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B6B)))
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -242,7 +242,7 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
                 decoration: InputDecoration(
                   hintText: 'wss://relay.example.com',
                   hintStyle: const TextStyle(color: Color(0x66FFFFFF)),
-                  prefixIcon: const Icon(Icons.link, color: Color(0xFFFF6B35)),
+                  prefixIcon: const Icon(Icons.link, color: Color(0xFFFF6B6B)),
                   filled: true,
                   fillColor: const Color(0x0DFFFFFF),
                   border: OutlineInputBorder(
@@ -255,7 +255,7 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFFFF6B35)),
+                    borderSide: const BorderSide(color: Color(0xFFFF6B6B)),
                   ),
                 ),
               ),
@@ -264,7 +264,7 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
             ElevatedButton(
               onPressed: _addRelay,
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFF6B35),
+                backgroundColor: const Color(0xFFFF6B6B),
                 padding: const EdgeInsets.all(16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -307,7 +307,7 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: isActive 
-                        ? const Color(0xFFFF6B35)
+                        ? const Color(0xFFFF6B6B)
                         : const Color(0x33FFFFFF),
                   ),
                 ),
@@ -315,12 +315,12 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (isActive)
-                      const Icon(Icons.check, color: Color(0xFFFF6B35), size: 16),
+                      const Icon(Icons.check, color: Color(0xFFFF6B6B), size: 16),
                     if (isActive) const SizedBox(width: 4),
                     Text(
                       url.replaceAll('wss://', ''),
                       style: TextStyle(
-                        color: isActive ? const Color(0xFFFF6B35) : const Color(0xB3FFFFFF),
+                        color: isActive ? const Color(0xFFFF6B6B) : const Color(0xB3FFFFFF),
                         fontSize: 12,
                       ),
                     ),
@@ -399,7 +399,7 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
               child: Text(
                 '${activeRelays.length} conectados',
                 style: const TextStyle(
-                  color: Color(0xFFFF6B35),
+                  color: Color(0xFFFF6B6B),
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
@@ -481,7 +481,7 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.refresh, color: Color(0xFFFF6B35)),
+                    icon: const Icon(Icons.refresh, color: Color(0xFFFF6B6B)),
                     onPressed: () => _testRelay(url),
                     tooltip: 'Reconectar',
                   ),

@@ -112,7 +112,7 @@ class _DepositScreenState extends State<DepositScreen>
       // Call backend API to create invoice
       final response = await breezProvider.createInvoice(
         amountSats: _totalSats,
-        description: 'Depósito Paga Conta - R\$ ${_totalBrl.toStringAsFixed(2)}',
+        description: 'Depósito Bro - R\$ ${_totalBrl.toStringAsFixed(2)}',
       );
 
       if (response == null) {

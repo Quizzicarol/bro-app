@@ -50,6 +50,7 @@ dependencies:
   
   # Google Fonts (para Fredoka e Inter)
   google_fonts: ^6.1.0
+  flutter_local_notifications: ^19.5.0
 
 dev_dependencies:
   flutter_test:

@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:crypto/crypto.dart';
 import 'storage_service.dart';
@@ -246,7 +246,7 @@ class DisputeService {
       'kind': 1, // Nota pública (pode mudar para 4 = DM)
       'created_at': createdAt,
       'tags': [
-        ['t', 'paga-conta-disputa'],
+        ['t', 'bro-disputa'],
         ['t', 'disputa'],
         ['d', 'dispute-notification'],
       ],

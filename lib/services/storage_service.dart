@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config.dart';
 
@@ -14,7 +14,7 @@ class StorageService {
   }
 
   // ===== NOSTR KEYS =====
-  // (usando SharedPreferences - para produção, usar flutter_secure_storage)
+  // (usando SharedPreferences - para produÃ§Ã£o, usar flutter_secure_storage)
   
   Future<void> saveNostrKeys({
     required String privateKey,
@@ -42,8 +42,8 @@ class StorageService {
   }
 
   // ===== BREEZ - API Key REMOVIDA =====
-  // A API key do Breez agora está no backend, NÃO no frontend
-  // Mantido apenas mnemonic para compatibilidade com código legacy
+  // A API key do Breez agora estÃ¡ no backend, NÃƒO no frontend
+  // Mantido apenas mnemonic para compatibilidade com cÃ³digo legacy
   
   Future<void> saveBreezMnemonic(String mnemonic) async {
     if (_prefs == null) await init();
@@ -135,7 +135,7 @@ class StorageService {
 
   Future<String?> getUserId() async {
     if (_prefs == null) await init();
-    // Se não houver user_id, usar public key do Nostr como ID
+    // Se nÃ£o houver user_id, usar public key do Nostr como ID
     String? userId = _prefs?.getString('user_id');
     if (userId == null) {
       userId = await getNostrPublicKey();
@@ -233,7 +233,45 @@ class StorageService {
   // ===== NSEC (Nostr Private Key in bech32) =====
   
   Future<String?> getNsec() async {
-    // Retorna a private key hex (seria convertida para nsec em produção)
+    // Retorna a private key hex (seria convertida para nsec em produÃ§Ã£o)
     return await getNostrPrivateKey();
+  }
+
+  // ===== NOSTR PROFILE =====
+
+  Future<void> saveNostrProfile({
+    String? name,
+    String? displayName,
+    String? picture,
+    String? about,
+  }) async {
+    if (_prefs == null) await init();
+    if (name != null) await _prefs?.setString('nostr_profile_name', name);
+    if (displayName != null) await _prefs?.setString('nostr_profile_display_name', displayName);
+    if (picture != null) await _prefs?.setString('nostr_profile_picture', picture);
+    if (about != null) await _prefs?.setString('nostr_profile_about', about);
+  }
+
+  Future<String?> getNostrProfileName() async {
+    if (_prefs == null) await init();
+    return _prefs?.getString('nostr_profile_display_name') ?? _prefs?.getString('nostr_profile_name');
+  }
+
+  Future<String?> getNostrProfilePicture() async {
+    if (_prefs == null) await init();
+    return _prefs?.getString('nostr_profile_picture');
+  }
+
+  Future<String?> getNostrProfileAbout() async {
+    if (_prefs == null) await init();
+    return _prefs?.getString('nostr_profile_about');
+  }
+
+  Future<void> clearNostrProfile() async {
+    if (_prefs == null) await init();
+    await _prefs?.remove('nostr_profile_name');
+    await _prefs?.remove('nostr_profile_display_name');
+    await _prefs?.remove('nostr_profile_picture');
+    await _prefs?.remove('nostr_profile_about');
   }
 }

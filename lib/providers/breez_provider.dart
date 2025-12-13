@@ -227,7 +227,7 @@ class BreezProvider with ChangeNotifier {
     _setError(null);
     
     debugPrint('⚡ Criando invoice de $amountSats sats...');
-    debugPrint('📝 Descrição: ${description ?? "Pagamento Paga Conta"}');
+    debugPrint('📝 Descrição: ${description ?? "Pagamento Bro"}');
 
     try {
       // NOTA: Removido syncWallet antes de criar invoice para acelerar
@@ -236,7 +236,7 @@ class BreezProvider with ChangeNotifier {
       final resp = await _sdk!.receivePayment(
         request: spark.ReceivePaymentRequest(
           paymentMethod: spark.ReceivePaymentMethod.bolt11Invoice(
-            description: description ?? 'Pagamento Paga Conta',
+            description: description ?? 'Pagamento Bro',
             amountSats: BigInt.from(amountSats),
           ),
         ),

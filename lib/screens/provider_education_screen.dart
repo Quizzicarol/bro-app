@@ -346,7 +346,7 @@ class ProviderEducationScreen extends StatelessWidget {
           const SizedBox(height: 12),
           _buildEscrowStep('1', 'Usuário paga Lightning → Bitcoin bloqueado'),
           _buildEscrowStep('2', 'Você aceita ordem → Garantia bloqueada'),
-          _buildEscrowStep('3', 'Você paga conta → Envia comprovante'),
+          _buildEscrowStep('3', 'Você Bro → Envia comprovante'),
           _buildEscrowStep('4', 'Validação aprovada → Você recebe Bitcoin + taxa'),
           _buildEscrowStep('5', 'Garantia desbloqueada → Pode aceitar nova ordem'),
         ],

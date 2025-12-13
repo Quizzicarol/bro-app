@@ -1,132 +1,59 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
-/// Paleta de cores oficial do Bro
-/// Baseada na identidade visual: https://id-preview--6d6295d6-969f-4078-8851-3721595583a6.lovable.app
+/// Cores do Design System Bro
+/// Coral como primária, Mint como secundária
 class BroColors {
   BroColors._();
 
-  // ============================================
-  // CORES PRIMÁRIAS
-  // ============================================
-  
-  /// Mint - Cor principal do app
-  /// Representa: frescor, confiança, crescimento
-  static const Color mint = Color(0xFF3DE98C);
-  
-  /// Coral - Cor de destaque/ação
-  /// Representa: energia, urgência, atenção
-  static const Color coral = Color(0xFFFF6B6B);
-  
-  /// Turquoise - Cor secundária
-  /// Representa: estabilidade, segurança
-  static const Color turquoise = Color(0xFF00CC7A);
-  
-  // ============================================
-  // CORES DE FUNDO
-  // ============================================
-  
-  /// Cream - Fundo claro (modo light)
-  static const Color cream = Color(0xFFF7F4ED);
-  
-  /// Dark - Fundo escuro (modo dark)
-  static const Color dark = Color(0xFF141414);
-  
-  /// Background secundário dark
-  static const Color darkSurface = Color(0xFF1E1E1E);
-  
-  /// Background terciário dark
-  static const Color darkCard = Color(0xFF252525);
-  
-  // ============================================
-  // CORES DE TEXTO
-  // ============================================
-  
-  /// Texto primário (modo dark)
+  // Cores Principais
+  static const Color coral = Color(0xFFFF6B6B);       // Primary - Coral vibrante
+  static const Color mint = Color(0xFF3DE98C);        // Secondary - Verde menta
+  static const Color turquoise = Color(0xFF00CC7A);   // Accent - Verde turquesa
+  static const Color cream = Color(0xFFF7F4ED);       // Background claro
+  static const Color dark = Color(0xFF141414);        // Background escuro
+
+  // Variações de Coral
+  static const Color coralLight = Color(0xFFFF8A8A);
+  static const Color coralDark = Color(0xFFE55555);
+
+  // Variações de Mint
+  static const Color mintLight = Color(0xFF6FF0A8);
+  static const Color mintDark = Color(0xFF2BC670);
+
+  // Cores de Superfície (Dark Mode)
+  static const Color surface = Color(0xFF1E1E1E);
+  static const Color surfaceLight = Color(0xFF2A2A2A);
+  static const Color surfaceDark = Color(0xFF0A0A0A);
+
+  // Cores de Texto
   static const Color textPrimary = Color(0xFFFFFFFF);
-  
-  /// Texto secundário (modo dark)
-  static const Color textSecondary = Color(0xB3FFFFFF); // 70% opacity
-  
-  /// Texto terciário (modo dark)
-  static const Color textTertiary = Color(0x80FFFFFF); // 50% opacity
-  
-  /// Texto desabilitado
-  static const Color textDisabled = Color(0x4DFFFFFF); // 30% opacity
-  
-  // ============================================
-  // CORES DE STATUS
-  // ============================================
-  
-  /// Sucesso
-  static const Color success = Color(0xFF3DE98C); // Mint
-  
-  /// Erro
-  static const Color error = Color(0xFFFF6B6B); // Coral
-  
-  /// Aviso
-  static const Color warning = Color(0xFFFFB84D);
-  
-  /// Info
-  static const Color info = Color(0xFF64B5F6);
-  
-  // ============================================
-  // GRADIENTES
-  // ============================================
-  
-  /// Gradiente principal (Mint → Turquoise)
-  static const LinearGradient primaryGradient = LinearGradient(
+  static const Color textSecondary = Color(0xFFB0B0B0);
+  static const Color textMuted = Color(0xFF707070);
+  static const Color textOnCoral = Color(0xFFFFFFFF);
+  static const Color textOnMint = Color(0xFF141414);
+
+  // Status
+  static const Color success = Color(0xFF3DE98C);     // Usa mint
+  static const Color error = Color(0xFFFF6B6B);       // Usa coral
+  static const Color warning = Color(0xFFFFB347);
+  static const Color info = Color(0xFF00CC7A);        // Usa turquoise
+
+  // Gradientes
+  static const LinearGradient coralGradient = LinearGradient(
+    colors: [coral, coralLight],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
+  );
+
+  static const LinearGradient mintGradient = LinearGradient(
     colors: [mint, turquoise],
-  );
-  
-  /// Gradiente de destaque (Coral → Mint)
-  static const LinearGradient accentGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [coral, mint],
   );
-  
-  /// Gradiente dark
+
   static const LinearGradient darkGradient = LinearGradient(
+    colors: [dark, surface],
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
-    colors: [dark, darkSurface],
-  );
-  
-  // ============================================
-  // MATERIAL COLOR SWATCH
-  // ============================================
-  
-  static const MaterialColor mintSwatch = MaterialColor(
-    0xFF3DE98C,
-    <int, Color>{
-      50: Color(0xFFE8FCF2),
-      100: Color(0xFFC5F7DE),
-      200: Color(0xFF9EF2C8),
-      300: Color(0xFF77EDB2),
-      400: Color(0xFF5AE9A0),
-      500: Color(0xFF3DE98C),
-      600: Color(0xFF37E684),
-      700: Color(0xFF2FE379),
-      800: Color(0xFF27DF6F),
-      900: Color(0xFF1AD95C),
-    },
-  );
-  
-  static const MaterialColor coralSwatch = MaterialColor(
-    0xFFFF6B6B,
-    <int, Color>{
-      50: Color(0xFFFFEDED),
-      100: Color(0xFFFFD3D3),
-      200: Color(0xFFFFB6B6),
-      300: Color(0xFFFF9999),
-      400: Color(0xFFFF8383),
-      500: Color(0xFFFF6B6B),
-      600: Color(0xFFFF6363),
-      700: Color(0xFFFF5858),
-      800: Color(0xFFFF4E4E),
-      900: Color(0xFFFF3C3C),
-    },
   );
 }

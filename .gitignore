@@ -43,3 +43,31 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Backup local (nao subir para o repo)
+/backup/
+
+# Arquivos temporarios
+temp_*.txt
+*.tmp
+
+# Sensitive files
+*.pem
+*.key
+*.crt
+gl-certs/
+
+# Local properties
+local.properties
+
+# Environment
+.env
+.env.*
+
+# Build outputs
+*.apk
+*.aab
+*.ipa
+
+# Node modules (backend)
+node_modules/

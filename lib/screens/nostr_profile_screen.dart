@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/storage_service.dart';
 import '../services/nip06_service.dart';
@@ -37,7 +37,7 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
       _privateKey = privateKey;
       _npub = publicKey != null ? _toNpub(publicKey) : null;
       _lightningAddress = publicKey != null 
-          ? '${publicKey.substring(0, 8)}@paga-conta.app'
+          ? '${publicKey.substring(0, 8)}@bro.app'
           : null;
       _isLoading = false;
     });
@@ -138,7 +138,7 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.edit_outlined, color: Color(0xFFFF6B35)),
+            icon: const Icon(Icons.edit_outlined, color: Color(0xFFFF6B6B)),
             onPressed: () {
               // TODO: Edit profile
             },
@@ -176,7 +176,7 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
                     title: 'Lightning Address',
                     value: _lightningAddress ?? '',
                     icon: Icons.bolt,
-                    color: const Color(0xFFFF6B35),
+                    color: const Color(0xFFFF6B6B),
                     onCopy: () => _copyToClipboard(_lightningAddress ?? '', 'Lightning Address'),
                     onQR: () => _showQRCode('lightning:$_lightningAddress', 'Lightning Address'),
                   ),
@@ -277,7 +277,7 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
             children: [
               _buildStat('Verificado', '✓', const Color(0xFF00FF00)),
               _buildStat('NIP-05', '❌', Colors.grey),
-              _buildStat('Relays', '3', const Color(0xFFFF6B35)),
+              _buildStat('Relays', '3', const Color(0xFFFF6B6B)),
             ],
           ),
         ],
@@ -448,7 +448,7 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
             const SizedBox(height: 8),
             const Text(
               '⚠️ Qualquer pessoa com essa chave pode acessar sua conta e seus fundos!',
-              style: TextStyle(color: Color(0xFFFF6B35), fontSize: 11),
+              style: TextStyle(color: Color(0xFFFF6B6B), fontSize: 11),
             ),
           ],
         ],
@@ -501,8 +501,8 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            const Color(0xFFFF6B35).withOpacity(0.1),
-            const Color(0xFFFF6B35).withOpacity(0.05),
+            const Color(0xFFFF6B6B).withOpacity(0.1),
+            const Color(0xFFFF6B6B).withOpacity(0.05),
           ],
         ),
         borderRadius: BorderRadius.circular(16),
@@ -513,7 +513,7 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
         children: [
           const Row(
             children: [
-              Icon(Icons.backup, color: Color(0xFFFF6B35)),
+              Icon(Icons.backup, color: Color(0xFFFF6B6B)),
               SizedBox(width: 8),
               Text(
                 'NIP-06: Backup Unificado',
@@ -541,8 +541,8 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
               icon: const Icon(Icons.key),
               label: const Text('Configurar Backup NIP-06'),
               style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFFF6B35),
-                side: const BorderSide(color: Color(0xFFFF6B35)),
+                foregroundColor: const Color(0xFFFF6B6B),
+                side: const BorderSide(color: Color(0xFFFF6B6B)),
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),

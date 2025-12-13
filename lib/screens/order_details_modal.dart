@@ -115,12 +115,12 @@ class _OrderDetailsModalState extends State<OrderDetailsModal> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.camera_alt, color: Color(0xFFFF6B35)),
+              leading: const Icon(Icons.camera_alt, color: Color(0xFFFF6B6B)),
               title: const Text('Tirar Foto'),
               onTap: () => Navigator.pop(context, 'camera'),
             ),
             ListTile(
-              leading: const Icon(Icons.photo_library, color: Color(0xFFFF6B35)),
+              leading: const Icon(Icons.photo_library, color: Color(0xFFFF6B6B)),
               title: const Text('Escolher da Galeria'),
               onTap: () => Navigator.pop(context, 'gallery'),
             ),
@@ -216,7 +216,7 @@ class _OrderDetailsModalState extends State<OrderDetailsModal> {
               color: const Color(0x1AFF6B35),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Icon(Icons.receipt_long, color: Color(0xFFFF6B35)),
+            child: const Icon(Icons.receipt_long, color: Color(0xFFFF6B6B)),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -311,7 +311,7 @@ class _OrderDetailsModalState extends State<OrderDetailsModal> {
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
-            color: highlight ? const Color(0xFFFF6B35) : Colors.white,
+            color: highlight ? const Color(0xFFFF6B6B) : Colors.white,
           ),
         ),
       ],
@@ -346,7 +346,7 @@ class _OrderDetailsModalState extends State<OrderDetailsModal> {
                     ),
                     decoration: BoxDecoration(
                       color: isMe 
-                          ? const Color(0xFFFF6B35) 
+                          ? const Color(0xFFFF6B6B) 
                           : const Color(0x1AFFFFFF),
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -404,7 +404,7 @@ class _OrderDetailsModalState extends State<OrderDetailsModal> {
           // Botão de anexo (só para provider)
           if (widget.isProvider)
             IconButton(
-              icon: const Icon(Icons.attach_file, color: Color(0xFFFF6B35)),
+              icon: const Icon(Icons.attach_file, color: Color(0xFFFF6B6B)),
               onPressed: _pickAndSendReceipt,
             ),
 
@@ -433,7 +433,7 @@ class _OrderDetailsModalState extends State<OrderDetailsModal> {
 
           // Botão enviar
           IconButton(
-            icon: const Icon(Icons.send, color: Color(0xFFFF6B35)),
+            icon: const Icon(Icons.send, color: Color(0xFFFF6B6B)),
             onPressed: _sendMessage,
           ),
         ],

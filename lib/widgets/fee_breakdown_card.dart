@@ -44,7 +44,7 @@ class FeeBreakdownCard extends StatelessWidget {
               children: const [
                 Icon(
                   Icons.receipt_long,
-                  color: Color(0xFFFF6B35),
+                  color: Color(0xFFFF6B6B),
                   size: 20,
                 ),
                 SizedBox(width: 8),

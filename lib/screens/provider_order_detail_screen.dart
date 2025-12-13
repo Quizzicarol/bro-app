@@ -749,7 +749,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                 Text(
                   '💡 Auto-liquidação após 24h',
                   style: TextStyle(
-                    color: Color(0xFFFF6B35),
+                    color: Color(0xFFFF6B6B),
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
                   ),
@@ -780,8 +780,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               icon: const Icon(Icons.gavel),
               label: const Text('Abrir Disputa'),
               style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFFF6B35),
-                side: const BorderSide(color: Color(0xFFFF6B35)),
+                foregroundColor: const Color(0xFFFF6B6B),
+                side: const BorderSide(color: Color(0xFFFF6B6B)),
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
             ),
@@ -799,7 +799,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Row(
           children: [
-            Icon(Icons.gavel, color: Color(0xFFFF6B35)),
+            Icon(Icons.gavel, color: Color(0xFFFF6B6B)),
             SizedBox(width: 12),
             Text('Abrir Disputa', style: TextStyle(color: Colors.white)),
           ],
@@ -821,7 +821,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                     Text(
                       '⚖️ Quando abrir uma disputa?',
                       style: TextStyle(
-                        color: Color(0xFFFF6B35),
+                        color: Color(0xFFFF6B6B),
                         fontWeight: FontWeight.bold,
                         fontSize: 15,
                       ),
@@ -873,7 +873,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               _openProviderDisputeForm();
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFF6B35),
+              backgroundColor: const Color(0xFFFF6B6B),
             ),
             child: const Text('Continuar', style: TextStyle(color: Colors.white)),
           ),
@@ -946,7 +946,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                   title: Text(reason, style: const TextStyle(color: Colors.white)),
                   value: reason,
                   groupValue: selectedReason,
-                  activeColor: const Color(0xFFFF6B35),
+                  activeColor: const Color(0xFFFF6B6B),
                   onChanged: (value) {
                     setModalState(() => selectedReason = value);
                   },
@@ -980,7 +980,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFFFF6B35)),
+                      borderSide: const BorderSide(color: Color(0xFFFF6B6B)),
                     ),
                   ),
                 ),
@@ -995,7 +995,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                           }
                         : null,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFF6B35),
+                      backgroundColor: const Color(0xFFFF6B6B),
                       disabledBackgroundColor: Colors.grey[700],
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
@@ -1022,7 +1022,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         backgroundColor: Color(0xFF1A1A1A),
         content: Row(
           children: [
-            CircularProgressIndicator(color: Color(0xFFFF6B35)),
+            CircularProgressIndicator(color: Color(0xFFFF6B6B)),
             SizedBox(width: 16),
             Text('Enviando disputa...', style: TextStyle(color: Colors.white)),
           ],
@@ -1064,7 +1064,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('⚖️ Disputa aberta com sucesso! O suporte foi notificado e irá analisar o caso.'),
-            backgroundColor: Color(0xFFFF6B35),
+            backgroundColor: Color(0xFFFF6B6B),
             duration: Duration(seconds: 4),
           ),
         );

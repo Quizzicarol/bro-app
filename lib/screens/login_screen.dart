@@ -1,15 +1,15 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
 import '../services/nostr_service.dart';
+import '../services/nostr_profile_service.dart';
 import '../services/storage_service.dart';
-import '../services/nip06_service.dart';
 import '../providers/breez_provider_export.dart';
 import '../config.dart';
 import 'home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({Key? key}) : super(key: key);
+  const LoginScreen({super.key});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -17,14 +17,14 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _nostrService = NostrService();
+  final _profileService = NostrProfileService();
   final _storage = StorageService();
-  final _nip06Service = Nip06Service();
   final _privateKeyController = TextEditingController();
-  
+
   bool _isLoading = false;
   bool _showPrivateKey = false;
   String? _error;
-  int _loginMethod = 0; // 0 = nsec, 1 = seed (NIP-06), 2 = Amber QR
+  String? _statusMessage;
 
   @override
   void dispose() {
@@ -33,91 +33,47 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _generateKeys() async {
-    if (_loginMethod == 1) {
-      // NIP-06: Gerar seed
-      final mnemonic = _nip06Service.generateMnemonic();
-      _privateKeyController.text = mnemonic;
-      
-      debugPrint('🔑 Nova seed gerada: ${mnemonic.split(' ').take(3).join(' ')}...');
-      
+    final keys = _nostrService.generateKeys();
+    _privateKeyController.text = keys['privateKey']!;
+
+    // Log de chave privada removido por segurança
+    debugPrint('Pubkey: ${keys['publicKey']!.substring(0, 16)}...');
+
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('🔑 Seed gerada! Guarde estas 12 palavras em local seguro.'),
-          backgroundColor: Color(0xFFFF6B35),
-          duration: Duration(seconds: 3),
-        ),
-      );
-    } else {
-      // Método tradicional: Gerar chave Nostr
-      final keys = _nostrService.generateKeys();
-      _privateKeyController.text = keys['privateKey']!;
-      
-      debugPrint('🔑 Nova chave Nostr gerada: ${keys['privateKey']!.substring(0, 16)}...');
-      debugPrint('🔑 Pubkey correspondente: ${keys['publicKey']!.substring(0, 16)}...');
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('🔑 Chaves Nostr geradas! Guarde sua chave privada em local seguro.'),
-          backgroundColor: Color(0xFFFF6B35),
+          content: Text('Chaves Nostr geradas! Guarde sua chave privada em local seguro.'),
+          backgroundColor: Color(0xFFFF6B6B),
           duration: Duration(seconds: 3),
         ),
       );
     }
-  }
-
-  Future<void> _loginWithAmber() async {
-    // TODO: Implementar deep link para Amber
-    // amber://sign?event=...
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('🔜 Login com Amber em breve! Por enquanto, use a chave privada.'),
-        backgroundColor: Color(0xFF9C27B0),
-      ),
-    );
   }
 
   Future<void> _login() async {
     final input = _privateKeyController.text.trim();
 
     if (input.isEmpty) {
-      setState(() => _error = _loginMethod == 1 
-          ? 'Digite ou gere uma seed (12 palavras)'
-          : 'Digite ou gere uma chave privada Nostr');
+      setState(() => _error = 'Digite sua chave privada Nostr');
       return;
     }
 
     setState(() {
       _isLoading = true;
       _error = null;
+      _statusMessage = 'Validando chave...';
     });
 
     try {
-      String privateKey;
-      String publicKey;
-      
-      if (_loginMethod == 1) {
-        // NIP-06: Derivar chaves da seed
-        if (!_nip06Service.validateMnemonic(input)) {
-          throw Exception('Seed inválida. Verifique as 12 palavras.');
-        }
-        final keys = _nip06Service.deriveNostrKeys(input);
-        privateKey = keys['privateKey']!;
-        publicKey = keys['publicKey']!;
-        
-        // Salvar seed também
-        await _storage.saveBreezMnemonic(input);
-      } else {
-        // Método tradicional
-        if (!_nostrService.isValidPrivateKey(input)) {
-          throw Exception('Chave privada Nostr inválida');
-        }
-        privateKey = input;
-        publicKey = _nostrService.getPublicKey(privateKey);
+      // Validar chave privada
+      if (!_nostrService.isValidPrivateKey(input)) {
+        throw Exception('Chave privada Nostr invalida');
       }
 
-      debugPrint('🔐 Login com:');
-      debugPrint('   Private key: ${privateKey.substring(0, 16)}...');
-      debugPrint('   Public key (hex): $publicKey');
+      final privateKey = input;
+      final publicKey = _nostrService.getPublicKey(privateKey);
+
+      debugPrint('Login com Nostr. Pubkey: ${publicKey.substring(0, 16)}...');
 
       // Salvar chaves Nostr
       await _storage.saveNostrKeys(
@@ -127,28 +83,57 @@ class _LoginScreenState extends State<LoginScreen> {
 
       _nostrService.setKeys(privateKey, publicKey);
 
-      // Usar URL do backend do config.dart
+      // Buscar perfil Nostr dos relays
+      if (mounted) {
+        setState(() => _statusMessage = 'Buscando perfil Nostr...');
+      }
+      
+      try {
+        final profile = await _profileService.fetchProfile(publicKey);
+        if (profile != null) {
+          debugPrint('Perfil encontrado: ${profile.preferredName}');
+          debugPrint('Avatar: ${profile.picture ?? "nenhum"}');
+          
+          // Salvar dados do perfil localmente
+          await _storage.saveNostrProfile(
+            name: profile.name,
+            displayName: profile.displayName,
+            picture: profile.picture,
+            about: profile.about,
+          );
+          
+          if (mounted && profile.name != null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Bem-vindo, ${profile.preferredName}!'),
+                backgroundColor: const Color(0xFF3DE98C),
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        debugPrint('Erro ao buscar perfil (continuando login): $e');
+        // Nao bloquear login se perfil nao for encontrado
+      }
+
+      // Salvar URL do backend
       await _storage.saveBackendUrl(AppConfig.defaultBackendUrl);
 
-      // Inicializar Breez SDK (não depende de backend)
-      final breezProvider = context.read<BreezProvider>();
-      
-      // Em modo teste, inicializar diretamente sem backend
-      if (AppConfig.testMode) {
+      // Inicializar Breez SDK
+      if (!kIsWeb) {
+        if (mounted) {
+          setState(() => _statusMessage = 'Inicializando carteira...');
+        }
+        final breezProvider = context.read<BreezProvider>();
         final success = await breezProvider.initialize();
         if (!success && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('⚠️ Breez SDK não inicializou, mas você pode continuar em modo teste'),
+              content: Text('Breez SDK nao inicializou, mas voce pode continuar'),
               backgroundColor: Colors.orange,
             ),
           );
-        }
-      } else {
-        // Em produção, tentar conectar ao backend
-        final success = await breezProvider.initialize();
-        if (!success) {
-          throw Exception('Falha ao conectar com backend');
         }
       }
 
@@ -158,67 +143,16 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }
     } catch (e) {
+      debugPrint('Erro no login: $e');
       setState(() => _error = 'Erro no login: ${e.toString()}');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _statusMessage = null;
+        });
+      }
     }
-  }
-
-  Widget _buildLoginMethodSelector() {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0x0DFFFFFF),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      padding: const EdgeInsets.all(4),
-      child: Row(
-        children: [
-          _buildMethodTab(0, 'nsec', Icons.key),
-          _buildMethodTab(1, 'Seed', Icons.text_snippet),
-          _buildMethodTab(2, 'Amber', Icons.smartphone),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMethodTab(int index, String label, IconData icon) {
-    final isSelected = _loginMethod == index;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () {
-          setState(() => _loginMethod = index);
-          if (index == 2) {
-            _loginWithAmber();
-          }
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFFFF6B35) : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 16,
-                color: isSelected ? Colors.white : const Color(0x99FFFFFF),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  color: isSelected ? Colors.white : const Color(0x99FFFFFF),
-                  fontSize: 12,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   @override
@@ -226,66 +160,47 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Logo Bitcoin com gradiente
-                Container(
-                  width: 120,
-                  height: 120,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFFF6B35), Color(0xFFFF8F65)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
+        child: Column(
+          children: [
+            // Seção superior - Logo centralizado
+            Expanded(
+              flex: 2,
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Image.asset(
+                      'assets/images/bro-logo.png',
+                      height: 120,
                     ),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFFFF6B35).withOpacity(0.3),
-                        blurRadius: 20,
-                        offset: const Offset(0, 10),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Comunidade de escambo digital via Nostr',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Color(0xB3FFFFFF),
+                        fontWeight: FontWeight.w400,
                       ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.currency_bitcoin,
-                    size: 70,
-                    color: Colors.white,
-                  ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 32),
-                
-                // Title
-                const Text(
-                  'Paga Conta',
-                  style: TextStyle(
-                    fontSize: 36,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Escambo digital via Nostr',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Color(0xB3FFFFFF),
-                    fontWeight: FontWeight.w400,
-                  ),
-                ),
-                const SizedBox(height: 48),
+              ),
+            ),
+            // Seção inferior - Card de login
+            Expanded(
+              flex: 3,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  children: [
 
                 // Card de Login
                 Container(
                   decoration: BoxDecoration(
                     color: const Color(0x0DFFFFFF),
                     border: Border.all(
-                      color: const Color(0x33FF6B35),
+                      color: const Color(0x33FF6B6B),
                       width: 1,
                     ),
                     borderRadius: BorderRadius.circular(16),
@@ -294,7 +209,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Subtítulo
                       const Text(
                         'Login via Nostr',
                         style: TextStyle(
@@ -304,170 +218,82 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 16),
-                      
-                      // Login method selector
-                      _buildLoginMethodSelector(),
-                      const SizedBox(height: 24),
-
-                      // Input based on method - CAMPOS SEPARADOS para evitar conflito obscureText/maxLines
-                      // Campo para nsec (método 0)
-                      if (_loginMethod == 0) ...[
-                        TextField(
-                          controller: _privateKeyController,
-                          obscureText: !_showPrivateKey,
-                          maxLines: 1,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: InputDecoration(
-                            labelText: 'Chave Privada Nostr',
-                            labelStyle: const TextStyle(color: Color(0xB3FFFFFF)),
-                            hintText: 'nsec1... ou hex',
-                            hintStyle: const TextStyle(color: Color(0x66FFFFFF)),
-                            prefixIcon: const Icon(
-                              Icons.key, 
-                              color: Color(0xFFFF6B35),
-                            ),
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                _showPrivateKey ? Icons.visibility_off : Icons.visibility,
-                                color: const Color(0xB3FFFFFF),
-                              ),
-                              onPressed: () {
-                                setState(() => _showPrivateKey = !_showPrivateKey);
-                              },
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: Color(0x33FF6B35),
-                                width: 1,
-                              ),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: Color(0xFFFF6B35),
-                                width: 2,
-                              ),
-                            ),
-                            filled: true,
-                            fillColor: const Color(0x0DFFFFFF),
-                          ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Use sua chave existente ou gere uma nova',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Color(0x99FFFFFF),
                         ),
-                      ],
-                      // Campo para Seed (método 1) - SEM obscureText, COM maxLines
-                      if (_loginMethod == 1) ...[
-                        TextField(
-                          controller: _privateKeyController,
-                          obscureText: false,
-                          maxLines: 3,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: InputDecoration(
-                            labelText: 'Seed (12 palavras)',
-                            labelStyle: const TextStyle(color: Color(0xB3FFFFFF)),
-                            hintText: 'palavra1 palavra2 palavra3...',
-                            hintStyle: const TextStyle(color: Color(0x66FFFFFF)),
-                            prefixIcon: const Icon(
-                              Icons.text_snippet, 
-                              color: Color(0xFFFF6B35),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: Color(0x33FF6B35),
-                                width: 1,
-                              ),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: Color(0xFFFF6B35),
-                                width: 2,
-                              ),
-                            ),
-                            filled: true,
-                            fillColor: const Color(0x0DFFFFFF),
-                          ),
-                        ),
-                      ],
-                      // Amber Login Mode (método 2)
-                      if (_loginMethod == 2) ...[
-                        Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: const Color(0x0DFFFFFF),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: const Color(0x33FF6B35),
-                            ),
-                          ),
-                          child: Column(
-                            children: [
-                              const Icon(
-                                Icons.phone_android,
-                                size: 48,
-                                color: Color(0xFFFF6B35),
-                              ),
-                              const SizedBox(height: 12),
-                              const Text(
-                                'Login com Amber',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              const Text(
-                                'Use o app Amber para assinar eventos Nostr de forma segura',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: Color(0xB3FFFFFF),
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              OutlinedButton.icon(
-                                onPressed: _loginWithAmber,
-                                icon: const Icon(Icons.qr_code_scanner),
-                                label: const Text('Conectar com Amber'),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: const Color(0xFFFF6B35),
-                                  side: const BorderSide(
-                                    color: Color(0xFFFF6B35),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 20, 
-                                    vertical: 12,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 16),
-
-                      // Generate Keys Button (Outline)
-                      OutlinedButton.icon(
-                        onPressed: _generateKeys,
-                        icon: const Icon(Icons.auto_awesome),
-                        label: const Text('Gerar Novas Chaves'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFFFF6B35),
-                          side: const BorderSide(
-                            color: Color(0xFFFF6B35),
-                            width: 2,
-                          ),
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
+                        textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 24),
 
-                      // Error Message
+                      // Campo de chave privada
+                      TextField(
+                        controller: _privateKeyController,
+                        obscureText: !_showPrivateKey,
+                        maxLines: 1,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          labelText: 'Chave Privada Nostr (nsec ou hex)',
+                          labelStyle: const TextStyle(color: Color(0xB3FFFFFF)),
+                          hintText: 'Cole sua chave aqui',
+                          hintStyle: const TextStyle(color: Color(0x66FFFFFF)),
+                          prefixIcon: const Icon(
+                            Icons.key,
+                            color: Color(0xFFFF6B6B),
+                          ),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _showPrivateKey ? Icons.visibility_off : Icons.visibility,
+                              color: const Color(0xB3FFFFFF),
+                            ),
+                            onPressed: () {
+                              setState(() => _showPrivateKey = !_showPrivateKey);
+                            },
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(
+                              color: Color(0x33FF6B6B),
+                              width: 1,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFFF6B6B),
+                              width: 2,
+                            ),
+                          ),
+                          filled: true,
+                          fillColor: const Color(0x0DFFFFFF),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Gerar nova chave
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          onPressed: _generateKeys,
+                          icon: const Icon(
+                            Icons.auto_awesome,
+                            size: 16,
+                            color: Color(0xFFFF6B6B),
+                          ),
+                          label: const Text(
+                            'Gerar nova chave',
+                            style: TextStyle(
+                              color: Color(0xFFFF6B6B),
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // Erro
                       if (_error != null) ...[
                         Container(
                           padding: const EdgeInsets.all(12),
@@ -475,14 +301,17 @@ class _LoginScreenState extends State<LoginScreen> {
                             color: const Color(0x1AFF0000),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                              color: const Color(0x4DFF0000),
-                              width: 1,
+                              color: const Color(0x33FF0000),
                             ),
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.error_outline, color: Colors.red, size: 20),
-                              const SizedBox(width: 12),
+                              const Icon(
+                                Icons.error_outline,
+                                color: Colors.red,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   _error!,
@@ -498,19 +327,19 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: 16),
                       ],
 
-                      // Login Button (Gradient)
+                      // Botao de Login
                       Container(
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
-                            colors: [Color(0xFFFF6B35), Color(0xFFFF8F65)],
+                            colors: [Color(0xFFFF6B6B), Color(0xFFFF8A8A)],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(12),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFFFF6B35).withOpacity(0.3),
-                              blurRadius: 15,
+                              color: const Color(0xFFFF6B6B).withOpacity(0.3),
+                              blurRadius: 12,
                               offset: const Offset(0, 4),
                             ),
                           ],
@@ -520,38 +349,109 @@ class _LoginScreenState extends State<LoginScreen> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.transparent,
                             shadowColor: Colors.transparent,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(12),
                             ),
                           ),
                           child: _isLoading
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                  ),
+                              ? Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    if (_statusMessage != null) ...[
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        _statusMessage!,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.white70,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 )
-                              : const Text(
-                                  'Entrar',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white,
-                                  ),
+                              : const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.login, color: Colors.white),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Entrar',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                         ),
                       ),
                     ],
                   ),
                 ),
-              ],
-            ),
+                const SizedBox(height: 20),
+
+                // Info sobre perfil (menor)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0x0D9C27B0),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0x339C27B0)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.person_search, color: Color(0xFF9C27B0), size: 20),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Perfil Nostr carregado automaticamente',
+                          style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Aviso de seguranca (menor)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0x0D3DE98C),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0x333DE98C)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.security, color: Color(0xFF3DE98C), size: 20),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Sua chave nunca sai do dispositivo',
+                          style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
-      ),
-    );
+      );
+    }
   }
-}

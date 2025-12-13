@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:nostr/nostr.dart';
 
 class NostrService {
@@ -116,7 +116,7 @@ class NostrService {
       kind: 1000, // Custom kind for orders
       content: content,
       tags: [
-        ['t', 'paga-conta'],
+        ['t', 'bro'],
         ['t', 'order'],
       ],
     );

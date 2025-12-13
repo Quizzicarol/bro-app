@@ -53,7 +53,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('🔑 Nova seed gerada! Guarde em local seguro.'),
-        backgroundColor: Color(0xFFFF6B35),
+        backgroundColor: Color(0xFFFF6B6B),
       ),
     );
   }
@@ -114,7 +114,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF6B35)),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF6B6B)),
             child: const Text('Confirmar', style: TextStyle(color: Colors.white)),
           ),
         ],
@@ -242,8 +242,8 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            const Color(0xFFFF6B35).withOpacity(0.2),
-            const Color(0xFFFF6B35).withOpacity(0.05),
+            const Color(0xFFFF6B6B).withOpacity(0.2),
+            const Color(0xFFFF6B6B).withOpacity(0.05),
           ],
         ),
         borderRadius: BorderRadius.circular(16),
@@ -254,7 +254,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
         children: [
           const Row(
             children: [
-              Icon(Icons.info_outline, color: Color(0xFFFF6B35)),
+              Icon(Icons.info_outline, color: Color(0xFFFF6B6B)),
               SizedBox(width: 8),
               Text(
                 'O que é NIP-06?',
@@ -325,7 +325,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
             ),
             child: const Row(
               children: [
-                Icon(Icons.route, color: Color(0xFFFF6B35), size: 16),
+                Icon(Icons.route, color: Color(0xFFFF6B6B), size: 16),
                 SizedBox(width: 8),
                 Text(
                   "Derivation path: m/44'/1237'/0'/0/0",
@@ -390,7 +390,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFFFF6B35)),
+                borderSide: const BorderSide(color: Color(0xFFFF6B6B)),
               ),
             ),
           ),
@@ -472,7 +472,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
               child: const Text(
                 'Avançado',
                 style: TextStyle(
-                  color: Color(0xFFFF6B35),
+                  color: Color(0xFFFF6B6B),
                   fontSize: 10,
                   fontWeight: FontWeight.w600,
                 ),
@@ -513,7 +513,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFFFF6B35)),
+              borderSide: const BorderSide(color: Color(0xFFFF6B6B)),
             ),
           ),
         ),
@@ -548,7 +548,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
                 : const Icon(Icons.key),
             label: const Text('Derivar Chaves'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFF6B35),
+              backgroundColor: const Color(0xFFFF6B6B),
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),

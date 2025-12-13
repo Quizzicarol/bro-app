@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
 import 'dart:io';
@@ -9,6 +9,7 @@ import '../providers/order_provider.dart';
 import '../providers/provider_balance_provider.dart';
 import '../providers/platform_balance_provider.dart';
 import '../config.dart';
+import '../services/notification_service.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:flutter/services.dart';
 
@@ -34,6 +35,7 @@ class OrderStatusScreen extends StatefulWidget {
 
 class _OrderStatusScreenState extends State<OrderStatusScreen> {
   final OrderService _orderService = OrderService();
+  final NotificationService _notificationService = NotificationService();
   Timer? _statusCheckTimer;
   
   Map<String, dynamic>? _orderDetails;
@@ -87,12 +89,43 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     }
   }
 
+  
+  /// Trata mudancas de status e envia notificacoes
+  void _handleStatusChange(String newStatus) {
+    switch (newStatus) {
+      case 'accepted':
+        _notificationService.notifyOrderAccepted(
+          orderId: widget.orderId,
+          broName: _orderDetails?['provider_id']?.substring(0, 8) ?? 'Bro',
+        );
+        break;
+      case 'awaiting_confirmation':
+      case 'payment_submitted':
+        _notificationService.notifyPaymentReceived(
+          orderId: widget.orderId,
+          amount: widget.amountBrl,
+        );
+        break;
+      case 'completed':
+        _notificationService.notifyOrderCompleted(
+          orderId: widget.orderId,
+          amount: widget.amountBrl,
+        );
+        break;
+      case 'disputed':
+        _notificationService.notifyDisputeOpened(orderId: widget.orderId);
+        break;
+    }
+  }
+
   void _startStatusPolling() {
     // Verificar status a cada 10 segundos
     _statusCheckTimer = Timer.periodic(const Duration(seconds: 10), (timer) async {
       final status = await _orderService.checkOrderStatus(widget.orderId);
       
       if (status != _currentStatus) {
+        // Notificar sobre mudanca de status
+        _handleStatusChange(status);
         setState(() {
           _currentStatus = status;
         });
@@ -118,7 +151,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       builder: (context) => AlertDialog(
         title: const Text('⏰ Tempo Esgotado'),
         content: const Text(
-          'Nenhum provedor aceitou sua ordem em 24 horas.\n\n'
+          'Nenhum Bro aceitou sua ordem em 24 horas.\n\n'
           'Você pode:\n'
           '• Aguardar mais tempo\n'
           '• Cancelar e criar uma nova ordem\n'
@@ -241,7 +274,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         onRefresh: _loadOrderDetails,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -359,15 +392,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       case 'confirmed':
         return {
           'icon': Icons.hourglass_empty,
-          'title': 'Aguardando Provedor',
-          'subtitle': 'Sua ordem está disponível para provedores',
+          'title': 'Aguardando um Bro',
+          'subtitle': 'Sua ordem está disponível para Bros',
           'color': Colors.blue,
         };
       case 'accepted':
         return {
           'icon': Icons.check_circle_outline,
-          'title': 'Provedor Encontrado!',
-          'subtitle': 'Um provedor aceitou sua ordem',
+          'title': 'Bro Encontrado!',
+          'subtitle': 'Um Bro aceitou sua ordem',
           'color': Colors.green,
         };
       case 'awaiting_confirmation':
@@ -418,8 +451,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   Widget _buildOrderDetailsCard() {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
@@ -478,8 +511,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   Widget _buildTimelineCard() {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
@@ -499,14 +532,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             ),
             _buildTimelineStep(
               number: '2',
-              title: 'Aguardando Provedor',
+              title: 'Aguardando um Bro',
               subtitle: 'Um provedor irá aceitar sua ordem',
               isActive: _currentStatus == 'confirmed',
               isCompleted: _currentStatus == 'accepted' || _currentStatus == 'payment_submitted' || _currentStatus == 'completed',
             ),
             _buildTimelineStep(
               number: '3',
-              title: 'Provedor Realiza Pagamento',
+              title: 'Bro Realiza Pagamento',
               subtitle: 'O provedor paga a conta com PIX/Boleto',
               isActive: _currentStatus == 'accepted',
               isCompleted: _currentStatus == 'payment_submitted' || _currentStatus == 'completed',
@@ -602,8 +635,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     return Card(
       color: Colors.blue[50],
       child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
@@ -621,13 +654,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            _buildInfoItem('⏰', 'O provedor tem até 24 horas para aceitar e pagar sua conta'),
+            _buildInfoItem('⏰', 'O Bro tem até 24 horas para aceitar e pagar sua conta'),
             const SizedBox(height: 12),
             _buildInfoItem('🔒', 'Seus Bitcoin estão seguros no escrow até a conclusão'),
             const SizedBox(height: 12),
             _buildInfoItem('📱', 'Você receberá notificações sobre o andamento'),
             const SizedBox(height: 12),
-            _buildInfoItem('🚫', 'Você pode cancelar a ordem se nenhum provedor aceitar'),
+            _buildInfoItem('🚫', 'Você pode cancelar a ordem se nenhum Bro aceitar'),
           ],
         ),
       ),
@@ -672,8 +705,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
@@ -681,7 +714,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 Icon(Icons.receipt_long, color: Colors.orange[700]),
                 const SizedBox(width: 12),
                 const Text(
-                  'Comprovante do Provedor',
+                  'Comprovante do Bro',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -814,7 +847,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     }
   }
 
-  /// Exibe o comprovante do provedor em tela cheia
+  /// Exibe o Comprovante do Bro em tela cheia
   void _showReceiptImage(String imageUrl) {
     showDialog(
       context: context,
@@ -887,7 +920,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               value: loadingProgress.expectedTotalBytes != null
                   ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
                   : null,
-              color: const Color(0xFFFF6B35),
+              color: const Color(0xFFFF6B6B),
             ),
           );
         },
@@ -940,7 +973,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Row(
           children: [
-            Icon(Icons.gavel, color: Color(0xFFFF6B35)),
+            Icon(Icons.gavel, color: Color(0xFFFF6B6B)),
             SizedBox(width: 12),
             Text('Abrir Disputa', style: TextStyle(color: Colors.white)),
           ],
@@ -962,7 +995,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     Text(
                       '⚖️ O que é uma disputa?',
                       style: TextStyle(
-                        color: Color(0xFFFF6B35),
+                        color: Color(0xFFFF6B6B),
                         fontWeight: FontWeight.bold,
                         fontSize: 15,
                       ),
@@ -1022,7 +1055,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               _openDisputeForm();
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFF6B35),
+              backgroundColor: const Color(0xFFFF6B6B),
             ),
             child: const Text('Continuar', style: TextStyle(color: Colors.white)),
           ),
@@ -1113,7 +1146,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   title: Text(reason, style: const TextStyle(color: Colors.white)),
                   value: reason,
                   groupValue: selectedReason,
-                  activeColor: const Color(0xFFFF6B35),
+                  activeColor: const Color(0xFFFF6B6B),
                   onChanged: (value) {
                     setModalState(() => selectedReason = value);
                   },
@@ -1147,7 +1180,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFFFF6B35)),
+                      borderSide: const BorderSide(color: Color(0xFFFF6B6B)),
                     ),
                   ),
                 ),
@@ -1162,7 +1195,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           }
                         : null,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFF6B35),
+                      backgroundColor: const Color(0xFFFF6B6B),
                       disabledBackgroundColor: Colors.grey[700],
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
@@ -1189,7 +1222,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         backgroundColor: Color(0xFF1A1A1A),
         content: Row(
           children: [
-            CircularProgressIndicator(color: Color(0xFFFF6B35)),
+            CircularProgressIndicator(color: Color(0xFFFF6B6B)),
             SizedBox(width: 16),
             Text('Enviando disputa...', style: TextStyle(color: Colors.white)),
           ],
@@ -1233,7 +1266,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('⚖️ Disputa aberta com sucesso! O suporte foi notificado e irá analisar o caso.'),
-            backgroundColor: Color(0xFFFF6B35),
+            backgroundColor: Color(0xFFFF6B6B),
             duration: Duration(seconds: 4),
           ),
         );
@@ -1259,8 +1292,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         icon: const Icon(Icons.gavel),
         label: const Text('Abrir Disputa'),
         style: OutlinedButton.styleFrom(
-          foregroundColor: const Color(0xFFFF6B35),
-          side: const BorderSide(color: Color(0xFFFF6B35)),
+          foregroundColor: const Color(0xFFFF6B6B),
+          side: const BorderSide(color: Color(0xFFFF6B6B)),
           padding: const EdgeInsets.symmetric(vertical: 16),
         ),
       ),
@@ -1275,7 +1308,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         icon: const Icon(Icons.currency_bitcoin),
         label: const Text('Pagar com Bitcoin'),
         style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFFFF6B35),
+          backgroundColor: const Color(0xFFFF6B6B),
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 16),
         ),
@@ -1340,7 +1373,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   leading: Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFF6B35),
+                      color: const Color(0xFFFF6B6B),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Icon(Icons.bolt, color: Colors.white, size: 24),
@@ -1447,7 +1480,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(color: Color(0xFFFF6B35)),
+            CircularProgressIndicator(color: Color(0xFFFF6B6B)),
             SizedBox(height: 16),
             Text(
               'Gerando Invoice Lightning...',
@@ -1464,7 +1497,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       debugPrint('🔵 Criando Lightning invoice para ${widget.amountSats} sats...');
       final invoiceData = await breezProvider.createInvoice(
         amountSats: widget.amountSats,
-        description: 'Paga Conta ${widget.orderId}',
+        description: 'Bro ${widget.orderId}',
       ).timeout(
         const Duration(seconds: 30),
         onTimeout: () {
@@ -1536,7 +1569,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: Row(
             children: [
-              const Icon(Icons.bolt, color: Color(0xFFFF6B35), size: 28),
+              const Icon(Icons.bolt, color: Color(0xFFFF6B6B), size: 28),
               const SizedBox(width: 8),
               const Expanded(
                 child: Text(
@@ -1633,7 +1666,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.copy, color: Color(0xFFFF6B35), size: 20),
+                          icon: const Icon(Icons.copy, color: Color(0xFFFF6B6B), size: 20),
                           onPressed: () {
                             Clipboard.setData(ClipboardData(text: invoice));
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -1757,13 +1790,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               'R\$ ${widget.amountBrl.toStringAsFixed(2)}',
               style: const TextStyle(
                 fontSize: 18,
-                color: Color(0xFFFF6B35),
+                color: Color(0xFFFF6B6B),
                 fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 16),
             const Text(
-              'Seu pagamento via Lightning foi\nconfirmado com sucesso!\n\nAguardando provedor aceitar sua ordem.',
+              'Seu pagamento via Lightning foi\nconfirmado com sucesso!\n\nAguardando um Bro aceitar sua ordem.',
               style: TextStyle(color: Color(0x99FFFFFF), fontSize: 14),
               textAlign: TextAlign.center,
             ),
@@ -1809,7 +1842,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         content: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(color: Color(0xFFFF6B35)),
+            CircularProgressIndicator(color: Color(0xFFFF6B6B)),
             SizedBox(width: 16),
             Text('Gerando endereço...', style: TextStyle(color: Colors.white)),
           ],
@@ -2102,8 +2135,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     return Card(
       color: const Color(0xFFFFF3E0),
       child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(

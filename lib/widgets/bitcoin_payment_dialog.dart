@@ -25,7 +25,7 @@ class BitcoinPaymentDialog extends StatelessWidget {
         decoration: BoxDecoration(
           color: const Color(0xFF1A1A1A),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFFF6B35).withOpacity(0.3)),
+          border: Border.all(color: const Color(0xFFFF6B6B).withOpacity(0.3)),
         ),
         child: DefaultTabController(
           length: lightningInvoice != null && onchainAddress != null ? 2 : 1,
@@ -37,7 +37,7 @@ class BitcoinPaymentDialog extends StatelessWidget {
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                    colors: [Color(0xFFFF6B35), Color(0xFFFF8F65)],
+                    colors: [Color(0xFFFF6B6B), Color(0xFFFF8A8A)],
                   ),
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(16),
@@ -71,8 +71,8 @@ class BitcoinPaymentDialog extends StatelessWidget {
                 Container(
                   color: const Color(0xFF0A0A0A),
                   child: TabBar(
-                    indicatorColor: const Color(0xFFFF6B35),
-                    labelColor: const Color(0xFFFF6B35),
+                    indicatorColor: const Color(0xFFFF6B6B),
+                    labelColor: const Color(0xFFFF6B6B),
                     unselectedLabelColor: Colors.white60,
                     tabs: const [
                       Tab(icon: Icon(Icons.flash_on), text: 'Lightning'),
@@ -174,7 +174,7 @@ class BitcoinPaymentDialog extends StatelessWidget {
             decoration: BoxDecoration(
               color: const Color(0xFF0A0A0A),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFFFF6B35).withOpacity(0.2)),
+              border: Border.all(color: const Color(0xFFFF6B6B).withOpacity(0.2)),
             ),
             child: SelectableText(
               lightningInvoice ?? '',
@@ -205,7 +205,7 @@ class BitcoinPaymentDialog extends StatelessWidget {
               icon: const Icon(Icons.copy, size: 18),
               label: const Text('Copiar Invoice'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFF6B35),
+                backgroundColor: const Color(0xFFFF6B6B),
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
@@ -290,7 +290,7 @@ class BitcoinPaymentDialog extends StatelessWidget {
             decoration: BoxDecoration(
               color: const Color(0xFF0A0A0A),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFFFF6B35).withOpacity(0.2)),
+              border: Border.all(color: const Color(0xFFFF6B6B).withOpacity(0.2)),
             ),
             child: SelectableText(
               onchainAddress ?? '',
@@ -321,7 +321,7 @@ class BitcoinPaymentDialog extends StatelessWidget {
               icon: const Icon(Icons.copy, size: 18),
               label: const Text('Copiar Endereço'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFF6B35),
+                backgroundColor: const Color(0xFFFF6B6B),
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(

@@ -251,7 +251,7 @@ class _OnchainPaymentScreenState extends State<OnchainPaymentScreen> {
                     '${widget.amountSats} sats',
                     style: const TextStyle(
                       fontSize: 16,
-                      color: Color(0xFFFF6B35),
+                      color: Color(0xFFFF6B6B),
                     ),
                   ),
                   const SizedBox(height: 8),

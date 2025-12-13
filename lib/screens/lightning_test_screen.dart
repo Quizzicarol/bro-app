@@ -52,7 +52,7 @@ class _LightningTestScreenState extends State<LightningTestScreen> {
 
     final result = await breez.createInvoice(
       amountSats: amountSats,
-      description: 'Teste Paga Conta',
+      description: 'Teste Bro',
     );
 
     if (result?['success'] == true) {

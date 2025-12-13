@@ -1,16 +1,18 @@
- import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 /// Card de estatística replicando o design do dashboard web
 /// Cores: --primary-orange: #FF6B35, fundo rgba(255, 255, 255, 0.05)
 class StatCard extends StatelessWidget {
-  final String emoji;
+  final String? emoji;
+  final Widget? iconWidget;
   final String value;
   final String label;
   final VoidCallback? onTap;
 
   const StatCard({
     Key? key,
-    required this.emoji,
+    this.emoji,
+    this.iconWidget,
     required this.value,
     required this.label,
     this.onTap,
@@ -40,13 +42,16 @@ class StatCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // Emoji Icon
-                  Text(
-                    emoji,
-                    style: const TextStyle(fontSize: 28),
-                  ),
+                  // Icon - emoji or widget
+                  if (iconWidget != null)
+                    iconWidget!
+                  else if (emoji != null)
+                    Text(
+                      emoji!,
+                      style: const TextStyle(fontSize: 28),
+                    ),
                   const SizedBox(height: 6),
-                  
+
                   // Value
                   Flexible(
                     child: Container(
@@ -67,7 +72,7 @@ class StatCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  
+
                   // Label
                   Text(
                     label,

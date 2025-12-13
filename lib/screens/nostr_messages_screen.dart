@@ -44,7 +44,7 @@ class _NostrMessagesScreenState extends State<NostrMessagesScreen> {
       _conversations = [
         {
           'id': '1',
-          'name': 'Suporte Paga Conta',
+          'name': 'Suporte Bro',
           'pubkey': 'npub1support...',
           'lastMessage': 'Como posso ajudar?',
           'timestamp': DateTime.now().subtract(const Duration(minutes: 5)),

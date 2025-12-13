@@ -60,7 +60,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
         ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B35)))
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B6B)))
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -109,7 +109,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
       scoreColor = Colors.green;
       scoreLabel = 'Excelente';
     } else if (score >= 60) {
-      scoreColor = const Color(0xFFFF6B35);
+      scoreColor = const Color(0xFFFF6B6B);
       scoreLabel = 'Bom';
     } else {
       scoreColor = Colors.orange;
@@ -206,7 +206,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
   Widget _buildSectionTitle(String title, IconData icon) {
     return Row(
       children: [
-        Icon(icon, color: const Color(0xFFFF6B35), size: 20),
+        Icon(icon, color: const Color(0xFFFF6B6B), size: 20),
         const SizedBox(width: 8),
         Text(
           title,
@@ -366,7 +366,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
               color: const Color(0x1AFF6B35),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.enhanced_encryption, color: Color(0xFFFF6B35)),
+            child: const Icon(Icons.enhanced_encryption, color: Color(0xFFFF6B6B)),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -411,7 +411,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
               setState(() => _nip44Enabled = value);
               _saveSetting('nip44_enabled', value);
             },
-            activeColor: const Color(0xFFFF6B35),
+            activeColor: const Color(0xFFFF6B6B),
           ),
         ],
       ),
@@ -466,7 +466,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
               setState(() => _hideBalance = value);
               _saveSetting('hide_balance', value);
             },
-            activeColor: const Color(0xFFFF6B35),
+            activeColor: const Color(0xFFFF6B6B),
           ),
         ],
       ),
@@ -559,8 +559,8 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
-              const Color(0xFFFF6B35).withOpacity(0.1),
-              const Color(0xFFFF6B35).withOpacity(0.05),
+              const Color(0xFFFF6B6B).withOpacity(0.1),
+              const Color(0xFFFF6B6B).withOpacity(0.05),
             ],
           ),
           borderRadius: BorderRadius.circular(16),
@@ -574,7 +574,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                 color: const Color(0x33FF6B35),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.cloud_queue, color: Color(0xFFFF6B35)),
+              child: const Icon(Icons.cloud_queue, color: Color(0xFFFF6B6B)),
             ),
             const SizedBox(width: 12),
             const Expanded(
@@ -597,7 +597,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                 ],
               ),
             ),
-            const Icon(Icons.arrow_forward_ios, color: Color(0xFFFF6B35), size: 18),
+            const Icon(Icons.arrow_forward_ios, color: Color(0xFFFF6B6B), size: 18),
           ],
         ),
       ),

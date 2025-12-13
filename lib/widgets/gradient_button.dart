@@ -27,14 +27,14 @@ class GradientButton extends StatelessWidget {
       height: height,
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFFFF6B35), Color(0xFFFF8F65)],
+          colors: [Color(0xFFFF6B6B), Color(0xFFFF8A8A)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(8),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFFF6B35).withOpacity(0.3),
+            color: const Color(0xFFFF6B6B).withOpacity(0.3),
             blurRadius: 15,
             offset: const Offset(0, 4),
           ),
@@ -114,7 +114,7 @@ class CustomOutlineButton extends StatelessWidget {
       height: height,
       decoration: BoxDecoration(
         border: Border.all(
-          color: const Color(0xFFFF6B35),
+          color: const Color(0xFFFF6B6B),
           width: 2,
         ),
         borderRadius: BorderRadius.circular(8),
@@ -132,7 +132,7 @@ class CustomOutlineButton extends StatelessWidget {
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(
-                        color: Color(0xFFFF6B35),
+                        color: Color(0xFFFF6B6B),
                         strokeWidth: 2,
                       ),
                     ),
@@ -142,14 +142,14 @@ class CustomOutlineButton extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (icon != null) ...[
-                        Icon(icon, color: const Color(0xFFFF6B35), size: 18),
+                        Icon(icon, color: const Color(0xFFFF6B6B), size: 18),
                         const SizedBox(width: 6),
                       ],
                       Flexible(
                         child: Text(
                           text,
                           style: const TextStyle(
-                            color: Color(0xFFFF6B35),
+                            color: Color(0xFFFF6B6B),
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                           ),

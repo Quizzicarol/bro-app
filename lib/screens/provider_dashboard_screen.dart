@@ -79,10 +79,10 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B35)))
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B6B)))
           : RefreshIndicator(
               onRefresh: _loadProviderData,
-              color: const Color(0xFFFF6B35),
+              color: const Color(0xFFFF6B6B),
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(20),
@@ -176,7 +176,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.05),
-        border: Border.all(color: const Color(0xFFFF6B35).withOpacity(0.2)),
+        border: Border.all(color: const Color(0xFFFF6B6B).withOpacity(0.2)),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -303,11 +303,11 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.05),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFFF6B35).withOpacity(0.2)),
+        border: Border.all(color: const Color(0xFFFF6B6B).withOpacity(0.2)),
       ),
       child: Column(
         children: [
-          const Icon(Icons.inbox, size: 64, color: Color(0xFFFF6B35)),
+          const Icon(Icons.inbox, size: 64, color: Color(0xFFFF6B6B)),
           const SizedBox(height: 16),
           Text(
             message,
@@ -331,7 +331,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.05),
-        border: Border.all(color: const Color(0xFFFF6B35).withOpacity(0.3)),
+        border: Border.all(color: const Color(0xFFFF6B6B).withOpacity(0.3)),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -369,7 +369,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                       style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFFFF6B35),
+                        color: Color(0xFFFF6B6B),
                       ),
                     ),
                     Text(
@@ -420,8 +420,8 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                     icon: const Icon(Icons.visibility, size: 18),
                     label: const Text('Detalhes'),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFFFF6B35),
-                      side: const BorderSide(color: Color(0xFFFF6B35)),
+                      foregroundColor: const Color(0xFFFF6B6B),
+                      side: const BorderSide(color: Color(0xFFFF6B6B)),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
@@ -439,7 +439,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                 icon: const Icon(Icons.upload_file, size: 18),
                 label: const Text('Enviar Comprovante'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFF6B35),
+                  backgroundColor: const Color(0xFFFF6B6B),
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
@@ -550,7 +550,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('🚧 Funcionalidade de upload de comprovante em desenvolvimento'),
-        backgroundColor: Color(0xFFFF6B35),
+        backgroundColor: Color(0xFFFF6B6B),
       ),
     );
   }

@@ -29,6 +29,7 @@ import 'services/notification_service.dart';
 import 'services/api_service.dart';
 import 'services/cache_service.dart';
 import 'providers/theme_provider.dart';
+import 'widgets/alfa_banner.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -136,6 +137,15 @@ class BroApp extends StatelessWidget {
                 theme: BroThemes.lightTheme,
                 darkTheme: BroThemes.darkTheme,
                 themeMode: themeProvider.themeMode,
+                // Banner ALFA em todas as telas
+                builder: (context, child) {
+                  return Column(
+                    children: [
+                      const AlfaBanner(),
+                      Expanded(child: child ?? const SizedBox()),
+                    ],
+                  );
+                },
                 home: isLoggedIn ? const HomeScreen() : const LoginScreen(),
             onGenerateRoute: (settings) {
               // Rotas com parametros

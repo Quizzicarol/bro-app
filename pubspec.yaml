@@ -63,15 +63,15 @@ flutter_launcher_icons:
   android: true
   ios: true
   image_path: "assets/icon/bro_icon.png"
-  adaptive_icon_background: "#FF6B6B"
+  adaptive_icon_background: "#FFFFFF"
   adaptive_icon_foreground: "assets/icon/bro_icon_foreground.png"
   min_sdk_android: 21
   remove_alpha_ios: true
   web:
     generate: true
     image_path: "assets/icon/bro_icon.png"
-    background_color: "#FF6B6B"
-    theme_color: "#FF6B6B"
+    background_color: "#FFFFFF"
+    theme_color: "#FFFFFF"
 
 flutter:
   uses-material-design: true

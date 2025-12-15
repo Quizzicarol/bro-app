@@ -608,12 +608,22 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
     switch (status) {
       case 'pending':
         return {
-          'label': 'Aguardando',
+          'label': 'Aguardando Pagamento',
           'color': Colors.orange,
+        };
+      case 'payment_received':
+        return {
+          'label': 'Pagamento Recebido',
+          'color': Colors.teal,
+        };
+      case 'confirmed':
+        return {
+          'label': 'Aguardando Bro',
+          'color': Colors.blue,
         };
       case 'accepted':
         return {
-          'label': 'Aceito',
+          'label': 'Bro Encontrado',
           'color': Colors.amber,
         };
       case 'awaiting_confirmation':
@@ -635,6 +645,11 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
         return {
           'label': 'Cancelado',
           'color': Colors.red,
+        };
+      case 'disputed':
+        return {
+          'label': 'Em Disputa',
+          'color': Colors.deepOrange,
         };
       default:
         return {

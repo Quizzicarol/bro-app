@@ -605,6 +605,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           'subtitle': 'Pague com Bitcoin para prosseguir',
           'color': Colors.orange,
         };
+      case 'payment_received':
+        return {
+          'icon': Icons.check,
+          'title': 'Pagamento Recebido',
+          'subtitle': 'Seus sats foram recebidos',
+          'color': Colors.teal,
+        };
       case 'confirmed':
         return {
           'icon': Icons.hourglass_empty,
@@ -644,7 +651,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return {
           'icon': Icons.cancel_outlined,
           'title': 'Ordem Cancelada',
-          'subtitle': 'Seus fundos foram devolvidos',
+          'subtitle': 'Seus sats permanecem na sua carteira',
           'color': Colors.red,
         };
       case 'disputed':

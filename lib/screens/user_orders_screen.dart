@@ -51,12 +51,8 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
         final orderProvider = Provider.of<OrderProvider>(context, listen: false);
         debugPrint('📱 OrderProvider tem ${orderProvider.orders.length} ordens no total');
         
-        // Mostrar TODAS as ordens (exceto canceladas)
+        // Mostrar TODAS as ordens (incluindo canceladas para permitir saque)
         final localOrders = orderProvider.orders
-          .where((order) {
-            debugPrint('   - Ordem ${order.id.substring(0, 8)}: status=${order.status}, providerId=${order.providerId ?? "null"}');
-            return order.status != 'cancelled';
-          })
           .map((order) => {
             'id': order.id,
             'status': order.status,
@@ -76,7 +72,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
             _isLoading = false;
           });
         }
-        debugPrint('📱 Modo teste: ${_orders.length} ordens carregadas (todas menos canceladas)');
+        debugPrint('📱 Modo teste: ${_orders.length} ordens carregadas');
         return;
       }
       
@@ -111,6 +107,9 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
     } else if (_filterStatus == 'completed') {
       // Completadas
       return _orders.where((order) => order['status'] == 'completed').toList();
+    } else if (_filterStatus == 'cancelled') {
+      // Canceladas
+      return _orders.where((order) => order['status'] == 'cancelled').toList();
     }
     return _orders;
   }
@@ -846,7 +845,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                 Expanded(
                   child: _buildFilterChip('Todas', 'all', _orders.length),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 Expanded(
                   child: _buildFilterChip(
                     'Ativas',
@@ -854,12 +853,20 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                     _orders.where((o) => ['pending', 'payment_received', 'confirmed', 'accepted', 'awaiting_confirmation'].contains(o['status'])).length,
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 Expanded(
                   child: _buildFilterChip(
-                    'Finalizadas',
+                    'Concluídas',
                     'completed',
                     _orders.where((o) => o['status'] == 'completed').length,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: _buildFilterChip(
+                    'Canceladas',
+                    'cancelled',
+                    _orders.where((o) => o['status'] == 'cancelled').length,
                   ),
                 ),
               ],
@@ -962,7 +969,9 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
       case 'active':
         return 'Nenhuma ordem ativa';
       case 'completed':
-        return 'Nenhuma ordem finalizada';
+        return 'Nenhuma ordem concluída';
+      case 'cancelled':
+        return 'Nenhuma ordem cancelada';
       default:
         return 'Você ainda não criou nenhuma ordem';
     }
@@ -1097,6 +1106,46 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.red,
                       side: const BorderSide(color: Colors.red),
+                    ),
+                  ),
+                ),
+              ],
+              // Botão de saque para ordens canceladas
+              if (status == 'cancelled') ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline, color: Colors.blue, size: 20),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Text(
+                          'Seus sats estão na sua carteira',
+                          style: TextStyle(
+                            color: Colors.blue,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _showWithdrawToLightning(),
+                    icon: const Icon(Icons.send, size: 18),
+                    label: const Text('Sacar Sats'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      foregroundColor: Colors.white,
                     ),
                   ),
                 ),

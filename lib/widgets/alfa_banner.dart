@@ -9,17 +9,12 @@ class AlfaBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            Colors.orange.shade700,
-            Colors.deepOrange.shade600,
-          ],
-        ),
+        color: const Color(0xFFD32F2F), // Vermelho forte
         boxShadow: [
           BoxShadow(
-            color: Colors.orange.withOpacity(0.3),
+            color: Colors.red.withOpacity(0.3),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
@@ -27,36 +22,61 @@ class AlfaBanner extends StatelessWidget {
       ),
       child: SafeArea(
         bottom: false,
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: const Text(
-                'ALFA',
-                style: TextStyle(
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.warning_amber_rounded,
                   color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 11,
-                  letterSpacing: 1,
+                  size: 18,
                 ),
-              ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    'VERSÃO ALFA',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(
+                  Icons.warning_amber_rounded,
+                  color: Colors.white,
+                  size: 18,
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            const Expanded(
-              child: Text(
-                'App em testes • Bugs podem acontecer • Não negocie valores altos',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+            const SizedBox(height: 6),
+            const Text(
+              'App em fase de testes. Bugs podem acontecer.',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
               ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 2),
+            const Text(
+              'Não negocie valores altos!',
+              style: TextStyle(
+                color: Colors.yellow,
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
             ),
           ],
         ),

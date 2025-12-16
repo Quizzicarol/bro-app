@@ -666,29 +666,62 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               child: MobileScanner(
                 onDetect: (capture) {
                   final List<Barcode> barcodes = capture.barcodes;
+                  debugPrint('📷 QR Scanner detectou ${barcodes.length} códigos');
+                  
                   for (final barcode in barcodes) {
                     final code = barcode.rawValue;
+                    debugPrint('📷 Código raw: $code');
+                    
                     if (code != null && code.isNotEmpty) {
                       String cleaned = code.trim();
+                      debugPrint('📷 Código limpo: $cleaned');
                       
-                      // Remover prefixos comuns
-                      if (cleaned.toLowerCase().startsWith('lightning:')) {
+                      // Remover prefixos comuns de URI
+                      final lowerCleaned = cleaned.toLowerCase();
+                      if (lowerCleaned.startsWith('lightning:')) {
                         cleaned = cleaned.substring(10);
+                      } else if (lowerCleaned.startsWith('bitcoin:')) {
+                        cleaned = cleaned.substring(8);
+                      } else if (lowerCleaned.startsWith('lnurl:')) {
+                        cleaned = cleaned.substring(6);
                       }
                       
-                      // BOLT11 Invoice
+                      // Remover parâmetros de query string se houver
+                      if (cleaned.contains('?')) {
+                        cleaned = cleaned.split('?')[0];
+                      }
+                      
+                      debugPrint('📷 Código após limpeza: $cleaned');
+                      
+                      // BOLT11 Invoice - aceitar qualquer coisa que comece com ln
                       if (cleaned.toLowerCase().startsWith('lnbc') || 
-                          cleaned.toLowerCase().startsWith('lntb')) {
+                          cleaned.toLowerCase().startsWith('lntb') ||
+                          cleaned.toLowerCase().startsWith('lnurl')) {
                         scannedCode = cleaned;
+                        debugPrint('✅ Invoice detectada: $scannedCode');
                         Navigator.pop(ctx);
-                        break;
+                        return;
                       }
                       
                       // Lightning Address (user@domain.com)
-                      if (LnAddressService.isLightningAddress(cleaned)) {
-                        scannedCode = LnAddressService.cleanAddress(cleaned);
+                      if (cleaned.contains('@') && cleaned.contains('.')) {
+                        // Limpar e validar
+                        final cleanedAddress = LnAddressService.cleanAddress(cleaned);
+                        if (LnAddressService.isLightningAddress(cleanedAddress)) {
+                          scannedCode = cleanedAddress;
+                          debugPrint('✅ LN Address detectado: $scannedCode');
+                          Navigator.pop(ctx);
+                          return;
+                        }
+                      }
+                      
+                      // Se não reconheceu, mas tem conteúdo, aceitar mesmo assim
+                      // O usuário pode ter escaneado algo que o app não conhece
+                      if (cleaned.length > 10) {
+                        scannedCode = cleaned;
+                        debugPrint('⚠️ Código não reconhecido, aceitando: $scannedCode');
                         Navigator.pop(ctx);
-                        break;
+                        return;
                       }
                     }
                   }

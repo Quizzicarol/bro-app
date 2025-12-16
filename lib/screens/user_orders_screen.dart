@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../services/order_service.dart';
+import '../services/lnaddress_service.dart';
 import '../providers/order_provider.dart';
 import '../providers/breez_provider.dart';
 import '../config.dart';
@@ -318,9 +319,11 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
   }
 
   // ==================== SAQUE DIRETO PARA LIGHTNING ====================
-  void _showWithdrawToLightning() {
+  void _showWithdrawToLightning({int? amountSats}) {
     final invoiceController = TextEditingController();
     bool isSending = false;
+    bool isResolvingLnAddress = false;
+    String? resolveError;
     
     showModalBottomSheet(
       context: context,
@@ -385,16 +388,43 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                 ),
                 const SizedBox(height: 20),
                 
+                // Mostrar valor se disponível
+                if (amountSats != null && amountSats > 0) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.green.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.account_balance_wallet, color: Colors.green, size: 20),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Valor a sacar: $amountSats sats',
+                          style: const TextStyle(
+                            color: Colors.green,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                
                 // Campo de invoice
                 TextField(
                   controller: invoiceController,
                   style: const TextStyle(color: Colors.white, fontSize: 14),
                   maxLines: 3,
-                  enabled: !isSending,
+                  enabled: !isSending && !isResolvingLnAddress,
                   decoration: InputDecoration(
-                    labelText: 'Invoice Lightning (BOLT11)',
+                    labelText: 'Invoice ou Lightning Address',
                     labelStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
-                    hintText: 'lnbc...',
+                    hintText: 'lnbc... ou user@wallet.com',
                     hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -408,6 +438,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                       borderRadius: BorderRadius.circular(12),
                       borderSide: const BorderSide(color: Colors.orange),
                     ),
+                    errorText: resolveError,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -471,33 +502,72 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: isSending ? null : () async {
-                      final invoice = invoiceController.text.trim();
-                      if (invoice.isEmpty) {
+                    onPressed: (isSending || isResolvingLnAddress) ? null : () async {
+                      final input = invoiceController.text.trim();
+                      if (input.isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text('Cole ou escaneie uma invoice'),
+                            content: Text('Cole ou escaneie uma invoice ou Lightning Address'),
                             backgroundColor: Colors.orange,
                           ),
                         );
                         return;
                       }
                       
-                      if (!invoice.toLowerCase().startsWith('lnbc') && 
-                          !invoice.toLowerCase().startsWith('lntb')) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Invoice inválida. Deve começar com lnbc ou lntb'),
-                            backgroundColor: Colors.orange,
-                          ),
+                      setModalState(() {
+                        resolveError = null;
+                      });
+                      
+                      // Verificar se é um Lightning Address
+                      if (LnAddressService.isLightningAddress(input)) {
+                        // Precisa ter valor para LN Address
+                        if (amountSats == null || amountSats <= 0) {
+                          setModalState(() {
+                            resolveError = 'Para Lightning Address, o valor precisa ser conhecido';
+                          });
+                          return;
+                        }
+                        
+                        setModalState(() => isResolvingLnAddress = true);
+                        
+                        // Resolver LN Address para invoice
+                        final lnService = LnAddressService();
+                        final result = await lnService.getInvoice(
+                          lnAddress: input,
+                          amountSats: amountSats,
+                          comment: 'Saque Bro App',
                         );
+                        
+                        if (result['success'] != true) {
+                          setModalState(() {
+                            isResolvingLnAddress = false;
+                            resolveError = result['error'] ?? 'Erro ao resolver Lightning Address';
+                          });
+                          return;
+                        }
+                        
+                        final invoice = result['invoice'] as String;
+                        setModalState(() {
+                          isResolvingLnAddress = false;
+                          isSending = true;
+                        });
+                        await _sendPayment(invoice, context, setModalState);
+                        return;
+                      }
+                      
+                      // É uma invoice BOLT11
+                      if (!input.toLowerCase().startsWith('lnbc') && 
+                          !input.toLowerCase().startsWith('lntb')) {
+                        setModalState(() {
+                          resolveError = 'Invoice inválida. Use lnbc... ou user@wallet.com';
+                        });
                         return;
                       }
                       
                       setModalState(() => isSending = true);
-                      await _sendPayment(invoice, context, setModalState);
+                      await _sendPayment(input, context, setModalState);
                     },
-                    icon: isSending 
+                    icon: (isSending || isResolvingLnAddress)
                         ? const SizedBox(
                             width: 20,
                             height: 20,
@@ -507,7 +577,9 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                             ),
                           )
                         : const Icon(Icons.bolt),
-                    label: Text(isSending ? 'Enviando...' : 'Enviar Sats'),
+                    label: Text(isResolvingLnAddress 
+                        ? 'Resolvendo...' 
+                        : (isSending ? 'Enviando...' : 'Enviar Sats')),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange,
                       foregroundColor: Colors.white,
@@ -776,15 +848,27 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                   final List<Barcode> barcodes = capture.barcodes;
                   for (final barcode in barcodes) {
                     final code = barcode.rawValue;
-                    if (code != null && 
-                        (code.toLowerCase().startsWith('lnbc') || 
-                         code.toLowerCase().startsWith('lntb') ||
-                         code.toLowerCase().startsWith('lightning:'))) {
-                      scannedCode = code.toLowerCase().startsWith('lightning:') 
-                          ? code.substring(10) 
-                          : code;
-                      Navigator.pop(context);
-                      break;
+                    if (code != null) {
+                      final cleanedCode = code.trim();
+                      // BOLT11 Invoice
+                      if (cleanedCode.toLowerCase().startsWith('lnbc') || 
+                          cleanedCode.toLowerCase().startsWith('lntb')) {
+                        scannedCode = cleanedCode;
+                        Navigator.pop(context);
+                        break;
+                      }
+                      // Lightning URI (lightning:invoice ou lightning:address@domain)
+                      if (cleanedCode.toLowerCase().startsWith('lightning:')) {
+                        scannedCode = cleanedCode.substring(10);
+                        Navigator.pop(context);
+                        break;
+                      }
+                      // Lightning Address (user@domain.com)
+                      if (LnAddressService.isLightningAddress(cleanedCode)) {
+                        scannedCode = LnAddressService.cleanAddress(cleanedCode);
+                        Navigator.pop(context);
+                        break;
+                      }
                     }
                   }
                 },
@@ -800,7 +884,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                   Icon(Icons.lightbulb_outline, color: Colors.amber, size: 24),
                   SizedBox(height: 8),
                   Text(
-                    'Dica: O QR Code deve conter uma invoice Lightning começando com "lnbc" ou "lntb"',
+                    'Dica: Escaneie uma invoice Lightning (lnbc...) ou Lightning Address (user@wallet.com)',
                     style: TextStyle(
                       color: Colors.white54,
                       fontSize: 12,
@@ -1124,10 +1208,10 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                     children: [
                       const Icon(Icons.info_outline, color: Colors.blue, size: 20),
                       const SizedBox(width: 10),
-                      const Expanded(
+                      Expanded(
                         child: Text(
-                          'Seus sats estão na sua carteira',
-                          style: TextStyle(
+                          'Seus sats estão na sua carteira${order['amount_sats'] != null ? ' (${order['amount_sats']} sats)' : ''}',
+                          style: const TextStyle(
                             color: Colors.blue,
                             fontSize: 13,
                           ),
@@ -1140,7 +1224,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: () => _showWithdrawToLightning(),
+                    onPressed: () => _showWithdrawToLightning(amountSats: order['amount_sats'] as int?),
                     icon: const Icon(Icons.send, size: 18),
                     label: const Text('Sacar Sats'),
                     style: ElevatedButton.styleFrom(

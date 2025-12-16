@@ -5,6 +5,7 @@ import '../services/nostr_service.dart';
 import '../services/nostr_profile_service.dart';
 import '../services/storage_service.dart';
 import '../providers/breez_provider_export.dart';
+import '../providers/order_provider.dart';
 import '../config.dart';
 import 'home_screen.dart';
 
@@ -135,6 +136,14 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           );
         }
+      }
+
+      // Carregar ordens do usuário
+      if (mounted) {
+        setState(() => _statusMessage = 'Carregando histórico...');
+        final orderProvider = context.read<OrderProvider>();
+        await orderProvider.loadOrdersForUser(publicKey);
+        debugPrint('✅ Ordens carregadas para ${publicKey.substring(0, 8)}...');
       }
 
       if (mounted) {

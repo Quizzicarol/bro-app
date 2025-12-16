@@ -3,20 +3,23 @@ import 'package:uuid/uuid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../services/api_service.dart';
+import '../services/nostr_service.dart';
 import '../models/order.dart';
 import '../config.dart';
 
 class OrderProvider with ChangeNotifier {
   final ApiService _apiService = ApiService();
+  final NostrService _nostrService = NostrService();
 
   List<Order> _orders = [];
   Order? _currentOrder;
   bool _isLoading = false;
   String? _error;
   bool _isInitialized = false;
+  String? _currentUserPubkey;
 
-  // Chave para salvar no SharedPreferences
-  static const String _ordersKey = 'saved_orders';
+  // Prefixo para salvar no SharedPreferences (será combinado com pubkey)
+  static const String _ordersKeyPrefix = 'orders_';
 
   // Getters
   List<Order> get orders => _orders;
@@ -27,15 +30,55 @@ class OrderProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
-  // Inicializar: carregar ordens salvas
-  Future<void> initialize() async {
-    if (_isInitialized) return;
+  // Chave única para salvar ordens deste usuário
+  String get _ordersKey => '${_ordersKeyPrefix}${_currentUserPubkey ?? 'anonymous'}';
+
+  // Inicializar com a pubkey do usuário
+  Future<void> initialize({String? userPubkey}) async {
+    // Se passou uma pubkey, usar ela
+    if (userPubkey != null && userPubkey.isNotEmpty) {
+      _currentUserPubkey = userPubkey;
+    } else {
+      // Tentar pegar do NostrService
+      _currentUserPubkey = _nostrService.publicKey;
+    }
+    
+    debugPrint('📦 OrderProvider inicializando para usuário: ${_currentUserPubkey?.substring(0, 8) ?? 'anonymous'}...');
+    
+    // Resetar estado
+    _orders = [];
+    _isInitialized = false;
     
     if (AppConfig.testMode) {
       await _loadSavedOrders();
     }
     
     _isInitialized = true;
+    notifyListeners();
+  }
+
+  // Recarregar ordens para novo usuário (após login)
+  Future<void> loadOrdersForUser(String userPubkey) async {
+    debugPrint('🔄 Carregando ordens para usuário: ${userPubkey.substring(0, 8)}...');
+    _currentUserPubkey = userPubkey;
+    _orders = [];
+    _isInitialized = false;
+    
+    if (AppConfig.testMode) {
+      await _loadSavedOrders();
+    }
+    
+    _isInitialized = true;
+    notifyListeners();
+  }
+
+  // Limpar ordens ao fazer logout
+  void clearOrders() {
+    debugPrint('🗑️ Limpando ordens da memória (logout)');
+    _orders = [];
+    _currentOrder = null;
+    _currentUserPubkey = null;
+    _isInitialized = false;
     notifyListeners();
   }
 
@@ -460,8 +503,19 @@ class OrderProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // Clear all orders including saved data (for logout/new account)
+  // Clear orders from memory only (for logout - keeps data in storage)
   Future<void> clearAllOrders() async {
+    debugPrint('🔄 Limpando ordens da memória (logout) - dados mantidos no storage');
+    _orders = [];
+    _currentOrder = null;
+    _error = null;
+    _currentUserPubkey = null;
+    _isInitialized = false;
+    notifyListeners();
+  }
+
+  // Permanently delete all orders (for testing/reset)
+  Future<void> permanentlyDeleteAllOrders() async {
     _orders = [];
     _currentOrder = null;
     _error = null;
@@ -471,7 +525,7 @@ class OrderProvider with ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_ordersKey);
-      debugPrint('🗑️ Todas as ordens foram removidas (logout/nova conta)');
+      debugPrint('🗑️ Todas as ordens foram PERMANENTEMENTE removidas');
     } catch (e) {
       debugPrint('❌ Erro ao limpar ordens: $e');
     }

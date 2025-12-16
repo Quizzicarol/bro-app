@@ -248,12 +248,22 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   // ==================== MODAL DE SAQUE COMPLETO ====================
-  void _showWithdrawModal() {
-    final amountController = TextEditingController(text: widget.amountSats.toString());
+  void _showWithdrawModal() async {
+    // Obter saldo real da carteira
+    final breezProvider = Provider.of<BreezProvider>(context, listen: false);
+    final balanceInfo = await breezProvider.getBalance();
+    final realBalance = int.tryParse(balanceInfo?['balance']?.toString() ?? '0') ?? 0;
+    
+    final amountController = TextEditingController(text: realBalance.toString());
     final destinationController = TextEditingController();
     bool isSending = false;
     bool isResolvingLnAddress = false;
     String? errorMessage;
+    String? infoMessage;
+    int? minSats;
+    int? maxSats;
+    
+    if (!mounted) return;
     
     showModalBottomSheet(
       context: context,
@@ -302,9 +312,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                               ),
                             ),
                             Text(
-                              'Disponível: ${widget.amountSats} sats',
-                              style: const TextStyle(
-                                color: Colors.green,
+                              'Saldo na carteira: $realBalance sats',
+                              style: TextStyle(
+                                color: realBalance > 0 ? Colors.green : Colors.red,
                                 fontSize: 14,
                               ),
                             ),
@@ -356,15 +366,41 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     alignment: Alignment.centerRight,
                     child: TextButton(
                       onPressed: () {
-                        amountController.text = widget.amountSats.toString();
+                        amountController.text = realBalance.toString();
                       },
-                      child: const Text(
-                        'MAX',
-                        style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+                      child: Text(
+                        'MAX ($realBalance)',
+                        style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  
+                  // Info sobre limites do destino
+                  if (infoMessage != null) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.info_outline, color: Colors.blue, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              infoMessage!,
+                              style: const TextStyle(color: Colors.blue, fontSize: 13),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  
+                  const SizedBox(height: 4),
                   
                   // Campo de destino
                   const Text(
@@ -481,8 +517,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           return;
                         }
                         
-                        if (amount > widget.amountSats) {
-                          setModalState(() => errorMessage = 'Valor maior que o disponível (${widget.amountSats} sats)');
+                        if (amount > realBalance) {
+                          setModalState(() => errorMessage = 'Saldo insuficiente! Você tem $realBalance sats na carteira');
                           return;
                         }
                         
@@ -492,16 +528,66 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           return;
                         }
                         
-                        setModalState(() => errorMessage = null);
+                        setModalState(() {
+                          errorMessage = null;
+                          infoMessage = null;
+                        });
                         
                         String invoiceToSend = destination;
                         
                         // Verificar se é Lightning Address ou LNURL
                         if (LnAddressService.isLightningAddress(destination) || 
                             LnAddressService.isLnurl(destination)) {
-                          setModalState(() => isResolvingLnAddress = true);
+                          setModalState(() {
+                            isResolvingLnAddress = true;
+                            infoMessage = 'Verificando limites do destino...';
+                          });
                           
                           final lnService = LnAddressService();
+                          
+                          // Primeiro resolver para ver os limites
+                          Map<String, dynamic> resolved;
+                          if (LnAddressService.isLnurl(destination)) {
+                            resolved = await lnService.resolveLnurl(destination);
+                          } else {
+                            resolved = await lnService.resolveLnAddress(destination);
+                          }
+                          
+                          if (resolved['success'] != true) {
+                            setModalState(() {
+                              isResolvingLnAddress = false;
+                              infoMessage = null;
+                              errorMessage = resolved['error'] ?? 'Erro ao resolver destino';
+                            });
+                            return;
+                          }
+                          
+                          minSats = resolved['minSats'] as int?;
+                          maxSats = resolved['maxSats'] as int?;
+                          
+                          // Verificar se o valor está nos limites
+                          if (minSats != null && amount < minSats!) {
+                            setModalState(() {
+                              isResolvingLnAddress = false;
+                              infoMessage = 'Destino aceita: mín $minSats sats, máx $maxSats sats';
+                              errorMessage = 'Valor mínimo do destino: $minSats sats. Seu valor: $amount sats';
+                            });
+                            return;
+                          }
+                          
+                          if (maxSats != null && amount > maxSats!) {
+                            setModalState(() {
+                              isResolvingLnAddress = false;
+                              infoMessage = 'Destino aceita: mín $minSats sats, máx $maxSats sats';
+                              errorMessage = 'Valor máximo do destino: $maxSats sats. Seu valor: $amount sats';
+                            });
+                            return;
+                          }
+                          
+                          setModalState(() {
+                            infoMessage = 'Obtendo invoice para $amount sats...';
+                          });
+                          
                           final result = await lnService.getInvoice(
                             lnAddress: destination,
                             amountSats: amount,
@@ -511,13 +597,17 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           if (result['success'] != true) {
                             setModalState(() {
                               isResolvingLnAddress = false;
-                              errorMessage = result['error'] ?? 'Erro ao resolver destino';
+                              infoMessage = null;
+                              errorMessage = result['error'] ?? 'Erro ao obter invoice';
                             });
                             return;
                           }
                           
                           invoiceToSend = result['invoice'] as String;
-                          setModalState(() => isResolvingLnAddress = false);
+                          setModalState(() {
+                            isResolvingLnAddress = false;
+                            infoMessage = null;
+                          });
                         } else if (!destination.toLowerCase().startsWith('lnbc') && 
                                    !destination.toLowerCase().startsWith('lntb')) {
                           setModalState(() => errorMessage = 'Destino inválido. Use invoice (lnbc...), LNURL ou user@wallet.com');
@@ -525,7 +615,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         }
                         
                         // Enviar pagamento
-                        setModalState(() => isSending = true);
+                        setModalState(() {
+                          isSending = true;
+                          infoMessage = 'Enviando $amount sats...';
+                        });
                         
                         try {
                           final breezProvider = Provider.of<BreezProvider>(context, listen: false);

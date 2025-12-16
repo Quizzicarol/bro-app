@@ -2,8 +2,10 @@
 import 'package:provider/provider.dart';
 import 'dart:async';
 import 'dart:io';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import '../services/order_service.dart';
 import '../services/dispute_service.dart';
+import '../services/lnaddress_service.dart';
 import '../providers/breez_provider_export.dart';
 import '../providers/order_provider.dart';
 import '../providers/provider_balance_provider.dart';
@@ -242,117 +244,483 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   void _showWithdrawInstructions() {
-    showDialog(
+    _showWithdrawModal();
+  }
+
+  // ==================== MODAL DE SAQUE COMPLETO ====================
+  void _showWithdrawModal() {
+    final amountController = TextEditingController(text: widget.amountSats.toString());
+    final destinationController = TextEditingController();
+    bool isSending = false;
+    bool isResolvingLnAddress = false;
+    String? errorMessage;
+    
+    showModalBottomSheet(
       context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            Icon(Icons.check_circle, color: Colors.green, size: 28),
-            const SizedBox(width: 10),
-            const Text('Ordem Cancelada'),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.info_outline, color: Colors.blue),
-                    SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Seus sats continuam seguros na sua carteira!',
-                        style: TextStyle(
-                          color: Colors.blue,
-                          fontWeight: FontWeight.w500,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+              left: 20,
+              right: 20,
+              top: 20,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header
+                  Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(22),
                         ),
+                        child: const Icon(Icons.send, color: Colors.orange),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Sacar Sats',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              'Disponível: ${widget.amountSats} sats',
+                              style: const TextStyle(
+                                color: Colors.green,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white54),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  // Campo de valor
+                  const Text(
+                    'Valor a sacar (sats)',
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: amountController,
+                    style: const TextStyle(color: Colors.white, fontSize: 18),
+                    keyboardType: TextInputType.number,
+                    enabled: !isSending && !isResolvingLnAddress,
+                    decoration: InputDecoration(
+                      hintText: 'Ex: 1000',
+                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                      prefixIcon: const Icon(Icons.bolt, color: Colors.orange),
+                      suffixText: 'sats',
+                      suffixStyle: const TextStyle(color: Colors.orange),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF333333)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF333333)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Colors.orange),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  // Botão MAX
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () {
+                        amountController.text = widget.amountSats.toString();
+                      },
+                      child: const Text(
+                        'MAX',
+                        style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Campo de destino
+                  const Text(
+                    'Destino (Invoice ou Lightning Address)',
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: destinationController,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    maxLines: 3,
+                    enabled: !isSending && !isResolvingLnAddress,
+                    decoration: InputDecoration(
+                      hintText: 'lnbc... ou usuario@wallet.com',
+                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF333333)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF333333)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Colors.orange),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // Botões Colar e Escanear
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: (isSending || isResolvingLnAddress) ? null : () async {
+                            final clipboard = await Clipboard.getData('text/plain');
+                            if (clipboard?.text != null) {
+                              destinationController.text = clipboard!.text!.trim();
+                            }
+                          },
+                          icon: const Icon(Icons.paste, size: 18),
+                          label: const Text('Colar'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.orange,
+                            side: const BorderSide(color: Colors.orange),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: (isSending || isResolvingLnAddress) ? null : () async {
+                            final scanned = await _showQRScannerModal();
+                            if (scanned != null && scanned.isNotEmpty) {
+                              setModalState(() {
+                                destinationController.text = scanned;
+                              });
+                            }
+                          },
+                          icon: const Icon(Icons.qr_code_scanner, size: 18),
+                          label: const Text('Escanear'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.green,
+                            side: const BorderSide(color: Colors.green),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  
+                  // Mensagem de erro
+                  if (errorMessage != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.red.withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.error_outline, color: Colors.red, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              errorMessage!,
+                              style: const TextStyle(color: Colors.red, fontSize: 13),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
-                ),
+                  
+                  const SizedBox(height: 20),
+                  
+                  // Botão Enviar
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: (isSending || isResolvingLnAddress) ? null : () async {
+                        final destination = destinationController.text.trim();
+                        final amountText = amountController.text.trim();
+                        
+                        // Validar valor
+                        final amount = int.tryParse(amountText);
+                        if (amount == null || amount <= 0) {
+                          setModalState(() => errorMessage = 'Digite um valor válido');
+                          return;
+                        }
+                        
+                        if (amount > widget.amountSats) {
+                          setModalState(() => errorMessage = 'Valor maior que o disponível (${widget.amountSats} sats)');
+                          return;
+                        }
+                        
+                        // Validar destino
+                        if (destination.isEmpty) {
+                          setModalState(() => errorMessage = 'Cole ou escaneie um destino');
+                          return;
+                        }
+                        
+                        setModalState(() => errorMessage = null);
+                        
+                        String invoiceToSend = destination;
+                        
+                        // Verificar se é Lightning Address
+                        if (LnAddressService.isLightningAddress(destination)) {
+                          setModalState(() => isResolvingLnAddress = true);
+                          
+                          final lnService = LnAddressService();
+                          final result = await lnService.getInvoice(
+                            lnAddress: destination,
+                            amountSats: amount,
+                            comment: 'Saque Bro App',
+                          );
+                          
+                          if (result['success'] != true) {
+                            setModalState(() {
+                              isResolvingLnAddress = false;
+                              errorMessage = result['error'] ?? 'Erro ao resolver Lightning Address';
+                            });
+                            return;
+                          }
+                          
+                          invoiceToSend = result['invoice'] as String;
+                          setModalState(() => isResolvingLnAddress = false);
+                        } else if (!destination.toLowerCase().startsWith('lnbc') && 
+                                   !destination.toLowerCase().startsWith('lntb')) {
+                          setModalState(() => errorMessage = 'Destino inválido. Use lnbc... ou user@wallet.com');
+                          return;
+                        }
+                        
+                        // Enviar pagamento
+                        setModalState(() => isSending = true);
+                        
+                        try {
+                          final breezProvider = Provider.of<BreezProvider>(context, listen: false);
+                          final result = await breezProvider.payInvoice(invoiceToSend);
+                          
+                          if (result != null && result['success'] == true) {
+                            if (context.mounted) {
+                              Navigator.pop(context); // Fechar modal
+                              ScaffoldMessenger.of(this.context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('✅ Saque enviado com sucesso!'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                          } else {
+                            final errMsg = result?['error'] ?? 'Falha ao enviar pagamento';
+                            setModalState(() {
+                              isSending = false;
+                              errorMessage = errMsg;
+                            });
+                          }
+                        } catch (e) {
+                          setModalState(() {
+                            isSending = false;
+                            errorMessage = 'Erro: $e';
+                          });
+                        }
+                      },
+                      icon: (isSending || isResolvingLnAddress)
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.bolt),
+                      label: Text(
+                        isResolvingLnAddress 
+                            ? 'Resolvendo endereço...' 
+                            : (isSending ? 'Enviando...' : 'Enviar Sats'),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Outras opções
+                  Center(
+                    child: TextButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        // Voltar para home para criar nova ordem
+                        Navigator.popUntil(context, (route) => route.isFirst);
+                      },
+                      child: const Text(
+                        'Criar nova ordem com esses sats',
+                        style: TextStyle(color: Colors.white54),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 20),
-              const Text(
-                'O que deseja fazer com seus sats?',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 16),
-              _buildWithdrawOptionCard(
-                icon: Icons.refresh,
-                title: 'Criar nova ordem',
-                description: 'Usar os sats para pagar outra conta',
-                onTap: () {
-                  Navigator.pop(context); // Fechar dialog
-                  Navigator.pop(context); // Voltar da tela de status
-                  // Navegar para home
-                },
-              ),
-              const SizedBox(height: 12),
-              _buildWithdrawOptionCard(
-                icon: Icons.send,
-                title: 'Sacar para outra carteira',
-                description: 'Enviar sats via Lightning',
-                onTap: () {
-                  Navigator.pop(context); // Fechar dialog
-                  Navigator.pop(context); // Voltar da tela de status
-                  Navigator.pushNamed(context, '/wallet');
-                },
-              ),
-              const SizedBox(height: 12),
-              _buildWithdrawOptionCard(
-                icon: Icons.account_balance_wallet,
-                title: 'Manter na carteira',
-                description: 'Guardar para usar depois',
-                onTap: () {
-                  Navigator.pop(context); // Fechar dialog
-                  Navigator.pop(context); // Voltar da tela de status
-                },
-              ),
-              const SizedBox(height: 20),
-              const Divider(),
-              const SizedBox(height: 12),
-              const Text(
-                '📋 Como sacar para outra carteira:',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
-              ),
-              const SizedBox(height: 8),
-              _buildStepItem(1, 'Vá em "Carteira" no menu'),
-              _buildStepItem(2, 'Toque em "Enviar"'),
-              _buildStepItem(3, 'Cole o invoice Lightning da carteira destino'),
-              _buildStepItem(4, 'Confirme o envio'),
-            ],
+            ),
           ),
         ),
-        actions: [
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context); // Fechar dialog
-              Navigator.pop(context); // Voltar da tela de status
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepPurple,
-            ),
-            child: const Text('Entendi'),
-          ),
-        ],
       ),
     );
+  }
+
+  // QR Scanner Modal
+  Future<String?> _showQRScannerModal() async {
+    String? scannedCode;
+    
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.black,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SizedBox(
+        height: MediaQuery.of(context).size.height * 0.75,
+        child: Column(
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                color: Color(0xFF1A1A1A),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.qr_code_scanner, color: Colors.green, size: 28),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Escanear Destino',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          'Invoice Lightning ou Lightning Address',
+                          style: TextStyle(
+                            color: Colors.white54,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white54),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+            ),
+            
+            // Scanner
+            Expanded(
+              child: MobileScanner(
+                onDetect: (capture) {
+                  final List<Barcode> barcodes = capture.barcodes;
+                  for (final barcode in barcodes) {
+                    final code = barcode.rawValue;
+                    if (code != null && code.isNotEmpty) {
+                      String cleaned = code.trim();
+                      
+                      // Remover prefixos comuns
+                      if (cleaned.toLowerCase().startsWith('lightning:')) {
+                        cleaned = cleaned.substring(10);
+                      }
+                      
+                      // BOLT11 Invoice
+                      if (cleaned.toLowerCase().startsWith('lnbc') || 
+                          cleaned.toLowerCase().startsWith('lntb')) {
+                        scannedCode = cleaned;
+                        Navigator.pop(ctx);
+                        break;
+                      }
+                      
+                      // Lightning Address (user@domain.com)
+                      if (LnAddressService.isLightningAddress(cleaned)) {
+                        scannedCode = LnAddressService.cleanAddress(cleaned);
+                        Navigator.pop(ctx);
+                        break;
+                      }
+                    }
+                  }
+                },
+              ),
+            ),
+            
+            // Dica
+            Container(
+              padding: const EdgeInsets.all(20),
+              color: const Color(0xFF1A1A1A),
+              child: const Column(
+                children: [
+                  Icon(Icons.lightbulb_outline, color: Colors.amber, size: 24),
+                  SizedBox(height: 8),
+                  Text(
+                    'Escaneie uma invoice Lightning (lnbc...) ou Lightning Address (user@wallet.com)',
+                    style: TextStyle(
+                      color: Colors.white54,
+                      fontSize: 12,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    
+    return scannedCode;
   }
 
   Widget _buildWithdrawOptionCard({

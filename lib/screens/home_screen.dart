@@ -34,7 +34,134 @@ class _HomeScreenState extends State<HomeScreen> {
       _loadData();
       _fetchBitcoinPrice();
       _startPricePolling();
+      _checkAndShowBackupReminder();
     });
+  }
+  
+  /// Mostra aviso de backup da seed para novos usuários
+  Future<void> _checkAndShowBackupReminder() async {
+    final storage = StorageService();
+    await storage.init();
+    
+    // Verificar se já mostrou o aviso de backup
+    final hasShownBackupReminder = await storage.getData('has_shown_backup_reminder');
+    if (hasShownBackupReminder == 'true') return;
+    
+    // Aguardar um pouco para não atrapalhar a inicialização
+    await Future.delayed(const Duration(seconds: 2));
+    
+    if (!mounted) return;
+    
+    final result = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.key, color: Colors.orange, size: 28),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Proteja seus Sats!',
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.withOpacity(0.3)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.warning, color: Colors.red, size: 20),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Sem backup = sem acesso aos fundos!',
+                        style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '🔑 Sua Seed (12 palavras) é a chave da sua carteira Lightning.',
+                style: TextStyle(color: Colors.white, fontSize: 14),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                '• Anote em papel e guarde em local seguro\n'
+                '• NUNCA compartilhe com ninguém\n'
+                '• Se perder o celular, só a seed recupera seus sats',
+                style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green.withOpacity(0.3)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.check_circle, color: Colors.green, size: 20),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Faça backup agora em Configurações > Backup',
+                        style: TextStyle(color: Colors.green, fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'later'),
+            child: const Text('Depois', style: TextStyle(color: Color(0x99FFFFFF))),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(context, 'backup'),
+            icon: const Icon(Icons.key, size: 18),
+            label: const Text('Ver minha Seed'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+    
+    // Marcar como já mostrado
+    await storage.saveData('has_shown_backup_reminder', 'true');
+    
+    if (result == 'backup' && mounted) {
+      Navigator.pushNamed(context, '/settings');
+    }
   }
 
   Future<void> _initializeBreezSdk() async {
@@ -899,33 +1026,124 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _logout() async {
-    final confirmed = await showDialog<bool>(
+    final result = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Sair da conta?', style: TextStyle(color: Colors.white)),
-        content: const Text(
-          'Voce sera desconectado e precisara fazer login novamente.',
-          style: TextStyle(color: Color(0xB3FFFFFF)),
+        title: Row(
+          children: [
+            const Icon(Icons.warning_amber, color: Colors.orange, size: 28),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text('Antes de sair...', style: TextStyle(color: Colors.white, fontSize: 18)),
+            ),
+          ],
         ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.withOpacity(0.3)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.warning, color: Colors.red, size: 24),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Você tem sats na carteira?',
+                        style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '🔑 Salve sua Seed (12 palavras)',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Sua seed é a ÚNICA forma de recuperar seus sats. Sem ela, você perde acesso aos fundos para sempre.',
+                style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                '💸 Ou saque seus sats',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Transfira seus sats para outra carteira Lightning antes de sair.',
+                style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.history, color: Colors.orange, size: 20),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'O histórico de ordens será perdido (salvo apenas neste dispositivo).',
+                        style: TextStyle(color: Colors.orange, fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actionsAlignment: MainAxisAlignment.spaceBetween,
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar', style: TextStyle(color: Color(0xB3FFFFFF))),
+            onPressed: () => Navigator.pop(context, 'cancel'),
+            child: const Text('Cancelar', style: TextStyle(color: Color(0x99FFFFFF))),
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFF6B6B),
-            ),
-            child: const Text('Sair', style: TextStyle(color: Colors.white)),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextButton.icon(
+                onPressed: () => Navigator.pop(context, 'backup'),
+                icon: const Icon(Icons.key, color: Colors.green, size: 18),
+                label: const Text('Ver Seed', style: TextStyle(color: Colors.green)),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, 'logout'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFF6B6B),
+                ),
+                child: const Text('Sair', style: TextStyle(color: Colors.white)),
+              ),
+            ],
           ),
         ],
       ),
     );
 
-    if (confirmed == true && mounted) {
+    if (result == 'backup' && mounted) {
+      // Ir para tela de backup
+      Navigator.pushNamed(context, '/settings');
+      return;
+    }
+    
+    if (result == 'logout' && mounted) {
       final orderProvider = context.read<OrderProvider>();
       await orderProvider.clearAllOrders();
 

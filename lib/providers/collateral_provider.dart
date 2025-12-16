@@ -116,9 +116,53 @@ class CollateralProvider with ChangeNotifier {
 
   /// Verificar se pode aceitar uma ordem
   bool canAcceptOrder(double orderValueBrl) {
-    if (_collateral == null || _btcPriceBrl == null) return false;
-    // Simplificado: sempre retornar true em modo teste
-    return true;
+    if (_collateral == null || _btcPriceBrl == null) {
+      debugPrint('❌ canAcceptOrder: Sem garantia ou preço BTC');
+      return false;
+    }
+    
+    // Obter tier atual do provedor
+    final currentTier = getCurrentTier();
+    if (currentTier == null) {
+      debugPrint('❌ canAcceptOrder: Sem tier atual');
+      return false;
+    }
+    
+    // Verificar se o valor da ordem está dentro do limite do tier
+    final canAccept = orderValueBrl <= currentTier.maxOrderValueBrl;
+    
+    debugPrint('📊 canAcceptOrder: Ordem R\$ $orderValueBrl, Tier ${currentTier.name} (máx R\$ ${currentTier.maxOrderValueBrl}) -> ${canAccept ? "✅" : "❌"}');
+    
+    return canAccept;
+  }
+  
+  /// Retorna o valor máximo de ordem que o provedor pode aceitar
+  double getMaxOrderValue() {
+    final currentTier = getCurrentTier();
+    return currentTier?.maxOrderValueBrl ?? 0.0;
+  }
+  
+  /// Retorna mensagem explicativa se não pode aceitar ordem
+  String? getCannotAcceptReason(double orderValueBrl) {
+    if (_collateral == null) {
+      return 'Você precisa depositar uma garantia para aceitar ordens.';
+    }
+    
+    final currentTier = getCurrentTier();
+    if (currentTier == null) {
+      return 'Deposite uma garantia para desbloquear seu tier.';
+    }
+    
+    if (orderValueBrl > currentTier.maxOrderValueBrl) {
+      // Encontrar tier necessário
+      final requiredTier = getRequiredTier(orderValueBrl);
+      if (requiredTier != null) {
+        return 'Seu tier ${currentTier.name} aceita ordens até R\$ ${currentTier.maxOrderValueBrl.toStringAsFixed(0)}.\n\nPara aceitar esta ordem de R\$ ${orderValueBrl.toStringAsFixed(2)}, faça upgrade para o tier ${requiredTier.name}.';
+      }
+      return 'Esta ordem está acima do seu limite. Faça upgrade de tier.';
+    }
+    
+    return null; // Pode aceitar
   }
 
   /// Obter tier atual do provedor

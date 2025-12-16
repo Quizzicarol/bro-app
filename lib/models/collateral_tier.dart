@@ -47,23 +47,54 @@ class CollateralTier {
     final satsPerBrl = 100000000 / btcPriceBrl; // 1 BTC = 100M sats
 
     return [
+      // 🧪 Tier Trial - para testar o app
+      CollateralTier(
+        id: 'trial',
+        name: '🧪 Trial',
+        maxOrderValueBrl: 10,
+        requiredCollateralBrl: 10,
+        requiredCollateralSats: (10 * satsPerBrl).round(),
+        description: 'Tier de teste - contas até R\$ 10',
+        benefits: [
+          'Contas até R\$ 10',
+          'Garantia: R\$ 10',
+          'Taxa: 5% por transação',
+          'Perfeito para testar o app',
+        ],
+      ),
+      // 🥉 Tier Iniciante
       CollateralTier(
         id: 'starter',
-        name: 'Iniciante',
-        maxOrderValueBrl: 200,
-        requiredCollateralBrl: 200,
-        requiredCollateralSats: (200 * satsPerBrl).round(),
-        description: 'Ideal para começar - contas até R\$ 200',
+        name: '🥉 Iniciante',
+        maxOrderValueBrl: 50,
+        requiredCollateralBrl: 50,
+        requiredCollateralSats: (50 * satsPerBrl).round(),
+        description: 'Ideal para começar - contas até R\$ 50',
         benefits: [
-          'Contas até R\$ 200',
-          'Garantia: R\$ 200',
+          'Contas até R\$ 50',
+          'Garantia: R\$ 50',
           'Taxa: 5% por transação',
           'Perfeito para iniciantes',
         ],
       ),
+      // 🥈 Tier Básico
       CollateralTier(
         id: 'basic',
-        name: 'Básico',
+        name: '🥈 Básico',
+        maxOrderValueBrl: 200,
+        requiredCollateralBrl: 200,
+        requiredCollateralSats: (200 * satsPerBrl).round(),
+        description: 'Aceite contas até R\$ 200',
+        benefits: [
+          'Contas até R\$ 200',
+          'Garantia: R\$ 200',
+          'Taxa: 5% por transação',
+        ],
+      ),
+      // 🥇 Tier Intermediário
+      CollateralTier(
+        id: 'intermediate',
+        name: '🥇 Intermediário',
         maxOrderValueBrl: 500,
         requiredCollateralBrl: 500,
         requiredCollateralSats: (500 * satsPerBrl).round(),
@@ -72,25 +103,28 @@ class CollateralTier {
           'Contas até R\$ 500',
           'Garantia: R\$ 500',
           'Taxa: 5% por transação',
-        ],
-      ),
-      CollateralTier(
-        id: 'intermediate',
-        name: 'Intermediário',
-        maxOrderValueBrl: 5000,
-        requiredCollateralBrl: 1000,
-        requiredCollateralSats: (1000 * satsPerBrl).round(),
-        description: 'Aceite contas até R\$ 5.000',
-        benefits: [
-          'Contas até R\$ 5.000',
-          'Garantia: R\$ 1.000',
-          'Taxa: 5% por transação',
           'Prioridade em ordens médias',
         ],
       ),
+      // 💎 Tier Avançado
       CollateralTier(
         id: 'advanced',
-        name: 'Avançado',
+        name: '💎 Avançado',
+        maxOrderValueBrl: 1000,
+        requiredCollateralBrl: 1000,
+        requiredCollateralSats: (1000 * satsPerBrl).round(),
+        description: 'Aceite contas até R\$ 1.000',
+        benefits: [
+          'Contas até R\$ 1.000',
+          'Garantia: R\$ 1.000',
+          'Taxa: 5% por transação',
+          'Prioridade alta',
+        ],
+      ),
+      // 👑 Tier Master
+      CollateralTier(
+        id: 'master',
+        name: '👑 Master',
         maxOrderValueBrl: double.infinity,
         requiredCollateralBrl: 3000,
         requiredCollateralSats: (3000 * satsPerBrl).round(),

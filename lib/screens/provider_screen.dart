@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
 import 'dart:io';
 import '../services/provider_service.dart';
 import '../services/storage_service.dart';
+import '../providers/collateral_provider.dart';
 import '../widgets/order_card.dart';
+import '../config.dart';
 import 'package:intl/intl.dart';
 
 class ProviderScreen extends StatefulWidget {
@@ -105,12 +108,50 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
     final orderId = order['_id'] ?? order['id'];
     if (orderId == null) return;
 
+    final orderAmount = (order['amount'] ?? 0.0).toDouble();
+    
+    // Validar se pode aceitar esta ordem baseado no tier
+    if (!AppConfig.providerTestMode) {
+      final collateralProvider = context.read<CollateralProvider>();
+      if (!collateralProvider.canAcceptOrder(orderAmount)) {
+        final reason = collateralProvider.getCannotAcceptReason(orderAmount);
+        await showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: const Color(0xFF1A1A1A),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                const Icon(Icons.block, color: Colors.orange, size: 28),
+                const SizedBox(width: 12),
+                const Text('Limite de Tier', style: TextStyle(color: Colors.white)),
+              ],
+            ),
+            content: Text(
+              reason ?? 'Você não pode aceitar esta ordem com seu tier atual.',
+              style: const TextStyle(color: Color(0xB3FFFFFF)),
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                ),
+                child: const Text('Entendi', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Aceitar Ordem'),
         content: Text(
-          'Você deseja aceitar esta ordem de ${_formatCurrency((order['amount'] ?? 0.0).toDouble())}?\n\n'
+          'Você deseja aceitar esta ordem de ${_formatCurrency(orderAmount)}?\n\n'
           'Você será responsável por pagar a conta e receberá 7% de taxa.',
         ),
         actions: [

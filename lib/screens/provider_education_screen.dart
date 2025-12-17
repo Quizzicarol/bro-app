@@ -52,7 +52,7 @@ class ProviderEducationScreen extends StatelessWidget {
             _buildFAQ(),
             const SizedBox(height: 32),
             _buildStartButton(context),
-            const SizedBox(height: 16),
+            const SizedBox(height: 100), // Extra padding for nav buttons
           ],
         ),
       ),

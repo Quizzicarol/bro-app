@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'api_service.dart';
+import 'nostr_order_service.dart';
+import '../config.dart';
 
 class ProviderService {
   static final ProviderService _instance = ProviderService._internal();
@@ -8,10 +10,18 @@ class ProviderService {
   ProviderService._internal();
 
   final ApiService _apiService = ApiService();
+  final NostrOrderService _nostrOrderService = NostrOrderService();
 
   /// Busca ordens disponíveis para aceitar (status=pending)
   Future<List<Map<String, dynamic>>> fetchAvailableOrders() async {
     try {
+      // Em modo teste, buscar do Nostr
+      if (AppConfig.testMode) {
+        debugPrint('🧪 TEST MODE: Buscando ordens do Nostr...');
+        final orders = await _nostrOrderService.fetchPendingOrders();
+        return orders.map((order) => order.toJson()).toList();
+      }
+      
       final orders = await _apiService.listOrders(status: 'pending', limit: 50);
       return orders.map((order) => Map<String, dynamic>.from(order)).toList();
     } catch (e) {

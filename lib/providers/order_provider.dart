@@ -4,12 +4,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../services/api_service.dart';
 import '../services/nostr_service.dart';
+import '../services/nostr_order_service.dart';
 import '../models/order.dart';
 import '../config.dart';
 
 class OrderProvider with ChangeNotifier {
   final ApiService _apiService = ApiService();
   final NostrService _nostrService = NostrService();
+  final NostrOrderService _nostrOrderService = NostrOrderService();
 
   List<Order> _orders = [];
   Order? _currentOrder;
@@ -49,8 +51,14 @@ class OrderProvider with ChangeNotifier {
     _orders = [];
     _isInitialized = false;
     
+    // Carregar ordens locais primeiro
     if (AppConfig.testMode) {
       await _loadSavedOrders();
+    }
+    
+    // Depois sincronizar do Nostr (em background)
+    if (_currentUserPubkey != null) {
+      _syncFromNostrBackground();
     }
     
     _isInitialized = true;
@@ -64,12 +72,46 @@ class OrderProvider with ChangeNotifier {
     _orders = [];
     _isInitialized = false;
     
+    // Carregar ordens locais primeiro
     if (AppConfig.testMode) {
       await _loadSavedOrders();
+      debugPrint('📦 ${_orders.length} ordens locais carregadas');
     }
     
     _isInitialized = true;
     notifyListeners();
+    
+    // Sincronizar do Nostr IMEDIATAMENTE (não em background)
+    debugPrint('🔄 Iniciando sincronização do Nostr...');
+    try {
+      await syncOrdersFromNostr();
+      debugPrint('✅ Sincronização do Nostr concluída');
+    } catch (e) {
+      debugPrint('⚠️ Erro ao sincronizar do Nostr: $e');
+    }
+  }
+  
+  // Sincronizar ordens do Nostr em background
+  void _syncFromNostrBackground() {
+    if (_currentUserPubkey == null) return;
+    
+    debugPrint('🔄 Iniciando sincronização do Nostr em background...');
+    
+    // Executar em background sem bloquear a UI
+    Future.microtask(() async {
+      try {
+        // Primeiro republicar ordens locais antigas que não estão no Nostr
+        final privateKey = _nostrService.privateKey;
+        if (privateKey != null) {
+          await republishLocalOrdersToNostr();
+        }
+        
+        // Depois sincronizar do Nostr
+        await syncOrdersFromNostr();
+      } catch (e) {
+        debugPrint('⚠️ Erro ao sincronizar do Nostr: $e');
+      }
+    });
   }
 
   // Limpar ordens ao fazer logout
@@ -171,7 +213,7 @@ class OrderProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      // Test mode: criar ordem local
+      // Test mode: criar ordem local e publicar no Nostr
       if (AppConfig.testMode) {
         debugPrint('🧪 TEST MODE: Criando ordem local');
         
@@ -182,6 +224,7 @@ class OrderProvider with ChangeNotifier {
         
         final order = Order(
           id: const Uuid().v4(),
+          userPubkey: _currentUserPubkey,
           billType: billType,
           billCode: billCode,
           amount: amount,
@@ -198,6 +241,9 @@ class OrderProvider with ChangeNotifier {
         _currentOrder = order;
         await _saveOrders(); // Salvar após criar
         notifyListeners();
+        
+        // Publicar no Nostr (em background)
+        _publishOrderToNostr(order);
         
         debugPrint('✅ Ordem local criada: ${order.id}');
         return order;
@@ -233,9 +279,21 @@ class OrderProvider with ChangeNotifier {
 
   // Listar ordens
   Future<void> fetchOrders({String? status}) async {
-    // Em modo teste, não buscar do backend (manter ordens locais)
+    // Em modo teste, sincronizar com Nostr ao invés do backend
     if (AppConfig.testMode) {
-      debugPrint('📦 Modo teste: não buscando ordens do backend (mantendo locais)');
+      debugPrint('📦 Modo teste: sincronizando ordens com Nostr...');
+      _isLoading = true;
+      notifyListeners();
+      
+      try {
+        await syncOrdersFromNostr();
+        debugPrint('✅ Sincronização com Nostr concluída');
+      } catch (e) {
+        debugPrint('❌ Erro ao sincronizar com Nostr: $e');
+      } finally {
+        _isLoading = false;
+        notifyListeners();
+      }
       return;
     }
     
@@ -247,6 +305,7 @@ class OrderProvider with ChangeNotifier {
       final ordersData = await _apiService.listOrders(status: status);
       _orders = ordersData.map((data) => Order.fromJson(data)).toList();
     } catch (e) {
+      debugPrint('❌ Erro ao buscar ordens: $e');
       _error = e.toString();
     } finally {
       _isLoading = false;
@@ -641,5 +700,300 @@ class OrderProvider with ChangeNotifier {
         if (currentBalanceSats <= 0) break;
       }
     }
+  }
+
+  // ==================== NOSTR INTEGRATION ====================
+  
+  /// Publicar ordem no Nostr (background)
+  Future<void> _publishOrderToNostr(Order order) async {
+    debugPrint('📤 Tentando publicar ordem no Nostr: ${order.id}');
+    try {
+      final privateKey = _nostrService.privateKey;
+      if (privateKey == null) {
+        debugPrint('⚠️ Sem chave privada Nostr, não publicando');
+        return;
+      }
+      
+      debugPrint('🔑 Chave privada encontrada, publicando...');
+      final eventId = await _nostrOrderService.publishOrder(
+        order: order,
+        privateKey: privateKey,
+      );
+      
+      if (eventId != null) {
+        debugPrint('✅ Ordem publicada no Nostr com eventId: $eventId');
+        
+        // Atualizar ordem com eventId
+        final index = _orders.indexWhere((o) => o.id == order.id);
+        if (index != -1) {
+          _orders[index] = _orders[index].copyWith(eventId: eventId);
+          await _saveOrders();
+        }
+      } else {
+        debugPrint('❌ Falha ao publicar ordem no Nostr (eventId null)');
+      }
+    } catch (e) {
+      debugPrint('❌ Erro ao publicar ordem no Nostr: $e');
+    }
+  }
+
+  /// Buscar ordens pendentes de todos os usuários (para providers verem)
+  Future<List<Order>> fetchPendingOrdersFromNostr() async {
+    try {
+      debugPrint('🔍 Buscando ordens pendentes do Nostr...');
+      final orders = await _nostrOrderService.fetchPendingOrders();
+      debugPrint('📦 ${orders.length} ordens pendentes encontradas no Nostr');
+      return orders;
+    } catch (e) {
+      debugPrint('❌ Erro ao buscar ordens do Nostr: $e');
+      return [];
+    }
+  }
+
+  /// Buscar histórico de ordens do usuário atual do Nostr
+  Future<void> syncOrdersFromNostr() async {
+    // Tentar pegar a pubkey do NostrService se não temos
+    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) {
+      _currentUserPubkey = _nostrService.publicKey;
+      debugPrint('🔑 Pubkey obtida do NostrService: ${_currentUserPubkey?.substring(0, 16) ?? 'null'}');
+    }
+    
+    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) {
+      debugPrint('⚠️ Sem pubkey, não sincronizando do Nostr');
+      return;
+    }
+    
+    try {
+      debugPrint('🔄 Sincronizando ordens do Nostr para pubkey: ${_currentUserPubkey!.substring(0, 16)}...');
+      final nostrOrders = await _nostrOrderService.fetchUserOrders(_currentUserPubkey!);
+      debugPrint('📦 Recebidas ${nostrOrders.length} ordens do Nostr');
+      
+      // Mesclar ordens do Nostr com locais
+      int added = 0;
+      int updated = 0;
+      for (var nostrOrder in nostrOrders) {
+        final existingIndex = _orders.indexWhere((o) => o.id == nostrOrder.id);
+        if (existingIndex == -1) {
+          // Ordem não existe localmente, adicionar
+          _orders.add(nostrOrder);
+          added++;
+          debugPrint('➕ Ordem ${nostrOrder.id.substring(0, 8)} recuperada do Nostr');
+        } else {
+          // Ordem já existe, verificar se Nostr tem status mais recente
+          final existing = _orders[existingIndex];
+          if (_isStatusMoreRecent(nostrOrder.status, existing.status)) {
+            _orders[existingIndex] = nostrOrder;
+            updated++;
+            debugPrint('🔄 Ordem ${nostrOrder.id.substring(0, 8)} atualizada do Nostr');
+          }
+        }
+      }
+      
+      // NOVO: Buscar atualizações de status (aceites e comprovantes de Bros)
+      debugPrint('🔍 Buscando atualizações de status (aceites/comprovantes)...');
+      final orderIds = _orders.map((o) => o.id).toList();
+      final orderUpdates = await _nostrOrderService.fetchOrderUpdatesForUser(
+        _currentUserPubkey!,
+        orderIds: orderIds,
+      );
+      
+      int statusUpdated = 0;
+      for (final entry in orderUpdates.entries) {
+        final orderId = entry.key;
+        final update = entry.value;
+        
+        final existingIndex = _orders.indexWhere((o) => o.id == orderId);
+        if (existingIndex != -1) {
+          final existing = _orders[existingIndex];
+          final newStatus = update['status'] as String;
+          
+          // Verificar se o novo status é mais avançado
+          if (_isStatusMoreRecent(newStatus, existing.status)) {
+            _orders[existingIndex] = existing.copyWith(
+              status: newStatus,
+              providerId: update['providerId'] as String?,
+              // Se for comprovante, salvar no metadata
+              metadata: update['proofImage'] != null ? {
+                ...?existing.metadata,
+                'proofImage': update['proofImage'],
+                'proofReceivedAt': DateTime.now().toIso8601String(),
+              } : existing.metadata,
+            );
+            statusUpdated++;
+            debugPrint('📥 Status atualizado: ${orderId.substring(0, 8)} -> $newStatus');
+          }
+        }
+      }
+      
+      if (statusUpdated > 0) {
+        debugPrint('✅ $statusUpdated ordens tiveram status atualizado');
+      }
+      
+      // Ordenar por data (mais recente primeiro)
+      _orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      
+      await _saveOrders();
+      notifyListeners();
+      
+      debugPrint('✅ Sincronização concluída: ${_orders.length} ordens totais (adicionadas: $added, atualizadas: $updated, status: $statusUpdated)');
+    } catch (e) {
+      debugPrint('❌ Erro ao sincronizar ordens do Nostr: $e');
+    }
+  }
+
+  /// Verificar se um status é mais recente que outro
+  bool _isStatusMoreRecent(String newStatus, String currentStatus) {
+    // Ordem de progressão de status:
+    // pending -> payment_received -> accepted -> awaiting_confirmation -> completed
+    // (cancelled pode acontecer a qualquer momento)
+    const statusOrder = [
+      'pending', 
+      'payment_received', 
+      'accepted', 
+      'processing',
+      'awaiting_confirmation',  // Bro enviou comprovante, aguardando validação do usuário
+      'completed', 
+      'cancelled'
+    ];
+    final newIndex = statusOrder.indexOf(newStatus);
+    final currentIndex = statusOrder.indexOf(currentStatus);
+    
+    // Se algum status não está na lista, considerar como não sendo mais recente
+    if (newIndex == -1 || currentIndex == -1) return false;
+    
+    return newIndex > currentIndex;
+  }
+
+  /// Aceitar ordem como provider (publica evento de aceitação no Nostr)
+  Future<bool> acceptOrderAsProvider(String orderId) async {
+    final privateKey = _nostrService.privateKey;
+    if (privateKey == null) {
+      debugPrint('⚠️ Sem chave privada para aceitar ordem');
+      return false;
+    }
+    
+    try {
+      // Buscar ordem
+      final order = getOrderById(orderId);
+      if (order == null) {
+        debugPrint('⚠️ Ordem não encontrada: $orderId');
+        return false;
+      }
+      
+      // Publicar aceitação no Nostr
+      final success = await _nostrOrderService.acceptOrderOnNostr(
+        order: order,
+        providerPrivateKey: privateKey,
+      );
+      
+      if (success) {
+        // Atualizar localmente
+        await updateOrderStatus(
+          orderId: orderId,
+          status: 'accepted',
+          providerId: _currentUserPubkey,
+        );
+        debugPrint('✅ Ordem aceita: $orderId');
+        return true;
+      }
+      
+      return false;
+    } catch (e) {
+      debugPrint('❌ Erro ao aceitar ordem: $e');
+      return false;
+    }
+  }
+
+  /// Completar ordem como provider (publica prova no Nostr)
+  Future<bool> completeOrderAsProvider(String orderId, String proofImageBase64) async {
+    final privateKey = _nostrService.privateKey;
+    if (privateKey == null) {
+      debugPrint('⚠️ Sem chave privada para completar ordem');
+      return false;
+    }
+    
+    try {
+      // Buscar ordem
+      final order = getOrderById(orderId);
+      if (order == null) {
+        debugPrint('⚠️ Ordem não encontrada: $orderId');
+        return false;
+      }
+      
+      // Publicar prova no Nostr
+      final success = await _nostrOrderService.completeOrderOnNostr(
+        order: order,
+        providerPrivateKey: privateKey,
+        proofImageBase64: proofImageBase64,
+      );
+      
+      if (success) {
+        // Atualizar localmente - status vai para 'awaiting_confirmation'
+        // O status 'completed' só deve ser usado quando o USUÁRIO confirmar o pagamento
+        await updateOrderStatus(
+          orderId: orderId,
+          status: 'awaiting_confirmation',
+          metadata: {
+            'proofSentAt': DateTime.now().toIso8601String(),
+            'proofSentBy': _currentUserPubkey,
+          },
+        );
+        debugPrint('✅ Comprovante enviado, aguardando confirmação do usuário: $orderId');
+        return true;
+      }
+      
+      return false;
+    } catch (e) {
+      debugPrint('❌ Erro ao completar ordem: $e');
+      return false;
+    }
+  }
+
+  /// Republicar ordens locais que não têm eventId no Nostr
+  /// Útil para migrar ordens criadas antes da integração Nostr
+  Future<int> republishLocalOrdersToNostr() async {
+    final privateKey = _nostrService.privateKey;
+    if (privateKey == null) {
+      debugPrint('⚠️ Sem chave privada para republicar ordens');
+      return 0;
+    }
+    
+    int republished = 0;
+    
+    for (var order in _orders) {
+      // Só republicar ordens que não têm eventId
+      if (order.eventId == null || order.eventId!.isEmpty) {
+        try {
+          debugPrint('📤 Republicando ordem ${order.id.substring(0, 8)}...');
+          final eventId = await _nostrOrderService.publishOrder(
+            order: order,
+            privateKey: privateKey,
+          );
+          
+          if (eventId != null) {
+            // Atualizar ordem com eventId
+            final index = _orders.indexWhere((o) => o.id == order.id);
+            if (index != -1) {
+              _orders[index] = order.copyWith(
+                eventId: eventId,
+                userPubkey: _currentUserPubkey,
+              );
+              republished++;
+              debugPrint('✅ Ordem ${order.id.substring(0, 8)} republicada: $eventId');
+            }
+          }
+        } catch (e) {
+          debugPrint('⚠️ Erro ao republicar ordem ${order.id}: $e');
+        }
+      }
+    }
+    
+    if (republished > 0) {
+      await _saveOrders();
+      notifyListeners();
+    }
+    
+    debugPrint('📦 Total republicado: $republished ordens');
+    return republished;
   }
 }

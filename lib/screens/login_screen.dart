@@ -84,13 +84,17 @@ class _LoginScreenState extends State<LoginScreen> {
 
       _nostrService.setKeys(privateKey, publicKey);
 
-      // Buscar perfil Nostr dos relays
+      // Buscar perfil Nostr dos relays (com timeout)
       if (mounted) {
         setState(() => _statusMessage = 'Buscando perfil Nostr...');
       }
       
       try {
-        final profile = await _profileService.fetchProfile(publicKey);
+        final profile = await _profileService.fetchProfile(publicKey)
+            .timeout(const Duration(seconds: 5), onTimeout: () {
+          debugPrint('⏰ Timeout ao buscar perfil - continuando');
+          return null;
+        });
         if (profile != null) {
           debugPrint('Perfil encontrado: ${profile.preferredName}');
           debugPrint('Avatar: ${profile.picture ?? "nenhum"}');
@@ -121,20 +125,29 @@ class _LoginScreenState extends State<LoginScreen> {
       // Salvar URL do backend
       await _storage.saveBackendUrl(AppConfig.defaultBackendUrl);
 
-      // Inicializar Breez SDK
+      // Inicializar Breez SDK (com timeout para não travar login)
       if (!kIsWeb) {
         if (mounted) {
           setState(() => _statusMessage = 'Inicializando carteira...');
         }
-        final breezProvider = context.read<BreezProvider>();
-        final success = await breezProvider.initialize();
-        if (!success && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Breez SDK nao inicializou, mas voce pode continuar'),
-              backgroundColor: Colors.orange,
-            ),
-          );
+        try {
+          final breezProvider = context.read<BreezProvider>();
+          final success = await breezProvider.initialize()
+              .timeout(const Duration(seconds: 10), onTimeout: () {
+            debugPrint('⏰ Timeout na inicialização do Breez - continuando login');
+            return false;
+          });
+          if (!success && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Carteira inicializará em background'),
+                backgroundColor: Colors.orange,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        } catch (e) {
+          debugPrint('❌ Erro no Breez (ignorando): $e');
         }
       }
 
@@ -171,26 +184,34 @@ class _LoginScreenState extends State<LoginScreen> {
       resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Column(
-            children: [
-              // Seção superior - Logo centralizado
-              const SizedBox(height: 40),
-              Image.asset(
-                'assets/images/bro-logo.png',
-                height: 100,
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Comunidade de escambo digital via Nostr',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Color(0xB3FFFFFF),
-                  fontWeight: FontWeight.w400,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: MediaQuery.of(context).size.height - 
+                         MediaQuery.of(context).padding.top - 
+                         MediaQuery.of(context).padding.bottom,
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Seção superior - Logo centralizado
+                const SizedBox(height: 20),
+                Image.asset(
+                  'assets/images/bro-logo.png',
+                  height: 80,
                 ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 32),
+                const SizedBox(height: 8),
+                const Text(
+                  'Comunidade de escambo digital via Nostr',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Color(0xB3FFFFFF),
+                    fontWeight: FontWeight.w400,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
 
               // Card de Login
               Container(
@@ -441,9 +462,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 20),
             ],
           ),
+        ),
         ),
       ),
     );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
+import 'screens/settings_screen.dart';
 import 'screens/provider_education_screen.dart';
 import 'screens/provider_collateral_screen.dart';
 import 'screens/provider_orders_screen.dart';
@@ -31,6 +32,8 @@ import 'services/cache_service.dart';
 import 'providers/theme_provider.dart';
 import 'widgets/alfa_banner.dart';
 
+import 'services/nostr_service.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -42,11 +45,34 @@ void main() async {
 
   // Verificar se ja esta logado
   final storage = StorageService();
+  await storage.init();
   final isLoggedIn = await storage.isLoggedIn();
+  
+  // Se já está logado, restaurar chaves Nostr
+  if (isLoggedIn) {
+    await _restoreNostrKeys(storage);
+  }
 
   // Breez SDK sera inicializado no provider (lazy initialization)
 
   runApp(BroApp(isLoggedIn: isLoggedIn));
+}
+
+/// Restaurar chaves Nostr do armazenamento seguro
+Future<void> _restoreNostrKeys(StorageService storage) async {
+  try {
+    final privateKey = await storage.getNostrPrivateKey();
+    if (privateKey != null && privateKey.isNotEmpty) {
+      final nostrService = NostrService();
+      final publicKey = nostrService.getPublicKey(privateKey);
+      nostrService.setKeys(privateKey, publicKey);
+      debugPrint('🔑 Chaves Nostr restauradas na inicialização: ${publicKey.substring(0, 16)}...');
+    } else {
+      debugPrint('⚠️ Nenhuma chave Nostr salva para restaurar');
+    }
+  } catch (e) {
+    debugPrint('❌ Erro ao restaurar chaves Nostr: $e');
+  }
 }
 
 /// Agendar reconciliacao automatica quando o SDK estiver pronto
@@ -195,6 +221,7 @@ class BroApp extends StatelessWidget {
               return null;
             },
             routes: {
+              '/settings': (context) => const SettingsScreen(),
               '/nostr-messages': (context) => const NostrMessagesScreen(),
               '/relay-management': (context) => const RelayManagementScreen(),
               '/nostr-profile': (context) => const NostrProfileScreen(),

@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:breez_sdk_spark_flutter/breez_sdk_spark.dart' as spark;
 import 'package:path_provider/path_provider.dart';
 import 'package:bip39/bip39.dart' as bip39;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../config/breez_config.dart';
 import '../extensions/breez_extensions.dart';
 import '../services/storage_service.dart';
@@ -151,29 +153,98 @@ class BreezProvider with ChangeNotifier {
 
   /// Handle SDK events
   void _handleSdkEvent(spark.SdkEvent event) {
-    debugPrint('?? Evento do SDK recebido: ${event.runtimeType}');
+    debugPrint('🔔 Evento do SDK recebido: ${event.runtimeType}');
     
     if (event is spark.SdkEvent_PaymentSucceeded) {
       final payment = event.payment;
-      debugPrint('? PAGAMENTO RECEBIDO! Payment: ${payment.id}, Amount: ${payment.amount} sats');
+      debugPrint('💰 PAGAMENTO RECEBIDO! Payment: ${payment.id}, Amount: ${payment.amount} sats');
       
       // Salvar último pagamento
       _lastPaymentId = payment.id;
       _lastPaymentAmount = payment.amount.toInt();
+      
+      // CRÍTICO: Persistir pagamento IMEDIATAMENTE para não perder
+      _persistPayment(payment.id, payment.amount.toInt());
       
       // Chamar callback se definido
       if (onPaymentReceived != null) {
         onPaymentReceived!(payment.id, payment.amount.toInt());
       }
     } else if (event is spark.SdkEvent_PaymentFailed) {
-      debugPrint('? PAGAMENTO FALHOU! Payment: ${event.payment.id}');
+      debugPrint('❌ PAGAMENTO FALHOU! Payment: ${event.payment.id}');
     } else if (event is spark.SdkEvent_Synced) {
-      debugPrint('?? Wallet sincronizada');
+      debugPrint('🔄 Wallet sincronizada');
       // Verificar saldo após sincronização
       _checkBalanceAfterSync();
     }
     
     notifyListeners();
+  }
+  
+  /// Persistir pagamento no SharedPreferences para nunca perder
+  Future<void> _persistPayment(String paymentId, int amountSats) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Carregar lista existente
+      final paymentsJson = prefs.getString('lightning_payments') ?? '[]';
+      final List<dynamic> payments = json.decode(paymentsJson);
+      
+      // Verificar se já existe
+      if (payments.any((p) => p['id'] == paymentId)) {
+        debugPrint('💾 Pagamento $paymentId já registrado');
+        return;
+      }
+      
+      // Adicionar novo pagamento
+      payments.add({
+        'id': paymentId,
+        'amountSats': amountSats,
+        'receivedAt': DateTime.now().toIso8601String(),
+        'reconciled': false,
+      });
+      
+      await prefs.setString('lightning_payments', json.encode(payments));
+      debugPrint('💾 PAGAMENTO PERSISTIDO: $paymentId ($amountSats sats)');
+    } catch (e) {
+      debugPrint('❌ ERRO CRÍTICO ao persistir pagamento: $e');
+    }
+  }
+  
+  /// Recuperar pagamentos não reconciliados (para reconciliação manual)
+  Future<List<Map<String, dynamic>>> getUnreconciledPayments() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final paymentsJson = prefs.getString('lightning_payments') ?? '[]';
+      final List<dynamic> payments = json.decode(paymentsJson);
+      
+      return payments
+          .where((p) => p['reconciled'] != true)
+          .map((p) => Map<String, dynamic>.from(p))
+          .toList();
+    } catch (e) {
+      debugPrint('❌ Erro ao recuperar pagamentos: $e');
+      return [];
+    }
+  }
+  
+  /// Marcar pagamento como reconciliado
+  Future<void> markPaymentReconciled(String paymentId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final paymentsJson = prefs.getString('lightning_payments') ?? '[]';
+      final List<dynamic> payments = json.decode(paymentsJson);
+      
+      final index = payments.indexWhere((p) => p['id'] == paymentId);
+      if (index != -1) {
+        payments[index]['reconciled'] = true;
+        payments[index]['reconciledAt'] = DateTime.now().toIso8601String();
+        await prefs.setString('lightning_payments', json.encode(payments));
+        debugPrint('✅ Pagamento $paymentId marcado como reconciliado');
+      }
+    } catch (e) {
+      debugPrint('❌ Erro ao marcar pagamento: $e');
+    }
   }
   
   /// Verificar saldo após sincronização

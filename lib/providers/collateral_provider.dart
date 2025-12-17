@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import '../models/collateral_tier.dart';
 import '../services/escrow_service.dart';
 import '../services/bitcoin_price_service.dart';
+import '../config.dart';
 import 'package:breez_sdk_spark_flutter/breez_sdk_spark.dart' as spark;
 
 /// Provider para gerenciar garantias (collateral) dos provedores
@@ -42,7 +43,19 @@ class CollateralProvider with ChangeNotifier {
       debugPrint('📊 Tiers disponíveis: ${_availableTiers!.length}');
 
       // Carregar garantia do provedor
-      _collateral = await _escrowService.getProviderCollateral(providerId);
+      // Em modo teste, não buscar do backend
+      if (AppConfig.providerTestMode) {
+        debugPrint('🧪 Modo teste: sem garantia real');
+        _collateral = null;
+      } else {
+        try {
+          _collateral = await _escrowService.getProviderCollateral(providerId);
+        } catch (e) {
+          debugPrint('⚠️ Erro ao buscar garantia: $e');
+          _collateral = null;
+        }
+      }
+      
       if (_collateral != null) {
         final totalCollateral = _collateral!['total_collateral'] ?? 0;
         debugPrint('✅ Garantia carregada: $totalCollateral sats');

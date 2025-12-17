@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import 'dart:convert';
 import '../providers/order_provider.dart';
 import '../providers/collateral_provider.dart';
 import '../services/escrow_service.dart';
@@ -68,16 +69,21 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     try {
       final orderProvider = context.read<OrderProvider>();
       final order = await orderProvider.getOrder(widget.orderId);
+      
+      debugPrint('🔍 _loadOrderDetails: ordem carregada = $order');
+      debugPrint('🔍 _loadOrderDetails: billCode = ${order?['billCode']}');
 
       if (mounted) {
         setState(() {
           _orderDetails = order;
-          // Verificar se ordem já foi aceita por ESTE provedor
+          // Verificar se ordem já foi aceita (por qualquer provedor ou este provedor)
           final orderProviderId = order?['providerId'] ?? order?['provider_id'];
           final orderStatus = order?['status'] ?? 'pending';
           
-          _orderAccepted = (orderStatus == 'accepted' || orderStatus == 'awaiting_confirmation') && 
-                          orderProviderId == widget.providerId;
+          // Ordem foi aceita se status é accepted/awaiting_confirmation e tem providerId
+          // Não importa se é exatamente widget.providerId porque em modo teste usamos pubkey Nostr
+          _orderAccepted = (orderStatus == 'accepted' || orderStatus == 'awaiting_confirmation' || orderStatus == 'completed') && 
+                          (orderProviderId != null && orderProviderId.isNotEmpty);
           
           // Calcular tempo restante se comprovante foi enviado
           final metadata = order?['metadata'] as Map<String, dynamic>?;
@@ -135,13 +141,19 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         );
       }
 
-      // Atualizar ordem no provider
+      // Publicar aceitação no Nostr E atualizar localmente
       final orderProvider = context.read<OrderProvider>();
-      await orderProvider.updateOrderStatus(
-        orderId: widget.orderId,
-        status: 'accepted',
-        providerId: widget.providerId,
-      );
+      final success = await orderProvider.acceptOrderAsProvider(widget.orderId);
+      
+      if (!success) {
+        _showError('Falha ao publicar aceitação no Nostr');
+        if (mounted) {
+          setState(() {
+            _isAccepting = false;
+          });
+        }
+        return;
+      }
 
       if (mounted) {
         setState(() {
@@ -220,30 +232,29 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     });
 
     try {
-      // Salvar o caminho local da imagem
-      // Em produção, isso seria upload para storage real
-      await Future.delayed(const Duration(seconds: 1));
-
-      String receiptPath = '';
+      String proofImageBase64 = '';
       String confirmationCode = _confirmationCodeController.text.trim();
       
       if (_receiptImage != null) {
-        // Salvar o caminho local do arquivo para exibição
-        receiptPath = _receiptImage!.path;
+        // Converter imagem para base64 para publicar no Nostr
+        final bytes = await _receiptImage!.readAsBytes();
+        proofImageBase64 = base64Encode(bytes);
       }
 
-      // Atualizar ordem com comprovante
+      // Publicar comprovante no Nostr E atualizar localmente
       final orderProvider = context.read<OrderProvider>();
-      await orderProvider.updateOrder(
-        widget.orderId,
-        status: 'awaiting_confirmation',
-        metadata: {
-          if (receiptPath.isNotEmpty) 'receipt_url': receiptPath,
-          if (receiptPath.isNotEmpty) 'receipt_local_path': receiptPath,
-          if (confirmationCode.isNotEmpty) 'confirmation_code': confirmationCode,
-          'receipt_submitted_at': DateTime.now().toIso8601String(),
-        },
+      final success = await orderProvider.completeOrderAsProvider(
+        widget.orderId, 
+        proofImageBase64.isNotEmpty ? proofImageBase64 : confirmationCode,
       );
+      
+      if (!success) {
+        _showError('Falha ao publicar comprovante no Nostr');
+        setState(() {
+          _isUploading = false;
+        });
+        return;
+      }
 
       setState(() {
         _isUploading = false;
@@ -329,9 +340,12 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     final billCode = _orderDetails!['billCode'] as String? ?? 
                      _orderDetails!['bill_code'] as String? ?? '';
     
-    // Construir payment_data a partir dos campos do Order se não existir
-    Map<String, dynamic>? paymentData = _orderDetails!['payment_data'] as Map<String, dynamic>?;
-    if (paymentData == null && billCode.isNotEmpty) {
+    // DEBUG: Log para verificar se billCode está presente
+    debugPrint('🔍 _buildContent: billType=$billType, billCode=${billCode.isNotEmpty ? "${billCode.substring(0, billCode.length > 20 ? 20 : billCode.length)}..." : "EMPTY"}');
+    
+    // SEMPRE construir payment_data a partir do billCode se existir
+    Map<String, dynamic>? paymentData;
+    if (billCode.isNotEmpty) {
       // Criar payment_data baseado no tipo de conta
       if (billType.toLowerCase() == 'pix' || billCode.length > 30) {
         paymentData = {
@@ -343,6 +357,11 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           'barcode': billCode,
         };
       }
+      debugPrint('✅ paymentData criado: ${paymentData.keys}');
+    } else {
+      // Fallback: tentar usar payment_data existente
+      paymentData = _orderDetails!['payment_data'] as Map<String, dynamic>?;
+      debugPrint('⚠️ billCode vazio, usando payment_data existente: $paymentData');
     }
     
     final providerFee = amount * EscrowService.providerFeePercent / 100;

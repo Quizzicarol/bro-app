@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/order_provider.dart';
+import '../services/nostr_service.dart';
 import '../models/order.dart';
 import 'provider_order_detail_screen.dart';
 
@@ -19,6 +20,8 @@ class ProviderMyOrdersScreen extends StatefulWidget {
 }
 
 class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
+  final NostrService _nostrService = NostrService();
+  
   @override
   void initState() {
     super.initState();
@@ -35,13 +38,18 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
   }
 
   List<Order> _getMyOrders(OrderProvider orderProvider) {
+    // Obter pubkey Nostr do usuário logado (para comparar com providerId real)
+    final nostrPubkey = _nostrService.publicKey;
+    
     // Filtrar ordens que este provedor aceitou e ainda não completou
     return orderProvider.orders.where((order) {
-      final isMyOrder = order.providerId == widget.providerId;
+      // Aceitar tanto o providerId passado quanto a pubkey Nostr real
+      final isMyOrder = order.providerId == widget.providerId || 
+                        (nostrPubkey != null && order.providerId == nostrPubkey);
       final isActiveStatus = order.status == 'accepted' || 
                             order.status == 'awaiting_confirmation';
       
-      debugPrint('🔍 Ordem ${order.id.substring(0, 8)}: providerId=${order.providerId}, status=${order.status}, isMyOrder=$isMyOrder, isActive=$isActiveStatus');
+      debugPrint('🔍 Ordem ${order.id.substring(0, 8)}: providerId=${order.providerId}, myId=${widget.providerId}, nostrPubkey=${nostrPubkey?.substring(0, 8)}, isMyOrder=$isMyOrder, isActive=$isActiveStatus');
       
       return isMyOrder && isActiveStatus;
     }).toList();
@@ -129,7 +137,7 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
                 Navigator.pushReplacementNamed(
                   context,
                   '/provider-orders',
-                  arguments: widget.providerId,
+                  arguments: {'providerId': widget.providerId},
                 );
               },
               icon: const Icon(Icons.search),

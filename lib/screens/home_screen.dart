@@ -414,11 +414,11 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(width: 12),
-            // Seja um Bro
+            // Modo Bro
             Expanded(
               child: _buildGridButton(
                 icon: Icons.volunteer_activism,
-                label: 'Seja um Bro',
+                label: 'Modo Bro',
                 gradient: const [Color(0xFF3DE98C), Color(0xFF00CC7A)],
                 onTap: () {
                   Navigator.pushNamed(context, '/provider-education');
@@ -1000,7 +1000,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Seja um Bro',
+                    'Modo Bro',
                     style: TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.bold,
@@ -1009,7 +1009,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   SizedBox(height: 4),
                   Text(
-                    'Aceite trocas P2P',
+                    'Ganhe sats pagando contas',
                     style: TextStyle(
                       fontSize: 13,
                       color: Color(0xCCFFFFFF),
@@ -1167,7 +1167,10 @@ class EmptyTransactionState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(32),
+      width: double.infinity,
       child: const Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Icon(
             Icons.receipt_long_outlined,
@@ -1182,6 +1185,7 @@ class EmptyTransactionState extends StatelessWidget {
               fontWeight: FontWeight.w600,
               color: Color(0x99FFFFFF),
             ),
+            textAlign: TextAlign.center,
           ),
           SizedBox(height: 8),
           Text(

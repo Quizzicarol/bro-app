@@ -1,6 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../services/order_service.dart';
@@ -1050,8 +1051,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 const SizedBox(height: 12),
                 _buildCancelButton(),
               ],
-              // Botão cancelar também para confirmed (aguardando Bro)
-              if (_currentStatus == 'confirmed') ...[
+              // Botão cancelar para confirmed e payment_received (aguardando Bro aceitar)
+              if (_currentStatus == 'confirmed' || _currentStatus == 'payment_received') ...[
                 _buildCancelButton(),
               ],
               if (_currentStatus == 'awaiting_confirmation') ...[
@@ -1307,21 +1308,21 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               number: '2',
               title: 'Aguardando um Bro',
               subtitle: 'Um provedor irá aceitar sua ordem',
-              isActive: _currentStatus == 'confirmed',
-              isCompleted: _currentStatus == 'accepted' || _currentStatus == 'payment_submitted' || _currentStatus == 'completed',
+              isActive: _currentStatus == 'confirmed' || _currentStatus == 'payment_received',
+              isCompleted: ['accepted', 'awaiting_confirmation', 'payment_submitted', 'completed'].contains(_currentStatus),
             ),
             _buildTimelineStep(
               number: '3',
               title: 'Bro Realiza Pagamento',
               subtitle: 'O provedor paga a conta com PIX/Boleto',
               isActive: _currentStatus == 'accepted',
-              isCompleted: _currentStatus == 'payment_submitted' || _currentStatus == 'completed',
+              isCompleted: ['awaiting_confirmation', 'payment_submitted', 'completed'].contains(_currentStatus),
             ),
             _buildTimelineStep(
               number: '4',
-              title: 'Comprovante Validado',
-              subtitle: 'Sistema valida o pagamento',
-              isActive: _currentStatus == 'payment_submitted',
+              title: 'Validar Comprovante',
+              subtitle: 'Confirme que o pagamento foi feito corretamente',
+              isActive: _currentStatus == 'awaiting_confirmation' || _currentStatus == 'payment_submitted',
               isCompleted: _currentStatus == 'completed',
               isLast: true,
             ),
@@ -1472,9 +1473,20 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       metadata = order?.metadata;
     }
 
-    final receiptUrl = metadata?['receipt_url'] as String?;
+    debugPrint('🔍 _buildReceiptCard - metadata keys: ${metadata?.keys.toList()}');
+    debugPrint('   proofImage existe: ${metadata?['proofImage'] != null}');
+    if (metadata?['proofImage'] != null) {
+      final pi = metadata!['proofImage'] as String;
+      debugPrint('   proofImage length: ${pi.length}');
+      debugPrint('   proofImage preview: ${pi.substring(0, pi.length > 50 ? 50 : pi.length)}');
+    }
+
+    // Compatibilidade com ambos os formatos de comprovante
+    // Antigo: receipt_url, confirmation_code, receipt_submitted_at
+    // Novo (via Nostr): proofImage, proofReceivedAt
+    final receiptUrl = metadata?['receipt_url'] as String? ?? metadata?['proofImage'] as String?;
     final confirmationCode = metadata?['confirmation_code'] as String?;
-    final submittedAt = metadata?['receipt_submitted_at'] as String?;
+    final submittedAt = metadata?['receipt_submitted_at'] as String? ?? metadata?['proofReceivedAt'] as String?;
 
     return Card(
       child: Padding(
@@ -1681,8 +1693,42 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   Widget _buildReceiptImageWidget(String imageUrl) {
-    // Verificar se é uma URL ou caminho local
-    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+    debugPrint('🖼️ _buildReceiptImageWidget chamado');
+    debugPrint('   imageUrl length: ${imageUrl.length}');
+    debugPrint('   imageUrl starts with: ${imageUrl.substring(0, imageUrl.length > 20 ? 20 : imageUrl.length)}');
+    
+    // Verificar se é base64 (vindo do Nostr proofImage)
+    if (imageUrl.startsWith('data:image')) {
+      // Data URI format: data:image/png;base64,xxxxx
+      debugPrint('   Formato: data:image URI');
+      try {
+        final base64String = imageUrl.split(',').last;
+        final bytes = base64Decode(base64String);
+        return Image.memory(
+          bytes,
+          fit: BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) => _buildImageError('Erro ao decodificar base64: $error'),
+        );
+      } catch (e) {
+        return _buildImageError('Erro ao processar imagem base64: $e');
+      }
+    } else if (_isBase64Image(imageUrl)) {
+      // Base64 puro (sem prefixo data:) - pode ser JPEG (/9j/), PNG (iVBOR), etc
+      debugPrint('   Formato: base64 puro detectado');
+      try {
+        final bytes = base64Decode(imageUrl);
+        debugPrint('   Bytes decodificados: ${bytes.length}');
+        return Image.memory(
+          bytes,
+          fit: BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) => _buildImageError('Erro ao decodificar: $error'),
+        );
+      } catch (e) {
+        debugPrint('   Erro ao decodificar base64: $e');
+        return _buildImageError('Erro ao processar imagem: $e');
+      }
+    } else if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+      // URL HTTP/HTTPS
       return Image.network(
         imageUrl,
         fit: BoxFit.contain,
@@ -1712,6 +1758,33 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return _buildImageError('Arquivo não encontrado: $imageUrl');
       }
     }
+  }
+
+  /// Verifica se uma string parece ser base64 de imagem
+  bool _isBase64Image(String str) {
+    if (str.length < 100) return false;
+    
+    // Prefixos comuns de imagens em base64:
+    // JPEG: /9j/
+    // PNG: iVBOR
+    // GIF: R0lGOD
+    // WebP: UklGR
+    final base64Prefixes = ['/9j/', 'iVBOR', 'R0lGOD', 'UklGR'];
+    
+    for (final prefix in base64Prefixes) {
+      if (str.startsWith(prefix)) {
+        return true;
+      }
+    }
+    
+    // Se tem mais de 1000 chars e é só caracteres base64 válidos, provavelmente é base64
+    if (str.length > 1000) {
+      final base64Regex = RegExp(r'^[A-Za-z0-9+/=]+$');
+      // Testar só os primeiros 100 chars para performance
+      return base64Regex.hasMatch(str.substring(0, 100));
+    }
+    
+    return false;
   }
 
   Widget _buildImageError(String error) {

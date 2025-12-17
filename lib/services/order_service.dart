@@ -70,6 +70,7 @@ class OrderService {
               
               if (order != null) {
                 debugPrint('✅ Ordem encontrada no cache ($key): $orderId');
+                debugPrint('   Status: ${order['status']}, providerId: ${order['providerId']}');
                 return Map<String, dynamic>.from(order);
               }
             }

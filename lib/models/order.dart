@@ -1,5 +1,7 @@
 class Order {
   final String id;
+  final String? eventId; // ID do evento Nostr
+  final String? userPubkey; // Pubkey do usuário que criou a ordem
   final String billType;
   final String billCode;
   final double amount;
@@ -17,6 +19,8 @@ class Order {
 
   Order({
     required this.id,
+    this.eventId,
+    this.userPubkey,
     required this.billType,
     required this.billCode,
     required this.amount,
@@ -36,6 +40,8 @@ class Order {
   factory Order.fromJson(Map<String, dynamic> json) {
     return Order(
       id: json['id'] ?? json['orderId'] ?? '',
+      eventId: json['eventId'],
+      userPubkey: json['userPubkey'] ?? json['pubkey'],
       billType: json['billType'] ?? 'pix',
       billCode: json['billCode'] ?? '',
       amount: (json['amount'] ?? 0).toDouble(),
@@ -62,6 +68,8 @@ class Order {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      if (eventId != null) 'eventId': eventId,
+      if (userPubkey != null) 'userPubkey': userPubkey,
       'billType': billType,
       'billCode': billCode,
       'amount': amount,
@@ -81,6 +89,8 @@ class Order {
 
   Order copyWith({
     String? id,
+    String? eventId,
+    String? userPubkey,
     String? billType,
     String? billCode,
     double? amount,
@@ -98,6 +108,8 @@ class Order {
   }) {
     return Order(
       id: id ?? this.id,
+      eventId: eventId ?? this.eventId,
+      userPubkey: userPubkey ?? this.userPubkey,
       billType: billType ?? this.billType,
       billCode: billCode ?? this.billCode,
       amount: amount ?? this.amount,

@@ -304,6 +304,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                   const SizedBox(height: 30),
 
+                  // Carteira Lightning
+                  const Text(
+                    'Carteira Lightning',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.deepPurple,
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+
+                  Card(
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: ListTile(
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.account_balance_wallet, color: Colors.orange),
+                      ),
+                      title: const Text('Minha Carteira'),
+                      subtitle: const Text('Ver saldo e transações'),
+                      trailing: const Icon(Icons.chevron_right),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 10,
+                      ),
+                      onTap: () => Navigator.pushNamed(context, '/wallet'),
+                    ),
+                  ),
+
+                  const SizedBox(height: 30),
+
                   // Nostr & Privacidade
                   const Text(
                     'Nostr & Privacidade',
@@ -562,6 +600,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                   ),
+                  
+                  // Espaço extra para botões de navegação
+                  const SizedBox(height: 100),
                 ],
               ),
             ),

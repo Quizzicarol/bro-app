@@ -93,72 +93,68 @@ class EscrowService {
 
   Future<List<Map<String, dynamic>>> getAvailableOrdersForProvider({
     required String providerId,
-    List<dynamic>? testOrders, // Lista de ordens de teste do OrderProvider
+    required List<dynamic> orders, // Lista de ordens do OrderProvider (via Nostr)
+    String? currentUserPubkey, // Pubkey do provedor atual para excluir suas próprias ordens
   }) async {
-    // Em modo teste, retornar ordens mockadas do OrderProvider
-    if (AppConfig.testMode && testOrders != null) {
-      debugPrint('🔍 getAvailableOrdersForProvider - Total de ordens recebidas: ${testOrders.length}');
-      debugPrint('🔍 Tipo das ordens: ${testOrders.runtimeType}');
-      
-      if (testOrders.isEmpty) {
-        debugPrint('⚠️ NENHUMA ORDEM RECEBIDA DO ORDERPROVIDER!');
-        return [];
-      }
-      
-      final filteredOrders = testOrders
-          .where((order) {
-            final status = order.status;
-            // Ordens disponíveis para provedor:
-            // - pending: criada mas ainda não paga (se quiser aceitar antes)
-            // - payment_received: pagamento Lightning recebido, pronta para provedor
-            // - confirmed: pagamento confirmado
-            // - awaiting_provider: aguardando provedor aceitar
-            final isAvailable = status == 'pending' || 
-                               status == 'payment_received' ||
-                               status == 'awaiting_provider' || 
-                               status == 'confirmed';
-            debugPrint('  📋 Ordem ${order.id.substring(0, 8)}: status="$status", isAvailable=$isAvailable');
-            return isAvailable;
-          })
-          .map((order) => {
-                'id': order.id,
-                'user_id': 'test_user',
-                'user_name': 'Usuário Teste',
-                'amount': order.amount, // Campo correto para provider_orders_screen
-                'amount_brl': order.amount,
-                'amount_sats': (order.btcAmount * 100000000).toInt(),
-                'status': order.status,
-                'payment_type': order.billType,
-                'created_at': order.createdAt.toIso8601String(),
-                'expires_at': order.createdAt.add(const Duration(hours: 24)).toIso8601String(),
-              })
-          .toList()
-          .cast<Map<String, dynamic>>();
-      
-      debugPrint('📦 Ordens filtradas para provedor: ${filteredOrders.length}');
-      
-      if (filteredOrders.isEmpty && testOrders.isNotEmpty) {
-        debugPrint('⚠️ TODAS AS ORDENS FORAM FILTRADAS! Verificar status das ordens.');
-      } else if (filteredOrders.isNotEmpty) {
-        debugPrint('✅ Ordens disponíveis:');
-        for (var order in filteredOrders) {
-          debugPrint('   - ${order['id'].toString().substring(0, 8)}: R\$ ${order['amount']} (${order['status']})');
-        }
-      }
-      
-      return filteredOrders;
-    }
-
-    // Produção: buscar do backend
-    try {
-      final response = await http.get(Uri.parse('$baseUrl/orders/available?provider_id=$providerId'));
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        return List<Map<String, dynamic>>.from(data['orders'] ?? []);
-      }
-      return [];
-    } catch (e) {
+    // SEMPRE usar as ordens do OrderProvider (P2P via Nostr)
+    // O backend centralizado não é mais necessário para ordens
+    debugPrint('🔍 getAvailableOrdersForProvider - Total de ordens recebidas: ${orders.length}');
+    debugPrint('🔍 Pubkey do provedor: ${currentUserPubkey?.substring(0, 8) ?? "null"}...');
+    
+    if (orders.isEmpty) {
+      debugPrint('⚠️ NENHUMA ORDEM RECEBIDA DO ORDERPROVIDER!');
       return [];
     }
+    
+    final filteredOrders = orders
+        .where((order) {
+          final status = order.status;
+          final orderPubkey = order.userPubkey;
+          
+          // Excluir ordens criadas pelo próprio provedor
+          if (currentUserPubkey != null && orderPubkey == currentUserPubkey) {
+            debugPrint('  ⏭️ Ordem ${order.id.substring(0, 8)}: PULADA (própria ordem)');
+            return false;
+          }
+          
+          // Ordens disponíveis para provedor:
+          // - pending: criada mas ainda não paga (se quiser aceitar antes)
+          // - payment_received: pagamento Lightning recebido, pronta para provedor
+          // - confirmed: pagamento confirmado
+          // - awaiting_provider: aguardando provedor aceitar
+          final isAvailable = status == 'pending' || 
+                             status == 'payment_received' ||
+                             status == 'awaiting_provider' || 
+                             status == 'confirmed';
+          debugPrint('  📋 Ordem ${order.id.substring(0, 8)}: status="$status", isAvailable=$isAvailable');
+          return isAvailable;
+        })
+        .map((order) => {
+              'id': order.id,
+              'user_id': order.userPubkey ?? 'unknown',
+              'user_name': 'Usuário ${order.userPubkey?.substring(0, 6) ?? "?"}...',
+              'amount': order.amount, // Campo correto para provider_orders_screen
+              'amount_brl': order.amount,
+              'amount_sats': (order.btcAmount * 100000000).toInt(),
+              'status': order.status,
+              'payment_type': order.billType,
+              'created_at': order.createdAt.toIso8601String(),
+              'expires_at': order.createdAt.add(const Duration(hours: 24)).toIso8601String(),
+            })
+        .toList()
+        .cast<Map<String, dynamic>>();
+    
+    debugPrint('📦 Ordens filtradas para provedor: ${filteredOrders.length}');
+    
+    if (filteredOrders.isEmpty && orders.isNotEmpty) {
+      debugPrint('⚠️ TODAS AS ORDENS FORAM FILTRADAS! Verificar status ou se são todas do próprio usuário.');
+    } else if (filteredOrders.isNotEmpty) {
+      debugPrint('✅ Ordens disponíveis:');
+      for (var order in filteredOrders) {
+        debugPrint('   - ${order['id'].toString().substring(0, 8)}: R\$ ${order['amount']} (${order['status']})');
+      }
+    }
+    
+    return filteredOrders;
   }
 }

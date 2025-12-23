@@ -90,10 +90,13 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
 
     if (mounted) {
       final orderProvider = context.read<OrderProvider>();
+      
+      // Status payment_received = usuário pagou via Lightning, aguardando Bro aceitar
       await orderProvider.updateOrderStatus(
         orderId: widget.orderId,
-        status: 'confirmed',
+        status: 'payment_received',
       );
+      debugPrint('✅ Ordem ${widget.orderId} atualizada para payment_received');
 
       // Registrar taxa da plataforma (2%)
       try {

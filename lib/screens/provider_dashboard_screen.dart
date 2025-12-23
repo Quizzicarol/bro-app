@@ -457,24 +457,54 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
   Widget _buildStatusBadge(String status) {
     Color color;
     String text;
+    IconData icon;
 
     switch (status) {
       case 'pending':
         color = const Color(0xFFFFC107);
-        text = 'Pendente';
+        text = 'Aguardando Pgto';
+        icon = Icons.payment;
+        break;
+      case 'payment_received':
+        color = const Color(0xFF009688);
+        text = 'Pago ✓';
+        icon = Icons.check;
+        break;
+      case 'confirmed':
+        color = const Color(0xFF1E88E5);
+        text = 'Disponível';
+        icon = Icons.hourglass_empty;
         break;
       case 'accepted':
       case 'processing':
         color = const Color(0xFF1E88E5);
         text = 'Processando';
+        icon = Icons.sync;
+        break;
+      case 'awaiting_confirmation':
+        color = const Color(0xFF9C27B0);
+        text = 'Aguard. Confirm.';
+        icon = Icons.receipt_long;
         break;
       case 'completed':
         color = const Color(0xFF4CAF50);
-        text = 'Completo';
+        text = 'Completo ✓';
+        icon = Icons.check_circle;
+        break;
+      case 'cancelled':
+        color = Colors.red;
+        text = 'Cancelado';
+        icon = Icons.cancel;
+        break;
+      case 'disputed':
+        color = Colors.deepOrange;
+        text = 'Disputa';
+        icon = Icons.gavel;
         break;
       default:
         color = Colors.grey;
         text = status;
+        icon = Icons.help_outline;
     }
 
     return Container(
@@ -484,13 +514,20 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
         border: Border.all(color: color),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Text(
-        text,
-        style: TextStyle(
-          color: color,
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }

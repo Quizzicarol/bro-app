@@ -65,12 +65,38 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   Future<void> _loadOrderDetails() async {
     try {
-      final order = await _orderService.getOrder(widget.orderId);
+      Map<String, dynamic>? order;
+      
+      // Primeiro tenta pelo OrderService (com tratamento de exceção)
+      try {
+        order = await _orderService.getOrder(widget.orderId);
+      } catch (serviceError) {
+        debugPrint('⚠️ OrderService falhou: $serviceError');
+        // Continua para tentar o OrderProvider
+      }
+      
+      // Se não encontrou, tenta buscar pelo OrderProvider (que tem as ordens em memória)
+      if (order == null && mounted) {
+        debugPrint('⚠️ Ordem não encontrada no OrderService, tentando OrderProvider...');
+        try {
+          final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+          final orderFromProvider = orderProvider.orders.firstWhere(
+            (o) => o.id == widget.orderId,
+            orElse: () => throw Exception('Ordem não encontrada no OrderProvider'),
+          );
+          // Converter Order para Map
+          order = orderFromProvider.toJson();
+          debugPrint('✅ Ordem encontrada no OrderProvider: ${widget.orderId}');
+        } catch (providerError) {
+          debugPrint('⚠️ OrderProvider também falhou: $providerError');
+        }
+      }
       
       if (order != null) {
+        if (!mounted) return;
         setState(() {
           _orderDetails = order;
-          _currentStatus = order['status'] ?? 'pending';
+          _currentStatus = order!['status'] ?? 'pending';
           // Verificar se expires_at existe antes de parsear
           if (order['expires_at'] != null) {
             _expiresAt = DateTime.parse(order['expires_at']);
@@ -81,6 +107,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           _isLoading = false;
         });
       } else {
+        if (!mounted) return;
         setState(() {
           _error = 'Ordem não encontrada';
           _isLoading = false;
@@ -88,6 +115,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       }
     } catch (e) {
       debugPrint('❌ Erro ao carregar ordem: $e');
+      if (!mounted) return;
       setState(() {
         _error = e.toString();
         _isLoading = false;
@@ -125,13 +153,23 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   void _startStatusPolling() {
-    // Verificar status a cada 10 segundos
+    // Verificar status a cada 10 segundos (usando OrderProvider em vez de API)
     _statusCheckTimer = Timer.periodic(const Duration(seconds: 10), (timer) async {
-      final status = await _orderService.checkOrderStatus(widget.orderId);
+      // CORREÇÃO: Verificar se a tela ainda está montada antes de fazer qualquer coisa
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      
+      // CORREÇÃO: Usar OrderProvider local em vez de API que pode falhar
+      final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+      final order = orderProvider.getOrderById(widget.orderId);
+      final status = order?.status ?? _currentStatus;
       
       if (status != _currentStatus) {
         // Notificar sobre mudanca de status
         _handleStatusChange(status);
+        if (!mounted) return;
         setState(() {
           _currentStatus = status;
         });
@@ -143,6 +181,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       }
 
       // Verificar expiração
+      if (!mounted) return;
       if (_expiresAt != null && _orderService.isOrderExpired(_expiresAt!)) {
         timer.cancel();
         _showExpiredDialog();
@@ -1048,6 +1087,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               const SizedBox(height: 24),
               if (_currentStatus == 'pending') ...[
                 _buildPayButton(),
+                const SizedBox(height: 12),
+                _buildVerifyPaymentButton(),
                 const SizedBox(height: 12),
                 _buildCancelButton(),
               ],
@@ -2432,8 +2473,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   void _showLightningPaymentDialog(String invoice, String paymentHash) {
     // Registrar callback para pagamento recebido
     final breezProvider = context.read<BreezProvider>();
-    breezProvider.onPaymentReceived = (paymentId, amountSats) {
-      debugPrint('🎉 Callback de pagamento recebido! ID: $paymentId, Amount: $amountSats');
+    breezProvider.onPaymentReceived = (paymentId, amountSats, pHash) {
+      debugPrint('🎉 Callback de pagamento recebido! ID: $paymentId, Amount: $amountSats, Hash: $pHash');
       _onPaymentReceived();
     };
     
@@ -2868,6 +2909,128 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         Navigator.pop(context); // Fechar loading
         _showError('Erro ao gerar endereço: $e');
       }
+    }
+  }
+
+  /// Botão para verificar se o pagamento já foi recebido
+  /// Útil para ordens antigas que perderam a sincronização de status
+  Widget _buildVerifyPaymentButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: _handleVerifyPayment,
+        icon: const Icon(Icons.search),
+        label: const Text('Já paguei, verificar pagamento'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: Colors.blue,
+          side: const BorderSide(color: Colors.blue),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+        ),
+      ),
+    );
+  }
+
+  /// Verificar se o pagamento foi recebido na carteira
+  Future<void> _handleVerifyPayment() async {
+    // Mostrar loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 20),
+            Text('Verificando pagamentos...'),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final breezProvider = Provider.of<BreezProvider>(context, listen: false);
+      final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+      
+      // Buscar pagamentos do Breez SDK
+      final payments = await breezProvider.listPayments();
+      
+      if (!mounted) return;
+      Navigator.pop(context); // Fechar loading
+      
+      // Tentar verificar e corrigir a ordem
+      final verified = await orderProvider.verifyAndFixOrderPayment(
+        widget.orderId,
+        payments,
+      );
+      
+      if (!mounted) return;
+      
+      if (verified) {
+        // Atualizar UI
+        await _loadOrderDetails();
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 8),
+                Text('✅ Pagamento encontrado! Status atualizado.'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        // Mostrar dialog explicando que não foi encontrado
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.info_outline, color: Colors.orange),
+                SizedBox(width: 8),
+                Text('Pagamento não encontrado'),
+              ],
+            ),
+            content: const Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Não foi possível encontrar um pagamento correspondente a esta ordem.',
+                  style: TextStyle(fontSize: 14),
+                ),
+                SizedBox(height: 12),
+                Text(
+                  'Possíveis causas:',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                SizedBox(height: 8),
+                Text('• O pagamento ainda não foi enviado'),
+                Text('• O pagamento está pendente de confirmação'),
+                Text('• O valor enviado é diferente do esperado'),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // Fechar loading se ainda aberto
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro ao verificar: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 

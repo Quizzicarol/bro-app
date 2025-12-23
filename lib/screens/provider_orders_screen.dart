@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/collateral_provider.dart';
 import '../providers/order_provider.dart';
 import '../services/escrow_service.dart';
+import '../services/nostr_service.dart';
 import '../services/secure_storage_service.dart';
 import '../config.dart';
 import 'provider_order_detail_screen.dart';
@@ -77,30 +78,32 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> {
     try {
       List<Map<String, dynamic>> orders;
       
-      // Em modo teste, buscar ordens do OrderProvider
-      if (AppConfig.testMode) {
-        debugPrint('🧪 Modo teste ativo, buscando OrderProvider...');
-        final orderProvider = context.read<OrderProvider>();
-        debugPrint('🧪 OrderProvider obtido, total de ordens: ${orderProvider.orders.length}');
-        
-        // Log detalhado de TODAS as ordens
-        for (var i = 0; i < orderProvider.orders.length; i++) {
-          final order = orderProvider.orders[i];
-          debugPrint('   [$i] Ordem ${order.id.substring(0, 8)}: status="${order.status}", amount=${order.amount}');
-        }
-        
-        orders = await _escrowService.getAvailableOrdersForProvider(
-          providerId: widget.providerId,
-          testOrders: orderProvider.orders,
-        );
-        debugPrint('📦 Modo teste: ${orders.length} ordens disponíveis para provedor');
-      } else {
-        debugPrint('🌐 Modo produção, buscando do backend...');
-        // Produção: buscar do backend
-        orders = await _escrowService.getAvailableOrdersForProvider(
-          providerId: widget.providerId,
-        );
+      // SEMPRE buscar ordens do OrderProvider (modo P2P via Nostr)
+      debugPrint('📦 Buscando ordens do OrderProvider...');
+      final orderProvider = context.read<OrderProvider>();
+      
+      // Sincronizar com Nostr primeiro
+      await orderProvider.fetchOrders();
+      
+      debugPrint('📦 OrderProvider tem ${orderProvider.orders.length} ordens');
+      
+      // Log detalhado de TODAS as ordens
+      for (var i = 0; i < orderProvider.orders.length; i++) {
+        final order = orderProvider.orders[i];
+        debugPrint('   [$i] Ordem ${order.id.substring(0, 8)}: status="${order.status}", amount=${order.amount}, pubkey=${order.userPubkey?.substring(0, 8) ?? "null"}');
       }
+      
+      // Pegar o pubkey do provedor atual para excluir suas próprias ordens
+      final nostrService = NostrService();
+      final currentPubkey = nostrService.publicKey;
+      debugPrint('👤 Pubkey do provedor atual: ${currentPubkey?.substring(0, 8) ?? "null"}...');
+      
+      orders = await _escrowService.getAvailableOrdersForProvider(
+        providerId: widget.providerId,
+        orders: orderProvider.orders,
+        currentUserPubkey: currentPubkey,
+      );
+      debugPrint('📦 ${orders.length} ordens disponíveis para provedor');
 
       if (mounted) {
         debugPrint('🔵 Atualizando estado com ${orders.length} ordens');

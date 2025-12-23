@@ -633,6 +633,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
           }
           debugPrint('✅ Invoice válida, navegando para LightningPaymentScreen...');
           
+          // CRÍTICO: Salvar paymentHash na ordem para identificação precisa do pagamento
+          final paymentHash = (invoiceData['paymentHash'] ?? '') as String;
+          if (paymentHash.isNotEmpty) {
+            await orderProvider.setOrderPaymentHash(order.id, paymentHash, inv);
+            debugPrint('✅ PaymentHash salvo na ordem: $paymentHash');
+          }
+          
           if (!mounted) return;
           
           // Reset processing flag before navigating
@@ -646,7 +653,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             MaterialPageRoute(
               builder: (context) => LightningPaymentScreen(
                 invoice: inv,
-                paymentHash: (invoiceData['paymentHash'] ?? '') as String,
+                paymentHash: paymentHash,
                 amountSats: amountSats,
                 totalBrl: totalBrl,
                 orderId: order.id,

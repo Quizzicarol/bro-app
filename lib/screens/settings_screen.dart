@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import '../services/storage_service.dart';
+import '../providers/breez_provider.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -89,6 +91,168 @@ class _SettingsScreenState extends State<SettingsScreen> {
               backgroundColor: Colors.orange,
             ),
             child: const Text('Entendi, mostrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRestoreSeedDialog() {
+    final seedController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.restore, color: Colors.deepPurple, size: 28),
+            SizedBox(width: 10),
+            Expanded(child: Text('Restaurar Carteira')),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Digite as 12 palavras da sua seed, separadas por espaço:',
+                style: TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 15),
+              TextField(
+                controller: seedController,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  hintText: 'palavra1 palavra2 palavra3 ...',
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.all(12),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.warning, color: Colors.red, size: 20),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'A carteira atual será substituída!',
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final seed = seedController.text.trim();
+              final words = seed.split(RegExp(r'\s+'));
+              
+              if (words.length != 12) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('A seed deve ter exatamente 12 palavras'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+              
+              Navigator.pop(context);
+              
+              // Mostrar loading
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (context) => const Center(
+                  child: CircularProgressIndicator(),
+                ),
+              );
+              
+              try {
+                // Usar reinitializeWithNewSeed para reiniciar SDK com nova seed
+                final breezProvider = Provider.of<BreezProvider>(context, listen: false);
+                final success = await breezProvider.reinitializeWithNewSeed(seed);
+                
+                Navigator.pop(context); // Fechar loading
+                
+                if (success) {
+                  // Atualizar estado local
+                  setState(() {
+                    _mnemonic = seed;
+                  });
+                  
+                  // Buscar saldo
+                  final balanceInfo = await breezProvider.getBalance();
+                  final balance = balanceInfo['balance'] ?? 0;
+                  
+                  // Mostrar sucesso
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Row(
+                        children: [
+                          Icon(Icons.check_circle, color: Colors.green, size: 28),
+                          SizedBox(width: 10),
+                          Text('Sucesso!'),
+                        ],
+                      ),
+                      content: Text(
+                        'Carteira restaurada com sucesso!\n\n'
+                        'Saldo: $balance sats',
+                      ),
+                      actions: [
+                        ElevatedButton(
+                          onPressed: () {
+                            Navigator.pop(context);
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                          ),
+                          child: const Text('OK'),
+                        ),
+                      ],
+                    ),
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Erro ao reinicializar carteira'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              } catch (e) {
+                Navigator.pop(context); // Fechar loading
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Erro ao restaurar: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.deepPurple,
+            ),
+            child: const Text('Restaurar'),
           ),
         ],
       ),
@@ -269,6 +433,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   ),
                                 ],
                               ),
+                              const SizedBox(height: 15),
+                              // Info: Seed vinculada ao usuário
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Row(
+                                  children: [
+                                    Icon(Icons.link, color: Colors.blue, size: 18),
+                                    SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Esta seed está vinculada à sua conta Nostr',
+                                        style: TextStyle(fontSize: 12, color: Colors.blue),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ] else ...[
                               SizedBox(
                                 width: double.infinity,
@@ -294,6 +479,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   color: Colors.grey,
                                   fontStyle: FontStyle.italic,
                                 ),
+                              ),
+                            ),
+                            const SizedBox(height: 15),
+                            // Contato suporte
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.red.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: Colors.red.withOpacity(0.3)),
+                              ),
+                              child: const Column(
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(Icons.warning, color: Colors.red, size: 20),
+                                      SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          'Sua carteira não foi encontrada!',
+                                          style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  SizedBox(height: 8),
+                                  Text(
+                                    'Entre em contato com o suporte se você tinha sats nesta carteira.',
+                                    style: TextStyle(color: Colors.red, fontSize: 13),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
@@ -337,6 +553,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         vertical: 10,
                       ),
                       onTap: () => Navigator.pushNamed(context, '/wallet'),
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 10),
+                  
+                  // BOTÃO RESTAURAR SEED
+                  Card(
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: ListTile(
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.restore, color: Colors.red),
+                      ),
+                      title: const Text('Restaurar Carteira'),
+                      subtitle: const Text('Usar uma seed existente'),
+                      trailing: const Icon(Icons.chevron_right),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 10,
+                      ),
+                      onTap: _showRestoreSeedDialog,
                     ),
                   ),
 

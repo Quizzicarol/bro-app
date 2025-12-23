@@ -5,6 +5,9 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../providers/breez_provider_export.dart';
 import '../providers/provider_balance_provider.dart';
+import '../providers/order_provider.dart';
+import '../services/storage_service.dart';
+import '../services/lnaddress_service.dart';
 
 /// Tela de Carteira Lightning - Apenas BOLT11 (invoice)
 /// Funções: Ver saldo, Enviar pagamento, Receber (gerar invoice)
@@ -105,6 +108,132 @@ class _WalletScreenState extends State<WalletScreen> {
     }
   }
 
+  Future<void> _showDiagnostics() async {
+    final breezProvider = context.read<BreezProvider>();
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: Color(0xFFFF9800)),
+      ),
+    );
+    
+    try {
+      final diagnostics = await breezProvider.getFullDiagnostics();
+      
+      if (!mounted) return;
+      Navigator.of(context).pop(); // Fechar loading
+      
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          title: const Row(
+            children: [
+              Icon(Icons.bug_report, color: Color(0xFFFF9800)),
+              SizedBox(width: 8),
+              Text('Diagnóstico SDK', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _diagRow('Inicializado', '${diagnostics['isInitialized']}'),
+                _diagRow('SDK Disponível', '${diagnostics['sdkAvailable']}'),
+                _diagRow('Carteira Nova', '${diagnostics['isNewWallet']}'),
+                const Divider(color: Colors.grey),
+                _diagRow('Nostr Pubkey', '${diagnostics['nostrPubkey']}...'),
+                _diagRow('Seed Words', '${diagnostics['seedWordCount']}'),
+                _diagRow('Primeiras 2', '${diagnostics['seedFirst2Words']}'),
+                const Divider(color: Colors.grey),
+                _diagRow('Storage Dir Existe', '${diagnostics['storageDirExists']}'),
+                const Divider(color: Colors.grey),
+                _diagRow('💰 SALDO', '${diagnostics['balanceSats'] ?? '?'} sats', highlight: true),
+                _diagRow('Total Pagamentos', '${diagnostics['totalPayments'] ?? '?'}'),
+                if (diagnostics['recentPayments'] != null) ...[
+                  const SizedBox(height: 8),
+                  const Text('Últimos pagamentos:', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                  for (var p in (diagnostics['recentPayments'] as List))
+                    Text(
+                      '  ${p['amount']} sats - ${p['status']}',
+                      style: const TextStyle(color: Colors.white54, fontSize: 11),
+                    ),
+                ],
+                // NOVO: Mostrar todas as seeds encontradas
+                const Divider(color: Colors.orange),
+                _diagRow('Seeds encontradas', '${diagnostics['totalSeedsFound'] ?? 0}'),
+                if (diagnostics['allSeeds'] != null) ...[
+                  const SizedBox(height: 8),
+                  const Text('🔐 TODAS AS SEEDS:', style: TextStyle(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.bold)),
+                  for (var entry in (diagnostics['allSeeds'] as Map).entries)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${entry.key}:',
+                            style: TextStyle(
+                              color: entry.key == 'CURRENT_USER' ? Colors.greenAccent : Colors.white70,
+                              fontSize: 11,
+                              fontWeight: entry.key == 'CURRENT_USER' ? FontWeight.bold : FontWeight.normal,
+                            ),
+                          ),
+                          Text(
+                            '  ${(entry.value as Map)['first2Words']} (${(entry.value as Map)['wordCount']} palavras)',
+                            style: const TextStyle(color: Colors.white54, fontSize: 10),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+                if (diagnostics['error'] != null) ...[
+                  const Divider(color: Colors.red),
+                  Text('ERRO: ${diagnostics['error']}', style: const TextStyle(color: Colors.red, fontSize: 12)),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('FECHAR', style: TextStyle(color: Color(0xFFFF9800))),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Widget _diagRow(String label, String value, {bool highlight = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: TextStyle(color: highlight ? Colors.amber : Colors.white70, fontSize: 12)),
+          Text(
+            value,
+            style: TextStyle(
+              color: highlight ? Colors.greenAccent : Colors.white,
+              fontSize: 12,
+              fontWeight: highlight ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -120,6 +249,11 @@ class _WalletScreenState extends State<WalletScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.bug_report),
+            tooltip: 'Diagnóstico',
+            onPressed: _showDiagnostics,
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _isLoading ? null : _loadWalletInfo,
@@ -342,7 +476,19 @@ class _WalletScreenState extends State<WalletScreen> {
   // ==================== ENVIAR ====================
   void _showSendDialog() {
     final invoiceController = TextEditingController();
+    final amountController = TextEditingController();
     bool isSending = false;
+    bool showAmountField = false;
+    String? errorMessage;
+    
+    // Get current balance
+    final balanceSats = int.tryParse(_balance?['balance']?.toString() ?? '0') ?? 0;
+    
+    // Get committed sats (orders in progress) and calculate available balance
+    final orderProvider = context.read<OrderProvider>();
+    final committedSats = orderProvider.committedSats;
+    final availableSats = (balanceSats - committedSats).clamp(0, balanceSats);
+    final hasLockedFunds = committedSats > 0;
     
     showModalBottomSheet(
       context: context,
@@ -353,17 +499,19 @@ class _WalletScreenState extends State<WalletScreen> {
       ),
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) => SafeArea(
+          minimum: const EdgeInsets.only(bottom: 20),
           child: Padding(
             padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 24,
               left: 20,
               right: 20,
               top: 20,
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                 // Header
                 Row(
                   children: [
@@ -377,14 +525,44 @@ class _WalletScreenState extends State<WalletScreen> {
                       child: const Icon(Icons.arrow_upward, color: Color(0xFFE53935)),
                     ),
                     const SizedBox(width: 12),
-                    const Expanded(
-                      child: Text(
-                        'Enviar Bitcoin',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Enviar Bitcoin',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          if (hasLockedFunds) ...[
+                            Text(
+                              'Disponível: $availableSats sats',
+                              style: TextStyle(
+                                color: availableSats > 0 ? Colors.green : Colors.orange,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              'Em ordens: $committedSats sats',
+                              style: const TextStyle(
+                                color: Colors.orange,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ] else ...[
+                            Text(
+                              'Saldo: $balanceSats sats',
+                              style: TextStyle(
+                                color: balanceSats > 0 ? Colors.green : Colors.grey,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                     IconButton(
@@ -393,19 +571,61 @@ class _WalletScreenState extends State<WalletScreen> {
                     ),
                   ],
                 ),
+                
+                // Aviso de fundos bloqueados
+                if (hasLockedFunds) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.lock, color: Colors.orange, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '$committedSats sats estão em ordens abertas/garantia',
+                            style: const TextStyle(color: Colors.orange, fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                
                 const SizedBox(height: 20),
                 
-                // Campo de invoice
+                // Campo de destino (Invoice, LNURL, ou Lightning Address)
                 TextField(
                   controller: invoiceController,
                   style: const TextStyle(color: Colors.white, fontSize: 14),
-                  maxLines: 3,
+                  maxLines: 2,
                   enabled: !isSending,
+                  onChanged: (value) {
+                    // Se for Lightning Address ou LNURL-pay, mostrar campo de valor
+                    final trimmed = value.trim().toLowerCase();
+                    final isLnAddress = trimmed.contains('@') && trimmed.contains('.');
+                    final isLnurl = trimmed.startsWith('lnurl');
+                    final needsAmount = isLnAddress || isLnurl;
+                    
+                    if (needsAmount != showAmountField) {
+                      setModalState(() {
+                        showAmountField = needsAmount;
+                        errorMessage = null;
+                      });
+                    }
+                  },
                   decoration: InputDecoration(
-                    labelText: 'Invoice Lightning (BOLT11)',
+                    labelText: 'Destino',
                     labelStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
-                    hintText: 'lnbc...',
+                    hintText: 'Invoice, Lightning Address ou LNURL',
                     hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                    helperText: 'Ex: lnbc..., user@wallet.com, LNURL...',
+                    helperStyle: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: const BorderSide(color: Color(0xFF333333)),
@@ -420,6 +640,64 @@ class _WalletScreenState extends State<WalletScreen> {
                     ),
                   ),
                 ),
+                
+                // Campo de valor (mostrado para Lightning Address e LNURL)
+                if (showAmountField) ...[
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: amountController,
+                    style: const TextStyle(color: Colors.white, fontSize: 18),
+                    keyboardType: TextInputType.number,
+                    enabled: !isSending,
+                    decoration: InputDecoration(
+                      labelText: 'Valor a enviar',
+                      labelStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
+                      hintText: 'Ex: 1000',
+                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                      prefixIcon: const Icon(Icons.bolt, color: Colors.orange),
+                      suffixText: 'sats',
+                      suffixStyle: const TextStyle(color: Colors.orange),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF333333)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF333333)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFFF9800)),
+                      ),
+                    ),
+                  ),
+                ],
+                
+                // Mensagem de erro
+                if (errorMessage != null) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.red.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.error_outline, color: Colors.red, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            errorMessage!,
+                            style: const TextStyle(color: Colors.red, fontSize: 13),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                
                 const SizedBox(height: 12),
                 
                 // Botão Colar
@@ -430,11 +708,25 @@ class _WalletScreenState extends State<WalletScreen> {
                       final data = await Clipboard.getData('text/plain');
                       if (data?.text != null) {
                         invoiceController.text = data!.text!.trim();
+                        
+                        // Verificar se precisa mostrar campo de valor
+                        final trimmed = data.text!.trim().toLowerCase();
+                        final isLnAddr = trimmed.contains('@') && trimmed.contains('.');
+                        final isLnurl = trimmed.startsWith('lnurl');
+                        final needsAmount = isLnAddr || isLnurl;
+                        
+                        setModalState(() {
+                          showAmountField = needsAmount;
+                          errorMessage = null;
+                        });
+                        
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('✅ Colado!'),
-                              duration: Duration(seconds: 1),
+                            SnackBar(
+                              content: Text(needsAmount 
+                                ? '✅ Colado! Digite o valor em sats.'
+                                : '✅ Colado!'),
+                              duration: const Duration(seconds: 1),
                             ),
                           );
                         }
@@ -485,34 +777,129 @@ class _WalletScreenState extends State<WalletScreen> {
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: isSending ? null : () async {
-                      final invoice = invoiceController.text.trim();
-                      if (invoice.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Cole uma invoice válida'),
-                            backgroundColor: Colors.orange,
-                          ),
-                        );
+                      final destination = invoiceController.text.trim();
+                      if (destination.isEmpty) {
+                        setModalState(() => errorMessage = 'Digite um destino');
                         return;
                       }
                       
-                      if (!invoice.toLowerCase().startsWith('lnbc') && 
-                          !invoice.toLowerCase().startsWith('lntb')) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Invoice inválida. Deve começar com lnbc ou lntb'),
-                            backgroundColor: Colors.orange,
-                          ),
-                        );
+                      final lowerDest = destination.toLowerCase();
+                      
+                      // Verificar se é endereço Bitcoin (não suportado)
+                      if (_isBitcoinAddress(destination)) {
+                        setModalState(() => errorMessage = 'Envio para endereço Bitcoin on-chain não disponível. Use Lightning.');
                         return;
                       }
                       
-                      setModalState(() => isSending = true);
+                      // Verificar se é Lightning Address ou LNURL (precisa de valor)
+                      final isLnAddress = destination.contains('@') && destination.contains('.');
+                      final isLnurl = lowerDest.startsWith('lnurl');
+                      final needsAmountInput = isLnAddress || isLnurl;
+                      
+                      // Atualizar UI se necessário
+                      if (needsAmountInput != showAmountField) {
+                        setModalState(() {
+                          showAmountField = needsAmountInput;
+                          errorMessage = needsAmountInput ? 'Digite o valor em sats' : null;
+                        });
+                        return;
+                      }
+                      
+                      // Se for Lightning Address ou LNURL, precisamos de um valor
+                      if (needsAmountInput) {
+                        final amountText = amountController.text.trim();
+                        final amountSats = int.tryParse(amountText);
+                        
+                        if (amountSats == null || amountSats <= 0) {
+                          setModalState(() => errorMessage = 'Digite um valor válido em sats');
+                          return;
+                        }
+                        
+                        if (amountSats > availableSats) {
+                          if (hasLockedFunds) {
+                            setModalState(() => errorMessage = 'Saldo insuficiente! Disponível: $availableSats sats ($committedSats em ordens)');
+                          } else {
+                            setModalState(() => errorMessage = 'Saldo insuficiente! Você tem $balanceSats sats');
+                          }
+                          return;
+                        }
+                        
+                        setModalState(() {
+                          isSending = true;
+                          errorMessage = null;
+                        });
+                        
+                        debugPrint('💸 Enviando $amountSats sats para $destination...');
+                        
+                        try {
+                          final breezProvider = context.read<BreezProvider>();
+                          final lnAddressService = LnAddressService();
+                          
+                          // Resolver Lightning Address ou LNURL para invoice BOLT11
+                          final invoiceResult = await lnAddressService.getInvoice(
+                            lnAddress: destination,
+                            amountSats: amountSats,
+                          );
+                          
+                          if (invoiceResult['success'] != true) {
+                            setModalState(() {
+                              isSending = false;
+                              errorMessage = invoiceResult['error'] ?? 'Falha ao resolver endereço';
+                            });
+                            return;
+                          }
+                          
+                          final invoice = invoiceResult['invoice'] as String;
+                          debugPrint('📝 Invoice obtida: ${invoice.substring(0, 50)}...');
+                          
+                          // Pagar a invoice
+                          final result = await breezProvider.payInvoice(invoice);
+                          
+                          if (result != null && result['success'] == true) {
+                            if (context.mounted) {
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('✅ Pagamento enviado com sucesso!'),
+                                  backgroundColor: Color(0xFF4CAF50),
+                                ),
+                              );
+                            }
+                            _loadWalletInfo();
+                          } else {
+                            setModalState(() {
+                              isSending = false;
+                              errorMessage = result?['error'] ?? 'Falha ao enviar pagamento';
+                            });
+                          }
+                        } catch (e) {
+                          debugPrint('❌ Erro ao enviar: $e');
+                          setModalState(() {
+                            isSending = false;
+                            errorMessage = 'Erro: $e';
+                          });
+                        }
+                        return;
+                      }
+                      
+                      // Verificar se é Lightning invoice válida
+                      if (!lowerDest.startsWith('lnbc') && 
+                          !lowerDest.startsWith('lntb') &&
+                          !lowerDest.startsWith('lnurl') &&
+                          !isLnAddress) {
+                        setModalState(() => errorMessage = 'Formato inválido. Use Invoice, Lightning Address ou LNURL.');
+                        return;
+                      }
+                      
+                      setModalState(() {
+                        isSending = true;
+                        errorMessage = null;
+                      });
                       debugPrint('💸 Enviando pagamento...');
                       
                       try {
                         final breezProvider = context.read<BreezProvider>();
-                        final result = await breezProvider.payInvoice(invoice);
+                        final result = await breezProvider.payInvoice(destination);
                         
                         debugPrint('📦 Resultado pagamento: $result');
                         
@@ -633,10 +1020,107 @@ class _WalletScreenState extends State<WalletScreen> {
                     ),
                   ),
                 ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  // Verifica se é um endereço Bitcoin válido
+  bool _isBitcoinAddress(String code) {
+    final lowerCode = code.toLowerCase();
+    // Bitcoin mainnet/testnet addresses
+    return lowerCode.startsWith('bc1') ||  // Bech32 (SegWit)
+           lowerCode.startsWith('tb1') ||  // Testnet Bech32
+           lowerCode.startsWith('1') ||    // Legacy P2PKH
+           lowerCode.startsWith('3') ||    // P2SH
+           lowerCode.startsWith('m') ||    // Testnet P2PKH
+           lowerCode.startsWith('n') ||    // Testnet P2PKH
+           lowerCode.startsWith('2') ||    // Testnet P2SH
+           lowerCode.startsWith('bitcoin:'); // URI
+  }
+
+  // Mostra dialog informando que envio para endereço Bitcoin não é suportado
+  void _showBitcoinAddressNotSupportedDialog(String address) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.currency_bitcoin, color: Colors.orange, size: 28),
+            SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Endereço Bitcoin',
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.link, color: Colors.grey, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      address.length > 30 
+                          ? '${address.substring(0, 15)}...${address.substring(address.length - 12)}'
+                          : address,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.orange, size: 20),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Pagamentos para endereços Bitcoin on-chain ainda não são suportados.\n\nUse uma Lightning Invoice (lnbc/lntb) para enviar pagamentos.',
+                      style: TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('ENTENDI', style: TextStyle(color: Colors.orange)),
+          ),
+        ],
       ),
     );
   }
@@ -652,94 +1136,117 @@ class _WalletScreenState extends State<WalletScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => SizedBox(
-        height: MediaQuery.of(context).size.height * 0.75,
-        child: Column(
-          children: [
-            // Header
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: const BoxDecoration(
-                color: Color(0xFF1A1A1A),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.qr_code_scanner, color: Colors.green, size: 28),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Escanear Invoice',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+      builder: (context) => SafeArea(
+        bottom: true,
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height * 0.75,
+          child: Column(
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF1A1A1A),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.qr_code_scanner, color: Colors.green, size: 28),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Escanear QR Code',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ),
-                        Text(
-                          'Aponte para o QR Code da invoice Lightning',
-                          style: TextStyle(
-                            color: Colors.white54,
-                            fontSize: 12,
+                          Text(
+                            'Lightning Invoice ou Endereço Bitcoin',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 12,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white54),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white54),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            
-            // Scanner
-            Expanded(
-              child: MobileScanner(
-                onDetect: (capture) {
-                  final List<Barcode> barcodes = capture.barcodes;
-                  for (final barcode in barcodes) {
-                    final code = barcode.rawValue;
-                    if (code != null && 
-                        (code.toLowerCase().startsWith('lnbc') || 
-                         code.toLowerCase().startsWith('lntb') ||
-                         code.toLowerCase().startsWith('lightning:'))) {
-                      // Remover prefixo lightning: se existir
-                      scannedCode = code.toLowerCase().startsWith('lightning:') 
-                          ? code.substring(10) 
-                          : code;
-                      Navigator.pop(context);
-                      break;
+              
+              // Scanner
+              Expanded(
+                child: MobileScanner(
+                  onDetect: (capture) {
+                    final List<Barcode> barcodes = capture.barcodes;
+                    for (final barcode in barcodes) {
+                      final code = barcode.rawValue;
+                      if (code != null) {
+                        final lowerCode = code.toLowerCase();
+                        
+                        // Lightning Invoice
+                        if (lowerCode.startsWith('lnbc') || 
+                            lowerCode.startsWith('lntb') ||
+                            lowerCode.startsWith('lightning:')) {
+                          scannedCode = lowerCode.startsWith('lightning:') 
+                              ? code.substring(10) 
+                              : code;
+                          Navigator.pop(context);
+                          break;
+                        }
+                        
+                        // LNURL (withdraw, pay, etc)
+                        if (lowerCode.startsWith('lnurl')) {
+                          scannedCode = code;
+                          Navigator.pop(context);
+                          break;
+                        }
+                        
+                        // Endereço Bitcoin
+                        if (_isBitcoinAddress(code)) {
+                          // Remover prefixo bitcoin: se existir
+                          scannedCode = lowerCode.startsWith('bitcoin:') 
+                              ? code.substring(8).split('?')[0]  // Remover parâmetros URI
+                              : code;
+                          Navigator.pop(context);
+                          break;
+                        }
+                      }
                     }
-                  }
-                },
+                  },
+                ),
               ),
-            ),
-            
-            // Instruções
-            Container(
-              padding: const EdgeInsets.all(20),
-              color: const Color(0xFF1A1A1A),
-              child: const Column(
-                children: [
-                  Icon(Icons.lightbulb_outline, color: Colors.amber, size: 24),
-                  SizedBox(height: 8),
-                  Text(
-                    'Dica: O QR Code deve conter uma invoice Lightning (BOLT11) começando com "lnbc" ou "lntb"',
-                    style: TextStyle(
-                      color: Colors.white54,
-                      fontSize: 12,
+              
+              // Instruções
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                color: const Color(0xFF1A1A1A),
+                child: const Column(
+                  children: [
+                    Icon(Icons.lightbulb_outline, color: Colors.amber, size: 24),
+                    SizedBox(height: 8),
+                    Text(
+                      'Formatos suportados:\n• Lightning Invoice (lnbc, lntb)\n• Endereço Bitcoin (bc1, 1, 3)',
+                      style: TextStyle(
+                        color: Colors.white54,
+                        fontSize: 12,
+                      ),
+                      textAlign: TextAlign.center,
                     ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -749,8 +1256,21 @@ class _WalletScreenState extends State<WalletScreen> {
 
   // ==================== ENVIAR COM INVOICE PRÉ-PREENCHIDA ====================
   void _showSendDialogWithInvoice(String invoice) {
+    // Verificar se é endereço Bitcoin (não suportado)
+    if (_isBitcoinAddress(invoice)) {
+      _showBitcoinAddressNotSupportedDialog(invoice);
+      return;
+    }
+    
     final invoiceController = TextEditingController(text: invoice);
     bool isSending = false;
+    
+    // Get current balance and available balance
+    final balanceSats = int.tryParse(_balance?['balance']?.toString() ?? '0') ?? 0;
+    final orderProvider = context.read<OrderProvider>();
+    final committedSats = orderProvider.committedSats;
+    final availableSats = (balanceSats - committedSats).clamp(0, balanceSats);
+    final hasLockedFunds = committedSats > 0;
     
     showModalBottomSheet(
       context: context,
@@ -785,11 +1305,11 @@ class _WalletScreenState extends State<WalletScreen> {
                       child: const Icon(Icons.check_circle, color: Colors.green),
                     ),
                     const SizedBox(width: 12),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
+                          const Text(
                             'Invoice Escaneada!',
                             style: TextStyle(
                               color: Colors.white,
@@ -797,13 +1317,23 @@ class _WalletScreenState extends State<WalletScreen> {
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          Text(
-                            'Confirme o pagamento',
-                            style: TextStyle(
-                              color: Colors.white54,
-                              fontSize: 12,
+                          if (hasLockedFunds) ...[
+                            Text(
+                              'Disponível: $availableSats sats',
+                              style: TextStyle(
+                                color: availableSats > 0 ? Colors.green : Colors.orange,
+                                fontSize: 12,
+                              ),
                             ),
-                          ),
+                          ] else ...[
+                            Text(
+                              'Saldo: $balanceSats sats',
+                              style: TextStyle(
+                                color: balanceSats > 0 ? Colors.green : Colors.grey,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -813,6 +1343,32 @@ class _WalletScreenState extends State<WalletScreen> {
                     ),
                   ],
                 ),
+                
+                // Aviso de fundos bloqueados
+                if (hasLockedFunds) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.lock, color: Colors.orange, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '$committedSats sats estão em ordens abertas',
+                            style: const TextStyle(color: Colors.orange, fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                
                 const SizedBox(height: 20),
                 
                 // Invoice preview

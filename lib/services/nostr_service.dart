@@ -21,6 +21,12 @@ class NostrService {
     };
   }
 
+  // Gerar apenas chave privada Nostr
+  String generatePrivateKey() {
+    final keyPair = Keychain.generate();
+    return keyPair.private;
+  }
+
   // Derivar chave pública da privada usando biblioteca real
   String getPublicKey(String privateKey) {
     try {

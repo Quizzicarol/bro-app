@@ -35,8 +35,60 @@ class _HomeScreenState extends State<HomeScreen> {
       _loadData();
       _fetchBitcoinPrice();
       _startPricePolling();
+      _checkSeedRecoveryStatus();
       _checkAndShowBackupReminder();
     });
+  }
+  
+  /// Verifica se precisa recuperar seed perdida (situação crítica!)
+  Future<void> _checkSeedRecoveryStatus() async {
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (!mounted) return;
+    
+    final breezProvider = Provider.of<BreezProvider>(context, listen: false);
+    
+    if (breezProvider.seedRecoveryNeeded) {
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          backgroundColor: Colors.red.shade900,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.error, color: Colors.white, size: 32),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '⚠️ RECUPERAÇÃO NECESSÁRIA',
+                  style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          content: const Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Houve um problema ao recuperar sua carteira.\n\n'
+                'Se você tinha sats nesta carteira, vá em Configurações e use "Restaurar Carteira" com suas 12 palavras de backup.',
+                style: TextStyle(color: Colors.white, fontSize: 14),
+              ),
+            ],
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, '/settings');
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.white),
+              child: const Text('Ir para Configurações', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        ),
+      );
+    }
   }
   
   /// Mostra aviso de backup da seed para novos usuários
@@ -390,10 +442,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
         // Lista de Ordens
         _buildTransactionsList(orderProvider),
-
-        // Footer
-        const SizedBox(height: 12),
-        _buildFooter(),
         
         // Extra space
         const SizedBox(height: 80),

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'screens/login_screen.dart';
+import 'screens/login_screen.dart'; // Login original com chave privada
 import 'screens/home_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/provider_education_screen.dart';
@@ -48,14 +48,19 @@ void main() async {
   await storage.init();
   final isLoggedIn = await storage.isLoggedIn();
   
+  // Obter pubkey para o OrderProvider (antes de restaurar chaves)
+  String? userPubkey;
+  
   // Se já está logado, restaurar chaves Nostr
   if (isLoggedIn) {
     await _restoreNostrKeys(storage);
+    userPubkey = await storage.getNostrPublicKey();
+    debugPrint('📦 Pubkey para OrderProvider: ${userPubkey?.substring(0, 16) ?? "null"}...');
   }
 
   // Breez SDK sera inicializado no provider (lazy initialization)
 
-  runApp(BroApp(isLoggedIn: isLoggedIn));
+  runApp(BroApp(isLoggedIn: isLoggedIn, userPubkey: userPubkey));
 }
 
 /// Restaurar chaves Nostr do armazenamento seguro
@@ -114,8 +119,9 @@ Future<void> _tryReconciliation(BreezProvider breezProvider, OrderProvider order
 
 class BroApp extends StatelessWidget {
   final bool isLoggedIn;
+  final String? userPubkey;
 
-  const BroApp({Key? key, required this.isLoggedIn}) : super(key: key);
+  const BroApp({Key? key, required this.isLoggedIn, this.userPubkey}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -127,7 +133,7 @@ class BroApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) {
             final provider = OrderProvider();
-            provider.initialize(); // Carregar ordens salvas
+            provider.initialize(userPubkey: userPubkey); // Passar a pubkey!
             return provider;
           },
         ),
@@ -144,11 +150,12 @@ class BroApp extends StatelessWidget {
 
           // RECONCILIACAO AUTOMATICA: Conectar callback de pagamento ao OrderProvider
           final orderProvider = context.read<OrderProvider>();
-          breezProvider.onPaymentReceived = (String paymentId, int amountSats) {
-            debugPrint('CALLBACK: Pagamento recebido! Reconciliando automaticamente...');
+          breezProvider.onPaymentReceived = (String paymentId, int amountSats, String? paymentHash) {
+            debugPrint('🔔 CALLBACK MAIN: Pagamento recebido! Reconciliando automaticamente...');
             orderProvider.onPaymentReceived(
               paymentId: paymentId,
               amountSats: amountSats,
+              paymentHash: paymentHash,
             );
           };
 

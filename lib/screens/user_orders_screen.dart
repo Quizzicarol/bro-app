@@ -34,11 +34,12 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
     super.initState();
     // Aguardar o primeiro frame antes de acessar o Provider
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadOrders();
+      _loadOrdersWithAutoReconcile();
     });
   }
 
-  Future<void> _loadOrders() async {
+  /// Carrega ordens e tenta reconciliar automaticamente pagamentos recebidos
+  Future<void> _loadOrdersWithAutoReconcile() async {
     if (!mounted) return;
     
     setState(() {
@@ -47,44 +48,71 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
     });
 
     try {
-      // Se estiver em modo teste, usar OrderProvider (memória local)
-      if (AppConfig.testMode) {
-        final orderProvider = Provider.of<OrderProvider>(context, listen: false);
-        debugPrint('📱 OrderProvider tem ${orderProvider.orders.length} ordens no total');
+      final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+      final breezProvider = Provider.of<BreezProvider>(context, listen: false);
+      
+      // Sincronizar com Nostr primeiro
+      await orderProvider.fetchOrders();
+      
+      // RECONCILIAÇÃO AUTOMÁTICA: Verificar se há ordens pendentes COM paymentHash que foram pagas
+      // IMPORTANTE: Só reconciliar ordens que têm paymentHash (invoice foi gerada)
+      final pendingOrdersWithHash = orderProvider.orders.where((o) => 
+        o.status == 'pending' && 
+        o.paymentHash != null && 
+        o.paymentHash!.isNotEmpty
+      ).toList();
+      
+      if (pendingOrdersWithHash.isNotEmpty && breezProvider.isInitialized) {
+        debugPrint('🔄 Auto-reconciliando ${pendingOrdersWithHash.length} ordens pendentes com paymentHash...');
         
-        // Mostrar TODAS as ordens (incluindo canceladas para permitir saque)
-        final localOrders = orderProvider.orders
-          .map((order) => {
-            'id': order.id,
-            'status': order.status,
-            'amount_brl': order.amount,
-            'amount_sats': (order.btcAmount * 100000000).toInt(),
-            'created_at': order.createdAt.toIso8601String(),
-            'expires_at': order.createdAt.add(const Duration(hours: 24)).toIso8601String(),
-            'payment_type': order.billType == 'electricity' || order.billType == 'water' || order.billType == 'internet' 
-              ? order.billType 
-              : 'pix',
-            'provider_id': order.providerId,
+        try {
+          final payments = await breezProvider.listPayments();
+          
+          // Converter para formato esperado - INCLUIR paymentHash
+          final paymentsWithDetails = payments.map((p) {
+            return {
+              'amount': int.tryParse(p['amount']?.toString() ?? '0') ?? 0,
+              'paymentHash': p['paymentHash'] as String?,
+            };
           }).toList();
-        
-        if (mounted) {
-          setState(() {
-            _orders = localOrders;
-            _isLoading = false;
-          });
+          
+          if (paymentsWithDetails.isNotEmpty) {
+            final reconciled = await orderProvider.reconcilePendingOrdersWithBreez(paymentsWithDetails);
+            if (reconciled > 0) {
+              debugPrint('✅ Auto-reconciliadas $reconciled ordens!');
+            }
+          }
+        } catch (e) {
+          debugPrint('⚠️ Erro ao auto-reconciliar: $e');
         }
-        debugPrint('📱 Modo teste: ${_orders.length} ordens carregadas');
-        return;
+      } else {
+        debugPrint('ℹ️ Nenhuma ordem pendente com paymentHash para reconciliar');
       }
       
-      // Produção: buscar do backend
-      final orders = await _orderService.getUserOrders(widget.userId);
+      debugPrint('📱 OrderProvider tem ${orderProvider.orders.length} ordens no total');
+      
+      // Mostrar TODAS as ordens (incluindo canceladas para permitir saque)
+      final localOrders = orderProvider.orders
+        .map((order) => {
+          'id': order.id,
+          'status': order.status,
+          'amount_brl': order.amount,
+          'amount_sats': (order.btcAmount * 100000000).toInt(),
+          'created_at': order.createdAt.toIso8601String(),
+          'expires_at': order.createdAt.add(const Duration(hours: 24)).toIso8601String(),
+          'payment_type': order.billType == 'electricity' || order.billType == 'water' || order.billType == 'internet' 
+            ? order.billType 
+            : 'pix',
+          'provider_id': order.providerId,
+        }).toList();
+      
       if (mounted) {
         setState(() {
-          _orders = orders;
+          _orders = localOrders;
           _isLoading = false;
         });
       }
+      debugPrint('📱 ${_orders.length} ordens carregadas');
     } catch (e) {
       debugPrint('❌ Erro ao carregar ordens: $e');
       if (mounted) {
@@ -93,6 +121,87 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  /// Alias para _loadOrdersWithAutoReconcile (mantém compatibilidade)
+  Future<void> _loadOrders() => _loadOrdersWithAutoReconcile();
+
+  /// Verificar se há pagamentos recebidos que não foram associados a ordens pendentes
+  Future<void> _checkPendingPayments() async {
+    if (!mounted) return;
+    
+    // Mostrar loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 20),
+            Text('Verificando pagamentos...'),
+          ],
+        ),
+      ),
+    );
+    
+    try {
+      final breezProvider = context.read<BreezProvider>();
+      final orderProvider = context.read<OrderProvider>();
+      
+      // Buscar pagamentos recentes do Breez
+      if (!breezProvider.isInitialized) {
+        Navigator.pop(context); // Fechar loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ Carteira não inicializada'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+      
+      // Obter lista de pagamentos do Breez - INCLUIR paymentHash
+      final payments = await breezProvider.listPayments();
+      
+      // Converter para formato esperado pelo reconcilePendingOrdersWithBreez
+      final paymentsWithDetails = payments.map((p) {
+        return {
+          'amount': int.tryParse(p['amount']?.toString() ?? '0') ?? 0,
+          'paymentHash': p['paymentHash'] as String?,
+        };
+      }).toList();
+      
+      // Reconciliar (agora usa apenas paymentHash para match)
+      final reconciled = await orderProvider.reconcilePendingOrdersWithBreez(paymentsWithDetails);
+      
+      Navigator.pop(context); // Fechar loading
+      
+      if (reconciled > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ $reconciled ordem(s) atualizada(s)!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        _loadOrders(); // Recarregar lista
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('ℹ️ Nenhuma ordem pendente com pagamento correspondente'),
+            backgroundColor: Colors.blue,
+          ),
+        );
+      }
+    } catch (e) {
+      Navigator.pop(context); // Fechar loading
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Erro: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -943,6 +1052,12 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
         title: const Text('Minhas Ordens'),
         backgroundColor: Colors.blue,
         actions: [
+          // Botão para verificar pagamentos pendentes
+          IconButton(
+            icon: const Icon(Icons.sync),
+            onPressed: _checkPendingPayments,
+            tooltip: 'Verificar pagamentos',
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadOrders,
@@ -1279,51 +1394,61 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
         return {
           'label': 'Aguardando Pagamento',
           'color': Colors.orange,
+          'icon': Icons.payment,
         };
       case 'payment_received':
         return {
-          'label': 'Pagamento Recebido',
+          'label': 'Pagamento Recebido ✓',
           'color': Colors.teal,
+          'icon': Icons.check,
         };
       case 'confirmed':
         return {
           'label': 'Aguardando Bro',
           'color': Colors.blue,
+          'icon': Icons.hourglass_empty,
         };
       case 'accepted':
         return {
-          'label': 'Bro Encontrado',
+          'label': 'Bro Aceitou',
           'color': Colors.amber,
+          'icon': Icons.check_circle_outline,
         };
       case 'awaiting_confirmation':
         return {
-          'label': 'Aguardando Confirmação',
+          'label': 'Verificar Comprovante',
           'color': Colors.purple,
+          'icon': Icons.receipt_long,
         };
       case 'payment_submitted':
         return {
           'label': 'Em Validação',
           'color': Colors.purple,
+          'icon': Icons.pending,
         };
       case 'completed':
         return {
-          'label': 'Concluído',
+          'label': 'Concluído ✓',
           'color': Colors.green,
+          'icon': Icons.celebration,
         };
       case 'cancelled':
         return {
           'label': 'Cancelado',
           'color': Colors.red,
+          'icon': Icons.cancel,
         };
       case 'disputed':
         return {
           'label': 'Em Disputa',
           'color': Colors.deepOrange,
+          'icon': Icons.gavel,
         };
       default:
         return {
           'label': status.toUpperCase(),
           'color': Colors.grey,
+          'icon': Icons.help_outline,
         };
     }
   }

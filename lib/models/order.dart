@@ -16,6 +16,8 @@ class Order {
   final DateTime? acceptedAt;
   final DateTime? completedAt;
   final Map<String, dynamic>? metadata;
+  final String? paymentHash; // Hash da invoice Lightning para verificação de pagamento
+  final String? invoice; // Invoice BOLT11 gerada para esta ordem
 
   Order({
     required this.id,
@@ -35,6 +37,8 @@ class Order {
     this.acceptedAt,
     this.completedAt,
     this.metadata,
+    this.paymentHash,
+    this.invoice,
   });
 
   factory Order.fromJson(Map<String, dynamic> json) {
@@ -62,6 +66,8 @@ class Order {
           ? DateTime.parse(json['completedAt']) 
           : null,
       metadata: json['metadata'],
+      paymentHash: json['paymentHash'],
+      invoice: json['invoice'],
     );
   }
 
@@ -84,6 +90,8 @@ class Order {
       if (acceptedAt != null) 'acceptedAt': acceptedAt!.toIso8601String(),
       if (completedAt != null) 'completedAt': completedAt!.toIso8601String(),
       if (metadata != null) 'metadata': metadata,
+      if (paymentHash != null) 'paymentHash': paymentHash,
+      if (invoice != null) 'invoice': invoice,
     };
   }
 
@@ -105,6 +113,8 @@ class Order {
     DateTime? acceptedAt,
     DateTime? completedAt,
     Map<String, dynamic>? metadata,
+    String? paymentHash,
+    String? invoice,
   }) {
     return Order(
       id: id ?? this.id,
@@ -124,35 +134,94 @@ class Order {
       acceptedAt: acceptedAt ?? this.acceptedAt,
       completedAt: completedAt ?? this.completedAt,
       metadata: metadata ?? this.metadata,
+      paymentHash: paymentHash ?? this.paymentHash,
+      invoice: invoice ?? this.invoice,
     );
   }
 
+  // Status checks
   bool get isPending => status == 'pending';
   bool get isPaymentReceived => status == 'payment_received';
   bool get isConfirmed => status == 'confirmed';
   bool get isAccepted => status == 'accepted';
   bool get isProcessing => status == 'processing';
+  bool get isAwaitingConfirmation => status == 'awaiting_confirmation';
   bool get isCompleted => status == 'completed';
   bool get isCancelled => status == 'cancelled';
+  bool get isDisputed => status == 'disputed';
+
+  /// Retorna true se o pagamento Lightning foi realmente recebido e confirmado
+  /// Uma ordem só é considerada "paga" se tiver um paymentHash válido
+  bool get isPaymentVerified => paymentHash != null && paymentHash!.isNotEmpty;
+
+  /// Retorna true se o status indica que o pagamento Lightning foi recebido
+  /// Isso inclui payment_received, confirmed, accepted, awaiting_confirmation, completed
+  bool get hasPaymentBeenReceived {
+    return status == 'payment_received' || 
+           status == 'confirmed' || 
+           status == 'accepted' || 
+           status == 'awaiting_confirmation' || 
+           status == 'completed';
+  }
+
+  /// Retorna true se a ordem está em um estado ativo (não finalizado)
+  bool get isActive {
+    return status == 'pending' || 
+           status == 'payment_received' || 
+           status == 'confirmed' || 
+           status == 'accepted' ||
+           status == 'processing' ||
+           status == 'awaiting_confirmation';
+  }
 
   String get statusText {
     switch (status) {
       case 'pending':
-        return 'Pendente';
+        return 'Aguardando Pagamento';
       case 'payment_received':
-        return 'Pagamento Recebido';
+        return 'Pagamento Recebido ✓';
       case 'confirmed':
-        return 'Confirmado';
+        return 'Aguardando Bro';
       case 'accepted':
-        return 'Aceito';
+        return 'Bro Aceitou';
       case 'processing':
         return 'Processando';
+      case 'awaiting_confirmation':
+        return 'Verificar Comprovante';
       case 'completed':
-        return 'Concluído';
+        return 'Concluído ✓';
       case 'cancelled':
         return 'Cancelado';
+      case 'disputed':
+        return 'Em Disputa';
       default:
         return status;
+    }
+  }
+
+  /// Retorna uma descrição mais detalhada do status para exibição ao usuário
+  String get statusDescription {
+    switch (status) {
+      case 'pending':
+        return 'Pague com Bitcoin Lightning para prosseguir';
+      case 'payment_received':
+        return 'Seus sats foram recebidos! Aguardando um Bro aceitar';
+      case 'confirmed':
+        return 'Sua ordem está disponível para Bros';
+      case 'accepted':
+        return 'Um Bro aceitou e está processando seu pagamento';
+      case 'processing':
+        return 'O Bro está realizando o pagamento';
+      case 'awaiting_confirmation':
+        return 'Verifique o comprovante enviado pelo Bro';
+      case 'completed':
+        return 'Sua conta foi paga com sucesso!';
+      case 'cancelled':
+        return 'Ordem cancelada. Seus sats continuam na carteira';
+      case 'disputed':
+        return 'Disputa aberta. Aguardando mediação';
+      default:
+        return '';
     }
   }
 

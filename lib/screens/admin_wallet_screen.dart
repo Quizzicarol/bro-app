@@ -193,6 +193,11 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
                   // MNEMONIC (BACKUP)
                   _buildSectionTitle('🔑 Backup da Carteira'),
                   _buildMnemonicCard(),
+                  const SizedBox(height: 24),
+                  
+                  // SUPORTE - RESTAURAR SEED
+                  _buildSectionTitle('🛠️ Ferramentas de Suporte'),
+                  _buildSupportToolsCard(),
                   const SizedBox(height: 32),
                 ],
               ),
@@ -616,5 +621,220 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
         ],
       ),
     );
+  }
+  
+  Widget _buildSupportToolsCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.orange.shade900, Colors.red.shade900],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.orange.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.admin_panel_settings, color: Colors.orange, size: 24),
+              SizedBox(width: 8),
+              Text(
+                'Apenas para Suporte',
+                style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          
+          // Botão Restaurar Seed
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _showRestoreSeedDialog,
+              icon: const Icon(Icons.restore, color: Colors.white),
+              label: const Text('Restaurar Seed de Usuário', style: TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange.shade700,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          
+          // Botão Forçar Sync
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _forceSyncWallet,
+              icon: const Icon(Icons.sync, color: Colors.white),
+              label: const Text('Forçar Sync da Carteira', style: TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue.shade700,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          
+          // Info do owner
+          FutureBuilder<String?>(
+            future: StorageService().getMnemonicOwner(),
+            builder: (context, snapshot) {
+              final owner = snapshot.data;
+              return Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.black26,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.link, color: Colors.white54, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        owner != null 
+                          ? 'Seed vinculada: ${owner.substring(0, 16)}...'
+                          : 'Seed não vinculada a usuário',
+                        style: const TextStyle(color: Colors.white54, fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+  
+  void _showRestoreSeedDialog() {
+    final seedController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A2E),
+        title: const Row(
+          children: [
+            Icon(Icons.restore, color: Colors.orange, size: 28),
+            SizedBox(width: 10),
+            Expanded(child: Text('Restaurar Seed', style: TextStyle(color: Colors.white))),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'ATENÇÃO: Isso substituirá a carteira atual!\n\nDigite as 12 palavras:',
+                style: TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+              const SizedBox(height: 15),
+              TextField(
+                controller: seedController,
+                maxLines: 3,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'palavra1 palavra2 palavra3 ...',
+                  hintStyle: const TextStyle(color: Colors.white38),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  filled: true,
+                  fillColor: Colors.black26,
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final seed = seedController.text.trim();
+              final words = seed.split(RegExp(r'\s+'));
+              
+              if (words.length != 12) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('A seed deve ter 12 palavras'), backgroundColor: Colors.red),
+                );
+                return;
+              }
+              
+              Navigator.pop(context);
+              
+              // Mostrar loading
+              setState(() => _isLoading = true);
+              
+              try {
+                // USAR NOVA FUNÇÃO DE REINICIALIZAÇÃO FORÇADA!
+                final breezProvider = context.read<BreezProvider>();
+                final success = await breezProvider.reinitializeWithNewSeed(seed);
+                
+                if (success) {
+                  // Recarregar informações
+                  await _loadWalletInfo();
+                  
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('✅ Carteira restaurada com sucesso!'), backgroundColor: Colors.green),
+                    );
+                  }
+                } else {
+                  throw Exception('Falha ao reinicializar SDK');
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('❌ Erro: $e'), backgroundColor: Colors.red),
+                  );
+                }
+              } finally {
+                if (mounted) {
+                  setState(() => _isLoading = false);
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            child: const Text('Restaurar'),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Future<void> _forceSyncWallet() async {
+    setState(() => _isLoading = true);
+    
+    try {
+      final breezProvider = context.read<BreezProvider>();
+      
+      // Usar nova função de force sync
+      await breezProvider.forceSyncWallet();
+      
+      // Recarregar info
+      await _loadWalletInfo();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✅ Carteira sincronizada!'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ Erro: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 }

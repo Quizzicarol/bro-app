@@ -117,6 +117,109 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
     );
   }
 
+  void _showEditProfileDialog() {
+    final nameController = TextEditingController();
+    final aboutController = TextEditingController();
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Editar Perfil', style: TextStyle(color: Colors.white)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: 'Nome de exibição',
+                  labelStyle: const TextStyle(color: Colors.grey),
+                  hintText: 'Seu nome ou apelido',
+                  hintStyle: const TextStyle(color: Colors.grey),
+                  filled: true,
+                  fillColor: const Color(0xFF2A2A2A),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  prefixIcon: const Icon(Icons.person, color: Color(0xFFFF6B6B)),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: aboutController,
+                style: const TextStyle(color: Colors.white),
+                maxLines: 3,
+                decoration: InputDecoration(
+                  labelText: 'Sobre você',
+                  labelStyle: const TextStyle(color: Colors.grey),
+                  hintText: 'Uma breve descrição...',
+                  hintStyle: const TextStyle(color: Colors.grey),
+                  filled: true,
+                  fillColor: const Color(0xFF2A2A2A),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  prefixIcon: const Padding(
+                    padding: EdgeInsets.only(bottom: 48),
+                    child: Icon(Icons.info_outline, color: Color(0xFFFF6B6B)),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0x1AFF6B6B),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.info, color: Color(0xFFFF6B6B), size: 16),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'O perfil será publicado nos relays Nostr',
+                        style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              // TODO: Publicar perfil nos relays Nostr
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('⚠️ Publicação de perfil será implementada em breve'),
+                  backgroundColor: Color(0xFFFF6B6B),
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFF6B6B),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Salvar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -135,9 +238,7 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.edit_outlined, color: Color(0xFFFF6B6B)),
-            onPressed: () {
-              // TODO: Edit profile
-            },
+            onPressed: _showEditProfileDialog,
             tooltip: 'Editar Perfil',
           ),
         ],
@@ -421,12 +522,27 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
                 color: const Color(0x0DFFFFFF),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Text(
+              child: SelectableText(
                 _privateKey!,
                 style: const TextStyle(
                   color: Colors.orange,
                   fontSize: 11,
                   fontFamily: 'monospace',
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Botão de copiar chave privada
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _copyToClipboard(_privateKey!, 'Chave Privada'),
+                icon: const Icon(Icons.copy, size: 16),
+                label: const Text('Copiar Chave Privada'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.orange,
+                  side: const BorderSide(color: Colors.orange),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
                 ),
               ),
             ),

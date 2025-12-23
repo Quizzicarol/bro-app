@@ -16,6 +16,7 @@ class CollateralProvider with ChangeNotifier {
   String? _error;
   LocalCollateral? _localCollateral; // Sistema local de garantia
   int _walletBalanceSats = 0; // Saldo atual da carteira
+  int _committedSats = 0; // Sats comprometidos com ordens pendentes (modo cliente)
 
   Map<String, dynamic>? get collateral => _collateral;
   List<CollateralTier>? get availableTiers => _availableTiers;
@@ -25,12 +26,17 @@ class CollateralProvider with ChangeNotifier {
   bool get hasCollateral => _collateral != null || _localCollateral != null;
   LocalCollateral? get localCollateral => _localCollateral;
   int get walletBalanceSats => _walletBalanceSats;
+  
+  /// Saldo EFETIVAMENTE disponível para garantia = carteira - comprometido
+  int get effectiveBalanceSats => (_walletBalanceSats - _committedSats).clamp(0, _walletBalanceSats);
+  
   int get availableBalanceSats => _localCollateral != null 
-      ? _localCollateralService.getAvailableBalance(_localCollateral!, _walletBalanceSats)
-      : _walletBalanceSats;
+      ? _localCollateralService.getAvailableBalance(_localCollateral!, effectiveBalanceSats)
+      : effectiveBalanceSats;
 
   /// Inicializar: carrega preço do Bitcoin e garantia do provedor
-  Future<void> initialize(String providerId, {int? walletBalance}) async {
+  /// IMPORTANTE: committedSats deve conter os sats comprometidos com ordens pendentes do modo cliente
+  Future<void> initialize(String providerId, {int? walletBalance, int? committedSats}) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -53,6 +59,13 @@ class CollateralProvider with ChangeNotifier {
         _walletBalanceSats = walletBalance;
         debugPrint('💳 Saldo da carteira: $_walletBalanceSats sats');
       }
+      
+      // Registrar sats comprometidos com ordens pendentes
+      if (committedSats != null) {
+        _committedSats = committedSats;
+        debugPrint('🔒 Sats comprometidos (ordens pendentes): $_committedSats sats');
+        debugPrint('💰 Saldo efetivo para garantia: $effectiveBalanceSats sats');
+      }
 
       // SISTEMA LOCAL: Carregar garantia local (fundos ficam na carteira do provedor)
       _localCollateral = await _localCollateralService.getCollateral();
@@ -62,11 +75,12 @@ class CollateralProvider with ChangeNotifier {
         debugPrint('   Ordens ativas: ${_localCollateral!.activeOrders}');
         
         // Converter garantia local para formato legado (compatibilidade)
+        // IMPORTANTE: Usar effectiveBalanceSats ao invés de _walletBalanceSats
         _collateral = {
           'current_tier_id': _localCollateral!.tierId,
           'total_collateral': _localCollateral!.lockedSats,
           'locked_amount': _localCollateral!.lockedSats,
-          'available_amount': _localCollateralService.getAvailableBalance(_localCollateral!, _walletBalanceSats),
+          'available_amount': _localCollateralService.getAvailableBalance(_localCollateral!, effectiveBalanceSats),
         };
       } else {
         debugPrint('📭 Provedor não possui garantia configurada');
@@ -191,8 +205,10 @@ class CollateralProvider with ChangeNotifier {
   bool canAcceptOrder(double orderValueBrl) {
     // Se tem garantia local, usar sistema local
     if (_localCollateral != null) {
-      final canAccept = _localCollateralService.canAcceptOrder(_localCollateral!, orderValueBrl, _walletBalanceSats);
+      // IMPORTANTE: Usar effectiveBalanceSats (carteira - sats comprometidos com ordens cliente)
+      final canAccept = _localCollateralService.canAcceptOrder(_localCollateral!, orderValueBrl, effectiveBalanceSats);
       debugPrint('📊 canAcceptOrder (local): R\$ $orderValueBrl -> ${canAccept ? "✅" : "❌"}');
+      debugPrint('   Saldo efetivo: $effectiveBalanceSats sats (total: $_walletBalanceSats, comprometido: $_committedSats)');
       return canAccept;
     }
     

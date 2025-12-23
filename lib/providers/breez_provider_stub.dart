@@ -7,13 +7,19 @@ class BreezProvider with ChangeNotifier {
   String? get error => 'Lightning Network não disponível nesta plataforma';
   String? get mnemonic => null;
   dynamic get sdk => null;
+  bool get seedRecoveryNeeded => false;  // Para mostrar alerta de erro
   
   // Callback para notificar pagamentos recebidos
-  Function(String paymentId, int amountSats)? onPaymentReceived;
+  Function(String paymentId, int amountSats, String? paymentHash)? onPaymentReceived;
   String? get lastPaymentId => null;
   int? get lastPaymentAmount => null;
   
   void clearLastPayment() {}
+  
+  /// Reset para novo usuário (stub)
+  Future<void> resetForNewUser() async {
+    debugPrint('⚠️ resetForNewUser não disponível nesta plataforma');
+  }
 
   Future<bool> initialize({String? mnemonic}) async {
     debugPrint('⚠️ Breez SDK não disponível nesta plataforma');
@@ -81,6 +87,26 @@ class BreezProvider with ChangeNotifier {
   }
 
   Future<void> disconnect() async {}
+  
+  /// Force sync da carteira (stub)
+  Future<void> forceSyncWallet() async {
+    debugPrint('⚠️ forceSyncWallet não disponível nesta plataforma');
+  }
+  
+  /// Recuperar depósitos não reclamados (stub)
+  Future<Map<String, dynamic>> recoverUnclaimedDeposits() async {
+    return {'success': false, 'claimed': 0, 'error': 'Lightning não disponível nesta plataforma'};
+  }
+  
+  /// Diagnóstico completo (stub)
+  Future<Map<String, dynamic>> getFullDiagnostics() async {
+    return {
+      'isInitialized': false,
+      'sdkAvailable': false,
+      'isNewWallet': false,
+      'error': 'Lightning não disponível nesta plataforma',
+    };
+  }
   
   @override
   void dispose() {

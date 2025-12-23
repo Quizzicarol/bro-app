@@ -61,15 +61,22 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
   }
 
   Future<void> _deriveKeys() async {
+    debugPrint('🔑 [NIP06] _deriveKeys() chamado');
     final mnemonic = _mnemonicController.text.trim();
     final passphrase = _passphraseController.text;
     
+    debugPrint('🔑 [NIP06] Mnemonic: ${mnemonic.split(' ').length} palavras');
+    
     if (mnemonic.isEmpty) {
+      debugPrint('❌ [NIP06] Mnemonic vazio!');
       setState(() => _error = 'Digite ou gere uma seed');
       return;
     }
     
-    if (!_nip06.validateMnemonic(mnemonic)) {
+    final isValid = _nip06.validateMnemonic(mnemonic);
+    debugPrint('🔑 [NIP06] Mnemonic válido: $isValid');
+    
+    if (!isValid) {
       setState(() => _error = 'Seed inválida. Verifique as palavras.');
       return;
     }
@@ -80,7 +87,9 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
     });
     
     try {
+      debugPrint('🔑 [NIP06] Derivando chaves...');
       final keys = _nip06.deriveNostrKeys(mnemonic, passphrase: passphrase);
+      debugPrint('✅ [NIP06] Chaves derivadas! PubKey: ${keys['publicKey']?.substring(0, 16)}...');
       
       setState(() {
         _derivedPublicKey = keys['publicKey'];
@@ -88,6 +97,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
         _isLoading = false;
       });
     } catch (e) {
+      debugPrint('❌ [NIP06] Erro ao derivar: $e');
       setState(() {
         _error = 'Erro ao derivar chaves: $e';
         _isLoading = false;
@@ -194,25 +204,26 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
           child: Container(color: const Color(0x33FF6B35), height: 1),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Info card
-            _buildInfoCard(),
-            const SizedBox(height: 24),
-            
-            // Seed input
-            _buildSeedInput(),
-            const SizedBox(height: 16),
-            
-            // Passphrase (optional)
-            _buildPassphraseInput(),
-            const SizedBox(height: 24),
-            
-            // Buttons
-            _buildActionButtons(),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Info card
+              _buildInfoCard(),
+              const SizedBox(height: 24),
+              
+              // Seed input
+              _buildSeedInput(),
+              const SizedBox(height: 16),
+              
+              // Passphrase (optional)
+              _buildPassphraseInput(),
+              const SizedBox(height: 24),
+              
+              // Buttons
+              _buildActionButtons(),
             
             // Error message
             if (_error != null) ...[
@@ -244,8 +255,12 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
               const SizedBox(height: 24),
               _buildDerivedKeysSection(),
             ],
+            
+            // Extra padding at bottom for navigation buttons
+            const SizedBox(height: 48),
           ],
         ),
+      ),
       ),
     );
   }
@@ -536,40 +551,155 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
   }
 
   Widget _buildActionButtons() {
-    return Row(
+    return Column(
       children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: _generateNewMnemonic,
-            icon: const Icon(Icons.auto_awesome),
-            label: const Text('Gerar Nova'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFF9C27B0),
-              side: const BorderSide(color: Color(0xFF9C27B0)),
-              padding: const EdgeInsets.symmetric(vertical: 14),
+        // Primeira linha: Gerar Nova e Derivar Chaves
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _generateNewMnemonic,
+                icon: const Icon(Icons.auto_awesome),
+                label: const Text('Gerar Nova'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF9C27B0),
+                  side: const BorderSide(color: Color(0xFF9C27B0)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
             ),
-          ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: _isLoading ? null : _deriveKeys,
+                icon: _isLoading 
+                    ? const SizedBox(
+                        width: 16, height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.key),
+                label: const Text('Derivar Chaves'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFF6B6B),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 12),
-        Expanded(
+        const SizedBox(height: 16),
+        // Segunda linha: Botão de restaurar carteira Lightning (destacado)
+        SizedBox(
+          width: double.infinity,
           child: ElevatedButton.icon(
-            onPressed: _isLoading ? null : _deriveKeys,
+            onPressed: _isLoading ? null : _restoreWalletOnly,
             icon: _isLoading 
                 ? const SizedBox(
                     width: 16, height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                   )
-                : const Icon(Icons.key),
-            label: const Text('Derivar Chaves'),
+                : const Icon(Icons.account_balance_wallet),
+            label: const Text('💰 RESTAURAR CARTEIRA LIGHTNING'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFF6B6B),
+              backgroundColor: Colors.orange,
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 14),
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              textStyle: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
         ),
       ],
     );
+  }
+
+  Future<void> _restoreWalletOnly() async {
+    final mnemonic = _mnemonicController.text.trim();
+    
+    if (mnemonic.isEmpty) {
+      setState(() => _error = 'Digite a seed para restaurar');
+      return;
+    }
+    
+    if (!_nip06.validateMnemonic(mnemonic)) {
+      setState(() => _error = 'Seed inválida. Verifique as palavras.');
+      return;
+    }
+    
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.account_balance_wallet, color: Color(0xFFFF6B6B)),
+            SizedBox(width: 8),
+            Text('Restaurar Carteira', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+        content: const Text(
+          '⚠️ ATENÇÃO: Isso irá substituir a carteira Lightning atual pela nova seed.\n\n'
+          'O saldo da carteira antiga será PERDIDO se você não tiver backup.\n\n'
+          'Tem certeza que deseja continuar?',
+          style: TextStyle(color: Color(0xB3FFFFFF)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF6B6B)),
+            child: const Text('Restaurar', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirm != true) return;
+    
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    
+    try {
+      debugPrint('🔄 [NIP06] Restaurando carteira Lightning...');
+      
+      // Salvar seed no storage
+      await _storage.saveBreezMnemonic(mnemonic);
+      
+      // Reinicializar SDK com a seed
+      if (mounted) {
+        final breezProvider = context.read<BreezProvider>();
+        final success = await breezProvider.reinitializeWithNewSeed(mnemonic);
+        
+        if (success) {
+          debugPrint('✅ [NIP06] Carteira restaurada com sucesso!');
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('✅ Carteira Lightning restaurada com sucesso!'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } else {
+          throw Exception('Falha ao reinicializar SDK');
+        }
+      }
+      
+      setState(() => _isLoading = false);
+    } catch (e) {
+      debugPrint('❌ [NIP06] Erro ao restaurar: $e');
+      setState(() {
+        _error = 'Erro ao restaurar carteira: $e';
+        _isLoading = false;
+      });
+    }
   }
 
   Widget _buildDerivedKeysSection() {

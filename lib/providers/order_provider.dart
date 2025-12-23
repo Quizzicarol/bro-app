@@ -32,6 +32,29 @@ class OrderProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
+  /// Calcula o total de sats comprometidos com ordens pendentes/ativas (modo cliente)
+  /// Este valor deve ser SUBTRAÍDO do saldo total para calcular saldo disponível para garantia
+  int get committedSats {
+    // Somar btcAmount de todas as ordens pendentes e ativas (que ainda não foram completadas/canceladas)
+    // btcAmount está em BTC, precisa converter para sats (x 100_000_000)
+    final committedOrders = _orders.where((o) => 
+      o.status == 'pending' || 
+      o.status == 'payment_received' || 
+      o.status == 'confirmed' || 
+      o.status == 'accepted' ||
+      o.status == 'awaiting_confirmation' ||
+      o.status == 'processing'
+    );
+    
+    int total = 0;
+    for (final order in committedOrders) {
+      total += (order.btcAmount * 100000000).toInt();
+    }
+    
+    debugPrint('💰 Sats comprometidos com ordens: $total sats (${committedOrders.length} ordens)');
+    return total;
+  }
+
   // Chave única para salvar ordens deste usuário
   String get _ordersKey => '${_ordersKeyPrefix}${_currentUserPubkey ?? 'anonymous'}';
 
@@ -51,10 +74,17 @@ class OrderProvider with ChangeNotifier {
     _orders = [];
     _isInitialized = false;
     
-    // Carregar ordens locais primeiro
-    if (AppConfig.testMode) {
-      await _loadSavedOrders();
-    }
+    // SEMPRE carregar ordens locais primeiro (para preservar status atualizados)
+    // Antes estava só em testMode, mas isso perdia status como payment_received
+    await _loadSavedOrders();
+    debugPrint('📦 ${_orders.length} ordens locais carregadas (para preservar status)');
+    
+    // CORREÇÃO AUTOMÁTICA: Identificar ordens marcadas incorretamente como pagas
+    // Se temos múltiplas ordens "payment_received" com valores pequenos e criadas quase ao mesmo tempo,
+    // é provável que a reconciliação automática tenha marcado incorretamente.
+    // A ordem 4c805ae7 foi marcada incorretamente - ela foi criada DEPOIS da primeira ordem
+    // e nunca recebeu pagamento real.
+    await _fixIncorrectlyPaidOrders();
     
     // Depois sincronizar do Nostr (em background)
     if (_currentUserPubkey != null) {
@@ -72,11 +102,9 @@ class OrderProvider with ChangeNotifier {
     _orders = [];
     _isInitialized = false;
     
-    // Carregar ordens locais primeiro
-    if (AppConfig.testMode) {
-      await _loadSavedOrders();
-      debugPrint('📦 ${_orders.length} ordens locais carregadas');
-    }
+    // Carregar ordens locais primeiro (SEMPRE, para preservar status atualizados)
+    await _loadSavedOrders();
+    debugPrint('📦 ${_orders.length} ordens locais carregadas (para preservar status)');
     
     _isInitialized = true;
     notifyListeners();
@@ -181,10 +209,59 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
-  // Salvar ordens no SharedPreferences
-  Future<void> _saveOrders() async {
-    if (!AppConfig.testMode) return;
+  /// Corrigir ordens que foram marcadas incorretamente como "payment_received"
+  /// pela reconciliação automática antiga (baseada apenas em saldo).
+  /// 
+  /// Corrigir ordens marcadas incorretamente como "payment_received"
+  /// 
+  /// REGRA SIMPLES: Se a ordem tem status "payment_received" mas NÃO tem paymentHash,
+  /// é um falso positivo e deve voltar para "pending".
+  /// 
+  /// Ordens COM paymentHash foram verificadas pelo SDK Breez e são válidas.
+  Future<void> _fixIncorrectlyPaidOrders() async {
+    // Buscar ordens com payment_received
+    final paidOrders = _orders.where((o) => o.status == 'payment_received').toList();
     
+    if (paidOrders.isEmpty) {
+      return;
+    }
+    
+    debugPrint('🔧 Verificando ${paidOrders.length} ordens com payment_received...');
+    
+    bool needsCorrection = false;
+    
+    for (final order in paidOrders) {
+      // Se NÃO tem paymentHash, é falso positivo!
+      if (order.paymentHash == null || order.paymentHash!.isEmpty) {
+        debugPrint('🔧 FALSO POSITIVO: Ordem ${order.id.substring(0, 8)} sem paymentHash -> voltando para pending');
+        
+        final index = _orders.indexWhere((o) => o.id == order.id);
+        if (index != -1) {
+          _orders[index] = _orders[index].copyWith(status: 'pending');
+          needsCorrection = true;
+        }
+      } else {
+        debugPrint('✅ Ordem ${order.id.substring(0, 8)} tem paymentHash - status válido');
+      }
+    }
+    
+    if (needsCorrection) {
+      await _saveOrders();
+      debugPrint('✅ Status de ordens corrigido e salvo');
+      
+      // Republicar no Nostr com status correto
+      for (final order in _orders.where((o) => o.status == 'pending')) {
+        try {
+          await _publishOrderToNostr(order);
+        } catch (e) {
+          debugPrint('⚠️ Erro ao republicar ordem ${order.id.substring(0, 8)}: $e');
+        }
+      }
+    }
+  }
+
+  // Salvar ordens no SharedPreferences (SEMPRE salva, não só em testMode)
+  Future<void> _saveOrders() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final ordersJson = json.encode(_orders.map((o) => o.toJson()).toList());
@@ -200,6 +277,125 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
+  /// Corrigir status de uma ordem manualmente
+  /// Usado para corrigir ordens que foram marcadas incorretamente
+  Future<bool> fixOrderStatus(String orderId, String newStatus) async {
+    final index = _orders.indexWhere((o) => o.id == orderId);
+    if (index == -1) {
+      debugPrint('❌ Ordem não encontrada para corrigir: $orderId');
+      return false;
+    }
+    
+    final oldStatus = _orders[index].status;
+    _orders[index] = _orders[index].copyWith(status: newStatus);
+    debugPrint('🔧 Status da ordem ${orderId.substring(0, 8)} corrigido: $oldStatus -> $newStatus');
+    
+    await _saveOrders();
+    notifyListeners();
+    return true;
+  }
+
+  /// Cancelar uma ordem pendente
+  /// Apenas ordens com status 'pending' podem ser canceladas
+  Future<bool> cancelOrder(String orderId) async {
+    final index = _orders.indexWhere((o) => o.id == orderId);
+    if (index == -1) {
+      debugPrint('❌ Ordem não encontrada para cancelar: $orderId');
+      return false;
+    }
+    
+    final order = _orders[index];
+    if (order.status != 'pending') {
+      debugPrint('❌ Apenas ordens pendentes podem ser canceladas. Status atual: ${order.status}');
+      return false;
+    }
+    
+    _orders[index] = order.copyWith(status: 'cancelled');
+    debugPrint('🗑️ Ordem ${orderId.substring(0, 8)} cancelada');
+    
+    await _saveOrders();
+    
+    // Publicar cancelamento no Nostr
+    try {
+      final privateKey = _nostrService.privateKey;
+      if (privateKey != null) {
+        await _nostrOrderService.updateOrderStatus(
+          privateKey: privateKey,
+          orderId: orderId,
+          newStatus: 'cancelled',
+        );
+        debugPrint('✅ Cancelamento publicado no Nostr');
+      }
+    } catch (e) {
+      debugPrint('⚠️ Erro ao publicar cancelamento no Nostr: $e');
+    }
+    
+    notifyListeners();
+    return true;
+  }
+
+  /// Verificar se um pagamento específico corresponde a uma ordem pendente
+  /// Usa match por valor quando paymentHash não está disponível (ordens antigas)
+  /// IMPORTANTE: Este método deve ser chamado manualmente pelo usuário para evitar falsos positivos
+  Future<bool> verifyAndFixOrderPayment(String orderId, List<dynamic> breezPayments) async {
+    final index = _orders.indexWhere((o) => o.id == orderId);
+    if (index == -1) {
+      debugPrint('❌ Ordem não encontrada: $orderId');
+      return false;
+    }
+    
+    final order = _orders[index];
+    if (order.status != 'pending') {
+      debugPrint('ℹ️ Ordem ${orderId.substring(0, 8)} não está pendente: ${order.status}');
+      return false;
+    }
+    
+    final expectedSats = (order.btcAmount * 100000000).toInt();
+    debugPrint('🔍 Verificando ordem ${orderId.substring(0, 8)}: esperado=$expectedSats sats');
+    
+    // Primeiro tentar por paymentHash (mais seguro)
+    if (order.paymentHash != null && order.paymentHash!.isNotEmpty) {
+      for (var payment in breezPayments) {
+        final paymentHash = payment['paymentHash'] as String?;
+        if (paymentHash == order.paymentHash) {
+          debugPrint('✅ MATCH por paymentHash! Atualizando ordem...');
+          _orders[index] = order.copyWith(status: 'payment_received');
+          await _saveOrders();
+          notifyListeners();
+          return true;
+        }
+      }
+    }
+    
+    // Fallback: verificar por valor (menos seguro, mas útil para ordens antigas)
+    // Tolerar diferença de até 5 sats (taxas de rede podem variar ligeiramente)
+    for (var payment in breezPayments) {
+      final paymentAmount = (payment['amount'] is int) 
+          ? payment['amount'] as int 
+          : int.tryParse(payment['amount']?.toString() ?? '0') ?? 0;
+      
+      final diff = (paymentAmount - expectedSats).abs();
+      if (diff <= 5) {
+        debugPrint('✅ MATCH por valor! Pagamento de $paymentAmount sats corresponde a ordem de $expectedSats sats');
+        _orders[index] = order.copyWith(
+          status: 'payment_received',
+          metadata: {
+            ...?order.metadata,
+            'verifiedManually': true,
+            'verifiedAt': DateTime.now().toIso8601String(),
+            'paymentAmount': paymentAmount,
+          },
+        );
+        await _saveOrders();
+        notifyListeners();
+        return true;
+      }
+    }
+    
+    debugPrint('❌ Nenhum pagamento correspondente encontrado para ordem ${orderId.substring(0, 8)}');
+    return false;
+  }
+
   // Criar ordem
   Future<Order?> createOrder({
     required String billType,
@@ -208,65 +404,68 @@ class OrderProvider with ChangeNotifier {
     required double btcAmount,
     required double btcPrice,
   }) async {
+    // VALIDAÇÃO CRÍTICA: Nunca criar ordem com amount = 0
+    if (amount <= 0) {
+      debugPrint('❌ ERRO CRÍTICO: Tentativa de criar ordem com amount=$amount');
+      _error = 'Valor da ordem inválido';
+      notifyListeners();
+      return null;
+    }
+    
+    if (btcAmount <= 0) {
+      debugPrint('❌ ERRO CRÍTICO: Tentativa de criar ordem com btcAmount=$btcAmount');
+      _error = 'Valor em BTC inválido';
+      notifyListeners();
+      return null;
+    }
+    
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
-      // Test mode: criar ordem local e publicar no Nostr
-      if (AppConfig.testMode) {
-        debugPrint('🧪 TEST MODE: Criando ordem local');
-        
-        // Calcular taxas (5% provider + 2% platform)
-        final providerFee = amount * 0.05;
-        final platformFee = amount * 0.02;
-        final total = amount + providerFee + platformFee;
-        
-        final order = Order(
-          id: const Uuid().v4(),
-          userPubkey: _currentUserPubkey,
-          billType: billType,
-          billCode: billCode,
-          amount: amount,
-          btcAmount: btcAmount,
-          btcPrice: btcPrice,
-          providerFee: providerFee,
-          platformFee: platformFee,
-          total: total,
-          status: 'pending',
-          createdAt: DateTime.now(),
-        );
-        
-        _orders.insert(0, order);
-        _currentOrder = order;
-        await _saveOrders(); // Salvar após criar
-        notifyListeners();
-        
-        // Publicar no Nostr (em background)
-        _publishOrderToNostr(order);
-        
-        debugPrint('✅ Ordem local criada: ${order.id}');
-        return order;
-      }
+      // SEMPRE criar ordem local e publicar no Nostr
+      // O backend centralizado é opcional
+      debugPrint('📦 Criando ordem: amount=$amount, btcAmount=$btcAmount, btcPrice=$btcPrice');
       
-      // Produção: usar API
-      final response = await _apiService.createOrder(
+      // Calcular taxas (1% provider + 2% platform)
+      final providerFee = amount * 0.01;
+      final platformFee = amount * 0.02;
+      final total = amount + providerFee + platformFee;
+      
+      final order = Order(
+        id: const Uuid().v4(),
+        userPubkey: _currentUserPubkey,
         billType: billType,
         billCode: billCode,
         amount: amount,
         btcAmount: btcAmount,
         btcPrice: btcPrice,
+        providerFee: providerFee,
+        platformFee: platformFee,
+        total: total,
+        status: 'pending',
+        createdAt: DateTime.now(),
       );
-
-      if (response != null && response['success'] == true) {
-        final order = Order.fromJson(response['order']);
-        _orders.insert(0, order);
-        _currentOrder = order;
-        notifyListeners();
-        return order;
-      }
-
-      return null;
+      
+      // LOG DE VALIDAÇÃO
+      debugPrint('✅ Ordem criada com valores: amount=${order.amount}, btcAmount=${order.btcAmount}, total=${order.total}');
+      
+      _orders.insert(0, order);
+      _currentOrder = order;
+      
+      // Salvar localmente
+      final prefs = await SharedPreferences.getInstance();
+      final ordersJson = json.encode(_orders.map((o) => o.toJson()).toList());
+      await prefs.setString(_ordersKey, ordersJson);
+      
+      notifyListeners();
+      
+      // Publicar no Nostr (em background)
+      _publishOrderToNostr(order);
+      
+      debugPrint('✅ Ordem criada: ${order.id}');
+      return order;
     } catch (e) {
       _error = e.toString();
       debugPrint('❌ Erro ao criar ordem: $e');
@@ -279,34 +478,22 @@ class OrderProvider with ChangeNotifier {
 
   // Listar ordens
   Future<void> fetchOrders({String? status}) async {
-    // Em modo teste, sincronizar com Nostr ao invés do backend
-    if (AppConfig.testMode) {
-      debugPrint('📦 Modo teste: sincronizando ordens com Nostr...');
-      _isLoading = true;
-      notifyListeners();
-      
-      try {
-        await syncOrdersFromNostr();
-        debugPrint('✅ Sincronização com Nostr concluída');
-      } catch (e) {
-        debugPrint('❌ Erro ao sincronizar com Nostr: $e');
-      } finally {
-        _isLoading = false;
-        notifyListeners();
-      }
-      return;
-    }
-    
+    // SEMPRE sincronizar com Nostr (modo P2P)
+    debugPrint('📦 Sincronizando ordens com Nostr...');
     _isLoading = true;
-    _error = null;
     notifyListeners();
-
+    
     try {
-      final ordersData = await _apiService.listOrders(status: status);
-      _orders = ordersData.map((data) => Order.fromJson(data)).toList();
+      // Timeout de 10s para não travar a UI
+      await syncOrdersFromNostr().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          debugPrint('⏰ Timeout na sincronização Nostr, usando ordens locais');
+        },
+      );
+      debugPrint('✅ Sincronização com Nostr concluída (${_orders.length} ordens)');
     } catch (e) {
-      debugPrint('❌ Erro ao buscar ordens: $e');
-      _error = e.toString();
+      debugPrint('❌ Erro ao sincronizar com Nostr: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -394,42 +581,48 @@ class OrderProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      // Em modo teste, atualizar localmente
-      if (AppConfig.testMode) {
-        final index = _orders.indexWhere((o) => o.id == orderId);
-        if (index != -1) {
-          // Usar copyWith para manter dados existentes
-          _orders[index] = _orders[index].copyWith(
-            status: status,
-            providerId: providerId,
-            metadata: metadata,
-            acceptedAt: status == 'accepted' ? DateTime.now() : _orders[index].acceptedAt,
-            completedAt: status == 'completed' ? DateTime.now() : _orders[index].completedAt,
-          );
-          await _saveOrders();
-          debugPrint('💾 Ordem $orderId atualizada: status=$status, providerId=$providerId');
-        } else {
-          debugPrint('⚠️ Ordem $orderId não encontrada para atualizar');
-        }
+      // SEMPRE atualizar localmente (modo P2P via Nostr)
+      final index = _orders.indexWhere((o) => o.id == orderId);
+      if (index != -1) {
+        // Usar copyWith para manter dados existentes
+        _orders[index] = _orders[index].copyWith(
+          status: status,
+          providerId: providerId,
+          metadata: metadata,
+          acceptedAt: status == 'accepted' ? DateTime.now() : _orders[index].acceptedAt,
+          completedAt: status == 'completed' ? DateTime.now() : _orders[index].completedAt,
+        );
         
-        _isLoading = false;
-        notifyListeners();
-        return true;
+        // Salvar localmente
+        final prefs = await SharedPreferences.getInstance();
+        final ordersJson = json.encode(_orders.map((o) => o.toJson()).toList());
+        await prefs.setString(_ordersKey, ordersJson);
+        
+        debugPrint('💾 Ordem $orderId atualizada: status=$status, providerId=$providerId');
+        
+        // IMPORTANTE: Publicar atualização no Nostr para sincronização P2P
+        final privateKey = _nostrService.privateKey;
+        if (privateKey != null) {
+          debugPrint('📤 Publicando atualização de status no Nostr...');
+          final success = await _nostrOrderService.updateOrderStatus(
+            privateKey: privateKey,
+            orderId: orderId,
+            newStatus: status,
+            providerId: providerId,
+          );
+          if (success) {
+            debugPrint('✅ Status publicado no Nostr');
+          } else {
+            debugPrint('⚠️ Falha ao publicar status no Nostr (ordem salva localmente)');
+          }
+        }
+      } else {
+        debugPrint('⚠️ Ordem $orderId não encontrada para atualizar');
       }
       
-      // Produção: usar API
-      final success = await _apiService.updateOrderStatus(
-        orderId: orderId,
-        status: status,
-        providerId: providerId,
-        metadata: metadata,
-      );
-
-      if (success) {
-        await fetchOrder(orderId); // Atualizar ordem
-      }
-
-      return success;
+      _isLoading = false;
+      notifyListeners();
+      return true;
     } catch (e) {
       _error = e.toString();
       return false;
@@ -592,114 +785,182 @@ class OrderProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  /// Reconciliar pagamentos automaticamente
-  /// Quando um pagamento é recebido, atualiza a ordem pendente correspondente
+  /// Reconciliar ordens pendentes com pagamentos já recebidos no Breez
+  /// Esta função verifica os pagamentos recentes do Breez e atualiza ordens pendentes
+  /// que possam ter perdido a atualização de status (ex: app fechou antes do callback)
+  /// 
+  /// IMPORTANTE: Usa APENAS paymentHash para identificação PRECISA
+  /// O fallback por valor foi DESATIVADO porque causava falsos positivos
+  /// (mesmo pagamento usado para múltiplas ordens diferentes)
+  /// 
+  /// @param breezPayments Lista de pagamentos do Breez SDK (obtida via listPayments)
+  Future<int> reconcilePendingOrdersWithBreez(List<dynamic> breezPayments) async {
+    debugPrint('🔄 Reconciliando ordens pendentes com pagamentos do Breez...');
+    
+    // Buscar ordens pendentes
+    final pendingOrders = _orders.where((o) => o.status == 'pending').toList();
+    
+    if (pendingOrders.isEmpty) {
+      debugPrint('✅ Nenhuma ordem pendente para reconciliar');
+      return 0;
+    }
+    
+    debugPrint('📋 ${pendingOrders.length} ordens pendentes encontradas');
+    debugPrint('💰 ${breezPayments.length} pagamentos do Breez para verificar');
+    
+    int reconciled = 0;
+    
+    // Criar set de paymentHashes já usados (para evitar duplicação)
+    final Set<String> usedHashes = {};
+    
+    // Primeiro, coletar hashes já usados por ordens que já foram pagas
+    for (final order in _orders) {
+      if (order.status != 'pending' && order.paymentHash != null) {
+        usedHashes.add(order.paymentHash!);
+      }
+    }
+    
+    for (var order in pendingOrders) {
+      debugPrint('   🔍 Ordem ${order.id.substring(0, 8)}: paymentHash=${order.paymentHash ?? 'NULL'}');
+      
+      // ÚNICO MÉTODO: Match por paymentHash (MAIS SEGURO)
+      if (order.paymentHash != null && order.paymentHash!.isNotEmpty) {
+        // Verificar se este hash não foi usado por outra ordem
+        if (usedHashes.contains(order.paymentHash)) {
+          debugPrint('   ⚠️ Hash ${order.paymentHash!.substring(0, 16)}... já usado por outra ordem');
+          continue;
+        }
+        
+        for (var payment in breezPayments) {
+          final paymentHash = payment['paymentHash'] as String?;
+          if (paymentHash == order.paymentHash) {
+            final paymentAmount = (payment['amount'] is int) 
+                ? payment['amount'] as int 
+                : int.tryParse(payment['amount']?.toString() ?? '0') ?? 0;
+            
+            debugPrint('   ✅ MATCH EXATO por paymentHash!');
+            
+            // Marcar hash como usado
+            usedHashes.add(paymentHash!);
+            
+            await updateOrderStatus(
+              orderId: order.id,
+              status: 'payment_received',
+              metadata: {
+                'reconciledAt': DateTime.now().toIso8601String(),
+                'reconciledFrom': 'breez_payments_hash_match',
+                'paymentAmount': paymentAmount,
+                'paymentHash': paymentHash,
+              },
+            );
+            
+            // Republicar no Nostr
+            final updatedOrder = _orders.firstWhere((o) => o.id == order.id);
+            await _publishOrderToNostr(updatedOrder);
+            
+            reconciled++;
+            break;
+          }
+        }
+      } else {
+        // Ordem SEM paymentHash - NÃO fazer fallback por valor
+        // Isso evita falsos positivos onde múltiplas ordens são marcadas com o mesmo pagamento
+        debugPrint('   ⚠️ Ordem ${order.id.substring(0, 8)} sem paymentHash - ignorando');
+        debugPrint('      (ordens antigas sem paymentHash precisam ser canceladas manualmente)');
+      }
+    }
+    
+    debugPrint('📊 Total reconciliado: $reconciled ordens');
+    return reconciled;
+  }
+
+  /// Reconciliar ordens na inicialização - DESATIVADO
+  /// NOTA: Esta função foi desativada pois causava falsos positivos de "payment_received"
+  /// quando o usuário tinha saldo de outras transações na carteira.
+  /// A reconciliação correta deve ser feita APENAS via evento do SDK Breez (PaymentSucceeded)
+  /// que traz o paymentHash específico da invoice.
+  Future<void> reconcileOnStartup(int currentBalanceSats) async {
+    debugPrint('🔄 reconcileOnStartup DESATIVADO - reconciliação feita apenas via eventos do SDK');
+    // Não faz nada - reconciliação automática por saldo é muito propensa a erros
+    return;
+  }
+
+  /// Callback chamado quando o Breez SDK detecta um pagamento recebido
+  /// Este é o método SEGURO de atualização - baseado no evento real do SDK
+  /// IMPORTANTE: Usa APENAS paymentHash para identificação PRECISA
+  /// O fallback por valor foi DESATIVADO para evitar falsos positivos
   Future<void> onPaymentReceived({
     required String paymentId,
     required int amountSats,
+    String? paymentHash,
   }) async {
-    debugPrint('🔄 RECONCILIAÇÃO AUTOMÁTICA: Pagamento recebido!');
-    debugPrint('   PaymentId: $paymentId');
-    debugPrint('   Valor: $amountSats sats');
+    debugPrint('💰 OrderProvider.onPaymentReceived: $amountSats sats (hash: $paymentHash)');
     
-    // Buscar ordens pendentes que correspondem ao valor
+    // Buscar ordens pendentes
     final pendingOrders = _orders.where((o) => o.status == 'pending').toList();
     
     if (pendingOrders.isEmpty) {
-      debugPrint('⚠️ Nenhuma ordem pendente para reconciliar');
+      debugPrint('📭 Nenhuma ordem pendente para atualizar');
       return;
     }
     
-    debugPrint('📋 ${pendingOrders.length} ordens pendentes encontradas');
+    debugPrint('🔍 Verificando ${pendingOrders.length} ordens pendentes...');
     
-    // Encontrar a ordem mais recente que corresponde ao valor (com tolerância)
-    for (var order in pendingOrders) {
-      // Calcular sats esperado para esta ordem (usando btcAmount que já está em sats)
-      final expectedSats = (order.btcAmount * 100000000).toInt(); // btcAmount em BTC -> sats
-      final tolerance = (expectedSats * 0.05).toInt(); // 5% tolerância
-      
-      debugPrint('   Ordem ${order.id.substring(0, 8)}: espera ~$expectedSats sats (btcAmount=${order.btcAmount})');
-      
-      // Verificar se o valor corresponde (com tolerância)
-      if ((amountSats >= expectedSats - tolerance) && (amountSats <= expectedSats + tolerance)) {
-        debugPrint('✅ MATCH! Atualizando ordem ${order.id} para payment_received');
-        
-        await updateOrderStatus(
-          orderId: order.id,
-          status: 'payment_received',
-          metadata: {
-            'paymentId': paymentId,
-            'amountSats': amountSats,
-            'reconciledAt': DateTime.now().toIso8601String(),
-          },
-        );
-        return; // Reconciliou uma ordem, sair
+    // ÚNICO MÉTODO: Match EXATO por paymentHash (mais seguro)
+    if (paymentHash != null && paymentHash.isNotEmpty) {
+      for (final order in pendingOrders) {
+        if (order.paymentHash == paymentHash) {
+          debugPrint('   ✅ MATCH EXATO por paymentHash! Ordem ${order.id.substring(0, 8)}');
+          
+          await updateOrderStatus(
+            orderId: order.id,
+            status: 'payment_received',
+            metadata: {
+              'paymentId': paymentId,
+              'paymentHash': paymentHash,
+              'amountReceived': amountSats,
+              'receivedAt': DateTime.now().toIso8601String(),
+              'source': 'breez_sdk_event_hash_match',
+            },
+          );
+          
+          // Republicar no Nostr com novo status
+          final updatedOrder = _orders.firstWhere((o) => o.id == order.id);
+          await _publishOrderToNostr(updatedOrder);
+          
+          debugPrint('✅ Ordem ${order.id.substring(0, 8)} atualizada e republicada no Nostr!');
+          return;
+        }
       }
+      debugPrint('   ⚠️ PaymentHash $paymentHash não corresponde a nenhuma ordem pendente');
     }
     
-    // Se não encontrou correspondência exata, atualizar a ordem pendente mais recente
-    if (pendingOrders.isNotEmpty) {
-      final latestOrder = pendingOrders.first; // Já ordenado do mais recente para o mais antigo
-      debugPrint('⚠️ Nenhuma correspondência exata. Atualizando ordem mais recente: ${latestOrder.id}');
-      
-      await updateOrderStatus(
-        orderId: latestOrder.id,
-        status: 'payment_received',
-        metadata: {
-          'paymentId': paymentId,
-          'amountSats': amountSats,
-          'reconciledAt': DateTime.now().toIso8601String(),
-          'note': 'Reconciliação por proximidade temporal',
-        },
-      );
-    }
+    // NÃO fazer fallback por valor - isso causa falsos positivos
+    // Se o paymentHash não corresponder, o pagamento não é para nenhuma ordem nossa
+    debugPrint('❌ Pagamento de $amountSats sats (hash: $paymentHash) NÃO correspondeu a nenhuma ordem pendente');
+    debugPrint('   (Isso pode ser um depósito manual ou pagamento não relacionado a ordens)');
   }
 
-  /// Reconciliar ordens na inicialização (verificar se há saldo que deveria ter atualizado uma ordem)
-  Future<void> reconcileOnStartup(int currentBalanceSats) async {
-    debugPrint('🔄 Verificando ordens pendentes na inicialização...');
-    debugPrint('   Saldo atual: $currentBalanceSats sats');
-    
-    if (currentBalanceSats <= 0) {
-      debugPrint('   Saldo zero, nada para reconciliar');
+  /// Atualizar o paymentHash de uma ordem (chamado quando a invoice é gerada)
+  Future<void> setOrderPaymentHash(String orderId, String paymentHash, String invoice) async {
+    final index = _orders.indexWhere((o) => o.id == orderId);
+    if (index == -1) {
+      debugPrint('❌ Ordem $orderId não encontrada para definir paymentHash');
       return;
     }
     
-    final pendingOrders = _orders.where((o) => o.status == 'pending').toList();
+    _orders[index] = _orders[index].copyWith(
+      paymentHash: paymentHash,
+      invoice: invoice,
+    );
     
-    if (pendingOrders.isEmpty) {
-      debugPrint('   Nenhuma ordem pendente');
-      return;
-    }
+    await _saveOrders();
     
-    debugPrint('📋 ${pendingOrders.length} ordens pendentes encontradas');
+    // Republicar no Nostr com paymentHash
+    await _publishOrderToNostr(_orders[index]);
     
-    // Verificar cada ordem pendente
-    for (var order in pendingOrders) {
-      final expectedSats = (order.btcAmount * 100000000).toInt();
-      
-      debugPrint('   Ordem ${order.id.substring(0, 8)}: espera $expectedSats sats');
-      
-      // Se o saldo atual é >= ao esperado pela ordem, provavelmente o pagamento foi recebido
-      if (currentBalanceSats >= expectedSats) {
-        debugPrint('✅ Saldo suficiente! Reconciliando ordem ${order.id}');
-        
-        await updateOrderStatus(
-          orderId: order.id,
-          status: 'payment_received',
-          metadata: {
-            'reconciledOnStartup': true,
-            'reconciledAt': DateTime.now().toIso8601String(),
-            'balanceAtReconciliation': currentBalanceSats,
-          },
-        );
-        
-        // Subtrair o valor reconciliado para verificar outras ordens
-        currentBalanceSats -= expectedSats;
-        
-        if (currentBalanceSats <= 0) break;
-      }
-    }
+    debugPrint('✅ PaymentHash definido para ordem $orderId: $paymentHash');
+    notifyListeners();
   }
 
   // ==================== NOSTR INTEGRATION ====================
@@ -766,25 +1027,50 @@ class OrderProvider with ChangeNotifier {
     try {
       debugPrint('🔄 Sincronizando ordens do Nostr para pubkey: ${_currentUserPubkey!.substring(0, 16)}...');
       final nostrOrders = await _nostrOrderService.fetchUserOrders(_currentUserPubkey!);
-      debugPrint('📦 Recebidas ${nostrOrders.length} ordens do Nostr');
+      debugPrint('📦 Recebidas ${nostrOrders.length} ordens válidas do Nostr');
       
       // Mesclar ordens do Nostr com locais
       int added = 0;
       int updated = 0;
+      int skipped = 0;
       for (var nostrOrder in nostrOrders) {
+        // VALIDAÇÃO: Ignorar ordens com amount=0 vindas do Nostr
+        // (já são filtradas em eventToOrder, mas double-check aqui)
+        if (nostrOrder.amount <= 0) {
+          debugPrint('⚠️ IGNORANDO ordem ${nostrOrder.id.substring(0, 8)} com amount=0');
+          skipped++;
+          continue;
+        }
+        
         final existingIndex = _orders.indexWhere((o) => o.id == nostrOrder.id);
         if (existingIndex == -1) {
           // Ordem não existe localmente, adicionar
           _orders.add(nostrOrder);
           added++;
-          debugPrint('➕ Ordem ${nostrOrder.id.substring(0, 8)} recuperada do Nostr');
+          debugPrint('➕ Ordem ${nostrOrder.id.substring(0, 8)} recuperada do Nostr (R\$ ${nostrOrder.amount.toStringAsFixed(2)})');
         } else {
-          // Ordem já existe, verificar se Nostr tem status mais recente
+          // Ordem já existe, mesclar dados preservando os locais que não são 0
           final existing = _orders[existingIndex];
-          if (_isStatusMoreRecent(nostrOrder.status, existing.status)) {
-            _orders[existingIndex] = nostrOrder;
+          
+          // Se Nostr tem status mais recente, atualizar apenas o status
+          // MAS manter amount/btcAmount/billCode locais se Nostr tem 0
+          if (_isStatusMoreRecent(nostrOrder.status, existing.status) || 
+              existing.amount == 0 && nostrOrder.amount > 0) {
+            _orders[existingIndex] = existing.copyWith(
+              status: _isStatusMoreRecent(nostrOrder.status, existing.status) 
+                  ? nostrOrder.status 
+                  : existing.status,
+              // Preservar dados locais se Nostr tem 0
+              amount: nostrOrder.amount > 0 ? nostrOrder.amount : existing.amount,
+              btcAmount: nostrOrder.btcAmount > 0 ? nostrOrder.btcAmount : existing.btcAmount,
+              btcPrice: nostrOrder.btcPrice > 0 ? nostrOrder.btcPrice : existing.btcPrice,
+              total: nostrOrder.total > 0 ? nostrOrder.total : existing.total,
+              billCode: nostrOrder.billCode.isNotEmpty ? nostrOrder.billCode : existing.billCode,
+              providerId: nostrOrder.providerId ?? existing.providerId,
+              eventId: nostrOrder.eventId ?? existing.eventId,
+            );
             updated++;
-            debugPrint('🔄 Ordem ${nostrOrder.id.substring(0, 8)} atualizada do Nostr');
+            debugPrint('🔄 Ordem ${nostrOrder.id.substring(0, 8)} mesclada (preservando dados locais)');
           }
         }
       }
@@ -835,7 +1121,8 @@ class OrderProvider with ChangeNotifier {
       await _saveOrders();
       notifyListeners();
       
-      debugPrint('✅ Sincronização concluída: ${_orders.length} ordens totais (adicionadas: $added, atualizadas: $updated, status: $statusUpdated)');
+      debugPrint('✅ Sincronização concluída: ${_orders.length} ordens totais');
+      debugPrint('   Adicionadas: $added, Atualizadas: $updated, Status: $statusUpdated, Ignoradas(amount=0): $skipped');
     } catch (e) {
       debugPrint('❌ Erro ao sincronizar ordens do Nostr: $e');
     }

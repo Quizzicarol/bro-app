@@ -319,10 +319,48 @@ class ApiService {
     String currency = 'BRL',
   }) async {
     try {
-      return await post('/api/bitcoin/convert-price', {
+      // Sempre calcular localmente usando preço real do Bitcoin
+      final btcPrice = await getBitcoinPrice();
+      if (btcPrice == null || btcPrice <= 0) {
+        print('❌ Preço do Bitcoin inválido: $btcPrice');
+        return null;
+      }
+      
+      // Calcular conversão
+      // amount está em BRL, converter para BTC e sats
+      final btcAmount = amount / btcPrice;
+      final satsAmount = (btcAmount * 100000000).round();
+      
+      // Taxas (ajustáveis)
+      const platformFeePercent = 0.02; // 2% taxa da plataforma
+      const providerFeePercent = 0.01; // 1% taxa do provedor
+      
+      final platformFeeBrl = amount * platformFeePercent;
+      final providerFeeBrl = amount * providerFeePercent;
+      final totalFeeBrl = platformFeeBrl + providerFeeBrl;
+      final totalWithFeesBrl = amount + totalFeeBrl;
+      
+      final totalSats = ((amount + totalFeeBrl) / btcPrice * 100000000).round();
+      final platformFeeSats = (platformFeeBrl / btcPrice * 100000000).round();
+      final providerFeeSats = (providerFeeBrl / btcPrice * 100000000).round();
+      
+      print('💱 Conversão local: R\$ $amount → $satsAmount sats @ R\$ ${btcPrice.toStringAsFixed(2)}/BTC');
+      
+      return {
+        'success': true,
         'amount': amount,
         'currency': currency,
-      });
+        'bitcoinPrice': btcPrice,
+        'btcAmount': btcAmount,
+        'sats': satsAmount.toString(),
+        'totalSats': totalSats,
+        'totalBrl': totalWithFeesBrl,
+        'platformFee': platformFeeBrl,
+        'platformFeeSats': platformFeeSats,
+        'providerFee': providerFeeBrl,
+        'providerFeeSats': providerFeeSats,
+        'totalFee': totalFeeBrl,
+      };
     } catch (e) {
       print('❌ Erro ao converter preço: $e');
       return null;

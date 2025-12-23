@@ -109,6 +109,7 @@ class NostrOrderService {
   }
 
   /// Atualiza status de uma ordem nos relays
+  /// NOTA: Usa kind 30080 (não 30078) para NÃO substituir o evento original!
   Future<bool> updateOrderStatus({
     required String privateKey,
     required String orderId,
@@ -129,17 +130,21 @@ class NostrOrderService {
       });
 
       final tags = [
-        ['d', orderId],
+        ['d', '${orderId}_update'], // Tag diferente para não substituir o original
+        ['e', orderId], // Referência ao orderId
         ['t', broTag],
+        ['t', 'bro-update'],
         ['status', newStatus],
+        ['orderId', orderId],
       ];
       
       if (providerId != null) {
         tags.add(['p', providerId]); // Tag do provedor
       }
 
+      // IMPORTANTE: Usa kindBroPaymentProof (30080) para não substituir o evento original!
       final event = Event.from(
-        kind: kindBroOrder,
+        kind: kindBroPaymentProof,
         tags: tags,
         content: content,
         privkey: keychain.private,
@@ -330,17 +335,54 @@ class NostrOrderService {
   }
 
   /// Converte evento Nostr para Order model
+  /// RETORNA NULL se ordem inválida (amount=0 e não é evento de update)
   Order? eventToOrder(Map<String, dynamic> event) {
     try {
-      final content = event['parsedContent'] ?? jsonDecode(event['content']);
+      final rawContent = event['content'];
+      debugPrint('📋 RAW CONTENT: $rawContent');
+      
+      final content = event['parsedContent'] ?? jsonDecode(rawContent ?? '{}');
+      
+      // Verificar se é um evento de update (não tem dados completos)
+      final eventType = content['type'] as String?;
+      if (eventType == 'bro_order_update') {
+        debugPrint('⚠️ Evento é um UPDATE, não uma ordem completa - ignorando');
+        return null; // Updates são tratados separadamente
+      }
+      
+      // Log para debug
+      final amount = (content['amount'] as num?)?.toDouble() ?? 0;
+      final orderId = content['orderId'] ?? event['id'];
+      debugPrint('📋 eventToOrder: $orderId -> amount=$amount, btcAmount=${content['btcAmount']}');
+      
+      // Se amount é 0, tentar pegar das tags
+      double finalAmount = amount;
+      if (finalAmount == 0) {
+        final tags = event['tags'] as List<dynamic>?;
+        if (tags != null) {
+          for (final tag in tags) {
+            if (tag is List && tag.length >= 2 && tag[0] == 'amount') {
+              finalAmount = double.tryParse(tag[1].toString()) ?? 0;
+              debugPrint('📋 eventToOrder: amount from tags = $finalAmount');
+              break;
+            }
+          }
+        }
+      }
+      
+      // VALIDAÇÃO CRÍTICA: Não aceitar ordens com amount=0
+      if (finalAmount == 0) {
+        debugPrint('⚠️ REJEITANDO ordem ${orderId} com amount=0 (dados corrompidos)');
+        return null;
+      }
       
       return Order(
-        id: content['orderId'] ?? event['id'],
+        id: orderId,
         eventId: event['id'],
         userPubkey: event['pubkey'],
         billType: content['billType'] ?? 'pix',
         billCode: content['billCode'] ?? '', // Pode estar vazio por privacidade
-        amount: (content['amount'] as num?)?.toDouble() ?? 0,
+        amount: finalAmount,
         btcAmount: (content['btcAmount'] as num?)?.toDouble() ?? 0,
         btcPrice: (content['btcPrice'] as num?)?.toDouble() ?? 0,
         providerFee: (content['providerFee'] as num?)?.toDouble() ?? 0,

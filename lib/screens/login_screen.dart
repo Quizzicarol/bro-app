@@ -1,9 +1,11 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../services/nostr_service.dart';
 import '../services/nostr_profile_service.dart';
 import '../services/storage_service.dart';
+import '../services/nip06_service.dart';
 import '../providers/breez_provider_export.dart';
 import '../providers/order_provider.dart';
 import '../config.dart';
@@ -20,12 +22,20 @@ class _LoginScreenState extends State<LoginScreen> {
   final _nostrService = NostrService();
   final _profileService = NostrProfileService();
   final _storage = StorageService();
+  final _nip06Service = Nip06Service();
   final _privateKeyController = TextEditingController();
 
   bool _isLoading = false;
   bool _showPrivateKey = false;
   String? _error;
   String? _statusMessage;
+  
+  // Detectar tipo de input
+  bool _isSeedPhrase = false;
+  String? _detectedMnemonic;
+  
+  // Seed da carteira Bitcoin gerada junto com nova chave Nostr
+  String? _generatedWalletSeed;
 
   @override
   void dispose() {
@@ -33,19 +43,540 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  Future<void> _generateKeys() async {
-    final keys = _nostrService.generateKeys();
-    _privateKeyController.text = keys['privateKey']!;
+  /// Detectar se input é seed (12/24 palavras) ou chave privada hex
+  void _detectInputType(String input) {
+    final trimmed = input.trim().toLowerCase();
+    final words = trimmed.split(RegExp(r'\s+'));
+    
+    // Se tem 12 ou 24 palavras, provavelmente é seed
+    if ((words.length == 12 || words.length == 24) && _nip06Service.validateMnemonic(trimmed)) {
+      setState(() {
+        _isSeedPhrase = true;
+        _detectedMnemonic = trimmed;
+      });
+      debugPrint('🌱 Detectado: Seed de ${words.length} palavras');
+    } else {
+      setState(() {
+        _isSeedPhrase = false;
+        _detectedMnemonic = null;
+      });
+    }
+  }
 
-    // Log de chave privada removido por segurança
-    debugPrint('Pubkey: ${keys['publicKey']!.substring(0, 16)}...');
+  /// Gerar nova chave privada Nostr (método principal)
+  /// Também gera uma seed BIP-39 para a carteira Bitcoin
+  Future<void> _generateNewPrivateKey() async {
+    // Opção 1: Gerar chave privada Nostr aleatória
+    final privateKey = _nostrService.generatePrivateKey();
+    
+    // Também gerar uma seed BIP-39 para a carteira Bitcoin
+    // Esta seed será salva quando o usuário fizer login
+    final walletSeed = _nip06Service.generateMnemonic();
+    
+    // Guardar a seed temporariamente para salvar após login
+    _generatedWalletSeed = walletSeed;
+    
+    _privateKeyController.text = privateKey;
+    
+    setState(() {
+      _isSeedPhrase = false;
+      _detectedMnemonic = null;
+    });
+
+    debugPrint('🔑 Nova chave privada gerada: ${privateKey.substring(0, 16)}...');
+    debugPrint('💰 Seed Bitcoin gerada para carteira');
+
+    if (mounted) {
+      // Mostrar diálogo com chave E seed
+      _showNewAccountDialog(privateKey, walletSeed);
+    }
+  }
+  
+  /// Diálogo mostrando chave Nostr e seed da carteira
+  void _showNewAccountDialog(String privateKey, String walletSeed) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.key, color: Color(0xFF3DE98C), size: 24),
+            SizedBox(width: 12),
+            Text('Nova Conta Criada!', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.withOpacity(0.3)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.warning, color: Colors.red, size: 20),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'GUARDE ESTAS INFORMAÇÕES!\nSem elas você PERDE acesso à conta e aos fundos.',
+                        style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              const Text('🔑 Chave Privada Nostr:', 
+                style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.black38,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: SelectableText(
+                  privateKey,
+                  style: const TextStyle(color: Color(0xFF3DE98C), fontSize: 11, fontFamily: 'monospace'),
+                ),
+              ),
+              
+              const SizedBox(height: 16),
+              const Text('💰 Seed da Carteira Bitcoin:', 
+                style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.black38,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: SelectableText(
+                  walletSeed,
+                  style: const TextStyle(color: Color(0xFFFFB74D), fontSize: 11),
+                ),
+              ),
+              
+              const SizedBox(height: 16),
+              const Text(
+                '💡 Dica: Use a chave Nostr para login e a seed da carteira para recuperar seus fundos Bitcoin se necessário.',
+                style: TextStyle(color: Colors.white54, fontSize: 11),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              // Copiar ambos para área de transferência
+              final text = 'CHAVE NOSTR:\n$privateKey\n\nSEED CARTEIRA:\n$walletSeed';
+              await Clipboard.setData(ClipboardData(text: text));
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('✅ Copiado para área de transferência!'),
+                    backgroundColor: Color(0xFF3DE98C),
+                  ),
+                );
+              }
+            },
+            child: const Text('📋 Copiar Tudo', style: TextStyle(color: Color(0xFFFF9800))),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF3DE98C)),
+            child: const Text('Entendi, Guardei!', style: TextStyle(color: Colors.black)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Dialog para login via NIP-06 (seed BIP-39)
+  Future<void> _showNip06LoginDialog() async {
+    final seedController = TextEditingController();
+    bool showSeed = false;
+    
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.spa, color: Color(0xFF3DE98C), size: 24),
+              SizedBox(width: 12),
+              Text('Login via Seed (NIP-06)', style: TextStyle(color: Colors.white, fontSize: 18)),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3DE98C).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFF3DE98C).withOpacity(0.3)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Color(0xFF3DE98C), size: 18),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'A seed BIP-39 deriva sua chave Nostr E sua carteira Lightning!',
+                          style: TextStyle(color: Color(0xFF3DE98C), fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: seedController,
+                  obscureText: !showSeed,
+                  maxLines: showSeed ? 3 : 1,
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  decoration: InputDecoration(
+                    labelText: 'Seed de 12 ou 24 palavras',
+                    labelStyle: const TextStyle(color: Color(0x99FFFFFF)),
+                    hintText: 'abandon ability able about...',
+                    hintStyle: const TextStyle(color: Color(0x66FFFFFF)),
+                    prefixIcon: const Icon(Icons.spa, color: Color(0xFF3DE98C)),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        showSeed ? Icons.visibility_off : Icons.visibility,
+                        color: const Color(0x99FFFFFF),
+                      ),
+                      onPressed: () => setDialogState(() => showSeed = !showSeed),
+                    ),
+                    filled: true,
+                    fillColor: const Color(0x0DFFFFFF),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0x33FFFFFF)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () {
+                        final newSeed = _nip06Service.generateMnemonic();
+                        seedController.text = newSeed;
+                        setDialogState(() => showSeed = true);
+                      },
+                      child: const Text('Gerar nova seed', style: TextStyle(color: Color(0xFF3DE98C))),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar', style: TextStyle(color: Color(0x99FFFFFF))),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final seed = seedController.text.trim().toLowerCase();
+                if (_nip06Service.validateMnemonic(seed)) {
+                  Navigator.pop(context);
+                  _privateKeyController.text = seed;
+                  _detectInputType(seed);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Seed inválida! Verifique as 12 ou 24 palavras.'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF3DE98C)),
+              child: const Text('Usar Seed', style: TextStyle(color: Colors.black)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _generateKeys() async {
+    // Gerar SEED (não apenas chave) - assim pode ser usada para Nostr E Bitcoin
+    final mnemonic = _nip06Service.generateMnemonic();
+    _privateKeyController.text = mnemonic;
+    
+    _detectInputType(mnemonic);
+
+    debugPrint('🌱 Nova seed gerada: ${mnemonic.split(' ').take(2).join(' ')}...');
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Chaves Nostr geradas! Guarde sua chave privada em local seguro.'),
+          content: Text('Seed gerada! Guarde estas 12 palavras em local MUITO seguro!'),
           backgroundColor: Color(0xFFFF6B6B),
-          duration: Duration(seconds: 3),
+          duration: Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
+  /// Login Avançado: permite inserir chave privada Nostr + Seed Bitcoin SEPARADAMENTE
+  /// Útil para usuários que:
+  /// 1. Já têm uma identidade Nostr criada SEM usar NIP-06
+  /// 2. Querem vincular uma carteira Bitcoin a essa identidade existente
+  Future<void> _showAdvancedLoginDialog() async {
+    final nostrKeyController = TextEditingController();
+    final seedController = TextEditingController();
+    String? dialogError;
+    bool dialogLoading = false;
+    
+    // Capturar referências ANTES de abrir o diálogo
+    final breezProv = !kIsWeb ? context.read<BreezProvider>() : null;
+
+    // Retorna true se login foi bem sucedido
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF1C1C1E),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.settings, color: Color(0xFFFF6B6B)),
+              SizedBox(width: 10),
+              Text(
+                'Login Avançado',
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Explicação
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0x1AFF6B6B),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0x33FF6B6B)),
+                  ),
+                  child: const Text(
+                    'Use este login se sua conta Nostr foi criada SEPARADAMENTE da sua carteira Bitcoin.\n\n'
+                    'Isso vinculará sua identidade Nostr à sua carteira Lightning permanentemente.',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Campo 1: Chave Nostr
+                const Text(
+                  '1. Chave Privada Nostr',
+                  style: TextStyle(color: Color(0xFF9C27B0), fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Sua chave privada (nsec ou hex)',
+                  style: TextStyle(color: Colors.white54, fontSize: 11),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: nostrKeyController,
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                  decoration: InputDecoration(
+                    hintText: 'nsec1... ou hex de 64 caracteres',
+                    hintStyle: const TextStyle(color: Colors.white24, fontSize: 12),
+                    filled: true,
+                    fillColor: const Color(0xFF2C2C2E),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  ),
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 16),
+
+                // Campo 2: Seed Bitcoin
+                const Text(
+                  '2. Seed da Carteira Bitcoin',
+                  style: TextStyle(color: Color(0xFF3DE98C), fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  '12 palavras da sua carteira Lightning',
+                  style: TextStyle(color: Colors.white54, fontSize: 11),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: seedController,
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                  decoration: InputDecoration(
+                    hintText: 'palavra1 palavra2 palavra3...',
+                    hintStyle: const TextStyle(color: Colors.white24, fontSize: 12),
+                    filled: true,
+                    fillColor: const Color(0xFF2C2C2E),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  ),
+                  maxLines: 3,
+                ),
+
+                // Erro
+                if (dialogError != null) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0x1AFF0000),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      dialogError!,
+                      style: const TextStyle(color: Colors.red, fontSize: 12),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: dialogLoading ? null : () => Navigator.pop(dialogContext),
+              child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
+            ),
+            ElevatedButton(
+              onPressed: dialogLoading ? null : () async {
+                final nostrKey = nostrKeyController.text.trim();
+                final seed = seedController.text.trim().toLowerCase();
+
+                // Validações
+                if (nostrKey.isEmpty) {
+                  setDialogState(() => dialogError = 'Digite sua chave privada Nostr');
+                  return;
+                }
+                if (seed.isEmpty) {
+                  setDialogState(() => dialogError = 'Digite a seed da carteira');
+                  return;
+                }
+                if (!_nostrService.isValidPrivateKey(nostrKey)) {
+                  setDialogState(() => dialogError = 'Chave Nostr inválida');
+                  return;
+                }
+                if (!_nip06Service.validateMnemonic(seed)) {
+                  setDialogState(() => dialogError = 'Seed inválida (use 12 ou 24 palavras BIP-39)');
+                  return;
+                }
+
+                setDialogState(() {
+                  dialogLoading = true;
+                  dialogError = null;
+                });
+
+                try {
+                  // Derivar chave pública Nostr
+                  final publicKey = _nostrService.getPublicKey(nostrKey);
+                  
+                  debugPrint('🔧 LOGIN AVANÇADO:');
+                  debugPrint('   Nostr Pubkey: ${publicKey.substring(0, 16)}...');
+                  debugPrint('   Seed (2 primeiras): ${seed.split(' ').take(2).join(' ')}...');
+
+                  // Salvar chaves Nostr
+                  await _storage.saveNostrKeys(
+                    privateKey: nostrKey,
+                    publicKey: publicKey,
+                  );
+                  _nostrService.setKeys(nostrKey, publicKey);
+
+                  // LOGIN AVANÇADO: FORÇA a troca de seed (o usuário escolheu explicitamente)
+                  await _storage.forceUpdateBreezMnemonic(seed, ownerPubkey: publicKey);
+                  debugPrint('💾 Seed FORÇADA para usuário: ${publicKey.substring(0, 16)}...');
+
+                  // Salvar URL do backend
+                  await _storage.saveBackendUrl(AppConfig.defaultBackendUrl);
+
+                  // Capturar referências ANTES de qualquer navegação
+                  final seedToUse = seed;
+
+                  // Resetar o Breez para usar a nova seed
+                  if (breezProv != null) {
+                    await breezProv.resetForNewUser();
+                  }
+
+                  debugPrint('✅ Login Avançado completo!');
+
+                  // Inicializar Breez em BACKGROUND (não bloqueia)
+                  if (breezProv != null) {
+                    Future.microtask(() async {
+                      try {
+                        await breezProv.initialize(mnemonic: seedToUse);
+                        debugPrint('✅ Breez inicializado com seed vinculada!');
+                      } catch (e) {
+                        debugPrint('⚠️ Erro inicializando Breez: $e');
+                      }
+                    });
+                  }
+
+                  // Retornar sucesso e fechar diálogo
+                  if (dialogContext.mounted) {
+                    Navigator.pop(dialogContext, true);
+                  }
+
+                } catch (e) {
+                  setDialogState(() {
+                    dialogLoading = false;
+                    dialogError = 'Erro: $e';
+                  });
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFF6B6B),
+              ),
+              child: dialogLoading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text('Vincular e Entrar', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    // Se login foi bem sucedido, mostrar sucesso e orientar
+    if (result == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ Seed vinculada! Agora faça login com sua chave Nostr acima.'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 4),
         ),
       );
     }
@@ -55,34 +586,91 @@ class _LoginScreenState extends State<LoginScreen> {
     final input = _privateKeyController.text.trim();
 
     if (input.isEmpty) {
-      setState(() => _error = 'Digite sua chave privada Nostr');
+      setState(() => _error = 'Digite sua chave privada Nostr (nsec ou hex)');
       return;
     }
 
     setState(() {
       _isLoading = true;
       _error = null;
-      _statusMessage = 'Validando chave...';
+      _statusMessage = 'Validando...';
     });
 
     try {
-      // Validar chave privada
-      if (!_nostrService.isValidPrivateKey(input)) {
-        throw Exception('Chave privada Nostr invalida');
+      String privateKey;
+      String publicKey;
+      String? mnemonic;
+      
+      // Detectar tipo de input
+      final words = input.toLowerCase().split(RegExp(r'\s+'));
+      final isSeed = (words.length == 12 || words.length == 24) && _nip06Service.validateMnemonic(input.toLowerCase());
+      
+      if (isSeed) {
+        // LOGIN VIA NIP-06 (SEED)
+        debugPrint('🌱 Login via NIP-06 (seed de ${words.length} palavras)');
+        debugPrint('🌱 Seed (primeiras 2 palavras): ${words[0]} ${words[1]}...');
+        setState(() => _statusMessage = 'Derivando chaves da seed...');
+        
+        mnemonic = input.toLowerCase();
+        final keys = _nip06Service.deriveNostrKeys(mnemonic);
+        privateKey = keys['privateKey']!;
+        publicKey = keys['publicKey']!;
+        
+        debugPrint('🔑 NIP-06 derivou:');
+        debugPrint('   Private Key: ${privateKey.substring(0, 16)}...');
+        debugPrint('   Public Key: ${publicKey.substring(0, 16)}...');
+        
+        // IMPORTANTE: NÃO salvar a seed aqui ainda!
+        // Primeiro salvamos as chaves Nostr, depois a seed COM o pubkey
+        // Isso garante que seed e identidade Nostr fiquem SEMPRE vinculadas!
+        
+      } else {
+        // LOGIN VIA CHAVE PRIVADA NOSTR (hex ou nsec)
+        debugPrint('🔐 Login via chave privada Nostr');
+        
+        if (!_nostrService.isValidPrivateKey(input)) {
+          throw Exception('Input inválido. Use:\n- Seed de 12 palavras (NIP-06)\n- Chave privada hex (64 chars)\n- nsec...');
+        }
+        
+        privateKey = input;
+        publicKey = _nostrService.getPublicKey(privateKey);
+        
+        // PRIMEIRO: Tentar recuperar seed EXISTENTE vinculada a este pubkey
+        final existingSeed = await _storage.getBreezMnemonic(forPubkey: publicKey);
+        if (existingSeed != null) {
+          mnemonic = existingSeed;
+          debugPrint('✅ Seed EXISTENTE encontrada para ${publicKey.substring(0, 16)}...');
+          debugPrint('   Seed: ${existingSeed.split(' ').take(2).join(' ')}... (${existingSeed.split(' ').length} palavras)');
+        } else if (_generatedWalletSeed != null) {
+          // Se geramos uma seed junto com a chave, usar ela
+          mnemonic = _generatedWalletSeed;
+          debugPrint('💰 Usando seed de carteira gerada junto com chave');
+        } else {
+          debugPrint('⚠️ Nenhuma seed existente para este pubkey - será criada nova pelo Breez');
+        }
+        // Caso contrário, seed será recuperada do storage ou gerada pelo BreezProvider
       }
 
-      final privateKey = input;
-      final publicKey = _nostrService.getPublicKey(privateKey);
+      debugPrint('✅ Login com Nostr. Pubkey: ${publicKey.substring(0, 16)}...');
 
-      debugPrint('Login com Nostr. Pubkey: ${publicKey.substring(0, 16)}...');
-
-      // Salvar chaves Nostr
+      // Salvar chaves Nostr PRIMEIRO
       await _storage.saveNostrKeys(
         privateKey: privateKey,
         publicKey: publicKey,
       );
 
       _nostrService.setKeys(privateKey, publicKey);
+      
+      // AGORA salvar a seed vinculada ao pubkey correto
+      // Isso garante que NIP-06 mantenha identidade Nostr + carteira Bitcoin vinculadas
+      if (mnemonic != null) {
+        await _storage.saveBreezMnemonic(mnemonic, ownerPubkey: publicKey);
+        debugPrint('💾 Seed salva VINCULADA ao usuário: ${publicKey.substring(0, 16)}...');
+      } else if (_generatedWalletSeed != null) {
+        await _storage.saveBreezMnemonic(_generatedWalletSeed!, ownerPubkey: publicKey);
+        debugPrint('💾 Seed gerada salva para usuário: ${publicKey.substring(0, 16)}...');
+        _generatedWalletSeed = null; // Limpar após salvar
+      }
 
       // Buscar perfil Nostr dos relays (com timeout)
       if (mounted) {
@@ -119,32 +707,51 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       } catch (e) {
         debugPrint('Erro ao buscar perfil (continuando login): $e');
-        // Nao bloquear login se perfil nao for encontrado
       }
 
       // Salvar URL do backend
       await _storage.saveBackendUrl(AppConfig.defaultBackendUrl);
 
-      // Inicializar Breez SDK (com timeout para não travar login)
+      // Inicializar Breez SDK
       if (!kIsWeb) {
         if (mounted) {
-          setState(() => _statusMessage = 'Inicializando carteira...');
+          setState(() => _statusMessage = 'Inicializando carteira Lightning...');
         }
         try {
           final breezProvider = context.read<BreezProvider>();
-          final success = await breezProvider.initialize()
-              .timeout(const Duration(seconds: 10), onTimeout: () {
-            debugPrint('⏰ Timeout na inicialização do Breez - continuando login');
-            return false;
-          });
-          if (!success && mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Carteira inicializará em background'),
-                backgroundColor: Colors.orange,
-                duration: Duration(seconds: 2),
-              ),
-            );
+          
+          // SEMPRE tentar inicializar COM a seed que temos
+          // Se mnemonic é null, o BreezProvider vai buscar a seed do storage
+          if (mnemonic != null) {
+            debugPrint('⚡ Inicializando Breez COM SEED EXISTENTE: ${mnemonic.split(' ').take(2).join(' ')}...');
+            final success = await breezProvider.initialize(mnemonic: mnemonic)
+                .timeout(const Duration(seconds: 15), onTimeout: () {
+              debugPrint('⏰ Timeout na inicialização do Breez');
+              return false;
+            });
+            
+            if (success) {
+              debugPrint('✅ Breez inicializado com seed existente!');
+            }
+          } else {
+            // ATENÇÃO: Não temos seed - o BreezProvider vai criar uma nova!
+            debugPrint('⚠️ SEM SEED RECUPERADA - Breez vai gerar nova!');
+            debugPrint('⚠️ Se você tinha saldo, use Login Avançado para vincular seed!');
+            final success = await breezProvider.initialize()
+                .timeout(const Duration(seconds: 15), onTimeout: () {
+              debugPrint('⏰ Timeout na inicialização do Breez');
+              return false;
+            });
+            
+            if (!success && mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Carteira inicializará em background'),
+                  backgroundColor: Colors.orange,
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            }
           }
         } catch (e) {
           debugPrint('❌ Erro no Breez (ignorando): $e');
@@ -213,7 +820,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 24),
 
-              // Card de Login
+              // Card de Login - CHAVE PRIVADA (PRINCIPAL)
               Container(
                 decoration: BoxDecoration(
                   color: const Color(0x0DFFFFFF),
@@ -227,40 +834,51 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Text(
-                      'Login via Nostr',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                      textAlign: TextAlign.center,
+                    const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.key, color: Color(0xFFFF6B6B), size: 24),
+                        SizedBox(width: 8),
+                        Text(
+                          'Login via Nostr',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'Use sua chave existente ou gere uma nova',
+                      'Entre com chave privada Nostr (nsec/hex) ou seed NIP-06',
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 11,
                         color: Color(0x99FFFFFF),
                       ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 24),
 
-                    // Campo de chave privada
+                    // Campo de chave privada (PRINCIPAL)
                     TextField(
                       controller: _privateKeyController,
                       obscureText: !_showPrivateKey,
-                      maxLines: 1,
+                      maxLines: _showPrivateKey && _isSeedPhrase ? 3 : 1,
                       style: const TextStyle(color: Colors.white),
+                      onChanged: _detectInputType,
                       decoration: InputDecoration(
-                        labelText: 'Chave Privada Nostr (nsec ou hex)',
-                        labelStyle: const TextStyle(color: Color(0xB3FFFFFF)),
-                        hintText: 'Cole sua chave aqui',
+                        labelText: _isSeedPhrase 
+                            ? '🌱 Seed NIP-06 detectada!' 
+                            : 'Chave Privada Nostr',
+                        labelStyle: TextStyle(
+                          color: _isSeedPhrase ? const Color(0xFF3DE98C) : const Color(0xB3FFFFFF),
+                        ),
+                        hintText: 'nsec1... ou chave hex de 64 caracteres',
                         hintStyle: const TextStyle(color: Color(0x66FFFFFF)),
-                        prefixIcon: const Icon(
-                          Icons.key,
-                          color: Color(0xFFFF6B6B),
+                        prefixIcon: Icon(
+                          _isSeedPhrase ? Icons.spa : Icons.vpn_key,
+                          color: _isSeedPhrase ? const Color(0xFF3DE98C) : const Color(0xFFFF6B6B),
                         ),
                         suffixIcon: IconButton(
                           icon: Icon(
@@ -289,26 +907,45 @@ class _LoginScreenState extends State<LoginScreen> {
                         fillColor: const Color(0x0DFFFFFF),
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 16),
 
-                    // Gerar nova chave
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton.icon(
-                        onPressed: _generateKeys,
-                        icon: const Icon(
-                          Icons.auto_awesome,
-                          size: 16,
-                          color: Color(0xFFFF6B6B),
-                        ),
-                        label: const Text(
-                          'Gerar nova chave',
-                          style: TextStyle(
+                    // Opções secundárias
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // Gerar nova chave
+                        TextButton.icon(
+                          onPressed: _generateNewPrivateKey,
+                          icon: const Icon(
+                            Icons.add_circle_outline,
+                            size: 16,
                             color: Color(0xFFFF6B6B),
-                            fontSize: 13,
+                          ),
+                          label: const Text(
+                            'Nova conta',
+                            style: TextStyle(
+                              color: Color(0xFFFF6B6B),
+                              fontSize: 13,
+                            ),
                           ),
                         ),
-                      ),
+                        // Login via NIP-06 (seed)
+                        TextButton.icon(
+                          onPressed: _showNip06LoginDialog,
+                          icon: const Icon(
+                            Icons.spa,
+                            size: 16,
+                            color: Color(0xFF3DE98C),
+                          ),
+                          label: const Text(
+                            'Usar seed (NIP-06)',
+                            style: TextStyle(
+                              color: Color(0xFF3DE98C),
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
 
                     // Erro
@@ -411,6 +1048,29 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                 ],
                               ),
+                      ),
+                    ),
+                    
+                    // Botão Login Avançado (para vincular Nostr + Seed separados)
+                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: _isLoading ? null : _showAdvancedLoginDialog,
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.settings, color: Colors.white54, size: 16),
+                          SizedBox(width: 6),
+                          Text(
+                            'Login Avançado (Nostr + Seed separados)',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],

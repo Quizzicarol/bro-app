@@ -52,63 +52,63 @@ class OrderService {
   /// Obter detalhes da ordem
   Future<Map<String, dynamic>?> getOrder(String orderId) async {
     try {
-      // Em modo teste, buscar do cache local
-      if (AppConfig.testMode) {
-        final prefs = await SharedPreferences.getInstance();
-        
-        // Buscar em todas as chaves de ordens (orders_*)
-        final allKeys = prefs.getKeys();
-        for (final key in allKeys) {
-          if (key.startsWith('orders_')) {
-            final ordersJson = prefs.getString(key);
-            if (ordersJson != null) {
-              final List<dynamic> ordersList = json.decode(ordersJson);
-              final order = ordersList.firstWhere(
-                (o) => o['id'] == orderId,
-                orElse: () => null,
-              );
-              
-              if (order != null) {
-                debugPrint('✅ Ordem encontrada no cache ($key): $orderId');
-                debugPrint('   Status: ${order['status']}, providerId: ${order['providerId']}');
-                return Map<String, dynamic>.from(order);
-              }
+      // SEMPRE buscar do cache local primeiro (mais rápido e offline-first)
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Buscar em todas as chaves de ordens (orders_*)
+      final allKeys = prefs.getKeys();
+      for (final key in allKeys) {
+        if (key.startsWith('orders_')) {
+          final ordersJson = prefs.getString(key);
+          if (ordersJson != null) {
+            final List<dynamic> ordersList = json.decode(ordersJson);
+            final order = ordersList.firstWhere(
+              (o) => o['id'] == orderId,
+              orElse: () => null,
+            );
+            
+            if (order != null) {
+              debugPrint('✅ Ordem encontrada no cache ($key): $orderId');
+              debugPrint('   Status: ${order['status']}, providerId: ${order['providerId']}');
+              return Map<String, dynamic>.from(order);
             }
           }
         }
-        
-        // Fallback: tentar chave antiga 'saved_orders'
-        final ordersJson = prefs.getString('saved_orders');
-        if (ordersJson != null) {
-          final List<dynamic> ordersList = json.decode(ordersJson);
-          final order = ordersList.firstWhere(
-            (o) => o['id'] == orderId,
-            orElse: () => null,
-          );
-          
-          if (order != null) {
-            debugPrint('✅ Ordem encontrada no cache (legacy): $orderId');
-            return Map<String, dynamic>.from(order);
-          }
-        }
-        
-        debugPrint('⚠️ Ordem não encontrada no cache: $orderId');
-        return null;
       }
       
-      // Modo produção: buscar da API
-      final response = await http.get(
-        Uri.parse('$baseUrl/orders/$orderId'),
-        headers: {'Content-Type': 'application/json'},
-      );
-
-      if (response.statusCode == 200) {
-        return json.decode(response.body);
-      } else if (response.statusCode == 404) {
-        return null;
+      // Fallback: tentar chave antiga 'saved_orders'
+      final ordersJson = prefs.getString('saved_orders');
+      if (ordersJson != null) {
+        final List<dynamic> ordersList = json.decode(ordersJson);
+        final order = ordersList.firstWhere(
+          (o) => o['id'] == orderId,
+          orElse: () => null,
+        );
+        
+        if (order != null) {
+          debugPrint('✅ Ordem encontrada no cache (legacy): $orderId');
+          return Map<String, dynamic>.from(order);
+        }
       }
+      
+      // Se não encontrou no cache e estamos em testMode com backend, tentar API
+      if (AppConfig.testMode) {
+        try {
+          final response = await http.get(
+            Uri.parse('$baseUrl/orders/$orderId'),
+            headers: {'Content-Type': 'application/json'},
+          ).timeout(const Duration(seconds: 3));
 
-      throw Exception('Failed to get order: ${response.statusCode}');
+          if (response.statusCode == 200) {
+            return json.decode(response.body);
+          }
+        } catch (e) {
+          debugPrint('⚠️ API indisponível, usando apenas cache: $e');
+        }
+      }
+      
+      debugPrint('⚠️ Ordem não encontrada no cache: $orderId');
+      return null;
     } catch (e) {
       debugPrint('❌ Erro ao buscar ordem: $e');
       rethrow;

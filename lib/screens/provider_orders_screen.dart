@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/collateral_provider.dart';
 import '../providers/order_provider.dart';
+import '../providers/breez_provider_export.dart';
 import '../services/escrow_service.dart';
 import '../services/nostr_service.dart';
 import '../services/secure_storage_service.dart';
@@ -90,10 +91,32 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> {
         debugPrint('   Tier: ${localCollateral.tierName} (${localCollateral.requiredSats} sats)');
       }
       
+      // IMPORTANTE: Buscar saldo atual da carteira para verificação de tier
+      int walletBalance = 0;
+      int committedSats = 0;
+      try {
+        final breezProvider = context.read<BreezProvider>();
+        final balanceInfo = await breezProvider.getBalance();
+        walletBalance = int.tryParse(balanceInfo['balance']?.toString() ?? '0') ?? 0;
+        debugPrint('💰 Saldo da carteira para verificação de tier: $walletBalance sats');
+        
+        // Pegar sats comprometidos com ordens pendentes (como cliente)
+        final orderProvider = context.read<OrderProvider>();
+        committedSats = orderProvider.committedSats;
+        debugPrint('🔒 Sats comprometidos: $committedSats sats');
+      } catch (e) {
+        debugPrint('⚠️ Erro ao buscar saldo da carteira: $e');
+      }
+      
       // Também atualizar o CollateralProvider para manter consistência
+      // IMPORTANTE: Passar saldo da carteira para verificação correta
       final collateralProvider = context.read<CollateralProvider>();
-      await collateralProvider.initialize(widget.providerId);
-      debugPrint('✅ CollateralProvider inicializado, hasCollateral: ${collateralProvider.hasCollateral}');
+      await collateralProvider.initialize(
+        widget.providerId,
+        walletBalance: walletBalance,
+        committedSats: committedSats,
+      );
+      debugPrint('✅ CollateralProvider inicializado com saldo=$walletBalance, hasCollateral: ${collateralProvider.hasCollateral}');
       
       List<Map<String, dynamic>> orders;
       
@@ -459,8 +482,19 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> {
     final timeAgo = _getTimeAgo(createdAt);
     final userName = order['user_name'] as String? ?? 'Usuário';
     
-    // Em modo teste, aceitar todas as ordens
-    final canAccept = AppConfig.providerTestMode ? true : collateralProvider.canAcceptOrder(amount);
+    // Verificar se pode aceitar e obter razão se não puder
+    bool canAccept;
+    String? rejectReason;
+    
+    if (AppConfig.providerTestMode) {
+      canAccept = true;
+      rejectReason = null;
+    } else {
+      final (canAcceptResult, reason) = collateralProvider.canAcceptOrderWithReason(amount);
+      canAccept = canAcceptResult;
+      rejectReason = reason;
+    }
+    
     final requiredTier = AppConfig.providerTestMode ? null : collateralProvider.getRequiredTier(amount);
 
     return Container(
@@ -588,7 +622,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Você precisa do tier ${requiredTier?.name ?? "superior"} para aceitar esta ordem',
+                            rejectReason ?? 'Você precisa do tier ${requiredTier?.name ?? "superior"} para aceitar esta ordem',
                             style: const TextStyle(color: Colors.red, fontSize: 11),
                           ),
                         ),

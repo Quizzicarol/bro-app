@@ -179,21 +179,29 @@ class LocalCollateralService {
   }
 
   /// Verificar se pode aceitar uma ordem de determinado valor
-  bool canAcceptOrder(LocalCollateral collateral, double orderValueBrl, int walletBalanceSats) {
+  /// Retorna (canAccept, reason) - reason explica porque não pode aceitar
+  (bool, String?) canAcceptOrderWithReason(LocalCollateral collateral, double orderValueBrl, int walletBalanceSats) {
     // Verificar se carteira tem saldo suficiente para a garantia
     if (walletBalanceSats < collateral.lockedSats) {
+      final deficit = collateral.lockedSats - walletBalanceSats;
       debugPrint('❌ canAcceptOrder: Saldo insuficiente ($walletBalanceSats < ${collateral.lockedSats})');
-      return false;
+      return (false, 'Saldo insuficiente: faltam $deficit sats para manter o tier ${collateral.tierName}');
     }
     
     // Verificar se valor da ordem está dentro do limite do tier
     if (orderValueBrl > collateral.maxOrderBrl) {
       debugPrint('❌ canAcceptOrder: Ordem R\$ $orderValueBrl > limite R\$ ${collateral.maxOrderBrl}');
-      return false;
+      return (false, 'Ordem acima do limite do tier (máx R\$ ${collateral.maxOrderBrl.toStringAsFixed(0)})');
     }
     
     debugPrint('✅ canAcceptOrder: OK');
-    return true;
+    return (true, null);
+  }
+
+  /// Verificar se pode aceitar uma ordem de determinado valor (mantido para compatibilidade)
+  bool canAcceptOrder(LocalCollateral collateral, double orderValueBrl, int walletBalanceSats) {
+    final (canAccept, _) = canAcceptOrderWithReason(collateral, orderValueBrl, walletBalanceSats);
+    return canAccept;
   }
 
   /// Travar garantia para uma ordem

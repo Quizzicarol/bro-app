@@ -254,12 +254,25 @@ class CollateralProvider with ChangeNotifier {
       final canAccept = _localCollateralService.canAcceptOrder(_localCollateral!, orderValueBrl, effectiveBalanceSats);
       debugPrint('📊 canAcceptOrder (local): R\$ $orderValueBrl -> ${canAccept ? "✅" : "❌"}');
       debugPrint('   Saldo efetivo: $effectiveBalanceSats sats (total: $_walletBalanceSats, comprometido: $_committedSats)');
+      debugPrint('   Tier ${_localCollateral!.tierName} requer: ${_localCollateral!.lockedSats} sats');
       return canAccept;
     }
     
     // Fallback: sem garantia
     debugPrint('❌ canAcceptOrder: Sem garantia configurada');
     return false;
+  }
+
+  /// Verificar se pode aceitar uma ordem e retornar razão se não puder
+  (bool, String?) canAcceptOrderWithReason(double orderValueBrl) {
+    if (_localCollateral != null) {
+      return _localCollateralService.canAcceptOrderWithReason(
+        _localCollateral!,
+        orderValueBrl,
+        effectiveBalanceSats,
+      );
+    }
+    return (false, 'Sem tier ativo. Configure um tier para aceitar ordens.');
   }
 
   /// Travar saldo para uma ordem específica

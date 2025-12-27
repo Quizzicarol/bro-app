@@ -103,6 +103,16 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
   }
 
   Widget _buildContent() {
+    // Debug: verificar se metadata está presente
+    debugPrint('📋 UserOrderDetailScreen: ordem ${_order!.id.substring(0, 8)}');
+    debugPrint('   status: ${_order!.status}');
+    debugPrint('   metadata: ${_order!.metadata}');
+    if (_order!.metadata != null) {
+      debugPrint('   metadata keys: ${_order!.metadata!.keys}');
+      debugPrint('   proofImage: ${_order!.metadata!['proofImage'] != null ? "existe (${(_order!.metadata!['proofImage'] as String).length} chars)" : "null"}');
+      debugPrint('   receipt_url: ${_order!.metadata!['receipt_url'] ?? "null"}');
+    }
+    
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -115,6 +125,8 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
           _buildDetailsCard(),
           const SizedBox(height: 16),
           if (_order!.metadata != null) _buildReceiptCard(),
+          // Padding extra para navegação
+          const SizedBox(height: 32),
         ],
       ),
     );

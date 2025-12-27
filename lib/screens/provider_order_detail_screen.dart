@@ -296,13 +296,15 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         backgroundColor: const Color(0xFF1E1E1E),
         title: const Text('Detalhes da Ordem'),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.orange))
-          : _error != null
-              ? _buildErrorView()
-              : _orderDetails == null
-                  ? const Center(child: Text('Ordem não encontrada', style: TextStyle(color: Colors.white70)))
-                  : _buildContent(),
+      body: SafeArea(
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator(color: Colors.orange))
+            : _error != null
+                ? _buildErrorView()
+                : _orderDetails == null
+                    ? const Center(child: Text('Ordem não encontrada', style: TextStyle(color: Colors.white70)))
+                    : _buildContent(),
+      ),
     );
   }
 
@@ -401,6 +403,9 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           if (_orderAccepted && _orderDetails!['status'] != 'awaiting_confirmation') ...[
             _buildReceiptSection(),
           ],
+          
+          // Padding extra para não ficar sob a barra de navegação
+          const SizedBox(height: 32),
         ],
       ),
     );

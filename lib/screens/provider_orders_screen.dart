@@ -8,6 +8,7 @@ import '../services/escrow_service.dart';
 import '../services/nostr_service.dart';
 import '../services/secure_storage_service.dart';
 import '../services/local_collateral_service.dart';
+import '../services/notification_service.dart';
 import '../config.dart';
 import 'provider_order_detail_screen.dart';
 
@@ -26,7 +27,9 @@ class ProviderOrdersScreen extends StatefulWidget {
 
 class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> {
   final EscrowService _escrowService = EscrowService();
+  final NotificationService _notificationService = NotificationService();
   List<Map<String, dynamic>> _availableOrders = [];
+  Set<String> _seenOrderIds = {}; // IDs de ordens já vistas (para não notificar repetidamente)
   bool _isLoading = false;
   bool _hasCollateral = false; // Verificação local de garantia
   String? _error;
@@ -147,12 +150,32 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> {
       );
       debugPrint('📦 ${orders.length} ordens disponíveis para provedor');
 
+      // Notificar sobre novas ordens
+      for (final order in orders) {
+        final orderId = order['id'] as String;
+        if (!_seenOrderIds.contains(orderId)) {
+          _seenOrderIds.add(orderId);
+          final amount = (order['amount'] as num).toDouble();
+          final paymentType = order['payment_type'] as String? ?? 'pix';
+          
+          // Notificar apenas se não é a primeira vez carregando
+          if (_lastOrderCount > 0) {
+            _notificationService.notifyNewOrderAvailable(
+              orderId: orderId,
+              amount: amount,
+              paymentType: paymentType,
+            );
+          }
+        }
+      }
+
       if (mounted) {
         debugPrint('🔵 Atualizando estado com ${orders.length} ordens');
         setState(() {
           _availableOrders = orders;
           _isLoading = false;
         });
+        _lastOrderCount = orders.length;
         debugPrint('✅ Estado atualizado com sucesso');
       }
     } catch (e) {

@@ -120,7 +120,68 @@ class NotificationService {
       payload: 'new_message:$senderName',
     );
   }
+  // ============================================
+  // NOTIFICAÇÕES PARA O MODO BRO (PROVEDOR)
+  // ============================================
 
+  /// Notifica que há uma nova ordem disponível para aceitar
+  Future<void> notifyNewOrderAvailable({
+    required String orderId,
+    required double amount,
+    required String paymentType,
+  }) async {
+    await _showNotification(
+      id: orderId.hashCode + 10,
+      title: '🆕 Nova Ordem Disponível!',
+      body: 'Ordem de R\$ ${amount.toStringAsFixed(2)} ($paymentType) aguardando. Toque para aceitar.',
+      payload: 'new_order:$orderId',
+      importance: Importance.high,
+    );
+  }
+
+  /// Notifica que o usuário confirmou o pagamento (ganho liberado)
+  Future<void> notifyUserConfirmedPayment({
+    required String orderId,
+    required double earnedSats,
+    required double amountBrl,
+  }) async {
+    await _showNotification(
+      id: orderId.hashCode + 11,
+      title: '🎉 Pagamento Confirmado!',
+      body: 'Você ganhou ${earnedSats.toStringAsFixed(0)} sats pela ordem de R\$ ${amountBrl.toStringAsFixed(2)}!',
+      payload: 'payment_confirmed:$orderId',
+      importance: Importance.high,
+    );
+  }
+
+  /// Notifica que uma ordem está prestes a expirar (para Bro completar)
+  Future<void> notifyOrderExpiringSoon({
+    required String orderId,
+    required int minutesRemaining,
+    required double amount,
+  }) async {
+    await _showNotification(
+      id: orderId.hashCode + 12,
+      title: '⚠️ Ordem Expirando!',
+      body: 'Você tem $minutesRemaining minutos para pagar a conta de R\$ ${amount.toStringAsFixed(2)}.',
+      payload: 'order_expiring:$orderId',
+      importance: Importance.max,
+    );
+  }
+
+  /// Notifica que o usuário abriu disputa
+  Future<void> notifyDisputeReceivedAsBro({
+    required String orderId,
+    required String reason,
+  }) async {
+    await _showNotification(
+      id: orderId.hashCode + 13,
+      title: '⚠️ Disputa Aberta!',
+      body: 'O usuário abriu disputa: $reason',
+      payload: 'dispute_as_bro:$orderId',
+      importance: Importance.max,
+    );
+  }
   /// Metodo generico para mostrar notificacao
   Future<void> _showNotification({
     required int id,

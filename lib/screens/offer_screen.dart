@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/bitcoin_price_service.dart';
 
 /// Tela para criar uma oferta de produto ou servico
 class OfferScreen extends StatefulWidget {
@@ -17,6 +18,27 @@ class _OfferScreenState extends State<OfferScreen> {
   String _selectedCategory = 'produto';
   bool _acceptsPhotos = true;
   bool _isPublishing = false;
+  double? _btcPriceBrl; // Preço atual do BTC em BRL
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBtcPrice();
+    _priceController.addListener(_onPriceChanged);
+  }
+
+  Future<void> _loadBtcPrice() async {
+    final price = await BitcoinPriceService.getBitcoinPriceWithCache();
+    if (mounted) {
+      setState(() {
+        _btcPriceBrl = price ?? 480558.0; // Fallback
+      });
+    }
+  }
+
+  void _onPriceChanged() {
+    setState(() {}); // Rebuild para atualizar o hint de preço
+  }
 
   final List<Map<String, dynamic>> _categories = [
     {'id': 'produto', 'name': 'Produto', 'icon': Icons.shopping_bag},
@@ -29,6 +51,7 @@ class _OfferScreenState extends State<OfferScreen> {
 
   @override
   void dispose() {
+    _priceController.removeListener(_onPriceChanged);
     _titleController.dispose();
     _descriptionController.dispose();
     _priceController.dispose();
@@ -341,25 +364,56 @@ class _OfferScreenState extends State<OfferScreen> {
     final sats = int.tryParse(priceText) ?? 0;
     final btc = sats / 100000000;
     
+    // Calcular valor em reais se tiver preço do BTC
+    String priceInBrl = '';
+    if (_btcPriceBrl != null && sats > 0) {
+      final brlValue = btc * _btcPriceBrl!;
+      priceInBrl = ' \u2248 R\$ ${brlValue.toStringAsFixed(2)}';
+    }
+    
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: const Color(0x0DFFFFFF),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.calculate, color: Color(0xFFFFD93D), size: 18),
-          const SizedBox(width: 8),
-          Text(
-            sats > 0
-                ? '${sats.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.')} sats = ${btc.toStringAsFixed(8)} BTC'
-                : 'Digite o valor para ver a conversao',
-            style: const TextStyle(
-              fontSize: 12,
-              color: Color(0x99FFFFFF),
-            ),
+          Row(
+            children: [
+              const Icon(Icons.calculate, color: Color(0xFFFFD93D), size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  sats > 0
+                      ? '${sats.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.')} sats = ${btc.toStringAsFixed(8)} BTC'
+                      : 'Digite o valor para ver a convers\u00e3o',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0x99FFFFFF),
+                  ),
+                ),
+              ),
+            ],
           ),
+          if (priceInBrl.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(Icons.attach_money, color: Colors.green, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  priceInBrl,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

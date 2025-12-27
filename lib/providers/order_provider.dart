@@ -665,11 +665,15 @@ class OrderProvider with ChangeNotifier {
       // SEMPRE atualizar localmente (modo P2P via Nostr)
       final index = _orders.indexWhere((o) => o.id == orderId);
       if (index != -1) {
+        // Preservar metadata existente se não for passado novo
+        final existingMetadata = _orders[index].metadata;
+        final newMetadata = metadata ?? existingMetadata;
+        
         // Usar copyWith para manter dados existentes
         _orders[index] = _orders[index].copyWith(
           status: status,
           providerId: providerId,
-          metadata: metadata,
+          metadata: newMetadata,
           acceptedAt: status == 'accepted' ? DateTime.now() : _orders[index].acceptedAt,
           completedAt: status == 'completed' ? DateTime.now() : _orders[index].completedAt,
         );

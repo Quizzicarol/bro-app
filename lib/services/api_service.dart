@@ -306,11 +306,11 @@ class ApiService {
         }
       }
       
-      print('⚠️ Usando preço fallback: R\$ 350.000,00');
-      return 350000.0; // Fallback
+      print('⚠️ Usando preço fallback: R\$ 480.558,00');
+      return 480558.0; // Fallback
     } catch (e) {
       print('❌ Erro ao buscar preço Bitcoin: $e');
-      return 350000.0; // Fallback
+      return 480558.0; // Fallback
     }
   }
 

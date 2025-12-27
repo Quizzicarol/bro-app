@@ -524,6 +524,23 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
+        const SizedBox(height: 12),
+        // Terceira linha: Marketplace
+        Row(
+          children: [
+            // Marketplace
+            Expanded(
+              child: _buildGridButton(
+                icon: Icons.storefront,
+                label: 'Marketplace',
+                gradient: const [Color(0xFF9C27B0), Color(0xFFBA68C8)],
+                onTap: () {
+                  Navigator.pushNamed(context, '/marketplace');
+                },
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }

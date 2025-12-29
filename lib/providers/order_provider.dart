@@ -463,8 +463,8 @@ class OrderProvider with ChangeNotifier {
       
       notifyListeners();
       
-      // Publicar no Nostr (em background)
-      _publishOrderToNostr(order);
+      // Publicar no Nostr (AGUARDAR para garantir que foi publicado!)
+      await _publishOrderToNostr(order);
       
       debugPrint('✅ Ordem criada: ${order.id}');
       return order;

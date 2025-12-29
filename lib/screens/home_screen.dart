@@ -424,23 +424,6 @@ class _HomeScreenState extends State<HomeScreen> {
           onPressed: _showUserSettings,
           tooltip: 'Configuracoes',
         ),
-        Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: TextButton.icon(
-            onPressed: _logout,
-            icon: const Icon(Icons.logout, color: Color(0xFFFF6B6B), size: 18),
-            label: const Text(
-              'Sair',
-              style: TextStyle(
-                color: Color(0xFFFF6B6B),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            ),
-          ),
-        ),
       ],
     );
   }

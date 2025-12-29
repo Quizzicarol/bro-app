@@ -1,12 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:nostr/nostr.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
 import '../services/nostr_service.dart';
 
-/// Tela de chat P2P via Nostr DM (NIP-04)
+/// Tela de chat P2P via Nostr DM
+/// Por enquanto usa mensagens simples - futuramente implementar NIP-04 completo
 class MarketplaceChatScreen extends StatefulWidget {
   final String recipientPubkey;
   final String recipientName;
@@ -28,19 +26,12 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
-  bool _isLoading = true;
+  bool _isLoading = false;
   bool _isSending = false;
-  
-  final List<String> _relays = [
-    'wss://relay.damus.io',
-    'wss://nos.lol',
-    'wss://relay.primal.net',
-  ];
 
   @override
   void initState() {
     super.initState();
-    _loadMessages();
     
     // Mostrar guia de boas práticas na primeira vez
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -165,127 +156,6 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
     );
   }
 
-  Future<void> _loadMessages() async {
-    setState(() => _isLoading = true);
-    
-    try {
-      final myPubkey = _nostrService.publicKey;
-      if (myPubkey == null) {
-        throw Exception('Não logado');
-      }
-      
-      // Buscar mensagens do Nostr (NIP-04 DMs)
-      final messages = await _fetchDMsFromNostr(myPubkey, widget.recipientPubkey);
-      
-      if (mounted) {
-        setState(() {
-          _messages.clear();
-          _messages.addAll(messages);
-          _isLoading = false;
-        });
-        _scrollToBottom();
-      }
-    } catch (e) {
-      debugPrint('Erro ao carregar mensagens: $e');
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  Future<List<ChatMessage>> _fetchDMsFromNostr(String myPubkey, String otherPubkey) async {
-    final messages = <ChatMessage>[];
-    
-    for (final relay in _relays.take(2)) {
-      try {
-        final channel = WebSocketChannel.connect(Uri.parse(relay));
-        final completer = Completer<List<Map<String, dynamic>>>();
-        final events = <Map<String, dynamic>>[];
-        
-        channel.stream.listen(
-          (data) {
-            final decoded = jsonDecode(data);
-            if (decoded[0] == 'EVENT') {
-              events.add(decoded[2]);
-            } else if (decoded[0] == 'EOSE') {
-              completer.complete(events);
-            }
-          },
-          onError: (e) => completer.completeError(e),
-        );
-        
-        // Buscar DMs enviadas por mim para o destinatário
-        final subId1 = 'dm_sent_${DateTime.now().millisecondsSinceEpoch}';
-        final req1 = Request(subId1, [
-          Filter(
-            kinds: [4], // NIP-04 DM
-            authors: [myPubkey],
-            p: [otherPubkey],
-            limit: 50,
-          ),
-        ]);
-        channel.sink.add(req1.serialize());
-        
-        // Buscar DMs recebidas do destinatário
-        final subId2 = 'dm_recv_${DateTime.now().millisecondsSinceEpoch}';
-        final req2 = Request(subId2, [
-          Filter(
-            kinds: [4],
-            authors: [otherPubkey],
-            p: [myPubkey],
-            limit: 50,
-          ),
-        ]);
-        channel.sink.add(req2.serialize());
-        
-        final result = await completer.future.timeout(const Duration(seconds: 5));
-        await channel.sink.close();
-        
-        // Processar eventos
-        for (final event in result) {
-          try {
-            final content = await _decryptDM(event['content'], event['pubkey']);
-            final isFromMe = event['pubkey'] == myPubkey;
-            
-            messages.add(ChatMessage(
-              id: event['id'],
-              content: content,
-              isFromMe: isFromMe,
-              timestamp: DateTime.fromMillisecondsSinceEpoch(
-                (event['created_at'] as int) * 1000,
-              ),
-            ));
-          } catch (e) {
-            debugPrint('Erro ao decriptar DM: $e');
-          }
-        }
-        
-        break; // Sucesso, não precisa tentar outro relay
-      } catch (e) {
-        debugPrint('Erro ao buscar DMs de $relay: $e');
-      }
-    }
-    
-    // Ordenar por timestamp
-    messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
-    return messages;
-  }
-
-  Future<String> _decryptDM(String encryptedContent, String senderPubkey) async {
-    try {
-      final privateKey = _nostrService.privateKey;
-      if (privateKey == null) return '[Mensagem encriptada]';
-      
-      // Usar NIP-04 decrypt
-      final keychain = Keychain(privateKey);
-      final decrypted = keychain.nip04Decrypt(senderPubkey, encryptedContent);
-      return decrypted;
-    } catch (e) {
-      debugPrint('Erro decrypt: $e');
-      return '[Erro ao decriptar]';
-    }
-  }
-
   Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty || _isSending) return;
@@ -293,60 +163,40 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
     setState(() => _isSending = true);
     
     try {
-      final privateKey = _nostrService.privateKey;
-      if (privateKey == null) throw Exception('Não logado');
+      // Adicionar mensagem localmente
+      setState(() {
+        _messages.add(ChatMessage(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          content: text,
+          isFromMe: true,
+          timestamp: DateTime.now(),
+        ));
+      });
       
-      final keychain = Keychain(privateKey);
+      _messageController.clear();
+      _scrollToBottom();
       
-      // Encriptar mensagem (NIP-04)
-      final encrypted = keychain.nip04Encrypt(widget.recipientPubkey, text);
+      // TODO: Implementar envio real via Nostr DM (NIP-04)
+      // Por enquanto só mostra a mensagem localmente
       
-      // Criar evento DM
-      final event = Event.from(
-        kind: 4, // NIP-04 DM
-        tags: [
-          ['p', widget.recipientPubkey],
-        ],
-        content: encrypted,
-        privkey: privateKey,
-      );
-      
-      // Publicar em relays
-      int successCount = 0;
-      for (final relay in _relays) {
-        try {
-          final channel = WebSocketChannel.connect(Uri.parse(relay));
-          channel.sink.add(event.serialize());
-          await Future.delayed(const Duration(milliseconds: 200));
-          await channel.sink.close();
-          successCount++;
-        } catch (e) {
-          debugPrint('Erro ao enviar para $relay: $e');
-        }
-      }
-      
-      if (successCount > 0) {
-        // Adicionar mensagem localmente
-        setState(() {
-          _messages.add(ChatMessage(
-            id: event.id,
-            content: text,
-            isFromMe: true,
-            timestamp: DateTime.now(),
-          ));
-        });
-        
-        _messageController.clear();
-        _scrollToBottom();
-      } else {
-        throw Exception('Falha ao enviar');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('💬 Mensagem salva localmente. DM Nostr em desenvolvimento.'),
+            backgroundColor: Colors.blue,
+          ),
+        );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),
+        );
+      }
     } finally {
-      setState(() => _isSending = false);
+      if (mounted) {
+        setState(() => _isSending = false);
+      }
     }
   }
 
@@ -360,6 +210,13 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
         );
       }
     });
+  }
+
+  void _copyPubkey() {
+    Clipboard.setData(ClipboardData(text: widget.recipientPubkey));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Pubkey copiada! Use um cliente Nostr para enviar DM.')),
+    );
   }
 
   @override
@@ -381,20 +238,57 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.copy),
+            onPressed: _copyPubkey,
+            tooltip: 'Copiar Pubkey',
+          ),
+          IconButton(
             icon: const Icon(Icons.security),
             onPressed: _showBestPracticesGuide,
             tooltip: 'Dicas de Segurança',
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadMessages,
-            tooltip: 'Atualizar',
           ),
         ],
       ),
       body: SafeArea(
         child: Column(
           children: [
+            // Info banner
+            Container(
+              margin: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, color: Colors.blue, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Chat em desenvolvimento',
+                          style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 12),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Por enquanto, copie a pubkey e use Damus, Amethyst ou Primal para DM.',
+                          style: TextStyle(color: Colors.blue.withOpacity(0.8), fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _copyPubkey,
+                    child: const Text('Copiar', style: TextStyle(fontSize: 12)),
+                  ),
+                ],
+              ),
+            ),
+            
             // Lista de mensagens
             Expanded(
               child: _isLoading
@@ -477,12 +371,12 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
             const Icon(Icons.chat_bubble_outline, size: 64, color: Colors.white24),
             const SizedBox(height: 16),
             const Text(
-              'Nenhuma mensagem ainda',
+              'Iniciar conversa',
               style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
-              'Envie uma mensagem para ${widget.recipientName}',
+              'Entre em contato com ${widget.recipientName}',
               style: const TextStyle(color: Colors.white54),
               textAlign: TextAlign.center,
             ),
@@ -495,12 +389,19 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  '💡 Dica: Mencione a oferta "${widget.offerTitle}" na sua mensagem.',
+                  '💡 Sobre: "${widget.offerTitle}"',
                   style: const TextStyle(color: Colors.orange, fontSize: 12),
                   textAlign: TextAlign.center,
                 ),
               ),
             ],
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: _copyPubkey,
+              icon: const Icon(Icons.copy),
+              label: const Text('Copiar Pubkey para DM'),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+            ),
           ],
         ),
       ),
@@ -528,8 +429,8 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
           children: [
             Text(
               message.content,
-              style: TextStyle(
-                color: message.isFromMe ? Colors.white : Colors.white,
+              style: const TextStyle(
+                color: Colors.white,
                 fontSize: 15,
               ),
             ),

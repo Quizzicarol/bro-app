@@ -76,16 +76,23 @@ class ChatService {
     _privateKey = privateKey;
     _publicKey = publicKey;
     
+    debugPrint('💬 ChatService: Inicializando com pubkey ${publicKey.substring(0, 8)}...');
+    
     // Carregar mensagens do cache local
     await _loadCachedMessages();
+    debugPrint('💬 ChatService: ${_messageCache.length} conversas no cache local');
     
     // Conectar aos relays
+    int connectedCount = 0;
     for (final relay in chatRelays) {
-      await _connectToRelay(relay);
+      final connected = await _connectToRelay(relay);
+      if (connected) connectedCount++;
     }
+    debugPrint('💬 ChatService: Conectado a $connectedCount/${chatRelays.length} relays');
     
     // Começar a escutar DMs
     _subscribeToDirectMessages();
+    debugPrint('💬 ChatService: Inscrito para receber DMs');
   }
 
   /// Conectar a um relay
@@ -184,6 +191,8 @@ class ChatService {
       final createdAt = eventData['created_at'] as int;
       final tags = eventData['tags'] as List<dynamic>;
       
+      debugPrint('💬 Chat: Recebido evento DM de ${pubkey.substring(0, 8)}...');
+      
       // Extrair destinatário da tag 'p'
       String? recipientPubkey;
       for (final tag in tags) {
@@ -193,11 +202,16 @@ class ChatService {
         }
       }
       
-      if (recipientPubkey == null) return;
+      if (recipientPubkey == null) {
+        debugPrint('⚠️ Chat: Evento sem tag p (destinatário)');
+        return;
+      }
       
       // Determinar se sou o remetente ou destinatário
       final isFromMe = pubkey == _publicKey;
       final otherPubkey = isFromMe ? recipientPubkey : pubkey;
+      
+      debugPrint('💬 Chat: isFromMe=$isFromMe, otherPubkey=${otherPubkey.substring(0, 8)}...');
       
       // Descriptografar mensagem
       String decryptedContent;
@@ -207,6 +221,7 @@ class ChatService {
           _privateKey!,
           otherPubkey,
         );
+        debugPrint('✅ Chat: Mensagem descriptografada com sucesso');
       } catch (e) {
         debugPrint('⚠️ Chat: Não foi possível descriptografar: $e');
         decryptedContent = '[Mensagem criptografada]';
@@ -327,6 +342,32 @@ class ChatService {
   /// Obter histórico de mensagens com um pubkey
   List<ChatMessage> getMessages(String otherPubkey) {
     return _messageCache[otherPubkey] ?? [];
+  }
+
+  /// Forçar re-fetch de todas as mensagens dos relays
+  Future<void> refreshAllMessages() async {
+    if (_publicKey == null) return;
+    
+    debugPrint('🔄 Chat: Forçando refresh de todas as mensagens...');
+    
+    // Re-inscrever para DMs
+    _subscribeToDirectMessages();
+    
+    // Buscar mensagens de cada conversa conhecida
+    for (final pubkey in _messageCache.keys.toList()) {
+      await fetchMessagesFrom(pubkey);
+    }
+    
+    debugPrint('🔄 Chat: Refresh solicitado para ${_messageCache.length} conversas');
+  }
+
+  /// Obter número total de mensagens no cache
+  int get totalCachedMessages {
+    int total = 0;
+    for (final messages in _messageCache.values) {
+      total += messages.length;
+    }
+    return total;
   }
 
   /// Obter lista de conversas

@@ -57,6 +57,8 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
         return;
       }
       
+      debugPrint('💬 Conversas: Inicializando chat com pubkey ${publicKey.substring(0, 8)}...');
+      
       // Inicializar chat service
       await _chatService.initialize(privateKey, publicKey);
       
@@ -64,8 +66,9 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
         _isInitialized = true;
       });
       
-      // Aguardar um pouco para receber mensagens dos relays
-      await Future.delayed(const Duration(seconds: 2));
+      // Aguardar mais tempo para receber mensagens dos relays (aumentado de 2 para 4 segundos)
+      debugPrint('💬 Conversas: Aguardando mensagens dos relays...');
+      await Future.delayed(const Duration(seconds: 4));
       
       // Carregar conversas
       await _loadConversations();
@@ -81,12 +84,23 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
 
   Future<void> _loadConversations() async {
     try {
+      // Forçar refresh das mensagens dos relays
+      await _chatService.refreshAllMessages();
+      
+      // Aguardar mais um pouco para receber respostas
+      await Future.delayed(const Duration(seconds: 2));
+      
       final pubkeys = _chatService.getConversations();
       final conversations = <ConversationInfo>[];
+      
+      debugPrint('💬 Conversas: ${pubkeys.length} conversas encontradas');
+      debugPrint('💬 Conversas: ${_chatService.totalCachedMessages} mensagens no cache');
       
       for (final pubkey in pubkeys) {
         final messages = _chatService.getMessages(pubkey);
         final lastMessage = messages.isNotEmpty ? messages.last : null;
+        
+        debugPrint('   - ${pubkey.substring(0, 8)}...: ${messages.length} mensagens');
         
         // Tentar obter nome salvo
         final savedName = await _storage.getData('contact_name_$pubkey');

@@ -19,6 +19,8 @@ dependencies:
   # Crypto & Nostr
   crypto: ^3.0.3
   nostr: ^1.5.0
+  pointycastle: ^3.9.1
+  convert: ^3.1.1
 
   # State Management
   provider: ^6.1.1

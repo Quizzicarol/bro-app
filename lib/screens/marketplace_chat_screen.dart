@@ -1,20 +1,22 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../services/nostr_service.dart';
+import '../services/chat_service.dart';
+import '../services/storage_service.dart';
 
-/// Tela de chat P2P via Nostr DM
-/// Por enquanto usa mensagens simples - futuramente implementar NIP-04 completo
+/// Tela de Chat P2P via Nostr DMs (NIP-04)
 class MarketplaceChatScreen extends StatefulWidget {
-  final String recipientPubkey;
-  final String recipientName;
+  final String sellerPubkey;
+  final String? sellerName;
   final String? offerTitle;
+  final String? offerId;
 
   const MarketplaceChatScreen({
     super.key,
-    required this.recipientPubkey,
-    required this.recipientName,
+    required this.sellerPubkey,
+    this.sellerName,
     this.offerTitle,
+    this.offerId,
   });
 
   @override
@@ -22,181 +24,83 @@ class MarketplaceChatScreen extends StatefulWidget {
 }
 
 class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
-  final NostrService _nostrService = NostrService();
-  final TextEditingController _messageController = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
-  final List<ChatMessage> _messages = [];
-  bool _isLoading = false;
+  final _chatService = ChatService();
+  final _storage = StorageService();
+  final _messageController = TextEditingController();
+  final _scrollController = ScrollController();
+  
+  List<ChatMessage> _messages = [];
+  StreamSubscription<ChatMessage>? _messageSubscription;
+  bool _isLoading = true;
   bool _isSending = false;
+  String? _myPubkey;
 
   @override
   void initState() {
     super.initState();
-    
-    // Mostrar guia de boas práticas na primeira vez
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _showBestPracticesGuide();
-    });
+    _initializeChat();
   }
 
-  @override
-  void dispose() {
-    _messageController.dispose();
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _showBestPracticesGuide() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: const Row(
-          children: [
-            Icon(Icons.security, color: Colors.orange),
-            SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Negociação Segura',
-                style: TextStyle(color: Colors.white, fontSize: 18),
-              ),
-            ),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildGuideItem(
-                '🔒',
-                'Escrow quando possível',
-                'Use o sistema de escrow do Bro para pagamentos de contas.',
-              ),
-              _buildGuideItem(
-                '⚡',
-                'Prefira Lightning',
-                'Pagamentos Lightning são instantâneos e irreversíveis.',
-              ),
-              _buildGuideItem(
-                '🔍',
-                'Verifique reputação',
-                'Cheque referências e histórico do vendedor.',
-              ),
-              _buildGuideItem(
-                '💬',
-                'Documente tudo',
-                'Mantenha prints das conversas e comprovantes.',
-              ),
-              _buildGuideItem(
-                '⚠️',
-                'Valores pequenos primeiro',
-                'Comece com transações menores para testar.',
-              ),
-              _buildGuideItem(
-                '🚫',
-                'Nunca compartilhe',
-                'Sua seed phrase, chave privada ou senhas.',
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                ),
-                child: const Text(
-                  '⚠️ O Bro não é responsável por negociações P2P fora do escrow. Negocie por sua conta e risco.',
-                  style: TextStyle(color: Colors.orange, fontSize: 12),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Entendi'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildGuideItem(String emoji, String title, String description) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(emoji, style: const TextStyle(fontSize: 20)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
-                ),
-                Text(
-                  description,
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _sendMessage() async {
-    final text = _messageController.text.trim();
-    if (text.isEmpty || _isSending) return;
-    
-    setState(() => _isSending = true);
-    
+  Future<void> _initializeChat() async {
     try {
-      // Adicionar mensagem localmente
-      setState(() {
-        _messages.add(ChatMessage(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          content: text,
-          isFromMe: true,
-          timestamp: DateTime.now(),
-        ));
-      });
+      // Carregar chaves do usuário
+      final privateKey = await _storage.getNostrPrivateKey();
+      final publicKey = await _storage.getNostrPublicKey();
       
-      _messageController.clear();
-      _scrollToBottom();
+      if (privateKey == null || publicKey == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Chaves Nostr não encontradas. Configure sua carteira primeiro.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
       
-      // TODO: Implementar envio real via Nostr DM (NIP-04)
-      // Por enquanto só mostra a mensagem localmente
+      _myPubkey = publicKey;
+      
+      // Inicializar serviço de chat
+      await _chatService.initialize(privateKey, publicKey);
+      
+      // Carregar mensagens existentes
+      _messages = _chatService.getMessages(widget.sellerPubkey);
+      
+      // Buscar mensagens do relay
+      await _chatService.fetchMessagesFrom(widget.sellerPubkey);
+      
+      // Escutar novas mensagens
+      _messageSubscription = _chatService
+          .getMessageStream(widget.sellerPubkey)
+          .listen(_onNewMessage);
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('💬 Mensagem salva localmente. DM Nostr em desenvolvimento.'),
-            backgroundColor: Colors.blue,
-          ),
-        );
+        setState(() {
+          _isLoading = false;
+        });
+        _scrollToBottom();
       }
     } catch (e) {
+      debugPrint('❌ Erro ao inicializar chat: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),
-        );
+        setState(() {
+          _isLoading = false;
+        });
       }
-    } finally {
-      if (mounted) {
-        setState(() => _isSending = false);
-      }
+    }
+  }
+
+  void _onNewMessage(ChatMessage message) {
+    if (mounted) {
+      setState(() {
+        // Evitar duplicatas
+        if (!_messages.any((m) => m.id == message.id)) {
+          _messages.add(message);
+          _messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+        }
+      });
+      _scrollToBottom();
     }
   }
 
@@ -212,195 +116,216 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
     });
   }
 
-  void _copyPubkey() {
-    Clipboard.setData(ClipboardData(text: widget.recipientPubkey));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Pubkey copiada! Use um cliente Nostr para enviar DM.')),
-    );
+  Future<void> _sendMessage() async {
+    final text = _messageController.text.trim();
+    if (text.isEmpty || _isSending) return;
+    
+    setState(() {
+      _isSending = true;
+    });
+    
+    try {
+      final success = await _chatService.sendMessage(widget.sellerPubkey, text);
+      
+      if (success) {
+        _messageController.clear();
+        // Mensagem já foi adicionada pelo ChatService
+        _messages = _chatService.getMessages(widget.sellerPubkey);
+        setState(() {});
+        _scrollToBottom();
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Falha ao enviar mensagem. Tente novamente.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSending = false;
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _messageSubscription?.cancel();
+    _messageController.dispose();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: const Color(0xFF1E3A5F),
+        foregroundColor: Colors.white,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(widget.recipientName, style: const TextStyle(fontSize: 16)),
+            Text(
+              widget.sellerName ?? 'Vendedor',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             if (widget.offerTitle != null)
               Text(
                 widget.offerTitle!,
-                style: const TextStyle(fontSize: 12, color: Colors.white54),
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.normal,
+                  color: Colors.white70,
+                ),
               ),
           ],
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.info_outline),
+            onPressed: _showChatInfo,
+            tooltip: 'Informações',
+          ),
+          IconButton(
             icon: const Icon(Icons.copy),
             onPressed: _copyPubkey,
             tooltip: 'Copiar Pubkey',
           ),
-          IconButton(
-            icon: const Icon(Icons.security),
-            onPressed: _showBestPracticesGuide,
-            tooltip: 'Dicas de Segurança',
-          ),
         ],
       ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Info banner
-            Container(
-              margin: const EdgeInsets.all(12),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.blue.withOpacity(0.3)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.info_outline, color: Colors.blue, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
+      body: Column(
+        children: [
+          // Info banner
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            color: const Color(0xFFE3F2FD),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.lock_outline,
+                  size: 16,
+                  color: Color(0xFF1976D2),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Chat criptografado via Nostr (NIP-04)',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.blue.shade800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          // Messages list
+          Expanded(
+            child: _isLoading
+                ? const Center(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Text(
-                          'Chat em desenvolvimento',
-                          style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 12),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Por enquanto, copie a pubkey e use Damus, Amethyst ou Primal para DM.',
-                          style: TextStyle(color: Colors.blue.withOpacity(0.8), fontSize: 11),
-                        ),
+                        CircularProgressIndicator(),
+                        SizedBox(height: 16),
+                        Text('Conectando aos relays...'),
                       ],
                     ),
-                  ),
-                  TextButton(
-                    onPressed: _copyPubkey,
-                    child: const Text('Copiar', style: TextStyle(fontSize: 12)),
-                  ),
-                ],
-              ),
-            ),
-            
-            // Lista de mensagens
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator(color: Colors.orange))
-                  : _messages.isEmpty
-                      ? _buildEmptyChat()
-                      : ListView.builder(
-                          controller: _scrollController,
-                          padding: const EdgeInsets.all(16),
-                          itemCount: _messages.length,
-                          itemBuilder: (context, index) => _buildMessageBubble(_messages[index]),
-                        ),
-            ),
-            
-            // Campo de mensagem
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: const BoxDecoration(
-                color: Color(0xFF1E1E1E),
-                border: Border(top: BorderSide(color: Colors.white12)),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _messageController,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        hintText: 'Digite sua mensagem...',
-                        hintStyle: const TextStyle(color: Colors.white38),
-                        filled: true,
-                        fillColor: const Color(0xFF2E2E2E),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  )
+                : _messages.isEmpty
+                    ? _buildEmptyState()
+                    : ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _messages.length,
+                        itemBuilder: (context, index) {
+                          final message = _messages[index];
+                          return _buildMessageBubble(message);
+                        },
                       ),
-                      maxLines: null,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _sendMessage(),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    decoration: const BoxDecoration(
-                      color: Colors.orange,
-                      shape: BoxShape.circle,
-                    ),
-                    child: IconButton(
-                      icon: _isSending
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Icon(Icons.send, color: Colors.white),
-                      onPressed: _isSending ? null : _sendMessage,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+          
+          // Input area
+          _buildInputArea(),
+        ],
       ),
     );
   }
 
-  Widget _buildEmptyChat() {
+  Widget _buildEmptyState() {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.chat_bubble_outline, size: 64, color: Colors.white24),
-            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E3A5F).withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.chat_bubble_outline,
+                size: 48,
+                color: Color(0xFF1E3A5F),
+              ),
+            ),
+            const SizedBox(height: 24),
             const Text(
               'Iniciar conversa',
-              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF1E3A5F),
+              ),
             ),
             const SizedBox(height: 8),
             Text(
-              'Entre em contato com ${widget.recipientName}',
-              style: const TextStyle(color: Colors.white54),
+              'Envie uma mensagem para ${widget.sellerName ?? 'o vendedor'} sobre a oferta.',
               textAlign: TextAlign.center,
-            ),
-            if (widget.offerTitle != null) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '💡 Sobre: "${widget.offerTitle}"',
-                  style: const TextStyle(color: Colors.orange, fontSize: 12),
-                  textAlign: TextAlign.center,
-                ),
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade600,
               ),
-            ],
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: _copyPubkey,
-              icon: const Icon(Icons.copy),
-              label: const Text('Copiar Pubkey para DM'),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.security,
+                    color: Colors.orange.shade700,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Nunca compartilhe seeds ou chaves privadas!',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.orange.shade800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -409,41 +334,165 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
   }
 
   Widget _buildMessageBubble(ChatMessage message) {
-    return Align(
-      alignment: message.isFromMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-        decoration: BoxDecoration(
-          color: message.isFromMe ? Colors.orange : const Color(0xFF2E2E2E),
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft: Radius.circular(message.isFromMe ? 16 : 4),
-            bottomRight: Radius.circular(message.isFromMe ? 4 : 16),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              message.content,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 15,
+    final isMe = message.isFromMe;
+    
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        children: [
+          if (!isMe) ...[
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: const Color(0xFF1E3A5F),
+              child: Text(
+                (widget.sellerName ?? 'V')[0].toUpperCase(),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              _formatTime(message.timestamp),
-              style: TextStyle(
-                color: message.isFromMe ? Colors.white70 : Colors.white38,
-                fontSize: 10,
+            const SizedBox(width: 8),
+          ],
+          Flexible(
+            child: Container(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.7,
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: isMe ? const Color(0xFF1E3A5F) : Colors.white,
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(16),
+                  topRight: const Radius.circular(16),
+                  bottomLeft: Radius.circular(isMe ? 16 : 4),
+                  bottomRight: Radius.circular(isMe ? 4 : 16),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 5,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    message.content,
+                    style: TextStyle(
+                      color: isMe ? Colors.white : Colors.black87,
+                      fontSize: 15,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _formatTime(message.timestamp),
+                        style: TextStyle(
+                          color: isMe ? Colors.white60 : Colors.grey,
+                          fontSize: 11,
+                        ),
+                      ),
+                      if (isMe) ...[
+                        const SizedBox(width: 4),
+                        const Icon(
+                          Icons.done_all,
+                          size: 14,
+                          color: Colors.white60,
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (isMe) ...[
+            const SizedBox(width: 8),
+            const CircleAvatar(
+              radius: 16,
+              backgroundColor: Colors.green,
+              child: Icon(
+                Icons.person,
+                color: Colors.white,
+                size: 16,
               ),
             ),
           ],
-        ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInputArea() {
+    return Container(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 8,
+        bottom: MediaQuery.of(context).padding.bottom + 8,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFFF5F5F5),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: TextField(
+                controller: _messageController,
+                maxLines: null,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  hintText: 'Digite sua mensagem...',
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                ),
+                onSubmitted: (_) => _sendMessage(),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            decoration: const BoxDecoration(
+              color: Color(0xFF1E3A5F),
+              shape: BoxShape.circle,
+            ),
+            child: IconButton(
+              onPressed: _isSending ? null : _sendMessage,
+              icon: _isSending
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.send, color: Colors.white),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -453,22 +502,133 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
     final diff = now.difference(time);
     
     if (diff.inDays > 0) {
-      return '${time.day}/${time.month} ${time.hour}:${time.minute.toString().padLeft(2, '0')}';
+      return '${time.day}/${time.month} ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
     }
-    return '${time.hour}:${time.minute.toString().padLeft(2, '0')}';
+    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
   }
-}
 
-class ChatMessage {
-  final String id;
-  final String content;
-  final bool isFromMe;
-  final DateTime timestamp;
+  void _showChatInfo() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E3A5F).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.info_outline,
+                    color: Color(0xFF1E3A5F),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Sobre este chat',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            _buildInfoItem(
+              Icons.lock,
+              'Criptografia NIP-04',
+              'Suas mensagens são criptografadas de ponta a ponta usando o protocolo Nostr.',
+            ),
+            _buildInfoItem(
+              Icons.cloud_sync,
+              'Descentralizado',
+              'As mensagens são enviadas através de relays Nostr distribuídos.',
+            ),
+            _buildInfoItem(
+              Icons.verified_user,
+              'Privacidade',
+              'Apenas você e o destinatário podem ler as mensagens.',
+            ),
+            _buildInfoItem(
+              Icons.warning_amber,
+              'Segurança',
+              'Nunca compartilhe seeds, chaves privadas ou informações sensíveis.',
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1E3A5F),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: const Text(
+                  'Entendi',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-  ChatMessage({
-    required this.id,
-    required this.content,
-    required this.isFromMe,
-    required this.timestamp,
-  });
+  Widget _buildInfoItem(IconData icon, String title, String description) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 20, color: const Color(0xFF1E3A5F)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                Text(
+                  description,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _copyPubkey() {
+    Clipboard.setData(ClipboardData(text: widget.sellerPubkey));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Pubkey copiado!'),
+        backgroundColor: Color(0xFF1E3A5F),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
 }

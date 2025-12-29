@@ -11,6 +11,12 @@ class StorageService {
 
   SharedPreferences? _prefs;
   
+  /// Getter para acesso direto ao SharedPreferences (para uso em serviços)
+  Future<SharedPreferences?> get prefs async {
+    if (_prefs == null) await init();
+    return _prefs;
+  }
+  
   // Armazenamento seguro para dados sensíveis
   static const _secureStorage = FlutterSecureStorage(
     aOptions: AndroidOptions(

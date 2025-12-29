@@ -1049,9 +1049,10 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
       context,
       MaterialPageRoute(
         builder: (context) => MarketplaceChatScreen(
-          recipientPubkey: offer.sellerPubkey,
-          recipientName: offer.sellerName,
+          sellerPubkey: offer.sellerPubkey,
+          sellerName: offer.sellerName,
           offerTitle: offer.title,
+          offerId: offer.id,
         ),
       ),
     );

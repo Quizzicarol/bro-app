@@ -164,6 +164,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         backgroundColor: const Color(0xFF1E3A5F),
         foregroundColor: Colors.white,
@@ -431,23 +432,24 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
   }
 
   Widget _buildInputArea() {
-    return Container(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 8,
-        bottom: MediaQuery.of(context).padding.bottom + 8,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
+    return SafeArea(
+      child: Container(
+        padding: const EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 8,
+          bottom: 8,
+        ),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
       child: Row(
         children: [
           Expanded(
@@ -494,6 +496,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
           ),
         ],
       ),
+      ),
     );
   }
 
@@ -510,78 +513,88 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
   void _showChatInfo() {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      builder: (context) => SafeArea(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 24,
+              right: 24,
+              top: 24,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E3A5F).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.info_outline,
-                    color: Color(0xFF1E3A5F),
-                  ),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E3A5F).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.info_outline,
+                        color: Color(0xFF1E3A5F),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Text(
+                      'Sobre este chat',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                const Text(
-                  'Sobre este chat',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                const SizedBox(height: 20),
+                _buildInfoItem(
+                  Icons.lock,
+                  'Criptografia NIP-04',
+                  'Suas mensagens são criptografadas de ponta a ponta usando o protocolo Nostr.',
+                ),
+                _buildInfoItem(
+                  Icons.cloud_sync,
+                  'Descentralizado',
+                  'As mensagens são enviadas através de relays Nostr distribuídos.',
+                ),
+                _buildInfoItem(
+                  Icons.verified_user,
+                  'Privacidade',
+                  'Apenas você e o destinatário podem ler as mensagens.',
+                ),
+                _buildInfoItem(
+                  Icons.warning_amber,
+                  'Segurança',
+                  'Nunca compartilhe seeds, chaves privadas ou informações sensíveis.',
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1E3A5F),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: const Text(
+                      'Entendi',
+                      style: TextStyle(color: Colors.white),
+                    ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 20),
-            _buildInfoItem(
-              Icons.lock,
-              'Criptografia NIP-04',
-              'Suas mensagens são criptografadas de ponta a ponta usando o protocolo Nostr.',
-            ),
-            _buildInfoItem(
-              Icons.cloud_sync,
-              'Descentralizado',
-              'As mensagens são enviadas através de relays Nostr distribuídos.',
-            ),
-            _buildInfoItem(
-              Icons.verified_user,
-              'Privacidade',
-              'Apenas você e o destinatário podem ler as mensagens.',
-            ),
-            _buildInfoItem(
-              Icons.warning_amber,
-              'Segurança',
-              'Nunca compartilhe seeds, chaves privadas ou informações sensíveis.',
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => Navigator.pop(context),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1E3A5F),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: const Text(
-                  'Entendi',
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

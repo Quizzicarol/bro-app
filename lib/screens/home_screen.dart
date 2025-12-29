@@ -14,6 +14,7 @@ import '../widgets/transaction_card.dart';
 import 'new_trade_screen.dart';
 import 'login_screen.dart';
 import 'settings_screen.dart';
+import 'nostr_conversations_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -413,6 +414,11 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       actions: [
+        IconButton(
+          icon: const Icon(Icons.chat_bubble_outline, color: Colors.white),
+          onPressed: _openMessages,
+          tooltip: 'Mensagens',
+        ),
         IconButton(
           icon: const Icon(Icons.settings_outlined, color: Colors.white),
           onPressed: _showUserSettings,
@@ -972,6 +978,13 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const SettingsScreen()),
+    );
+  }
+
+  void _openMessages() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const NostrConversationsScreen()),
     );
   }
 

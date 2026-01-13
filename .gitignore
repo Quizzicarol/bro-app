@@ -56,6 +56,9 @@ temp_*.txt
 *.key
 *.crt
 gl-certs/
+*.jks
+*.keystore
+bro-release.b64
 
 # Local properties
 local.properties

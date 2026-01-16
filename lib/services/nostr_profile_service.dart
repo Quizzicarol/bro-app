@@ -26,15 +26,22 @@ class NostrProfile {
   });
 
   factory NostrProfile.fromJson(String pubkey, Map<String, dynamic> json) {
+    // Função helper para converter seguramente para String?
+    String? safeString(dynamic value) {
+      if (value == null) return null;
+      if (value is String) return value.isEmpty ? null : value;
+      return value.toString();
+    }
+    
     return NostrProfile(
       pubkey: pubkey,
-      name: json['name'] as String?,
-      displayName: json['display_name'] as String? ?? json['displayName'] as String?,
-      picture: json['picture'] as String?,
-      about: json['about'] as String?,
-      nip05: json['nip05'] as String?,
-      banner: json['banner'] as String?,
-      lud16: json['lud16'] as String?,
+      name: safeString(json['name']),
+      displayName: safeString(json['display_name']) ?? safeString(json['displayName']),
+      picture: safeString(json['picture']),
+      about: safeString(json['about']),
+      nip05: safeString(json['nip05']),
+      banner: safeString(json['banner']),
+      lud16: safeString(json['lud16']),
     );
   }
 

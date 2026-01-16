@@ -104,8 +104,26 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
       
       debugPrint('📱 OrderProvider tem ${orderProvider.orders.length} ordens no total');
       
-      // Mostrar TODAS as ordens (incluindo canceladas para permitir saque)
+      // SEGURANÇA: Filtrar apenas ordens do usuário atual!
+      // Isso evita que o usuário veja/modifique ordens de outros
+      final currentUserPubkey = widget.userId;
+      debugPrint('🔐 Filtrando ordens para usuário: ${currentUserPubkey.substring(0, 8)}...');
+      
+      // Mostrar apenas ordens do usuário atual (incluindo canceladas para permitir saque)
       final localOrders = orderProvider.orders
+        .where((order) {
+          // Se a ordem não tem userPubkey, verificar se foi criada quando este usuário estava logado
+          // (ordens antigas podem não ter userPubkey)
+          if (order.userPubkey == null || order.userPubkey!.isEmpty) {
+            debugPrint('⚠️ Ordem ${order.id.substring(0, 8)} sem userPubkey - incluindo como legado');
+            return true; // Incluir ordens legadas que podem ser do usuário
+          }
+          final isOwner = order.userPubkey == currentUserPubkey;
+          if (!isOwner) {
+            debugPrint('🚫 Ordem ${order.id.substring(0, 8)} é de outro usuário (${order.userPubkey?.substring(0, 8)})');
+          }
+          return isOwner;
+        })
         .map((order) => {
           'id': order.id,
           'status': order.status,

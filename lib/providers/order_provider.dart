@@ -299,6 +299,7 @@ class OrderProvider with ChangeNotifier {
 
   /// Cancelar uma ordem pendente
   /// Apenas ordens com status 'pending' podem ser canceladas
+  /// SEGURANÇA: Apenas o dono da ordem pode cancelá-la!
   Future<bool> cancelOrder(String orderId) async {
     final index = _orders.indexWhere((o) => o.id == orderId);
     if (index == -1) {
@@ -307,6 +308,17 @@ class OrderProvider with ChangeNotifier {
     }
     
     final order = _orders[index];
+    
+    // VERIFICAÇÃO DE SEGURANÇA: Apenas o dono pode cancelar
+    if (order.userPubkey != null && 
+        _currentUserPubkey != null && 
+        order.userPubkey != _currentUserPubkey) {
+      debugPrint('❌ SEGURANÇA: Tentativa de cancelar ordem de outro usuário!');
+      debugPrint('   Ordem pertence a: ${order.userPubkey?.substring(0, 8)}');
+      debugPrint('   Usuário atual: ${_currentUserPubkey?.substring(0, 8)}');
+      return false;
+    }
+    
     if (order.status != 'pending') {
       debugPrint('❌ Apenas ordens pendentes podem ser canceladas. Status atual: ${order.status}');
       return false;

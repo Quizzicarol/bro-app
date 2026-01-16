@@ -37,20 +37,8 @@ class ProviderEducationScreen extends StatelessWidget {
             _buildSectionTitle('💰 Sistema de Garantias'),
             _buildTierTable(),
             const SizedBox(height: 24),
-            _buildSectionTitle('✅ Vantagens'),
-            _buildBenefitsCard(),
-            const SizedBox(height: 24),
             _buildSectionTitle('⚠️ Riscos e Responsabilidades'),
             _buildRisksCard(),
-            const SizedBox(height: 24),
-            _buildSectionTitle('🔒 Sistema de Escrow'),
-            _buildEscrowExplanation(),
-            const SizedBox(height: 24),
-            _buildSectionTitle('📊 Exemplo Prático'),
-            _buildExample(),
-            const SizedBox(height: 24),
-            _buildSectionTitle('❓ Perguntas Frequentes'),
-            _buildFAQ(),
             const SizedBox(height: 32),
             _buildStartButton(context),
             const SizedBox(height: 100), // Extra padding for nav buttons
@@ -77,7 +65,7 @@ class ProviderEducationScreen extends StatelessWidget {
           const Icon(Icons.monetization_on, size: 64, color: Colors.orange),
           const SizedBox(height: 16),
           const Text(
-            'Seja um Bro e receba Bitcoin',
+            'Seja um Bro e facilite trocas',
             style: TextStyle(
               color: Colors.white,
               fontSize: 22,
@@ -87,7 +75,7 @@ class ProviderEducationScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Seja um provedor e ganhe 3% em cada troca que você facilitar',
+            'Como Bro você faz a ponte, ajuda pessoas a pagarem contas e recebe sats como recompensa',
             style: TextStyle(color: Colors.white70, fontSize: 14),
             textAlign: TextAlign.center,
           ),

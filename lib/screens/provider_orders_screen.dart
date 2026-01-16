@@ -36,6 +36,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   List<Map<String, dynamic>> _myOrders = []; // Ordens aceitas por este provedor
   Set<String> _seenOrderIds = {};
   bool _isLoading = false;
+  bool _isSyncingNostr = false;
   bool _hasCollateral = false;
   String? _error;
   int _lastOrderCount = 0;
@@ -84,6 +85,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     
     setState(() {
       _isLoading = true;
+      _isSyncingNostr = true;
       _error = null;
     });
 
@@ -117,6 +119,12 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       // Buscar ordens do Nostr
       final orderProvider = context.read<OrderProvider>();
       await orderProvider.fetchOrders(forProvider: true);
+      
+      if (mounted) {
+        setState(() {
+          _isSyncingNostr = false;
+        });
+      }
       
       // Pegar pubkey do provedor
       final nostrService = NostrService();
@@ -228,8 +236,28 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         child: Consumer2<CollateralProvider, OrderProvider>(
           builder: (context, collateralProvider, orderProvider, child) {
             if (_isLoading) {
-              return const Center(
-                child: CircularProgressIndicator(color: Colors.orange),
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const CircularProgressIndicator(color: Colors.orange),
+                    const SizedBox(height: 16),
+                    Text(
+                      _isSyncingNostr 
+                          ? '🔄 Sincronizando com Nostr...'
+                          : 'Carregando ordens...',
+                      style: const TextStyle(color: Colors.white70, fontSize: 14),
+                    ),
+                    if (_isSyncingNostr)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: Text(
+                          'Buscando ordens de todos os usuários',
+                          style: TextStyle(color: Colors.white38, fontSize: 12),
+                        ),
+                      ),
+                  ],
+                ),
               );
             }
             

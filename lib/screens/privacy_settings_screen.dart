@@ -87,6 +87,9 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                   
                   // Relays
                   _buildRelaysButton(),
+                  
+                  // Espaço para safe area (botões de navegação)
+                  SizedBox(height: MediaQuery.of(context).padding.bottom + 24),
                 ],
               ),
             ),
@@ -372,24 +375,27 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
               children: [
                 Row(
                   children: [
-                    const Text(
-                      'NIP-44 (Criptografia v2)',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
+                    Flexible(
+                      child: const Text(
+                        'NIP-44 (Criptografia v2)',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                       decoration: BoxDecoration(
                         color: Colors.green.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: const Text(
                         'Recomendado',
-                        style: TextStyle(color: Colors.green, fontSize: 10),
+                        style: TextStyle(color: Colors.green, fontSize: 9),
                       ),
                     ),
                   ],

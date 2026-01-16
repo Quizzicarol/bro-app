@@ -568,12 +568,20 @@ class StorageService {
     // Limpar SharedPreferences
     await _prefs?.clear();
     
-    // Restaurar dados preservados
+    // Restaurar dados preservados (APENAS seeds)
     for (final entry in dataToPreserve.entries) {
       await _prefs?.setString(entry.key, entry.value);
     }
     
-    debugPrint('✅ Logout concluído - ${dataToPreserve.length} itens preservados');
+    // IMPORTANTE: Garantir que is_logged_in seja FALSE após logout
+    await _prefs?.setBool('is_logged_in', false);
+    await _prefs?.setBool('first_time_seed_shown', false);
+    
+    // Limpar chaves Nostr do SecureStorage (usuário não está mais logado)
+    await _secureStorage.delete(key: 'nostr_private_key');
+    await _secureStorage.delete(key: 'nostr_public_key');
+    
+    debugPrint('✅ Logout concluído - ${dataToPreserve.length} seeds preservadas, is_logged_in=false');
     debugPrint('═══════════════════════════════════════════════════════════');
     debugPrint('');
   }

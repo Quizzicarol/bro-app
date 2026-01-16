@@ -1139,6 +1139,10 @@ class BreezProvider with ChangeNotifier {
         errMsg = 'Invoice inválida. Verifique se copiou corretamente.';
       } else if (errMsg.contains('parse') || errMsg.contains('Parse')) {
         errMsg = 'Não foi possível interpretar o código. Use uma invoice Lightning válida.';
+      } else if (errMsg.contains('time lock') || errMsg.contains('time_lock') || errMsg.contains('timelock')) {
+        errMsg = 'Fundos temporariamente bloqueados. Aguarde alguns minutos e tente novamente. Se persistir, sincronize a carteira em Configurações.';
+      } else if (errMsg.contains('sparkError') || errMsg.contains('SdkError')) {
+        errMsg = 'Erro na rede Lightning. Verifique sua conexão e tente novamente.';
       }
       
       _setError(errMsg);

@@ -31,49 +31,34 @@ class AlfaBanner extends StatelessWidget {
                 const Icon(
                   Icons.warning_amber_rounded,
                   color: Colors.white,
-                  size: 18,
+                  size: 16,
                 ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
+                const SizedBox(width: 6),
+                Flexible(
                   child: const Text(
-                    'VERSÃO ALFA',
+                    'App em testes. Bugs podem acontecer.',
                     style: TextStyle(
                       color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                      letterSpacing: 1,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
                     ),
+                    textAlign: TextAlign.center,
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 const Icon(
                   Icons.warning_amber_rounded,
                   color: Colors.white,
-                  size: 18,
+                  size: 16,
                 ),
               ],
             ),
-            const SizedBox(height: 6),
-            const Text(
-              'App em fase de testes. Bugs podem acontecer.',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 4),
             const Text(
               'Não negocie valores altos!',
               style: TextStyle(
                 color: Colors.yellow,
-                fontSize: 13,
+                fontSize: 12,
                 fontWeight: FontWeight.bold,
               ),
               textAlign: TextAlign.center,

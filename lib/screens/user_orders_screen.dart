@@ -26,6 +26,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
   final OrderService _orderService = OrderService();
   List<Map<String, dynamic>> _orders = [];
   bool _isLoading = true;
+  bool _isSyncingNostr = false;
   String? _error;
   String _filterStatus = 'all'; // 'all', 'active', 'completed'
 
@@ -79,6 +80,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
     
     setState(() {
       _isLoading = true;
+      _isSyncingNostr = true;
       _error = null;
     });
 
@@ -88,6 +90,12 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
       
       // Sincronizar com Nostr primeiro
       await orderProvider.fetchOrders();
+      
+      if (mounted) {
+        setState(() {
+          _isSyncingNostr = false;
+        });
+      }
       
       // RECONCILIAÇÃO AUTOMÁTICA COMPLETA
       if (breezProvider.isInitialized) {
@@ -1354,7 +1362,29 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
           // Lista de ordens
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const CircularProgressIndicator(color: Colors.blue),
+                        const SizedBox(height: 16),
+                        Text(
+                          _isSyncingNostr 
+                              ? '🔄 Sincronizando com Nostr...'
+                              : 'Carregando ordens...',
+                          style: const TextStyle(color: Colors.white70, fontSize: 14),
+                        ),
+                        if (_isSyncingNostr)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 8),
+                            child: Text(
+                              'Buscando em múltiplos relays',
+                              style: TextStyle(color: Colors.white38, fontSize: 12),
+                            ),
+                          ),
+                      ],
+                    ),
+                  )
                 : _error != null
                     ? Center(
                         child: Column(

@@ -64,36 +64,150 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  /// Gerar nova chave privada Nostr (método principal)
-  /// Também gera uma seed BIP-39 para a carteira Bitcoin
+  /// Gerar nova conta usando NIP-06 (seed unificada)
+  /// A MESMA seed é usada para identidade Nostr E carteira Lightning!
   Future<void> _generateNewPrivateKey() async {
-    // Opção 1: Gerar chave privada Nostr aleatória
-    final privateKey = _nostrService.generatePrivateKey();
+    // Gerar seed BIP-39 que será usada para TUDO
+    final unifiedSeed = _nip06Service.generateMnemonic();
     
-    // Também gerar uma seed BIP-39 para a carteira Bitcoin
-    // Esta seed será salva quando o usuário fizer login
-    final walletSeed = _nip06Service.generateMnemonic();
+    // Derivar chave Nostr da seed (NIP-06)
+    final keys = _nip06Service.deriveNostrKeys(unifiedSeed);
+    final privateKey = keys['privateKey']!;
     
-    // Guardar a seed temporariamente para salvar após login
-    _generatedWalletSeed = walletSeed;
+    // Guardar a seed para usar na carteira também
+    _generatedWalletSeed = unifiedSeed;
     
-    _privateKeyController.text = privateKey;
+    // Preencher campo com a SEED (não a chave) para o usuário guardar
+    _privateKeyController.text = unifiedSeed;
     
     setState(() {
-      _isSeedPhrase = false;
-      _detectedMnemonic = null;
+      _isSeedPhrase = true;
+      _detectedMnemonic = unifiedSeed;
     });
 
-    debugPrint('🔑 Nova chave privada gerada: ${privateKey.substring(0, 16)}...');
-    debugPrint('💰 Seed Bitcoin gerada para carteira');
+    debugPrint('🌱 Nova conta NIP-06 criada!');
+    debugPrint('   Seed: ${unifiedSeed.split(' ').take(2).join(' ')}...');
+    debugPrint('   Chave Nostr derivada: ${privateKey.substring(0, 16)}...');
 
     if (mounted) {
-      // Mostrar diálogo com chave E seed
-      _showNewAccountDialog(privateKey, walletSeed);
+      // Mostrar diálogo com APENAS a seed (uma coisa só para guardar!)
+      _showNewAccountDialogUnified(unifiedSeed);
     }
   }
   
-  /// Diálogo mostrando chave Nostr e seed da carteira
+  /// Diálogo mostrando APENAS a seed unificada (mais simples!)
+  void _showNewAccountDialogUnified(String seed) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.spa, color: Color(0xFF3DE98C), size: 24),
+            SizedBox(width: 12),
+            Text('Nova Conta Criada!', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.withOpacity(0.3)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.warning, color: Colors.red, size: 20),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'GUARDE ESTAS 12 PALAVRAS!\nSem elas você PERDE acesso à conta e aos fundos.',
+                        style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3DE98C).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF3DE98C).withOpacity(0.3)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Color(0xFF3DE98C), size: 18),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Esta seed controla sua identidade Nostr E sua carteira Lightning!',
+                        style: TextStyle(color: Color(0xFF3DE98C), fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              const SizedBox(height: 16),
+              const Text('🌱 Sua Seed (12 palavras):', 
+                style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.black38,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: SelectableText(
+                  seed,
+                  style: const TextStyle(color: Color(0xFF3DE98C), fontSize: 14, height: 1.5),
+                ),
+              ),
+              
+              const SizedBox(height: 16),
+              const Text(
+                '💡 Dica: Anote em papel e guarde em local seguro. Nunca compartilhe!',
+                style: TextStyle(color: Colors.white54, fontSize: 11),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: seed));
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('✅ Seed copiada! Guarde em local seguro!'),
+                    backgroundColor: Color(0xFF3DE98C),
+                  ),
+                );
+              }
+            },
+            child: const Text('📋 Copiar', style: TextStyle(color: Color(0xFFFF9800))),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF3DE98C)),
+            child: const Text('Entendi, Guardei!', style: TextStyle(color: Colors.black)),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  /// Diálogo mostrando chave Nostr e seed da carteira (modo avançado - LEGADO)
   void _showNewAccountDialog(String privateKey, String walletSeed) {
     showDialog(
       context: context,
@@ -824,26 +938,37 @@ class _LoginScreenState extends State<LoginScreen> {
                          MediaQuery.of(context).padding.top - 
                          MediaQuery.of(context).padding.bottom,
             ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Seção superior - Logo centralizado
-                const SizedBox(height: 20),
-                Image.asset(
-                  'assets/images/bro-logo.png',
-                  height: 80,
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Comunidade de escambo digital via Nostr',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Color(0xB3FFFFFF),
-                    fontWeight: FontWeight.w400,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
+            child: Center(
+              child: _buildLoginContent(),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildLoginContent() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Seção superior - Logo centralizado
+        const SizedBox(height: 20),
+        Image.asset(
+          'assets/images/bro-logo.png',
+          height: 80,
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Comunidade de escambo digital via Nostr',
+          style: TextStyle(
+            fontSize: 13,
+            color: Color(0xB3FFFFFF),
+            fontWeight: FontWeight.w400,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 24),
 
               // Card de Login - CHAVE PRIVADA (PRINCIPAL)
               Container(
@@ -1149,10 +1274,6 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 20),
             ],
-          ),
-        ),
-        ),
-      ),
-    );
+          );
   }
 }

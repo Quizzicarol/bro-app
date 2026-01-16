@@ -24,6 +24,15 @@ workflows:
       cocoapods: default
       java: 17
       
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: 'release/*'
+          include: true
+        - pattern: 'main'
+          include: true
+      
     scripts:
       - name: Get Flutter packages
         script: flutter pub get
@@ -60,9 +69,10 @@ workflows:
   # ============================================
   # DISTRIBUIÇÃO PARA TESTERS (SEM LOJA)
   # Gera APK release assinado para Android
+  # MANUAL - Use apenas se precisar só do APK
   # ============================================
   testers-build:
-    name: 📱 Android APK (Testers)
+    name: 📱 Android APK (Manual)
     max_build_duration: 60
     instance_type: mac_mini_m2
     
@@ -71,15 +81,6 @@ workflows:
         - bro_keystore
       flutter: stable
       java: 17
-      
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: 'release/*'
-          include: true
-        - pattern: 'main'
-          include: true
       
     scripts:
       - name: Get Flutter packages
@@ -156,9 +157,10 @@ workflows:
 
   # ============================================
   # iOS - TestFlight / App Store
+  # MANUAL - Use full-release para builds automáticos
   # ============================================
   ios-release:
-    name: 🍎 iOS TestFlight
+    name: 🍎 iOS TestFlight (Manual)
     max_build_duration: 90
     instance_type: mac_mini_m2
     
@@ -174,15 +176,6 @@ workflows:
       flutter: stable
       xcode: latest
       cocoapods: default
-      
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: 'release/*'
-          include: true
-        - pattern: 'main'
-          include: true
           
     scripts:
       - name: Set up code signing

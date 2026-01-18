@@ -255,6 +255,7 @@ class BroApp extends StatelessWidget {
               return null;
             },
             routes: {
+              '/login': (context) => const LoginScreen(),
               '/settings': (context) => const SettingsScreen(),
               '/nostr-messages': (context) => const NostrConversationsScreen(),
               '/relay-management': (context) => const RelayManagementScreen(),

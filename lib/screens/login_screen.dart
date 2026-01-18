@@ -1226,53 +1226,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 20),
-
-              // Info sobre perfil (menor)
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0x0D9C27B0),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0x339C27B0)),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.person_search, color: Color(0xFF9C27B0), size: 20),
-                    SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Perfil Nostr carregado automaticamente',
-                        style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 12),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // Aviso de seguranca (menor)
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0x0D3DE98C),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0x333DE98C)),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.security, color: Color(0xFF3DE98C), size: 20),
-                    SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Sua chave nunca sai do dispositivo',
-                        style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 12),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 30),
             ],
           );
   }

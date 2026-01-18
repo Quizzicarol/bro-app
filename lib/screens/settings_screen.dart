@@ -826,10 +826,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         );
 
                         if (confirm == true) {
+                          // Fechar o diálogo primeiro
+                          if (mounted) {
+                            Navigator.of(context).pop(); // Fecha o diálogo
+                          }
+                          
+                          // Fazer logout
                           await StorageService().logout();
+                          
+                          // Navegar para login e remover todas as rotas
                           if (mounted) {
                             Navigator.of(context).pushNamedAndRemoveUntil(
-                              '/',
+                              '/login',
                               (route) => false,
                             );
                           }

@@ -9,6 +9,13 @@ import '../providers/breez_provider.dart';
 import '../config.dart';
 import 'user_order_detail_screen.dart';
 
+/// Helper para substring seguro (evita RangeError)
+String _safeSubstring(String? str, int length) {
+  if (str == null || str.isEmpty) return 'vazio';
+  if (str.length <= length) return str;
+  return str.substring(0, length);
+}
+
 /// Tela para visualizar todas as ordens do usuário
 class UserOrdersScreen extends StatefulWidget {
   final String userId;
@@ -107,7 +114,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
       // SEGURANÇA: Filtrar APENAS ordens do usuário atual!
       // NUNCA mostrar ordens de outros usuários
       final currentUserPubkey = widget.userId;
-      debugPrint('🔐 Filtrando ordens para usuário: ${currentUserPubkey.substring(0, 8)}...');
+      debugPrint('🔐 Filtrando ordens para usuário: ${_safeSubstring(currentUserPubkey, 8)}...');
       
       // Mostrar APENAS ordens onde userPubkey == currentUserPubkey
       // NÃO incluir ordens sem userPubkey (podem ser de outros usuários)
@@ -116,12 +123,12 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
           // SEGURANÇA: Ordens sem userPubkey NÃO são do usuário atual
           // (provavelmente vieram do Nostr de outros usuários)
           if (order.userPubkey == null || order.userPubkey!.isEmpty) {
-            debugPrint('🚫 REJEITANDO ordem ${order.id.substring(0, 8)} sem userPubkey (segurança)');
+            debugPrint('🚫 REJEITANDO ordem ${_safeSubstring(order.id, 8)} sem userPubkey (segurança)');
             return false; // NÃO incluir ordens sem dono identificado
           }
           final isOwner = order.userPubkey == currentUserPubkey;
           if (!isOwner) {
-            debugPrint('🚫 Ordem ${order.id.substring(0, 8)} é de outro usuário (${order.userPubkey?.substring(0, 8)})');
+            debugPrint('🚫 Ordem ${_safeSubstring(order.id, 8)} é de outro usuário (${_safeSubstring(order.userPubkey, 8)})');
           }
           return isOwner;
         })

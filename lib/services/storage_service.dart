@@ -242,15 +242,21 @@ class StorageService {
         k.contains('seed') ||
         k.contains('mnemonic') ||
         k == 'MASTER_SEED_PREFS')) {
-      final value = _prefs?.getString(key);
-      if (value != null) {
-        // Tentar deofuscar
-        final deobfuscated = _deobfuscateSeed(value);
-        if (deobfuscated.isNotEmpty && deobfuscated.split(' ').length == 12) {
-          debugPrint('   ✅ $key: ${deobfuscated.split(' ').take(2).join(' ')}...');
-        } else {
-          debugPrint('   📦 $key: [ofuscado ou inválido]');
+      // IMPORTANTE: Usar get() e verificar tipo antes de fazer cast
+      try {
+        final rawValue = _prefs?.get(key);
+        final value = rawValue is String ? rawValue : null;
+        if (value != null) {
+          // Tentar deofuscar
+          final deobfuscated = _deobfuscateSeed(value);
+          if (deobfuscated.isNotEmpty && deobfuscated.split(' ').length == 12) {
+            debugPrint('   ✅ $key: ${deobfuscated.split(' ').take(2).join(' ')}...');
+          } else {
+            debugPrint('   📦 $key: [ofuscado ou inválido]');
+          }
         }
+      } catch (e) {
+        debugPrint('   ⚠️ $key: [erro ao ler: $e]');
       }
     }
     

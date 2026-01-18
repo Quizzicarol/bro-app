@@ -59,6 +59,9 @@ workflows:
         auth: integration
         submit_to_testflight: true
         submit_to_app_store: true
+        # Enviar automaticamente para testadores externos (link público)
+        beta_groups:
+          - Beta Público
       email:
         recipients:
           - carol@quizzicarol.com

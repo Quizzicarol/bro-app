@@ -58,10 +58,11 @@ workflows:
       app_store_connect:
         auth: integration
         submit_to_testflight: true
-        submit_to_app_store: true
+        submit_to_app_store: false  # Desabilitado até adicionar screenshots
         # Enviar automaticamente para testadores externos (link público)
-        beta_groups:
-          - Beta Público
+        # NOTA: Crie o grupo "Beta Público" no App Store Connect primeiro!
+        # beta_groups:
+        #   - Beta Público
       email:
         recipients:
           - carol@quizzicarol.com

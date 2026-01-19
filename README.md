@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Quizzicarol/Bro/master/assets/icon/bro_icon.png" alt="Bro Logo" width="120" height="120">
+  <img src="https://raw.githubusercontent.com/Quizzicarol/Bro/master/assets/images/bro-logo.png" alt="Bro Logo" width="120" height="120">
 </p>
 
 <h1 align="center">Bro</h1>
@@ -10,9 +10,6 @@
 </p>
 
 <p align="center">
-  <a href="https://apps.apple.com/app/bro/id6740044498">
-    <img src="https://img.shields.io/badge/App_Store-0D96F6?style=for-the-badge&logo=app-store&logoColor=white" alt="App Store">
-  </a>
   <a href="https://testflight.apple.com/join/rkHbPQ94">
     <img src="https://img.shields.io/badge/TestFlight_Beta-0D96F6?style=for-the-badge&logo=apple&logoColor=white" alt="TestFlight">
   </a>

@@ -13,11 +13,11 @@
   <a href="https://apps.apple.com/app/bro/id6740044498">
     <img src="https://img.shields.io/badge/App_Store-0D96F6?style=for-the-badge&logo=app-store&logoColor=white" alt="App Store">
   </a>
-  <a href="https://play.google.com/store/apps/details?id=app.bro.mobile">
-    <img src="https://img.shields.io/badge/Google_Play-414141?style=for-the-badge&logo=google-play&logoColor=white" alt="Google Play">
+  <a href="https://testflight.apple.com/join/rkHbPQ94">
+    <img src="https://img.shields.io/badge/TestFlight_Beta-0D96F6?style=for-the-badge&logo=apple&logoColor=white" alt="TestFlight">
   </a>
-  <a href="https://testflight.apple.com/join/YOUR_CODE">
-    <img src="https://img.shields.io/badge/TestFlight-0D96F6?style=for-the-badge&logo=apple&logoColor=white" alt="TestFlight">
+  <a href="https://api.codemagic.io/artifacts/2fa39094-261b-4c42-a832-ae89dc8b21fe/206f592d-63e5-456b-819b-8273a22a265e/app-release.apk">
+    <img src="https://img.shields.io/badge/Android_APK-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android APK">
   </a>
 </p>
 
@@ -85,35 +85,35 @@ Tudo isso de forma **trustless**, com garantias em Bitcoin e comunicação desce
 
 ---
 
-## 🔒 Por que Bro?
+## 🤔 Por que usar o Bro?
+
+> **Sem taxas para a plataforma.** Um protocolo que conecta pessoas e facilita a vida.
 
 | | |
 |:---:|---|
-| **🔐 Self-Custodial** | Suas chaves, seu Bitcoin. Usamos Breez SDK Spark — você controla seus fundos. |
-| **🌐 Descentralizado** | Comunicação via Nostr. Sem servidores centrais, sem single point of failure. |
-| **🕵️ Privacidade** | Sem KYC, sem registro, sem número de telefone. Apenas sua chave Nostr. |
-| **⚡ Instantâneo** | Pagamentos Lightning em segundos, não em dias. |
-| **📖 Open Source** | Código 100% aberto. Audite, contribua, fork. |
-| **🤝 Trustless** | Garantias em Bitcoin. Não precisa confiar, pode verificar. |
+| **🔄 Troca Fácil** | Publique o que você tem, encontre o que você quer. Simples assim. |
+| **🔒 Seguro** | Trocas privadas via Nostr sem intermediários. |
+| **👥 Comunidade** | Troque e pague contas com quem você confia. |
+| **🌐 Descentralizado** | Sem servidores centrais, você decide onde armazenar seus dados. |
+| **📖 Open Source** | Código aberto e transparente para todos. |
+| **🕵️ Privacidade** | O Bro não exige registro, números de telefone ou informações pessoais. |
+| **⚡ Lightning** | Pagamentos instantâneos via Bitcoin Lightning Network. |
+| **🔐 Self-Custodial** | Suas chaves, seu Bitcoin. Você controla seus fundos. |
 
 ---
 
 ## 📱 Download
 
-### Produção
+<p align="center">
+  <strong>🍎 Disponível agora na App Store para iPhone e iPad!</strong>
+</p>
 
 | Plataforma | Link | Status |
 |------------|------|--------|
-| 🍎 iOS | [App Store](https://apps.apple.com/app/bro/id6740044498) | ✅ Disponível |
-| 🤖 Android | [Google Play](https://play.google.com/store/apps/details?id=app.bro.mobile) | 🔜 Em breve |
-| 📦 APK | [Releases](https://github.com/Quizzicarol/Bro/releases) | ✅ Disponível |
-
-### Beta Testing
-
-| Plataforma | Link |
-|------------|------|
-| 🍎 iOS Beta | [TestFlight](https://testflight.apple.com/join/YOUR_CODE) |
-| 🤖 Android Beta | [APK Download](https://github.com/Quizzicarol/Bro/releases) |
+| 🍎 **iOS** | [**App Store**](https://apps.apple.com/app/bro/id6740044498) | ✅ **Disponível** |
+| 🍎 iOS Beta | [TestFlight](https://testflight.apple.com/join/rkHbPQ94) | ✅ Disponível |
+| 🤖 Android | [Download APK](https://api.codemagic.io/artifacts/2fa39094-261b-4c42-a832-ae89dc8b21fe/206f592d-63e5-456b-819b-8273a22a265e/app-release.apk) | ✅ Disponível |
+| 🤖 Google Play | Em breve | 🔜 Aguardando |
 
 ---
 

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/icons/bro_icon.png" alt="Bro Logo" width="120" height="120">
+  <img src="https://raw.githubusercontent.com/Quizzicarol/Bro/master/assets/icons/bro_icon.png" alt="Bro Logo" width="120" height="120">
 </p>
 
 <h1 align="center">Bro</h1>
@@ -44,7 +44,8 @@
 Como funciona:
 1. 📸 **Escaneie** seu boleto ou código PIX
 2. ⚡ **Pague** com Bitcoin via Lightning
-3. ✅ **Pronto** — um provedor da comunidade efetua o pagamento e te envia do comprovante
+3. ✅ **Pronto** — um provedor da comunidade efetua o pagamento e te envia o comprovante
+4. 🔍 **Verifique** o pagamento no seu banco ou app
 
 Tudo isso de forma privada, apoiado em Bitcoin e comunicação descentralizada via **Nostr**.
 

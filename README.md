@@ -1,8 +1,4 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/Quizzicarol/Bro/master/assets/images/bro-logo.png" alt="Bro Logo" width="120" height="120">
-</p>
-
-<h1 align="center">Bro</h1>
+<h1 align="center">🟢 Bro</h1>
 
 <p align="center">
   <strong>O app de escambo digital via Nostr</strong><br>

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Quizzicarol/Bro/master/assets/icons/bro_icon.png" alt="Bro Logo" width="120" height="120">
+  <img src="https://raw.githubusercontent.com/Quizzicarol/Bro/master/assets/icon/bro_icon.png" alt="Bro Logo" width="120" height="120">
 </p>
 
 <h1 align="center">Bro</h1>
@@ -103,7 +103,7 @@ Tudo isso de forma privada, apoiado em Bitcoin e comunicação descentralizada v
 ## 📱 Download
 
 <p align="center">
-  <strong>🍎 Disponível agora na App Store para iPhone e iPad!</strong>
+  <strong>🍎 Disponível em TestFlight</strong>
 </p>
 
 | Plataforma | Link | Status |

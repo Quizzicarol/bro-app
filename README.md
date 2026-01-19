@@ -1,24 +1,52 @@
-# 🟢 Bro App
+# 🟢 Bro
 
-> **O app de pagamentos P2P com Bitcoin que conecta pessoas**
+> **O app de escambo digital via Nostr**
 
-Pague contas, transfira valores e conecte-se com provedores usando Bitcoin via Lightning Network. Sem bancos, só conexão entre pessoas.
+Comunidade de trocas simples, seguras e privadas. Como um aperto de mão entre amigos.
+
+Publique o que você tem, encontre o que você quer. Pague contas com Bitcoin via Lightning. Sem bancos, sem intermediários.
+
+🌐 **Site:** [brostr.app](https://www.brostr.app)
 
 ---
 
-## 🎨 Identidade Visual
+## ✨ Por que usar o Bro?
 
-| Cor | Hex | Uso |
-|-----|-----|-----|
-| 🟢 **Mint** | `#3DE98C` | Cor primária, botões principais |
-| 🔴 **Coral** | `#FF6B6B` | Destaques, alertas |
-| 🔵 **Turquoise** | `#00CC7A` | Cor secundária |
-| ⚪ **Cream** | `#F7F4ED` | Background light mode |
-| ⚫ **Dark** | `#141414` | Background dark mode |
+| | |
+|---|---|
+| 🔄 **Troca Fácil** | Publique o que você tem, encontre o que você quer. Simples assim. |
+| 🔒 **Seguro** | Trocas privadas via Nostr sem intermediários. |
+| 👥 **Comunidade** | Troque e pague contas com quem você confia. |
+| 🌐 **Descentralizado** | Sem servidores centrais, você decide onde armazenar seus dados. |
+| 📖 **Open Source** | Código aberto e transparente para todos. |
+| 🕵️ **Privacidade** | Sem registro, sem número de telefone, sem dados pessoais. |
 
-### Tipografia
-- **Display:** Fredoka (títulos)
-- **Body:** Inter (corpo de texto)
+---
+
+## 📱 Funcionalidades
+
+### Para Usuários
+- ⚡ Pague boletos e PIX com Bitcoin via Lightning Network
+- 📸 Escaneie códigos de barras e QR codes
+- 📊 Acompanhe status dos pagamentos em tempo real
+- 📜 Histórico completo de transações
+
+### Para Provedores
+- 💼 Aceite ordens de pagamento da comunidade
+- 🔐 Deposite garantia para operar (modelo trustless)
+- ₿ Receba pagamentos em Bitcoin
+- 📈 Dashboard com estatísticas
+
+---
+
+## 🛠 Tecnologias
+
+| Tecnologia | Uso |
+|------------|-----|
+| **Flutter** | Framework mobile multiplataforma |
+| **Breez SDK Spark** | Lightning Network (self-custodial) |
+| **Nostr** | Comunicação P2P descentralizada |
+| **Provider** | Gerenciamento de estado |
 
 ---
 
@@ -27,13 +55,12 @@ Pague contas, transfira valores e conecte-se com provedores usando Bitcoin via L
 ### Pré-requisitos
 - Flutter 3.0+
 - Android Studio ou VS Code
-- Dispositivo Android ou emulador
 
 ### Instalação
 
 ```bash
 # Clone o repositório
-git clone https://github.com/seu-usuario/bro-app.git
+git clone https://github.com/Quizzicarol/Bro.git
 cd bro_app
 
 # Instale as dependências
@@ -43,92 +70,31 @@ flutter pub get
 flutter run
 ```
 
-### Build para Android
+### Build
 
 ```bash
-# APK debug
-flutter build apk --debug
-
-# APK release
+# Android APK
 flutter build apk --release
+
+# iOS
+flutter build ios --release
 ```
 
 ---
 
-## 📱 Funcionalidades
-
-### Para Usuários
-- ✅ Escaneie boletos e códigos PIX
-- ✅ Pague com Bitcoin via Lightning Network
-- ✅ Acompanhe status dos pagamentos
-- ✅ Histórico de transações
-
-### Para Provedores
-- ✅ Aceite ordens de pagamento
-- ✅ Deposite garantia para operar
-- ✅ Receba pagamentos em Bitcoin
-- ✅ Dashboard com estatísticas
-
----
-
-## 🛠 Tecnologias
-
-- **Flutter** - Framework de UI
-- **Breez SDK Spark** - Lightning Network (self-custodial)
-- **Nostr** - Comunicação P2P descentralizada
-- **Provider** - Gerenciamento de estado
-
----
-
-## 📁 Estrutura
+## 📁 Estrutura do Projeto
 
 ```
 lib/
-├── config.dart          # Configurações do app
 ├── main.dart            # Entry point
-├── theme/               # Design System
-│   ├── bro_colors.dart  # Paleta de cores
-│   ├── bro_theme.dart   # ThemeData completo
-│   └── bro_typography.dart # Tipografia
+├── config.dart          # Configurações
 ├── models/              # Modelos de dados
 ├── providers/           # State management
 ├── screens/             # Telas do app
-├── services/            # Serviços e APIs
+├── services/            # Serviços (Nostr, Lightning, Storage)
+├── theme/               # Tema e cores
 └── widgets/             # Componentes reutilizáveis
 ```
-
----
-
-## 🎯 Design System
-
-### Importando o tema
-
-```dart
-import 'package:bro_app/theme/theme.dart';
-
-// No MaterialApp
-MaterialApp(
-  theme: BroTheme.darkTheme,
-  // ou BroTheme.lightTheme
-);
-```
-
-### Usando cores
-
-```dart
-import 'package:bro_app/theme/bro_colors.dart';
-
-Container(
-  color: BroColors.mint,
-  child: Text('Bro!'),
-);
-```
-
----
-
-## 📄 Licença
-
-MIT License - Feito com 💚 pela comunidade Bitcoin Brasil
 
 ---
 
@@ -142,4 +108,12 @@ MIT License - Feito com 💚 pela comunidade Bitcoin Brasil
 
 ---
 
-**Bro** - Conectando pessoas através do Bitcoin 🟢⚡
+## 📄 Licença
+
+MIT License
+
+---
+
+**Quem tem Bro, tem tudo.** 🟢⚡
+
+Feito com 💚 para conectar pessoas.

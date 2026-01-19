@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/icons/bro_icon.png" alt="Bro Logo" width="120" height="120">
+  <img src="https://raw.githubusercontent.com/Quizzicarol/Bro/master/assets/icons/bro_icon.png" alt="Bro Logo" width="120" height="120">
 </p>
 
 <h1 align="center">Bro</h1>
@@ -22,9 +22,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Flutter-02569B?style=flat-square&logo=flutter&logoColor=white" alt="Flutter">
-  <img src="https://img.shields.io/badge/Dart-0175C2?style=flat-square&logo=dart&logoColor=white" alt="Dart">
-  <img src="https://img.shields.io/badge/Lightning-792EE5?style=flat-square&logo=lightning&logoColor=white" alt="Lightning">
+    <img src="https://img.shields.io/badge/Lightning-792EE5?style=flat-square&logo=lightning&logoColor=white" alt="Lightning">
   <img src="https://img.shields.io/badge/Nostr-8B5CF6?style=flat-square&logo=nostr&logoColor=white" alt="Nostr">
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License">
 </p>
@@ -41,14 +39,15 @@
 
 ## 📖 About
 
-**Bro** é uma plataforma P2P que permite pagar boletos e contas usando Bitcoin via Lightning Network, sem precisar de bancos ou intermediários.
+**Bro** é uma plataforma P2P que permite pagar boletos, código pix e contas usando Bitcoin via Lightning Network e Nostr, sem precisar de bancos ou intermediários.
 
 Como funciona:
 1. 📸 **Escaneie** seu boleto ou código PIX
 2. ⚡ **Pague** com Bitcoin via Lightning
-3. ✅ **Pronto** — um provedor da comunidade efetua o pagamento
+3. ✅ **Pronto** — um provedor da comunidade efetua o pagamento e te envia o comprovante
+4. 🔍 **Verifique** o pagamento no seu banco ou app
 
-Tudo isso de forma **trustless**, com garantias em Bitcoin e comunicação descentralizada via **Nostr**.
+Tudo isso de forma privada, apoiado em Bitcoin e comunicação descentralizada via **Nostr**.
 
 ---
 
@@ -75,9 +74,7 @@ Tudo isso de forma **trustless**, com garantias em Bitcoin e comunicação desce
 - 📥 Receba ordens de pagamento
 - 💰 Ganhe spread nas transações
 - 🔒 Sistema de garantia (colateral)
-- 📈 Dashboard de performance
-- ⭐ Sistema de reputação
-- 🏦 Liquidez sob demanda
+- 📈 Dashboard de acompanhamento
 
 </td>
 </tr>
@@ -110,10 +107,10 @@ Tudo isso de forma **trustless**, com garantias em Bitcoin e comunicação desce
 
 | Plataforma | Link | Status |
 |------------|------|--------|
-| 🍎 **iOS** | [**App Store**](https://apps.apple.com/app/bro/id6740044498) | ✅ **Disponível** |
 | 🍎 iOS Beta | [TestFlight](https://testflight.apple.com/join/rkHbPQ94) | ✅ Disponível |
-| 🤖 Android | [Download APK](https://api.codemagic.io/artifacts/2fa39094-261b-4c42-a832-ae89dc8b21fe/206f592d-63e5-456b-819b-8273a22a265e/app-release.apk) | ✅ Disponível |
+| 🤖 Android Beta | [Download APK](https://api.codemagic.io/artifacts/2fa39094-261b-4c42-a832-ae89dc8b21fe/206f592d-63e5-456b-819b-8273a22a265e/app-release.apk) | ✅ Disponível |
 | 🤖 Google Play | Em breve | 🔜 Aguardando |
+| 🍎 iOS App Store | Em breve | 🔜 Aguardando |
 
 ---
 
@@ -226,37 +223,9 @@ lib/
 
 ---
 
-## 🗺 Roadmap
-
-- [x] ⚡ Pagamento de boletos via Lightning
-- [x] 📸 Scanner de código de barras
-- [x] 🔐 Carteira self-custodial (Breez SDK Spark)
-- [x] 👤 Login com Nostr (nsec)
-- [x] 💼 Modo Provedor
-- [x] 🍎 iOS App Store
-- [ ] 🤖 Google Play Store
-- [ ] 🔄 Marketplace de trocas (escambo)
-- [ ] 💬 Chat P2P entre usuários
-- [ ] 🌍 Suporte multi-idioma
-- [ ] 🖥 Versão Desktop
-
----
-
 ## 🤝 Contributing
 
 Contribuições são bem-vindas! 
-
-1. Fork o projeto
-2. Crie sua feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit suas mudanças (`git commit -m 'Add: AmazingFeature'`)
-4. Push para a branch (`git push origin feature/AmazingFeature`)
-5. Abra um Pull Request
-
-### Code Style
-
-- Seguimos o [Effective Dart](https://dart.dev/guides/language/effective-dart)
-- Use `flutter analyze` antes de commits
-- Mantenha cobertura de testes
 
 ---
 
@@ -270,7 +239,6 @@ Distribuído sob a licença MIT. Veja [LICENSE](LICENSE) para mais informações
 
 - 🌐 Website: [brostr.app](https://www.brostr.app)
 - 🐙 GitHub: [@Quizzicarol](https://github.com/Quizzicarol)
-- ⚡ Nostr: `npub...`
 
 ---
 

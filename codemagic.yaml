@@ -32,6 +32,8 @@ workflows:
           include: true
         - pattern: 'main'
           include: true
+        - pattern: 'master'
+          include: true
       
     scripts:
       - name: Get Flutter packages

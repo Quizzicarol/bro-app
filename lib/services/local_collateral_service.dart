@@ -132,12 +132,13 @@ class LocalCollateralService {
   /// Obter garantia atual
   Future<LocalCollateral?> getCollateral() async {
     try {
-      // Se cache já foi inicializado, usar cache
+      // Se cache já foi inicializado E tem valor, usar cache
       if (_cacheInitialized && _cachedCollateral != null) {
         debugPrint('🔍 getCollateral: Usando cache - ${_cachedCollateral!.tierName}');
         return _cachedCollateral;
       }
       
+      // SEMPRE tentar ler do storage para garantir dados mais recentes
       final dataStr = await _storage.read(key: _collateralKey);
       
       debugPrint('🔍 getCollateral: key=$_collateralKey');
@@ -146,6 +147,7 @@ class LocalCollateralService {
       if (dataStr == null) {
         debugPrint('📭 getCollateral: Nenhuma garantia salva');
         _cacheInitialized = true; // Marcar como inicializado mesmo se null
+        _cachedCollateral = null;
         return null;
       }
       

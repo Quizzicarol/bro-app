@@ -519,7 +519,10 @@ class OrderProvider with ChangeNotifier {
       // Publicar no Nostr (AGUARDAR para garantir que foi publicado!)
       await _publishOrderToNostr(order);
       
-      debugPrint('✅ Ordem criada: ${order.id}');
+      // Pequeno delay para dar tempo do relay propagar
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      debugPrint('✅ Ordem criada e publicada: ${order.id}');
       return order;
     } catch (e) {
       _error = e.toString();
@@ -595,8 +598,11 @@ class OrderProvider with ChangeNotifier {
           _orders.add(pendingOrder);
           added++;
         } else {
-          // Atualizar se necessário
+          // Ordem já existe - PRESERVAR dados locais que são mais recentes
           final existing = _orders[existingIndex];
+          
+          // Só atualizar se Nostr tem dados mais completos E local não tem providerId
+          // Isso garante que ordens aceitas localmente não perdem o providerId
           if (pendingOrder.amount > 0 && existing.amount == 0) {
             _orders[existingIndex] = existing.copyWith(
               amount: pendingOrder.amount,
@@ -604,6 +610,16 @@ class OrderProvider with ChangeNotifier {
               btcPrice: pendingOrder.btcPrice,
               total: pendingOrder.total,
               billCode: pendingOrder.billCode,
+              // IMPORTANTE: Preservar providerId local se existir!
+              providerId: existing.providerId ?? pendingOrder.providerId,
+              status: existing.providerId != null ? existing.status : pendingOrder.status,
+            );
+            updated++;
+          } else if (existing.providerId == null && pendingOrder.providerId != null) {
+            // Se Nostr tem providerId e local não, atualizar
+            _orders[existingIndex] = existing.copyWith(
+              providerId: pendingOrder.providerId,
+              status: pendingOrder.status,
             );
             updated++;
           }
@@ -862,12 +878,12 @@ class OrderProvider with ChangeNotifier {
           acceptedAt: DateTime.now(),
         );
         
-        // Salvar localmente
-        final prefs = await SharedPreferences.getInstance();
-        final ordersJson = json.encode(_orders.map((o) => o.toJson()).toList());
-        await prefs.setString(_ordersKey, ordersJson);
+        // Salvar localmente (apenas ordens do usuário/provedor atual)
+        await _saveOnlyUserOrders();
         
         debugPrint('✅ Ordem $orderId aceita com sucesso');
+        debugPrint('   providerId: $providerPubkey');
+        debugPrint('   status: accepted');
       }
 
       return true;

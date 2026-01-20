@@ -321,8 +321,19 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       setState(() => _isLoading = false);
 
       if (success && mounted) {
-        // Mostrar modal com instruções de saque
-        _showWithdrawInstructions();
+        // Atualizar status da ordem na tela para mostrar que foi cancelada
+        setState(() {
+          _currentStatus = 'cancelled';
+        });
+        
+        // Mostrar confirmação simples
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Ordem cancelada com sucesso'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -334,6 +345,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     }
   }
 
+  // Mantido para uso manual pelo usuário (botão de saque na tela)
   void _showWithdrawInstructions() {
     _showWithdrawModal();
   }

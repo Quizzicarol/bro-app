@@ -936,10 +936,14 @@ class _LoginScreenState extends State<LoginScreen> {
             constraints: BoxConstraints(
               minHeight: MediaQuery.of(context).size.height - 
                          MediaQuery.of(context).padding.top - 
-                         MediaQuery.of(context).padding.bottom,
+                         MediaQuery.of(context).padding.bottom - 48, // Reduzir altura mínima
             ),
-            child: Center(
-              child: _buildLoginContent(),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.start, // Alinhar ao topo
+              children: [
+                const SizedBox(height: 40), // Espaço menor no topo
+                _buildLoginContent(),
+              ],
             ),
           ),
         ),
@@ -949,11 +953,10 @@ class _LoginScreenState extends State<LoginScreen> {
   
   Widget _buildLoginContent() {
     return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisAlignment: MainAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Seção superior - Logo centralizado
-        const SizedBox(height: 20),
+        // Logo
         Image.asset(
           'assets/images/bro-logo.png',
           height: 80,

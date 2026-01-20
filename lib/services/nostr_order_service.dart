@@ -605,9 +605,9 @@ class NostrOrderService {
     final seenIds = <String>{};
 
     debugPrint('🔍 Buscando ordens disponíveis para Bros nos relays...');
-    debugPrint('   Relays: ${_relays.take(3).join(", ")}');
+    debugPrint('   Relays: ${_relays.join(", ")}');
 
-    for (final relay in _relays.take(3)) {
+    for (final relay in _relays) {
       debugPrint('   Tentando relay: $relay');
       try {
         // Buscar TODAS as ordens com tag bro (sem filtrar por status específico)
@@ -643,9 +643,9 @@ class NostrOrderService {
     final seenIds = <String>{};
 
     debugPrint('🔍 Buscando ordens do usuário ${pubkey.substring(0, 16)}...');
-    debugPrint('   Relays: ${_relays.take(3).join(", ")}');
+    debugPrint('   Relays: ${_relays.join(", ")}');
 
-    for (final relay in _relays.take(3)) {
+    for (final relay in _relays) {
       debugPrint('   Tentando relay: $relay');
       try {
         final relayOrders = await _fetchFromRelay(

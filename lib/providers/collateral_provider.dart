@@ -69,6 +69,10 @@ class CollateralProvider with ChangeNotifier {
         debugPrint('💰 Saldo efetivo para garantia: $effectiveBalanceSats sats');
       }
 
+      // IMPORTANTE: Limpar cache para forçar releitura do storage
+      // Isso garante que sempre temos os dados mais recentes ao entrar no modo Bro
+      LocalCollateralService.clearCache();
+      
       // SISTEMA LOCAL: Carregar garantia local (fundos ficam na carteira do provedor)
       _localCollateral = await _localCollateralService.getCollateral();
       

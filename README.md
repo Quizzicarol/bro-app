@@ -2,7 +2,7 @@
 
 <p align="center">
   <strong>O app de escambo digital via Nostr</strong><br>
-  Pague contas com Bitcoin. Troque com a comunidade. Sem bancos.
+  Pague contas, troque produtos ou serviços. Sem bancos. Sem dados.
 </p>
 
 <p align="center">

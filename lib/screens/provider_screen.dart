@@ -381,10 +381,8 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text('Modo Bro'),
-            if (_currentTier != null) ...[
-              const SizedBox(width: 8),
-              _buildTierBadge(),
-            ],
+            const SizedBox(width: 8),
+            _buildTierBadge(),
           ],
         ),
         elevation: 0,
@@ -438,29 +436,273 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
     );
   }
 
-  /// Badge compacto do tier atual
+  /// Badge compacto do tier atual com indicador de status
   Widget _buildTierBadge() {
+    // Se não tem tier, mostra "Sem Tier"
+    if (_currentTier == null) {
+      return GestureDetector(
+        onTap: _showTierDetailsDialog,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.orange.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: Colors.orange.withOpacity(0.5), 
+              width: 1,
+            ),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.shield_outlined, 
+                size: 12, 
+                color: Colors.orange,
+              ),
+              SizedBox(width: 4),
+              Text(
+                'Sem Tier',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.orange,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    
     final tierColor = _getTierColorById(_currentTier!.tierId);
     final tierIcon = _getTierIconById(_currentTier!.tierId);
     
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: tierColor.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: tierColor, width: 1),
+    // Calcular déficit se houver
+    int? deficit;
+    if (_tierWarning && _tierWarningMessage != null) {
+      // Extrair número de sats do warning message
+      final match = RegExp(r'(\d+)\s*sats').firstMatch(_tierWarningMessage!);
+      if (match != null) {
+        deficit = int.tryParse(match.group(1) ?? '');
+      }
+    }
+    
+    return GestureDetector(
+      onTap: _showTierDetailsDialog,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: _tierWarning 
+              ? Colors.orange.withOpacity(0.2) 
+              : tierColor.withOpacity(0.2),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: _tierWarning ? Colors.orange : tierColor, 
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _tierWarning ? Icons.warning_amber : tierIcon, 
+              size: 14, 
+              color: _tierWarning ? Colors.orange : tierColor,
+            ),
+            const SizedBox(width: 4),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _currentTier!.tierName.split(' ').first, // "Bronze", "Silver", etc
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: _tierWarning ? Colors.orange : tierColor,
+                  ),
+                ),
+                if (_tierWarning && deficit != null)
+                  Text(
+                    '-$deficit sats',
+                    style: const TextStyle(
+                      fontSize: 9,
+                      color: Colors.orange,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
       ),
+    );
+  }
+  
+  /// Dialog com detalhes completos do tier
+  void _showTierDetailsDialog() {
+    // Calcular valores detalhados
+    final lockedSats = _currentTier?.lockedSats ?? 0;
+    final tierName = _currentTier?.tierName ?? 'Nenhum';
+    final maxTransaction = _currentTier?.maxTransactionBrl ?? 0;
+    
+    // Calcular déficit se houver
+    int deficit = 0;
+    if (_tierWarning && _tierWarningMessage != null) {
+      final match = RegExp(r'(\d+)\s*sats').firstMatch(_tierWarningMessage!);
+      if (match != null) {
+        deficit = int.tryParse(match.group(1) ?? '') ?? 0;
+      }
+    }
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(
+              _getTierIconById(_currentTier?.tierId ?? 'bronze'),
+              color: _getTierColorById(_currentTier?.tierId ?? 'bronze'),
+              size: 28,
+            ),
+            const SizedBox(width: 12),
+            Text(tierName, style: const TextStyle(color: Colors.white)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Status do tier
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: _tierWarning 
+                    ? Colors.orange.withOpacity(0.1) 
+                    : Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: _tierWarning 
+                      ? Colors.orange.withOpacity(0.3) 
+                      : Colors.green.withOpacity(0.3),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    _tierWarning ? Icons.warning_amber : Icons.check_circle,
+                    color: _tierWarning ? Colors.orange : Colors.green,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _tierWarning ? 'Tier em risco!' : 'Tier ativo',
+                    style: TextStyle(
+                      color: _tierWarning ? Colors.orange : Colors.green,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            
+            // Garantia bloqueada
+            _buildDetailRow(
+              'Garantia bloqueada',
+              '$lockedSats sats',
+              Icons.lock,
+            ),
+            
+            // Limite de transação
+            _buildDetailRow(
+              'Limite por transação',
+              'R\$ ${maxTransaction.toStringAsFixed(0)}',
+              Icons.attach_money,
+            ),
+            
+            // Déficit se houver
+            if (deficit > 0) ...[
+              const Divider(color: Colors.white24),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.arrow_downward, color: Colors.red, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Faltam para reativar:',
+                            style: TextStyle(color: Colors.white70, fontSize: 12),
+                          ),
+                          Text(
+                            '$deficit sats',
+                            style: const TextStyle(
+                              color: Colors.red,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          if (_tierWarning)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                // Navegar para depositar mais
+                Navigator.pushNamed(context, '/collateral');
+              },
+              child: const Text(
+                'Depositar mais',
+                style: TextStyle(color: Colors.orange),
+              ),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fechar'),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildDetailRow(String label, String value, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(tierIcon, size: 14, color: tierColor),
-          const SizedBox(width: 4),
+          Icon(icon, size: 18, color: Colors.white54),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+          ),
           Text(
-            _currentTier!.tierName.split(' ').first, // "Bronze", "Silver", etc
-            style: TextStyle(
-              fontSize: 11,
+            value,
+            style: const TextStyle(
+              color: Colors.white,
               fontWeight: FontWeight.bold,
-              color: tierColor,
+              fontSize: 14,
             ),
           ),
         ],

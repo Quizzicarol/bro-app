@@ -201,7 +201,11 @@ class _LoginScreenState extends State<LoginScreen> {
             child: const Text('📋 Copiar', style: TextStyle(color: Color(0xFFFF9800))),
           ),
           ElevatedButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () {
+              Navigator.pop(context);
+              // IMPORTANTE: Fazer login automático após fechar o diálogo!
+              _login();
+            },
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF3DE98C)),
             child: const Text('Entendi, Guardei!', style: TextStyle(color: Colors.black)),
           ),

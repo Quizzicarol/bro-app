@@ -232,9 +232,9 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: const Color(0xFF1A1A1A),
         foregroundColor: Colors.white,
         title: const Text('Mensagens', style: TextStyle(fontWeight: FontWeight.w600)),
         actions: [
@@ -403,7 +403,7 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
 
   Widget _buildConversationTile(ConversationInfo conversation) {
     return ListTile(
-      tileColor: const Color(0xFF1E1E1E),
+      tileColor: const Color(0xFF1A1A1A),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       leading: CircleAvatar(
         radius: 24,

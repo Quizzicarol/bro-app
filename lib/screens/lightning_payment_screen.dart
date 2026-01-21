@@ -91,6 +91,17 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
     if (mounted) {
       final orderProvider = context.read<OrderProvider>();
       
+      // ⚡ CRÍTICO: Primeiro publicar ordem no Nostr AGORA que o pagamento foi confirmado!
+      // Antes a ordem estava em 'draft' (não visível para Bros)
+      // Agora vai para 'pending' e é publicada no Nostr
+      debugPrint('🚀 Pagamento confirmado! Publicando ordem no Nostr...');
+      final published = await orderProvider.publishOrderAfterPayment(widget.orderId);
+      if (published) {
+        debugPrint('✅ Ordem publicada no Nostr - Bros agora podem vê-la!');
+      } else {
+        debugPrint('⚠️ Falha ao publicar ordem no Nostr');
+      }
+      
       // Status payment_received = usuário pagou via Lightning, aguardando Bro aceitar
       await orderProvider.updateOrderStatus(
         orderId: widget.orderId,

@@ -277,18 +277,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
         title: GestureDetector(
           onTap: _onTitleTap,
           child: const Text('Configurações'),
         ),
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
+        backgroundColor: const Color(0xFF1A1A1A),
+        foregroundColor: Colors.orange,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(color: Colors.orange))
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -296,39 +297,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const Text(
                     'Segurança',
                     style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.deepPurple,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.orange,
                     ),
                   ),
-                  const SizedBox(height: 15),
+                  const SizedBox(height: 12),
 
                   // Card da Seed
                   Card(
-                    elevation: 4,
+                    color: const Color(0xFF1A1A1A),
+                    elevation: 0,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: Colors.orange.withOpacity(0.2)),
                     ),
                     child: Padding(
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.all(16),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
                             children: [
                               Container(
-                                padding: const EdgeInsets.all(10),
+                                padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
-                                  color: Colors.deepPurple.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(10),
+                                  color: Colors.orange.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: const Icon(
                                   Icons.vpn_key,
-                                  color: Colors.deepPurple,
-                                  size: 28,
+                                  color: Colors.orange,
+                                  size: 20,
                                 ),
                               ),
-                              const SizedBox(width: 15),
+                              const SizedBox(width: 12),
                               const Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -336,16 +339,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     Text(
                                       'Seed da Carteira',
                                       style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white,
                                       ),
                                     ),
-                                    SizedBox(height: 5),
+                                    SizedBox(height: 2),
                                     Text(
                                       '12 palavras de recuperação',
                                       style: TextStyle(
-                                        fontSize: 14,
-                                        color: Colors.grey,
+                                        fontSize: 12,
+                                        color: Colors.white54,
                                       ),
                                     ),
                                   ],
@@ -353,16 +357,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 16),
 
                           // Aviso
                           Container(
-                            padding: const EdgeInsets.all(12),
+                            padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
                               color: Colors.orange.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                color: Colors.orange.withOpacity(0.3),
+                                color: Colors.orange.withOpacity(0.2),
                               ),
                             ),
                             child: const Row(
@@ -370,14 +374,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 Icon(
                                   Icons.warning_amber_rounded,
                                   color: Colors.orange,
-                                  size: 20,
+                                  size: 16,
                                 ),
-                                SizedBox(width: 10),
+                                SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
                                     'Guarde estas palavras em local seguro!',
                                     style: TextStyle(
-                                      fontSize: 13,
+                                      fontSize: 12,
                                       color: Colors.orange,
                                       fontWeight: FontWeight.w500,
                                     ),
@@ -386,49 +390,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ],
                             ),
                           ),
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 16),
 
                           // Seed (oculta ou visível)
                           if (_mnemonic != null) ...[
                             if (_showSeed) ...[
                               Container(
-                                padding: const EdgeInsets.all(15),
+                                padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
-                                  color: Colors.grey.shade100,
-                                  borderRadius: BorderRadius.circular(10),
+                                  color: const Color(0xFF2A2A2A),
+                                  borderRadius: BorderRadius.circular(8),
                                   border: Border.all(
-                                    color: Colors.grey.shade300,
+                                    color: Colors.grey.withOpacity(0.3),
                                   ),
                                 ),
                                 child: SelectableText(
                                   _mnemonic!,
                                   style: const TextStyle(
-                                    fontSize: 16,
+                                    fontSize: 14,
                                     fontFamily: 'monospace',
                                     height: 1.5,
                                     fontWeight: FontWeight.w500,
-                                    color: Colors.black, // TEXTO PRETO
+                                    color: Colors.white70,
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 15),
+                              const SizedBox(height: 12),
                               Row(
                                 children: [
                                   Expanded(
                                     child: ElevatedButton.icon(
                                       onPressed: _copySeed,
-                                      icon: const Icon(Icons.copy),
+                                      icon: const Icon(Icons.copy, size: 16),
                                       label: const Text('Copiar'),
                                       style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.deepPurple,
+                                        backgroundColor: Colors.orange,
                                         foregroundColor: Colors.white,
                                         padding: const EdgeInsets.symmetric(
-                                          vertical: 12,
+                                          vertical: 10,
                                         ),
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(width: 10),
+                                  const SizedBox(width: 8),
                                   Expanded(
                                     child: OutlinedButton.icon(
                                       onPressed: () {
@@ -436,34 +440,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                           _showSeed = false;
                                         });
                                       },
-                                      icon: const Icon(Icons.visibility_off),
+                                      icon: const Icon(Icons.visibility_off, size: 16),
                                       label: const Text('Ocultar'),
                                       style: OutlinedButton.styleFrom(
-                                        foregroundColor: Colors.grey.shade700,
+                                        foregroundColor: Colors.white54,
+                                        side: BorderSide(color: Colors.white24),
                                         padding: const EdgeInsets.symmetric(
-                                          vertical: 12,
+                                          vertical: 10,
                                         ),
                                       ),
                                     ),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 15),
+                              const SizedBox(height: 12),
                               // Info: Seed vinculada ao usuário
                               Container(
-                                padding: const EdgeInsets.all(10),
+                                padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
                                   color: Colors.blue.withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: const Row(
                                   children: [
-                                    Icon(Icons.link, color: Colors.blue, size: 18),
+                                    Icon(Icons.link, color: Colors.blue, size: 14),
                                     SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
                                         'Esta seed está vinculada à sua conta Nostr',
-                                        style: TextStyle(fontSize: 12, color: Colors.blue),
+                                        style: TextStyle(fontSize: 11, color: Colors.blue),
                                       ),
                                     ),
                                   ],
@@ -474,13 +479,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 width: double.infinity,
                                 child: ElevatedButton.icon(
                                   onPressed: _toggleShowSeed,
-                                  icon: const Icon(Icons.visibility),
+                                  icon: const Icon(Icons.visibility, size: 16),
                                   label: const Text('Mostrar Seed'),
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.deepPurple,
+                                    backgroundColor: Colors.orange,
                                     foregroundColor: Colors.white,
                                     padding: const EdgeInsets.symmetric(
-                                      vertical: 15,
+                                      vertical: 12,
                                     ),
                                   ),
                                 ),
@@ -491,7 +496,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               child: Text(
                                 'Nenhuma seed encontrada',
                                 style: TextStyle(
-                                  color: Colors.grey,
+                                  color: Colors.white38,
                                   fontStyle: FontStyle.italic,
                                 ),
                               ),
@@ -539,17 +544,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const Text(
                     'Carteira Lightning',
                     style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.deepPurple,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.orange,
                     ),
                   ),
-                  const SizedBox(height: 15),
+                  const SizedBox(height: 12),
 
                   Card(
-                    elevation: 2,
+                    elevation: 0,
+                    color: const Color(0xFF1A1A1A),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: Colors.orange.withOpacity(0.2)),
                     ),
                     child: ListTile(
                       leading: Container(
@@ -560,9 +567,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         child: const Icon(Icons.account_balance_wallet, color: Colors.orange),
                       ),
-                      title: const Text('Minha Carteira'),
-                      subtitle: const Text('Ver saldo e transações'),
-                      trailing: const Icon(Icons.chevron_right),
+                      title: const Text('Minha Carteira', style: TextStyle(color: Colors.white)),
+                      subtitle: const Text('Ver saldo e transações', style: TextStyle(color: Colors.white54)),
+                      trailing: const Icon(Icons.chevron_right, color: Colors.white38),
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 20,
                         vertical: 10,
@@ -575,9 +582,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   
                   // BOTÃO RESTAURAR SEED
                   Card(
-                    elevation: 2,
+                    elevation: 0,
+                    color: const Color(0xFF1A1A1A),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: Colors.red.withOpacity(0.2)),
                     ),
                     child: ListTile(
                       leading: Container(
@@ -588,9 +597,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         child: const Icon(Icons.restore, color: Colors.red),
                       ),
-                      title: const Text('Restaurar Carteira'),
-                      subtitle: const Text('Usar uma seed existente'),
-                      trailing: const Icon(Icons.chevron_right),
+                      title: const Text('Restaurar Carteira', style: TextStyle(color: Colors.white)),
+                      subtitle: const Text('Usar uma seed existente', style: TextStyle(color: Colors.white54)),
+                      trailing: const Icon(Icons.chevron_right, color: Colors.white38),
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 20,
                         vertical: 10,
@@ -605,17 +614,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const Text(
                     'Nostr & Privacidade',
                     style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.deepPurple,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.orange,
                     ),
                   ),
-                  const SizedBox(height: 15),
+                  const SizedBox(height: 12),
 
                   Card(
-                    elevation: 2,
+                    elevation: 0,
+                    color: const Color(0xFF1A1A1A),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: Colors.orange.withOpacity(0.2)),
                     ),
                     child: Column(
                       children: [
@@ -628,16 +639,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                             child: const Icon(Icons.person, color: Colors.purple),
                           ),
-                          title: const Text('Perfil Nostr'),
-                          subtitle: const Text('Ver suas chaves e npub'),
-                          trailing: const Icon(Icons.chevron_right),
+                          title: const Text('Perfil Nostr', style: TextStyle(color: Colors.white)),
+                          subtitle: const Text('Ver suas chaves e npub', style: TextStyle(color: Colors.white54)),
+                          trailing: const Icon(Icons.chevron_right, color: Colors.white38),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20,
                             vertical: 10,
                           ),
                           onTap: () => Navigator.pushNamed(context, '/nostr-profile'),
                         ),
-                        const Divider(height: 1),
+                        Divider(height: 1, color: Colors.white12),
                         ListTile(
                           leading: Container(
                             padding: const EdgeInsets.all(8),
@@ -647,16 +658,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                             child: const Icon(Icons.dns, color: Colors.indigo),
                           ),
-                          title: const Text('Gerenciar Relays'),
-                          subtitle: const Text('Adicionar ou remover relays'),
-                          trailing: const Icon(Icons.chevron_right),
+                          title: const Text('Gerenciar Relays', style: TextStyle(color: Colors.white)),
+                          subtitle: const Text('Adicionar ou remover relays', style: TextStyle(color: Colors.white54)),
+                          trailing: const Icon(Icons.chevron_right, color: Colors.white38),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20,
                             vertical: 10,
                           ),
                           onTap: () => Navigator.pushNamed(context, '/relay-management'),
                         ),
-                        const Divider(height: 1),
+                        Divider(height: 1, color: Colors.white12),
                         ListTile(
                           leading: Container(
                             padding: const EdgeInsets.all(8),
@@ -666,16 +677,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                             child: const Icon(Icons.shield, color: Colors.teal),
                           ),
-                          title: const Text('Privacidade'),
-                          subtitle: const Text('Tor, NIP-44 e mais'),
-                          trailing: const Icon(Icons.chevron_right),
+                          title: const Text('Privacidade', style: TextStyle(color: Colors.white)),
+                          subtitle: const Text('Tor, NIP-44 e mais', style: TextStyle(color: Colors.white54)),
+                          trailing: const Icon(Icons.chevron_right, color: Colors.white38),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20,
                             vertical: 10,
                           ),
                           onTap: () => Navigator.pushNamed(context, '/privacy-settings'),
                         ),
-                        const Divider(height: 1),
+                        Divider(height: 1, color: Colors.white12),
                         ListTile(
                           leading: Container(
                             padding: const EdgeInsets.all(8),
@@ -685,9 +696,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                             child: const Icon(Icons.key, color: Colors.orange),
                           ),
-                          title: const Text('Backup NIP-06'),
-                          subtitle: const Text('Derivar chaves da seed'),
-                          trailing: const Icon(Icons.chevron_right),
+                          title: const Text('Backup NIP-06', style: TextStyle(color: Colors.white)),
+                          subtitle: const Text('Derivar chaves da seed', style: TextStyle(color: Colors.white54)),
+                          trailing: const Icon(Icons.chevron_right, color: Colors.white38),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20,
                             vertical: 10,
@@ -704,17 +715,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const Text(
                     'Suporte',
                     style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.deepPurple,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.orange,
                     ),
                   ),
-                  const SizedBox(height: 15),
+                  const SizedBox(height: 12),
 
                   Card(
-                    elevation: 2,
+                    elevation: 0,
+                    color: const Color(0xFF1A1A1A),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: Colors.orange.withOpacity(0.2)),
                     ),
                     child: Column(
                       children: [
@@ -727,9 +740,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                             child: const Icon(Icons.help_outline, color: Colors.blue),
                           ),
-                          title: const Text('Central de Ajuda'),
-                          subtitle: const Text('Enviar email para suporte'),
-                          trailing: const Icon(Icons.chevron_right),
+                          title: const Text('Central de Ajuda', style: TextStyle(color: Colors.white)),
+                          subtitle: const Text('Enviar email para suporte', style: TextStyle(color: Colors.white54)),
+                          trailing: const Icon(Icons.chevron_right, color: Colors.white38),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20,
                             vertical: 10,
@@ -765,34 +778,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const Text(
                     'Sobre',
                     style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.deepPurple,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.orange,
                     ),
                   ),
-                  const SizedBox(height: 15),
+                  const SizedBox(height: 12),
 
                   Card(
-                    elevation: 2,
+                    elevation: 0,
+                    color: const Color(0xFF1A1A1A),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: Colors.orange.withOpacity(0.2)),
                     ),
                     child: Column(
                       children: [
                         ListTile(
-                          leading: const Icon(Icons.info_outline, color: Colors.deepPurple),
-                          title: const Text('Versão'),
-                          subtitle: Text(_appVersion),
+                          leading: const Icon(Icons.info_outline, color: Colors.orange),
+                          title: const Text('Versão', style: TextStyle(color: Colors.white)),
+                          subtitle: Text(_appVersion, style: const TextStyle(color: Colors.white54)),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20,
-                            vertical: 10,
+                            vertical: 8,
                           ),
                         ),
-                        const Divider(height: 1),
+                        Divider(height: 1, color: Colors.white12),
                         ListTile(
-                          leading: const Icon(Icons.language, color: Colors.deepPurple),
-                          title: const Text('Site'),
-                          subtitle: const Text('brostr.app'),
+                          leading: const Icon(Icons.language, color: Colors.orange),
+                          title: const Text('Site', style: TextStyle(color: Colors.white)),
+                          subtitle: const Text('brostr.app', style: TextStyle(color: Colors.white54)),
                           trailing: const Icon(Icons.open_in_new, size: 18),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20,
@@ -819,15 +834,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         final confirm = await showDialog<bool>(
                           context: context,
                           builder: (context) => AlertDialog(
-                            title: const Text('Sair do App'),
+                            backgroundColor: const Color(0xFF1A1A1A),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: BorderSide(color: Colors.red.withOpacity(0.3)),
+                            ),
+                            title: const Text('Sair do App', style: TextStyle(color: Colors.white)),
                             content: const Text(
                               'Tem certeza que deseja sair?\n\n'
                               'Certifique-se de ter sua seed anotada para recuperar sua carteira!',
+                              style: TextStyle(color: Colors.white70),
                             ),
                             actions: [
                               TextButton(
                                 onPressed: () => Navigator.pop(context, false),
-                                child: const Text('Cancelar'),
+                                child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
                               ),
                               ElevatedButton(
                                 onPressed: () => Navigator.pop(context, true),

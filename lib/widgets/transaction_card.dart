@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Card de transação replicando o design do web
-/// background: rgba(0, 0, 0, 0.3), border: rgba(255, 107, 53, 0.2)
+/// Card de transação no estilo Bro (dark + orange)
 class TransactionCard extends StatelessWidget {
   final String title;
   final String amount;
@@ -23,9 +22,9 @@ class TransactionCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: const Color(0x4D000000), // rgba(0, 0, 0, 0.3)
+        color: const Color(0xFF1A1A1A), // Dark background Bro style
         border: Border.all(
-          color: const Color(0x33FF6B35), // rgba(255, 107, 53, 0.2)
+          color: Colors.orange.withOpacity(0.2), // Orange accent
           width: 1,
         ),
         borderRadius: BorderRadius.circular(12),
@@ -74,7 +73,7 @@ class TransactionCard extends StatelessWidget {
                       Text(
                         amount,
                         style: const TextStyle(
-                          color: Color(0xFFFF6B6B),
+                          color: Colors.orange, // Bro orange
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
                         ),
@@ -84,9 +83,9 @@ class TransactionCard extends StatelessWidget {
                 ),
                 
                 // Arrow
-                const Icon(
+                Icon(
                   Icons.arrow_forward_ios,
-                  color: Color(0x66FFFFFF), // rgba(255, 255, 255, 0.4)
+                  color: Colors.orange.withOpacity(0.4),
                   size: 16,
                 ),
               ],
@@ -132,7 +131,7 @@ class TransactionCard extends StatelessWidget {
   }
 }
 
-/// Empty State para lista vazia
+/// Empty State para lista vazia - estilo Bro
 class EmptyTransactionState extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -153,10 +152,17 @@ class EmptyTransactionState extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           // Empty Icon
-          Icon(
-            Icons.inbox_outlined,
-            size: 64,
-            color: const Color(0xFFFF6B6B).withOpacity(0.3),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.orange.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.inbox_outlined,
+              size: 48,
+              color: Colors.orange.withOpacity(0.5),
+            ),
           ),
           const SizedBox(height: 20),
           
@@ -175,9 +181,9 @@ class EmptyTransactionState extends StatelessWidget {
           // Subtitle
           Text(
             subtitle,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
-              color: Color(0xB3FFFFFF), // rgba(255, 255, 255, 0.7)
+              color: Colors.white.withOpacity(0.6),
             ),
             textAlign: TextAlign.center,
           ),

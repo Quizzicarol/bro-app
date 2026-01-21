@@ -191,7 +191,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: const Color(0xFF1A1A1A),
         title: const Text('Marketplace'),
         actions: [
           IconButton(
@@ -285,7 +285,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
+        color: const Color(0xFF1A1A1A),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isMine ? Colors.orange.withOpacity(0.5) : Colors.white12,
@@ -527,7 +527,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1E1E1E),
+      backgroundColor: const Color(0xFF1A1A1A),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -826,7 +826,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFF1E1E1E),
+          backgroundColor: const Color(0xFF1A1A1A),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Row(
             children: [

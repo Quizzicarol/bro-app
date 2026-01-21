@@ -55,6 +55,15 @@ class _OnchainPaymentScreenState extends State<OnchainPaymentScreen> {
             _confirmations = 1;
           });
           
+          // ⚡ CRÍTICO: Primeiro publicar ordem no Nostr AGORA que o pagamento foi confirmado!
+          debugPrint('🚀 Pagamento on-chain confirmado! Publicando ordem no Nostr...');
+          final published = await orderProvider.publishOrderAfterPayment(widget.orderId);
+          if (published) {
+            debugPrint('✅ Ordem publicada no Nostr - Bros agora podem vê-la!');
+          } else {
+            debugPrint('⚠️ Falha ao publicar ordem no Nostr');
+          }
+          
           // Atualizar status da ordem
           await orderProvider.updateOrderStatus(
             orderId: widget.orderId,

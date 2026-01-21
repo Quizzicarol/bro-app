@@ -370,7 +370,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
-      backgroundColor: const Color(0xF70A0A0A),
+      backgroundColor: const Color(0xFF121212),
       elevation: 0,
       systemOverlayStyle: SystemUiOverlayStyle.light,
       bottom: PreferredSize(
@@ -841,11 +841,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 topRight: Radius.circular(16),
               ),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                Icon(Icons.receipt_long, color: Colors.white),
-                SizedBox(width: 12),
-                Text(
+                Icon(Icons.receipt_long, color: Colors.white, size: 20),
+                const SizedBox(width: 12),
+                const Text(
                   'Minhas Trocas',
                   style: TextStyle(
                     fontSize: 18,

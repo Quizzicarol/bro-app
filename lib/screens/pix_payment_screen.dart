@@ -108,27 +108,30 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text('Confirmar Pagamento PIX'),
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: const Text('Confirmar Pagamento PIX', style: TextStyle(color: Colors.orange)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Destinatário: ${pixInfo['recipient'] ?? 'N/A'}'),
+            Text('Destinatário: ${pixInfo['recipient'] ?? 'N/A'}', style: const TextStyle(color: Colors.white70)),
             const SizedBox(height: 8),
             if (amount > 0)
-              Text('Valor: R\$ ${amount.toStringAsFixed(2)}'),
+              Text('Valor: R\$ ${amount.toStringAsFixed(2)}', style: const TextStyle(color: Colors.white)),
             const SizedBox(height: 8),
             if (pixInfo['description'] != null)
-              Text('Descrição: ${pixInfo['description']}'),
+              Text('Descrição: ${pixInfo['description']}', style: const TextStyle(color: Colors.white70)),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
             child: const Text('Confirmar'),
           ),
         ],
@@ -183,20 +186,29 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
         title: const Text('Pagamento PIX'),
-        backgroundColor: Colors.purple,
+        backgroundColor: const Color(0xFF1A1A1A),
+        foregroundColor: Colors.orange,
       ),
       body: _paymentSuccess
-          ? const Center(
+          ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.check_circle, color: Colors.green, size: 80),
-                  SizedBox(height: 16),
-                  Text(
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.check_circle, color: Colors.green, size: 64),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
                     'Pagamento Realizado!',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colors.white),
                   ),
                 ],
               ),
@@ -206,26 +218,33 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
                 // Instruções
                 Container(
                   padding: const EdgeInsets.all(16),
-                  color: Colors.purple.shade50,
+                  color: const Color(0xFF1A1A1A),
                   child: Column(
                     children: [
-                      const Icon(Icons.qr_code_scanner, size: 48, color: Colors.purple),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.qr_code_scanner, size: 32, color: Colors.orange),
+                      ),
                       const SizedBox(height: 8),
-                      Text(
+                      const Text(
                         'Escaneie o QR Code PIX',
                         style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.purple.shade900,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
                         ),
                       ),
                       const SizedBox(height: 4),
                       if (widget.amount != null)
                         Text(
                           'Valor: R\$ ${widget.amount!.toStringAsFixed(2)}',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.purple.shade700,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Colors.orange,
                           ),
                         ),
                     ],
@@ -270,6 +289,11 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
                     children: [
                       if (_pixData != null) ...[
                         Card(
+                          color: const Color(0xFF1A1A1A),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(color: Colors.orange.withOpacity(0.2)),
+                          ),
                           child: Padding(
                             padding: const EdgeInsets.all(12),
                             child: Column(
@@ -277,12 +301,12 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
                               children: [
                                 const Text(
                                   'Dados do PIX:',
-                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                  style: TextStyle(fontWeight: FontWeight.w600, color: Colors.orange),
                                 ),
                                 const SizedBox(height: 8),
-                                Text('Destinatário: ${_pixData!['recipient'] ?? 'N/A'}'),
+                                Text('Destinatário: ${_pixData!['recipient'] ?? 'N/A'}', style: const TextStyle(color: Colors.white70)),
                                 if (_pixData!['description'] != null)
-                                  Text('Descrição: ${_pixData!['description']}'),
+                                  Text('Descrição: ${_pixData!['description']}', style: const TextStyle(color: Colors.white70)),
                               ],
                             ),
                           ),

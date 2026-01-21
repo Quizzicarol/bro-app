@@ -128,7 +128,7 @@ class _WalletScreenState extends State<WalletScreen> {
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
-          backgroundColor: const Color(0xFF1E1E1E),
+          backgroundColor: const Color(0xFF1A1A1A),
           title: const Row(
             children: [
               Icon(Icons.bug_report, color: Color(0xFFFF9800)),
@@ -237,7 +237,7 @@ class _WalletScreenState extends State<WalletScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -1043,7 +1043,7 @@ class _WalletScreenState extends State<WalletScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: const Color(0xFF1A1A1A),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Row(
           children: [

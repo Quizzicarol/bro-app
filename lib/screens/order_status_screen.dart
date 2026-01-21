@@ -1094,24 +1094,35 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Status da Ordem')),
-        body: const Center(child: CircularProgressIndicator()),
+        backgroundColor: const Color(0xFF121212),
+        appBar: AppBar(
+          title: const Text('Status da Ordem'),
+          backgroundColor: const Color(0xFF1A1A1A),
+          foregroundColor: Colors.orange,
+        ),
+        body: const Center(child: CircularProgressIndicator(color: Colors.orange)),
       );
     }
 
     if (_error != null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Erro')),
+        backgroundColor: const Color(0xFF121212),
+        appBar: AppBar(
+          title: const Text('Erro'),
+          backgroundColor: const Color(0xFF1A1A1A),
+          foregroundColor: Colors.orange,
+        ),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Icon(Icons.error_outline, size: 64, color: Colors.red),
               const SizedBox(height: 16),
-              Text(_error!, textAlign: TextAlign.center),
+              Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white)),
               const SizedBox(height: 24),
               ElevatedButton(
                 onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
                 child: const Text('Voltar'),
               ),
             ],
@@ -1121,30 +1132,32 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     }
 
     return Scaffold(
+      backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
         title: Text(_currentStatus == 'pending' ? 'Aguardando Bro' : 'Status da Ordem'),
-        backgroundColor: _currentStatus == 'pending' ? Colors.orange : Colors.blue,
+        backgroundColor: const Color(0xFF1A1A1A),
+        foregroundColor: Colors.orange,
       ),
       body: RefreshIndicator(
         onRefresh: _loadOrderDetails,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildStatusCard(),
-              const SizedBox(height: 16),
+              const SizedBox(height: 10),
               _buildOrderDetailsCard(),
-              const SizedBox(height: 16),
+              const SizedBox(height: 10),
               if (_currentStatus == 'awaiting_confirmation') ...[
                 _buildReceiptCard(),
-                const SizedBox(height: 16),
+                const SizedBox(height: 10),
               ],
               _buildTimelineCard(),
-              const SizedBox(height: 16),
+              const SizedBox(height: 10),
               _buildInfoCard(),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
               if (_currentStatus == 'pending') ...[
                 // Ordem aguardando um Bro aceitar - só mostra botão cancelar
                 _buildCancelButton(),
@@ -1155,10 +1168,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               ],
               if (_currentStatus == 'awaiting_confirmation') ...[
                 _buildConfirmPaymentButton(),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 _buildDisputeButton(),
               ],
               // Botão de disputa também disponível para status 'accepted' (provedor aceitou mas não enviou comprovante)
+              if (_currentStatus == 'accepted') ...[
               if (_currentStatus == 'accepted') ...[
                 const SizedBox(height: 16),
                 _buildTalkToBroButton(),
@@ -1186,23 +1200,34 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     final statusInfo = _getStatusInfo();
     
     return Card(
-      color: statusInfo['color'],
+      color: const Color(0xFF1A1A1A),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: (statusInfo['color'] as Color).withOpacity(0.3)),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            Icon(
-              statusInfo['icon'],
-              size: 64,
-              color: Colors.white,
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: (statusInfo['color'] as Color).withOpacity(0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                statusInfo['icon'],
+                size: 32,
+                color: statusInfo['color'],
+              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             Text(
               statusInfo['title'],
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: statusInfo['color'],
               ),
               textAlign: TextAlign.center,
             ),
@@ -1307,21 +1332,21 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           'icon': Icons.hourglass_empty,
           'title': 'Aguardando Bro',
           'subtitle': 'Sua ordem está disponível para Bros',
-          'color': Colors.blue,
+          'color': Colors.orange,
         };
       case 'payment_received':
         return {
           'icon': Icons.hourglass_empty,
           'title': 'Saldo Reservado',
           'subtitle': 'Aguardando um Bro aceitar sua ordem',
-          'color': Colors.blue,
+          'color': Colors.orange,
         };
       case 'confirmed':
         return {
           'icon': Icons.hourglass_empty,
           'title': 'Aguardando um Bro',
           'subtitle': 'Sua ordem está disponível para Bros',
-          'color': Colors.blue,
+          'color': Colors.orange,
         };
       case 'accepted':
         return {
@@ -1335,14 +1360,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           'icon': Icons.receipt_long,
           'title': 'Comprovante Enviado',
           'subtitle': 'Verifique o comprovante e confirme o pagamento',
-          'color': Colors.purple,
+          'color': const Color(0xFFFF6B6B),
         };
       case 'payment_submitted':
         return {
           'icon': Icons.receipt_long,
           'title': 'Comprovante Enviado',
           'subtitle': 'Aguardando validação do pagamento',
-          'color': Colors.purple,
+          'color': const Color(0xFFFF6B6B),
         };
       case 'completed':
         return {
@@ -1377,19 +1402,25 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   Widget _buildOrderDetailsCard() {
     return Card(
+      color: const Color(0xFF1A1A1A),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.orange.withOpacity(0.2)),
+      ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+        padding: const EdgeInsets.all(16),
           child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
               'Detalhes da Ordem',
               style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: Colors.orange,
               ),
             ),
-            const Divider(height: 24),
+            Divider(height: 20, color: Colors.grey.withOpacity(0.2)),
             _buildDetailRow('ID da Ordem', widget.orderId.substring(0, 8)),
             const SizedBox(height: 12),
             _buildDetailRow('Valor', 'R\$ ${widget.amountBrl.toStringAsFixed(2)}'),
@@ -1420,15 +1451,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         Text(
           label,
           style: const TextStyle(
-            color: Colors.grey,
-            fontSize: 14,
+            color: Colors.white54,
+            fontSize: 13,
           ),
         ),
         Text(
           value,
           style: const TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            fontSize: 13,
+            color: Colors.white,
           ),
         ),
       ],
@@ -1437,19 +1469,25 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   Widget _buildTimelineCard() {
     return Card(
+      color: const Color(0xFF1A1A1A),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.orange.withOpacity(0.2)),
+      ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+        padding: const EdgeInsets.all(16),
           child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
               'Próximos Passos',
               style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: Colors.orange,
               ),
             ),
-            const Divider(height: 24),
+            Divider(height: 20, color: Colors.grey.withOpacity(0.2)),
             _buildTimelineStep(
               number: '1',
               title: 'Ordem Criada',
@@ -1499,24 +1537,25 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         Column(
           children: [
             Container(
-              width: 32,
-              height: 32,
+              width: 24,
+              height: 24,
               decoration: BoxDecoration(
                 color: isCompleted
                     ? Colors.green
                     : isActive
                         ? Colors.orange
-                        : Colors.grey[300],
+                        : const Color(0xFF333333),
                 shape: BoxShape.circle,
               ),
               child: Center(
                 child: isCompleted
-                    ? const Icon(Icons.check, color: Colors.white, size: 20)
+                    ? const Icon(Icons.check, color: Colors.white, size: 14)
                     : Text(
                         number,
                         style: TextStyle(
-                          color: isActive ? Colors.white : Colors.grey[600],
+                          color: isActive ? Colors.white : Colors.white60,
                           fontWeight: FontWeight.bold,
+                          fontSize: 12,
                         ),
                       ),
               ),
@@ -1524,12 +1563,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             if (!isLast)
               Container(
                 width: 2,
-                height: 40,
-                color: isCompleted ? Colors.green : Colors.grey[300],
+                height: 28,
+                color: isCompleted ? Colors.green : const Color(0xFF333333),
               ),
           ],
         ),
-        const SizedBox(width: 16),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1537,20 +1576,20 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               Text(
                 title,
                 style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                  color: isActive ? Colors.black : Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                  fontSize: 13,
+                  color: isActive ? Colors.orange : Colors.white70,
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[600],
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Colors.white54,
                 ),
               ),
-              if (!isLast) const SizedBox(height: 16),
+              if (!isLast) const SizedBox(height: 10),
             ],
           ),
         ),
@@ -1560,27 +1599,31 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   Widget _buildInfoCard() {
     return Card(
-      color: Colors.blue[50],
+      color: const Color(0xFF1A1A1A),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.blue.withOpacity(0.2)),
+      ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+        padding: const EdgeInsets.all(16),
           child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(Icons.info_outline, color: Colors.blue[700]),
+                Icon(Icons.info_outline, color: Colors.blue[300], size: 18),
                 const SizedBox(width: 8),
                 Text(
-                  'Informações Importantes',
+                  'Informações',
                   style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue[900],
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.blue[300],
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             _buildInfoItem('⏰', 'O Bro tem até 24 horas para aceitar e pagar sua conta'),
             const SizedBox(height: 12),
             _buildInfoItem('🔒', 'Seus Bitcoin estão seguros no escrow até a conclusão'),
@@ -1598,14 +1641,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(emoji, style: const TextStyle(fontSize: 20)),
-        const SizedBox(width: 12),
+        Text(emoji, style: const TextStyle(fontSize: 14)),
+        const SizedBox(width: 8),
         Expanded(
           child: Text(
             text,
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.blue[900],
+            style: const TextStyle(
+              fontSize: 12,
+              color: Colors.white60,
             ),
           ),
         ),
@@ -1642,25 +1685,31 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     final submittedAt = metadata?['receipt_submitted_at'] as String? ?? metadata?['proofReceivedAt'] as String?;
 
     return Card(
+      color: const Color(0xFF1A1A1A),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.orange.withOpacity(0.2)),
+      ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+        padding: const EdgeInsets.all(16),
           child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(Icons.receipt_long, color: Colors.orange[700]),
-                const SizedBox(width: 12),
+                const Icon(Icons.receipt_long, color: Colors.orange, size: 18),
+                const SizedBox(width: 8),
                 const Text(
                   'Comprovante do Bro',
                   style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.orange,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             
             if (confirmationCode != null && confirmationCode.isNotEmpty) ...[
               Container(
@@ -1675,13 +1724,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.confirmation_number, color: Colors.orange[700], size: 20),
+                        const Icon(Icons.confirmation_number, color: Colors.orange, size: 20),
                         const SizedBox(width: 8),
                         const Text(
                           'Código de Confirmação:',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
+                            color: Colors.white,
                           ),
                         ),
                       ],
@@ -1693,6 +1743,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         fontSize: 16,
                         fontFamily: 'monospace',
                         fontWeight: FontWeight.bold,
+                        color: Colors.orange,
                       ),
                     ),
                   ],
@@ -3319,23 +3370,27 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   Widget _buildDisputedCard() {
     return Card(
-      color: const Color(0xFFFFF3E0),
+      color: const Color(0xFF1A1A1A),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.orange.withOpacity(0.3)),
+      ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+        padding: const EdgeInsets.all(16),
           child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.2),
+                    color: Colors.orange.withOpacity(0.15),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.gavel, color: Colors.orange, size: 28),
+                  child: const Icon(Icons.gavel, color: Colors.orange, size: 20),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 const Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

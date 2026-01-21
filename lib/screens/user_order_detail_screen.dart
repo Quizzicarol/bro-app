@@ -70,7 +70,7 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: const Color(0xFF1A1A1A),
         title: const Text('Detalhes da Ordem'),
       ),
       body: _isLoading
@@ -294,7 +294,7 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
+        color: const Color(0xFF1A1A1A),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white12),
       ),
@@ -354,7 +354,7 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
+        color: const Color(0xFF1A1A1A),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white12),
       ),

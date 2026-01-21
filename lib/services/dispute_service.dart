@@ -79,7 +79,7 @@ class Dispute {
 
 /// Serviço de Disputas
 /// Gerencia disputas entre usuários e provedores
-/// Notifica suporte via Nostr
+/// Notifica suporte via Nostr e Email
 class DisputeService {
   static final DisputeService _instance = DisputeService._internal();
   factory DisputeService() => _instance;
@@ -88,9 +88,12 @@ class DisputeService {
   final _storage = StorageService();
   final _relayService = RelayService();
 
-  // Pubkey do suporte para notificações (NIP-01)
-  // Em produção, isso seria configurável
-  static const String supportPubkey = 'e17fe0aa37ce66a0c8818b7b20b0eda7d53e5c44f09b2f0a8f7e2eed5c37b8a5';
+  // Pubkey do suporte para notificações Nostr (NIP-01)
+  // npub14dkurlx4vkd5qmf7q5fwqh52lh3mn078wms2jetl2l4wnmcxnghqlud5dt
+  static const String supportPubkey = 'ab6dc1fcd5659b406d3e0512e05e8afde3b9bfc776e0a9657f57eae9ef069a2e';
+  
+  // Email do suporte para disputas
+  static const String supportEmail = 'brostr@proton.me';
   
   // Lista local de disputas (em memória + storage)
   final List<Dispute> _disputes = [];
@@ -177,6 +180,9 @@ class DisputeService {
     }
   }
 
+  /// Getter público para acesso ao email de suporte
+  String get disputeEmail => supportEmail;
+
   /// Construir mensagem de disputa para suporte
   String _buildDisputeMessage(Dispute dispute, Map<String, dynamic>? orderDetails) {
     final buffer = StringBuffer();
@@ -220,6 +226,8 @@ class DisputeService {
     buffer.writeln('');
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━━');
     buffer.writeln('⚠️ Ação necessária: Revisar disputa e tomar decisão');
+    buffer.writeln('');
+    buffer.writeln('📧 Email de suporte: $supportEmail');
     
     return buffer.toString();
   }

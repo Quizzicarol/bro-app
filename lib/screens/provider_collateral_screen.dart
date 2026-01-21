@@ -139,9 +139,14 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
   }
 
   Widget _buildContent() {
+    // Calcular valores para o breakdown
+    final tierLocked = _currentCollateral?.lockedSats ?? 0;
+    final totalCommitted = tierLocked + _committedSats;
+    final freeBalance = (_walletBalance - totalCommitted).clamp(0, _walletBalance);
+    
     return Column(
       children: [
-        // Saldo atual
+        // Card principal de saldo com breakdown detalhado
         Container(
           margin: const EdgeInsets.all(16),
           padding: const EdgeInsets.all(16),
@@ -155,55 +160,97 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Saldo total
               Row(
                 children: [
-                  const Icon(Icons.account_balance_wallet, color: Colors.orange, size: 32),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Disponível para Garantia', style: TextStyle(color: Colors.white60, fontSize: 12)),
-                        Text(
-                          '$_availableBalance sats',
-                          style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-                        ),
-                      ],
+                  const Icon(Icons.account_balance_wallet, color: Colors.orange, size: 28),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Saldo Total',
+                    style: TextStyle(color: Colors.white60, fontSize: 12),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '$_walletBalance sats',
+                    style: const TextStyle(
+                      color: Colors.white, 
+                      fontSize: 18, 
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  if (_currentCollateral != null)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.green),
-                      ),
-                      child: Text(
-                        _currentCollateral!.tierName,
-                        style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
-                      ),
-                    ),
                 ],
               ),
-              // Mostrar detalhamento se houver sats comprometidos
-              if (_committedSats > 0) ...[
+              
+              const SizedBox(height: 16),
+              const Divider(color: Colors.white24),
+              const SizedBox(height: 12),
+              
+              // Breakdown detalhado
+              const Text(
+                'DISTRIBUIÇÃO',
+                style: TextStyle(
+                  color: Colors.white54, 
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const SizedBox(height: 12),
+              
+              // 1. Bloqueado em tier (garantia)
+              _buildBreakdownRow(
+                icon: Icons.lock,
+                iconColor: Colors.purple,
+                label: 'Garantia (Tier)',
+                value: tierLocked,
+                subtitle: _currentCollateral?.tierName ?? 'Nenhum',
+              ),
+              
+              const SizedBox(height: 8),
+              
+              // 2. Comprometido com ordens
+              _buildBreakdownRow(
+                icon: Icons.pending_actions,
+                iconColor: Colors.blue,
+                label: 'Ordens Pendentes',
+                value: _committedSats,
+                subtitle: _committedSats > 0 ? 'Em processamento' : 'Nenhuma',
+              ),
+              
+              const SizedBox(height: 8),
+              
+              // 3. Disponível
+              _buildBreakdownRow(
+                icon: Icons.check_circle,
+                iconColor: Colors.green,
+                label: 'Disponível',
+                value: freeBalance,
+                subtitle: 'Para uso livre',
+                highlight: true,
+              ),
+              
+              // Aviso se tier estiver consumindo muito
+              if (tierLocked > 0 && _committedSats > 0) ...[
                 const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.1),
+                    color: Colors.blue.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.withOpacity(0.3)),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.info_outline, color: Colors.orange, size: 16),
+                      const Icon(Icons.info, color: Colors.blue, size: 16),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Saldo total: $_walletBalance sats\n'
-                          'Comprometido com ordens: $_committedSats sats',
-                          style: const TextStyle(color: Colors.white70, fontSize: 11),
+                          'Garantia e ordens usam o mesmo saldo. '
+                          'O tier permanece ativo enquanto você tiver saldo suficiente.',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.7),
+                            fontSize: 11,
+                          ),
                         ),
                       ),
                     ],
@@ -429,6 +476,72 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
     if (result == true) {
       _loadData(); // Recarregar dados se houve depósito
     }
+  }
+
+  /// Widget para linha do breakdown de saldo
+  Widget _buildBreakdownRow({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required int value,
+    required String subtitle,
+    bool highlight = false,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+      decoration: BoxDecoration(
+        color: highlight 
+            ? Colors.green.withOpacity(0.1) 
+            : Colors.white.withOpacity(0.03),
+        borderRadius: BorderRadius.circular(8),
+        border: highlight 
+            ? Border.all(color: Colors.green.withOpacity(0.3))
+            : null,
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: iconColor.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Icon(icon, color: iconColor, size: 16),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: highlight ? Colors.green : Colors.white,
+                    fontSize: 13,
+                    fontWeight: highlight ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.5),
+                    fontSize: 10,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '$value sats',
+            style: TextStyle(
+              color: highlight ? Colors.green : Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _removeTier() async {

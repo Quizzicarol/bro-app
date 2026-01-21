@@ -166,7 +166,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
       backgroundColor: const Color(0xFF121212),
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: const Color(0xFF1A1A1A),
         foregroundColor: Colors.white,
         elevation: 0,
         title: Column(
@@ -447,7 +447,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
           bottom: 8,
         ),
         decoration: BoxDecoration(
-          color: const Color(0xFF1E1E1E),
+          color: const Color(0xFF1A1A1A),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.3),
@@ -522,7 +522,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF1E1E1E),
+      backgroundColor: const Color(0xFF1A1A1A),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),

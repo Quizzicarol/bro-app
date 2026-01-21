@@ -1077,111 +1077,141 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
   }
 
-  /// Badge compacto do tier atual com indicador de status
+  /// Badge compacto do tier - TEXTO CLARO: Ativo ou Inativo
   Widget _buildTierBadge() {
-    debugPrint('🏷️ _buildTierBadge: tier=${_currentTier?.tierName ?? "null"}, atRisk=$_tierAtRisk');
+    debugPrint('🏷️ _buildTierBadge: tier=${_currentTier?.tierName ?? "null"}, atRisk=$_tierAtRisk, deficit=$_tierDeficit');
     
     // Se não tem tier, mostra "Sem Tier"
     if (_currentTier == null) {
       return GestureDetector(
         onTap: () => Navigator.pushNamed(context, '/provider-collateral'),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
-            color: Colors.orange.withOpacity(0.15),
+            color: Colors.grey.withOpacity(0.2),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.orange.withOpacity(0.5), width: 1),
+            border: Border.all(color: Colors.grey, width: 1),
           ),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.shield_outlined, size: 14, color: Colors.orange),
-              SizedBox(width: 4),
-              Text(
-                'Sem Tier',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.orange,
-                ),
-              ),
-            ],
+          child: const Text(
+            'Sem Tier',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey,
+            ),
           ),
         ),
       );
     }
     
-    // Determinar cor do tier
-    Color tierColor;
-    IconData tierIcon;
-    switch (_currentTier!.tierId) {
-      case 'bronze':
-        tierColor = const Color(0xFFCD7F32);
-        tierIcon = Icons.shield;
-        break;
-      case 'silver':
-        tierColor = Colors.grey.shade400;
-        tierIcon = Icons.shield;
-        break;
-      case 'gold':
-        tierColor = Colors.amber;
-        tierIcon = Icons.verified;
-        break;
-      case 'platinum':
-        tierColor = Colors.blueGrey.shade300;
-        tierIcon = Icons.workspace_premium;
-        break;
-      default:
-        tierColor = Colors.orange;
-        tierIcon = Icons.shield_outlined;
-    }
+    // Tier ativo ou inativo baseado no déficit
+    final isActive = !_tierAtRisk;
+    final statusText = isActive ? 'Tier Ativo' : 'Tier Inativo';
+    final statusColor = isActive ? Colors.green : Colors.orange;
     
     return GestureDetector(
-      onTap: () => Navigator.pushNamed(context, '/provider-collateral'),
+      onTap: () => _showTierStatusDialog(),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: _tierAtRisk ? Colors.orange.withOpacity(0.2) : tierColor.withOpacity(0.2),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: _tierAtRisk ? Colors.orange : tierColor, 
-            width: 1.5,
+          color: statusColor.withOpacity(0.2),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: statusColor, width: 1.5),
+        ),
+        child: Text(
+          statusText,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: statusColor,
           ),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
+      ),
+    );
+  }
+  
+  /// Dialog explicando status do tier
+  void _showTierStatusDialog() {
+    final isActive = !_tierAtRisk;
+    final tierName = _currentTier?.tierName ?? 'Nenhum';
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
           children: [
             Icon(
-              _tierAtRisk ? Icons.warning_amber : tierIcon, 
-              size: 14, 
-              color: _tierAtRisk ? Colors.orange : tierColor,
+              isActive ? Icons.check_circle : Icons.warning_amber,
+              color: isActive ? Colors.green : Colors.orange,
+              size: 28,
             ),
-            const SizedBox(width: 4),
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _currentTier!.tierName.split(' ').first, // "Bronze", "Silver", etc
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: _tierAtRisk ? Colors.orange : tierColor,
-                  ),
-                ),
-                if (_tierAtRisk && _tierDeficit != null)
-                  Text(
-                    '-$_tierDeficit sats',
-                    style: const TextStyle(
-                      fontSize: 9,
-                      color: Colors.orange,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-              ],
+            const SizedBox(width: 12),
+            Text(
+              isActive ? 'Tier Ativo' : 'Tier Inativo',
+              style: const TextStyle(color: Colors.white),
             ),
           ],
         ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Tier: $tierName',
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            if (!isActive && _tierDeficit != null) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '⚠️ Bitcoin oscilou de preço',
+                      style: TextStyle(
+                        color: Colors.orange,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Deposite $_tierDeficit sats para reativar seu tier.',
+                      style: const TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+            ] else
+              const Text(
+                '✅ Seu tier está ativo e você pode aceitar ordens normalmente.',
+                style: TextStyle(color: Colors.white70, fontSize: 13),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fechar', style: TextStyle(color: Colors.white70)),
+          ),
+          if (!isActive)
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, '/provider-collateral');
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+              child: const Text('Depositar'),
+            ),
+        ],
       ),
     );
   }

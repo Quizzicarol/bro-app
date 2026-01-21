@@ -204,11 +204,6 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
             },
             tooltip: 'Criar Oferta',
           ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadData,
-            tooltip: 'Atualizar',
-          ),
         ],
         bottom: TabBar(
           controller: _tabController,

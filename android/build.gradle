@@ -3,6 +3,16 @@ allprojects {
         google()
         mavenCentral()
     }
+    
+    // Configuração para evitar timeouts no Codemagic CI
+    project.plugins.whenPluginAdded { plugin ->
+        if ("com.android.build.gradle.AppPlugin" == plugin.class.name ||
+            "com.android.build.gradle.LibraryPlugin" == plugin.class.name) {
+            project.android.buildTypes.all { buildType ->
+                buildType.javaCompileOptions.annotationProcessorOptions.includeCompileClasspath = false
+            }
+        }
+    }
 }
 
 rootProject.buildDir = "../build"

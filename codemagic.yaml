@@ -40,7 +40,12 @@ workflows:
         script: flutter pub get
         
       - name: Build APK Release (Android)
-        script: flutter build apk --release
+        script: |
+          # Limpar cache Gradle se existir problemas anteriores
+          cd android && ./gradlew clean || true
+          cd ..
+          # Build com retry automático (Flutter já faz 1 retry)
+          flutter build apk --release
         
       - name: Install CocoaPods
         script: |

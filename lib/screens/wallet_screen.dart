@@ -248,12 +248,6 @@ class _WalletScreenState extends State<WalletScreen> {
             Text('Minha Carteira', style: TextStyle(fontWeight: FontWeight.bold)),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _isLoading ? null : _loadWalletInfo,
-          ),
-        ],
       ),
       body: _buildBody(),
     );

@@ -88,13 +88,32 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
       // Atualizar UI mesmo se não tiver tier (para limpar estado)
       if (mounted) setState(() {});
       
-      if (_currentTier == null) return;
+      if (_currentTier == null) {
+        _tierWarning = false;
+        _tierWarningMessage = null;
+        return;
+      }
+      
+      // Buscar saldo ATUAL da carteira
+      int walletBalance = 0;
+      try {
+        final breezProvider = context.read<BreezProvider>();
+        final balanceInfo = await breezProvider.getBalance();
+        walletBalance = int.tryParse(balanceInfo['balance']?.toString() ?? '0') ?? 0;
+        debugPrint('🏷️ Saldo da carteira: $walletBalance sats');
+      } catch (e) {
+        debugPrint('⚠️ Erro ao buscar saldo: $e');
+      }
       
       // Carregar preço atual do Bitcoin
       final priceService = BitcoinPriceService();
       _btcPrice = await priceService.getBitcoinPrice();
       
-      if (_btcPrice == null) return;
+      if (_btcPrice == null) {
+        _tierWarning = false;
+        _tierWarningMessage = null;
+        return;
+      }
       
       // Verificar se o tier ainda é válido com o preço atual
       final tiers = CollateralTier.getAvailableTiers(_btcPrice!);
@@ -103,14 +122,17 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
         orElse: () => tiers.first,
       );
       
-      // Verificar se o saldo ainda cobre o requisito
-      // O requiredSats do tier pode ter aumentado se BTC caiu
-      if (currentTierDef.requiredCollateralSats > _currentTier!.lockedSats) {
-        final deficit = currentTierDef.requiredCollateralSats - _currentTier!.lockedSats;
+      final requiredSats = currentTierDef.requiredCollateralSats;
+      debugPrint('🏷️ Tier ${currentTierDef.id}: requer $requiredSats sats, carteira tem $walletBalance sats');
+      
+      // O tier está em risco se o SALDO DA CARTEIRA for menor que o requerido
+      if (walletBalance < requiredSats) {
+        final deficit = requiredSats - walletBalance;
         setState(() {
           _tierWarning = true;
           _tierWarningMessage = 'Deposite mais $deficit sats para manter o ${_currentTier!.tierName}';
         });
+        debugPrint('⚠️ Tier em risco! Faltam $deficit sats');
         
         // Enviar notificação
         await _notificationService.notifyTierAtRisk(
@@ -122,9 +144,12 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
           _tierWarning = false;
           _tierWarningMessage = null;
         });
+        debugPrint('✅ Tier ativo! Saldo suficiente');
       }
     } catch (e) {
       debugPrint('Erro ao verificar tier: $e');
+      _tierWarning = false;
+      _tierWarningMessage = null;
     }
     
     if (mounted) setState(() {});

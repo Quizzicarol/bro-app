@@ -80,11 +80,24 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       debugPrint('🏷️ _checkTierStatus: tier=${_currentTier?.tierName ?? "null"}');
       
       if (_currentTier == null) {
+        _tierAtRisk = false;
+        _tierDeficit = null;
         if (mounted) setState(() {});
         return;
       }
       
-      // Carregar preço atual do Bitcoin para verificar déficit
+      // Buscar saldo ATUAL da carteira
+      int walletBalance = 0;
+      try {
+        final breezProvider = context.read<BreezProvider>();
+        final balanceInfo = await breezProvider.getBalance();
+        walletBalance = int.tryParse(balanceInfo['balance']?.toString() ?? '0') ?? 0;
+        debugPrint('🏷️ Saldo da carteira: $walletBalance sats');
+      } catch (e) {
+        debugPrint('⚠️ Erro ao buscar saldo: $e');
+      }
+      
+      // Carregar preço atual do Bitcoin para verificar requisito atual do tier
       final priceService = BitcoinPriceService();
       final btcPrice = await priceService.getBitcoinPrice();
       
@@ -95,19 +108,32 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           orElse: () => tiers.first,
         );
         
-        if (currentTierDef.requiredCollateralSats > _currentTier!.lockedSats) {
+        final requiredSats = currentTierDef.requiredCollateralSats;
+        debugPrint('🏷️ Tier ${currentTierDef.id}: requer $requiredSats sats, carteira tem $walletBalance sats');
+        
+        // O tier está em risco se o SALDO DA CARTEIRA for menor que o requerido
+        if (walletBalance < requiredSats) {
           _tierAtRisk = true;
-          _tierDeficit = currentTierDef.requiredCollateralSats - _currentTier!.lockedSats;
+          _tierDeficit = requiredSats - walletBalance;
+          debugPrint('⚠️ Tier em risco! Faltam $_tierDeficit sats');
         } else {
           _tierAtRisk = false;
           _tierDeficit = null;
+          debugPrint('✅ Tier ativo! Saldo suficiente');
         }
+      } else {
+        // Se não conseguiu preço, assume que está ok
+        _tierAtRisk = false;
+        _tierDeficit = null;
       }
       
       if (mounted) setState(() {});
     } catch (e) {
       debugPrint('⚠️ Erro ao verificar tier: $e');
+      _tierAtRisk = false;
+      _tierDeficit = null;
     }
+  }
   }
 
   @override

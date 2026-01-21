@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/bitcoin_price_service.dart';
+import '../services/nostr_service.dart';
+import '../services/nostr_order_service.dart';
 
 /// Tela para criar uma oferta de produto ou servico
 class OfferScreen extends StatefulWidget {
@@ -14,6 +16,8 @@ class _OfferScreenState extends State<OfferScreen> {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _priceController = TextEditingController();
+  final _cityController = TextEditingController();
+  final _siteController = TextEditingController();
   
   String _selectedCategory = 'produto';
   bool _acceptsPhotos = true;
@@ -55,6 +59,8 @@ class _OfferScreenState extends State<OfferScreen> {
     _titleController.dispose();
     _descriptionController.dispose();
     _priceController.dispose();
+    _cityController.dispose();
+    _siteController.dispose();
     super.dispose();
   }
 
@@ -187,6 +193,46 @@ class _OfferScreenState extends State<OfferScreen> {
               ),
               const SizedBox(height: 8),
               _buildPriceHint(),
+              const SizedBox(height: 24),
+
+              // Cidade
+              const Text(
+                'Cidade (onde você atende)',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _cityController,
+                style: const TextStyle(color: Colors.white),
+                decoration: _buildInputDecoration(
+                  hint: 'Ex: São Paulo, SP ou Brasil inteiro',
+                  icon: Icons.location_city,
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Site ou Referências
+              const Text(
+                'Site ou Referências (opcional)',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _siteController,
+                style: const TextStyle(color: Colors.white),
+                decoration: _buildInputDecoration(
+                  hint: 'Ex: https://meusite.com ou @meunostr',
+                  icon: Icons.link,
+                ),
+              ),
               const SizedBox(height: 32),
 
               // Botao publicar
@@ -538,72 +584,108 @@ class _OfferScreenState extends State<OfferScreen> {
 
     setState(() => _isPublishing = true);
 
-    // Simula publicacao
-    await Future.delayed(const Duration(seconds: 2));
+    try {
+      // Publicar no Nostr de verdade
+      final nostrService = NostrService();
+      final nostrOrderService = NostrOrderService();
+      
+      final privateKey = nostrService.privateKey;
+      if (privateKey == null) {
+        throw Exception('Faça login para publicar ofertas');
+      }
 
-    setState(() => _isPublishing = false);
+      // Monta descrição com cidade
+      String fullDescription = _descriptionController.text;
+      if (_cityController.text.isNotEmpty) {
+        fullDescription = '📍 ${_cityController.text}\n\n$fullDescription';
+      }
 
-    if (mounted) {
-      // Mostra sucesso
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          backgroundColor: const Color(0xFF1A1A1A),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: const BoxDecoration(
-                  color: Color(0xFF3DE98C),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.check, color: Colors.black, size: 32),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Oferta Publicada!',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Sua oferta esta visivel no Nostr. Aguarde interessados entrarem em contato!',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Color(0x99FFFFFF),
-                ),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(context); // Fecha dialog
-                    Navigator.pop(context); // Volta para home
-                    Navigator.pop(context); // Volta para home
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF3DE98C),
-                    foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Text('Fechar'),
-                ),
-              ),
-            ],
-          ),
-        ),
+      final offerId = await nostrOrderService.publishMarketplaceOffer(
+        privateKey: privateKey,
+        title: _titleController.text,
+        description: fullDescription,
+        priceSats: int.tryParse(_priceController.text) ?? 0,
+        category: _selectedCategory,
+        siteUrl: _siteController.text.trim().isEmpty ? null : _siteController.text.trim(),
       );
+
+      if (offerId == null) {
+        throw Exception('Falha ao publicar nos relays');
+      }
+
+      setState(() => _isPublishing = false);
+
+      if (mounted) {
+        // Mostra sucesso
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: const Color(0xFF1A1A1A),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF3DE98C),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.check, color: Colors.black, size: 32),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Oferta Publicada!',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Sua oferta esta visivel no Nostr. Aguarde interessados entrarem em contato!',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Color(0x99FFFFFF),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context); // Fecha dialog
+                      Navigator.pop(context); // Volta para tela anterior
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF3DE98C),
+                      foregroundColor: Colors.black,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text('Fechar'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() => _isPublishing = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 }

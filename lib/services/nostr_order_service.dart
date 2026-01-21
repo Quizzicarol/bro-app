@@ -914,7 +914,7 @@ class NostrOrderService {
       debugPrint('📤 Publicando oferta "$title" nos relays...');
       
       int successCount = 0;
-      for (final relay in _relays.take(3)) {
+      for (final relay in _relays.take(5)) {
         try {
           final success = await _publishToRelay(relay, event);
           if (success) {
@@ -941,7 +941,7 @@ class NostrOrderService {
 
     debugPrint('🔍 Buscando ofertas do marketplace...');
 
-    for (final relay in _relays.take(3)) {
+    for (final relay in _relays.take(5)) {
       try {
         final events = await _fetchFromRelay(
           relay,

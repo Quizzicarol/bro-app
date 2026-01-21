@@ -1,4 +1,6 @@
-<h1 align="center">🟢 Bro</h1>
+<p align="center">
+  <img src="assets/images/bro-logo.png" alt="Bro Logo" width="200">
+</p>
 
 <p align="center">
   <strong>O app de escambo digital via Nostr</strong><br>

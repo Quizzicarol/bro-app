@@ -22,9 +22,9 @@ class NostrOrderService {
   final List<String> _relays = [
     'wss://relay.damus.io',
     'wss://nos.lol',
-    'wss://relay.nostr.band',
     'wss://nostr.wine',
     'wss://relay.primal.net',
+    'wss://relay.snort.social',
   ];
 
   // Kind para ordens Bro (usando addressable event para poder atualizar)
@@ -173,6 +173,8 @@ class NostrOrderService {
     final orders = <Map<String, dynamic>>[];
     final seenIds = <String>{};
 
+    debugPrint('🔍 Buscando ordens do provedor ${providerPubkey.substring(0, 16)}...');
+
     for (final relay in _relays.take(3)) {
       try {
         final relayOrders = await _fetchFromRelay(
@@ -181,6 +183,8 @@ class NostrOrderService {
           tags: {'#p': [providerPubkey]},
           limit: 100,
         );
+        
+        debugPrint('   $relay retornou ${relayOrders.length} ordens do provedor');
         
         for (final order in relayOrders) {
           final id = order['id'];
@@ -194,7 +198,17 @@ class NostrOrderService {
       }
     }
 
+    debugPrint('✅ Encontradas ${orders.length} ordens do provedor');
     return orders;
+  }
+
+  /// Busca ordens aceitas por um provedor e retorna como List<Order>
+  Future<List<Order>> fetchProviderOrders(String providerPubkey) async {
+    final rawOrders = await _fetchProviderOrdersRaw(providerPubkey);
+    return rawOrders
+        .map((e) => eventToOrder(e))
+        .whereType<Order>()
+        .toList();
   }
 
   /// Publica evento em um relay específico
@@ -582,21 +596,126 @@ class NostrOrderService {
   }
 
   /// Busca ordens pendentes e retorna como List<Order>
+  /// INCLUI merge com eventos de UPDATE para obter status correto
   Future<List<Order>> fetchPendingOrders() async {
     final rawOrders = await _fetchPendingOrdersRaw();
-    return rawOrders
+    
+    // Buscar eventos de UPDATE para obter status mais recente
+    final statusUpdates = await _fetchAllOrderStatusUpdates();
+    
+    // Converter para Orders e aplicar status atualizado
+    final orders = rawOrders
         .map((e) => eventToOrder(e))
         .whereType<Order>()
+        .map((order) => _applyStatusUpdate(order, statusUpdates))
         .toList();
+    
+    debugPrint('📦 Após merge de status: ${orders.length} ordens');
+    
+    return orders;
   }
 
   /// Busca ordens de um usuário específico e retorna como List<Order>
+  /// INCLUI merge com eventos de UPDATE para obter status correto
   Future<List<Order>> fetchUserOrders(String pubkey) async {
     final rawOrders = await _fetchUserOrdersRaw(pubkey);
-    return rawOrders
+    
+    // Buscar eventos de UPDATE para obter status mais recente
+    final statusUpdates = await _fetchAllOrderStatusUpdates();
+    
+    // Converter para Orders e aplicar status atualizado
+    final orders = rawOrders
         .map((e) => eventToOrder(e))
         .whereType<Order>()
+        .map((order) => _applyStatusUpdate(order, statusUpdates))
         .toList();
+    
+    return orders;
+  }
+  
+  /// Busca TODOS os eventos de UPDATE de status (kind 30080)
+  Future<Map<String, Map<String, dynamic>>> _fetchAllOrderStatusUpdates() async {
+    final updates = <String, Map<String, dynamic>>{}; // orderId -> latest update
+    
+    debugPrint('🔄 Buscando eventos de UPDATE de status...');
+    
+    for (final relay in _relays.take(3)) {
+      try {
+        final events = await _fetchFromRelay(
+          relay,
+          kinds: [kindBroPaymentProof], // kind 30080 = updates
+          tags: {'#t': ['bro-update']},
+          limit: 200,
+        );
+        
+        for (final event in events) {
+          try {
+            final content = event['parsedContent'] ?? jsonDecode(event['content']);
+            final eventType = content['type'] as String?;
+            
+            // Só processar eventos de update
+            if (eventType != 'bro_order_update') continue;
+            
+            final orderId = content['orderId'] as String?;
+            if (orderId == null) continue;
+            
+            final createdAt = event['created_at'] as int? ?? 0;
+            
+            // Manter apenas o update mais recente para cada ordem
+            final existingUpdate = updates[orderId];
+            final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
+            
+            if (existingUpdate == null || createdAt > existingCreatedAt) {
+              updates[orderId] = {
+                'orderId': orderId,
+                'status': content['status'],
+                'providerId': content['providerId'],
+                'created_at': createdAt,
+              };
+              debugPrint('   📥 Update: $orderId -> status=${content['status']}');
+            }
+          } catch (e) {
+            // Ignorar eventos mal formatados
+          }
+        }
+      } catch (e) {
+        debugPrint('⚠️ Falha ao buscar updates de $relay: $e');
+      }
+    }
+    
+    debugPrint('✅ ${updates.length} updates de status encontrados');
+    return updates;
+  }
+  
+  /// Aplica o status mais recente de um update a uma ordem
+  Order _applyStatusUpdate(Order order, Map<String, Map<String, dynamic>> statusUpdates) {
+    final update = statusUpdates[order.id];
+    if (update == null) return order;
+    
+    final newStatus = update['status'] as String?;
+    final providerId = update['providerId'] as String?;
+    
+    if (newStatus != null && newStatus != order.status) {
+      debugPrint('   🔄 Aplicando status: ${order.id.substring(0, 8)} ${order.status} -> $newStatus');
+      return Order(
+        id: order.id,
+        eventId: order.eventId,
+        userPubkey: order.userPubkey,
+        billType: order.billType,
+        billCode: order.billCode,
+        amount: order.amount,
+        btcAmount: order.btcAmount,
+        btcPrice: order.btcPrice,
+        providerFee: order.providerFee,
+        platformFee: order.platformFee,
+        total: order.total,
+        status: newStatus,
+        providerId: providerId ?? order.providerId,
+        createdAt: order.createdAt,
+      );
+    }
+    
+    return order;
   }
 
   /// Busca ordens pendentes (raw) - todas as ordens disponíveis para Bros

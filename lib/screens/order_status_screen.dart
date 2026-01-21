@@ -1173,7 +1173,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               ],
               // Botão de disputa também disponível para status 'accepted' (provedor aceitou mas não enviou comprovante)
               if (_currentStatus == 'accepted') ...[
-              if (_currentStatus == 'accepted') ...[
                 const SizedBox(height: 16),
                 _buildTalkToBroButton(),
                 const SizedBox(height: 12),

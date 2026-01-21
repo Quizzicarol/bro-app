@@ -10,6 +10,8 @@ import '../services/nostr_service.dart';
 import '../services/secure_storage_service.dart';
 import '../services/local_collateral_service.dart';
 import '../services/notification_service.dart';
+import '../services/bitcoin_price_service.dart';
+import '../models/collateral_tier.dart';
 import '../config.dart';
 import 'provider_order_detail_screen.dart';
 
@@ -29,6 +31,7 @@ class ProviderOrdersScreen extends StatefulWidget {
 class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with SingleTickerProviderStateMixin {
   final EscrowService _escrowService = EscrowService();
   final NotificationService _notificationService = NotificationService();
+  final LocalCollateralService _collateralService = LocalCollateralService();
   
   late TabController _tabController;
   
@@ -41,6 +44,11 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   String? _error;
   int _lastOrderCount = 0;
   String? _currentPubkey;
+  
+  // Tier info para badge
+  LocalCollateral? _currentTier;
+  bool _tierAtRisk = false;
+  int? _tierDeficit;
 
   @override
   void initState() {
@@ -55,6 +63,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadOrders();
+      _checkTierStatus();
     });
   }
 
@@ -62,6 +71,43 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  /// Verifica o status do tier e se precisa de atenção
+  Future<void> _checkTierStatus() async {
+    try {
+      _currentTier = await _collateralService.getCollateral();
+      debugPrint('🏷️ _checkTierStatus: tier=${_currentTier?.tierName ?? "null"}');
+      
+      if (_currentTier == null) {
+        if (mounted) setState(() {});
+        return;
+      }
+      
+      // Carregar preço atual do Bitcoin para verificar déficit
+      final priceService = BitcoinPriceService();
+      final btcPrice = await priceService.getBitcoinPrice();
+      
+      if (btcPrice != null) {
+        final tiers = CollateralTier.getAvailableTiers(btcPrice);
+        final currentTierDef = tiers.firstWhere(
+          (t) => t.id == _currentTier!.tierId,
+          orElse: () => tiers.first,
+        );
+        
+        if (currentTierDef.requiredCollateralSats > _currentTier!.lockedSats) {
+          _tierAtRisk = true;
+          _tierDeficit = currentTierDef.requiredCollateralSats - _currentTier!.lockedSats;
+        } else {
+          _tierAtRisk = false;
+          _tierDeficit = null;
+        }
+      }
+      
+      if (mounted) setState(() {});
+    } catch (e) {
+      debugPrint('⚠️ Erro ao verificar tier: $e');
+    }
   }
 
   @override
@@ -197,18 +243,21 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('Modo Bro'),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Modo Bro'),
+            const SizedBox(width: 8),
+            _buildTierBadge(),
+          ],
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.account_balance_wallet),
             onPressed: () => Navigator.pushNamed(context, '/wallet'),
             tooltip: 'Minha Carteira',
           ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadOrders,
-            tooltip: 'Atualizar',
-          ),
+          // Removido botão refresh - pull-to-refresh já funciona
         ],
         bottom: TabBar(
           controller: _tabController,
@@ -1026,5 +1075,114 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
 
   String _formatDate(DateTime date) {
     return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+  }
+
+  /// Badge compacto do tier atual com indicador de status
+  Widget _buildTierBadge() {
+    debugPrint('🏷️ _buildTierBadge: tier=${_currentTier?.tierName ?? "null"}, atRisk=$_tierAtRisk');
+    
+    // Se não tem tier, mostra "Sem Tier"
+    if (_currentTier == null) {
+      return GestureDetector(
+        onTap: () => Navigator.pushNamed(context, '/provider-collateral'),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.orange.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.orange.withOpacity(0.5), width: 1),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.shield_outlined, size: 14, color: Colors.orange),
+              SizedBox(width: 4),
+              Text(
+                'Sem Tier',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orange,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    
+    // Determinar cor do tier
+    Color tierColor;
+    IconData tierIcon;
+    switch (_currentTier!.tierId) {
+      case 'bronze':
+        tierColor = const Color(0xFFCD7F32);
+        tierIcon = Icons.shield;
+        break;
+      case 'silver':
+        tierColor = Colors.grey.shade400;
+        tierIcon = Icons.shield;
+        break;
+      case 'gold':
+        tierColor = Colors.amber;
+        tierIcon = Icons.verified;
+        break;
+      case 'platinum':
+        tierColor = Colors.blueGrey.shade300;
+        tierIcon = Icons.workspace_premium;
+        break;
+      default:
+        tierColor = Colors.orange;
+        tierIcon = Icons.shield_outlined;
+    }
+    
+    return GestureDetector(
+      onTap: () => Navigator.pushNamed(context, '/provider-collateral'),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: _tierAtRisk ? Colors.orange.withOpacity(0.2) : tierColor.withOpacity(0.2),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: _tierAtRisk ? Colors.orange : tierColor, 
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _tierAtRisk ? Icons.warning_amber : tierIcon, 
+              size: 14, 
+              color: _tierAtRisk ? Colors.orange : tierColor,
+            ),
+            const SizedBox(width: 4),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _currentTier!.tierName.split(' ').first, // "Bronze", "Silver", etc
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: _tierAtRisk ? Colors.orange : tierColor,
+                  ),
+                ),
+                if (_tierAtRisk && _tierDeficit != null)
+                  Text(
+                    '-$_tierDeficit sats',
+                    style: const TextStyle(
+                      fontSize: 9,
+                      color: Colors.orange,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

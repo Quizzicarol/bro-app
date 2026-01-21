@@ -30,22 +30,24 @@ class ProviderService {
     }
   }
 
-  /// Busca ordens do provedor específico
+  /// Busca ordens do provedor específico (usando Nostr)
   Future<List<Map<String, dynamic>>> fetchMyOrders(String providerId) async {
     try {
-      final dio = Dio(BaseOptions(
-        baseUrl: _apiService.baseUrl,
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 10),
-      ));
-
-      final response = await dio.get('/api/orders/list', queryParameters: {
-        'providerId': providerId,
-        'limit': 100,
-      });
-
-      final orders = response.data['orders'] ?? [];
-      return orders.map<Map<String, dynamic>>((order) => Map<String, dynamic>.from(order)).toList();
+      debugPrint('🔍 Buscando ordens do provedor via Nostr...');
+      
+      // Buscar do Nostr - precisa do pubkey do provedor
+      final orders = await _nostrOrderService.fetchProviderOrders(providerId);
+      debugPrint('📋 Encontradas ${orders.length} ordens do provedor no Nostr');
+      
+      // Filtrar apenas ordens ativas (não completed, não cancelled)
+      final activeOrders = orders.where((order) {
+        final status = order.status;
+        return status != 'completed' && status != 'cancelled';
+      }).toList();
+      
+      debugPrint('📋 ${activeOrders.length} ordens ativas após filtro');
+      
+      return activeOrders.map((order) => order.toJson()).toList();
     } catch (e) {
       debugPrint('❌ Erro ao buscar minhas ordens: $e');
       return [];
@@ -127,23 +129,23 @@ class ProviderService {
     }
   }
 
-  /// Busca histórico de ordens completadas
+  /// Busca histórico de ordens completadas (usando Nostr)
   Future<List<Map<String, dynamic>>> fetchHistory(String providerId) async {
     try {
-      final dio = Dio(BaseOptions(
-        baseUrl: _apiService.baseUrl,
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 10),
-      ));
-
-      final response = await dio.get('/api/orders/list', queryParameters: {
-        'providerId': providerId,
-        'status': 'completed',
-        'limit': 100,
-      });
-
-      final orders = response.data['orders'] ?? [];
-      return orders.map<Map<String, dynamic>>((order) => Map<String, dynamic>.from(order)).toList();
+      debugPrint('🔍 Buscando histórico do provedor via Nostr...');
+      
+      // Buscar do Nostr
+      final orders = await _nostrOrderService.fetchProviderOrders(providerId);
+      
+      // Filtrar apenas ordens completadas
+      final completedOrders = orders.where((order) {
+        final status = order.status;
+        return status == 'completed';
+      }).toList();
+      
+      debugPrint('📋 ${completedOrders.length} ordens completadas no histórico');
+      
+      return completedOrders.map((order) => order.toJson()).toList();
     } catch (e) {
       debugPrint('❌ Erro ao buscar histórico: $e');
       return [];

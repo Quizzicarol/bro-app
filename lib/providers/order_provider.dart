@@ -1553,17 +1553,22 @@ class OrderProvider with ChangeNotifier {
 
   /// Verificar se um status é mais recente que outro
   bool _isStatusMoreRecent(String newStatus, String currentStatus) {
+    // REGRA ESPECIAL: Uma vez cancelada, a ordem NÃO pode voltar a outro status
+    if (currentStatus == 'cancelled') return false;
+    
+    // REGRA ESPECIAL: Uma vez completada, a ordem NÃO pode voltar a outro status
+    if (currentStatus == 'completed') return false;
+    
     // Ordem de progressão de status:
-    // pending -> payment_received -> accepted -> awaiting_confirmation -> completed
-    // (cancelled pode acontecer a qualquer momento)
+    // draft -> pending -> payment_received -> accepted -> processing -> awaiting_confirmation -> completed
     const statusOrder = [
+      'draft',
       'pending', 
       'payment_received', 
       'accepted', 
       'processing',
       'awaiting_confirmation',  // Bro enviou comprovante, aguardando validação do usuário
-      'completed', 
-      'cancelled'
+      'completed',
     ];
     final newIndex = statusOrder.indexOf(newStatus);
     final currentIndex = statusOrder.indexOf(currentStatus);

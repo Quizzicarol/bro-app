@@ -7,6 +7,7 @@ import '../services/storage_service.dart';
 import '../services/local_collateral_service.dart';
 import '../services/bitcoin_price_service.dart';
 import '../services/notification_service.dart';
+import '../services/nostr_service.dart';
 import '../providers/collateral_provider.dart';
 import '../models/collateral_tier.dart';
 import '../widgets/order_card.dart';
@@ -60,9 +61,19 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
   }
 
   Future<void> _initProvider() async {
-    // Busca ou gera um ID de provedor (você pode adaptar conforme necessário)
-    _providerId = await _storageService.getProviderId() ?? _generateProviderId();
-    await _storageService.saveProviderId(_providerId);
+    // Usar a pubkey do Nostr como ID do provedor
+    final nostrService = NostrService();
+    final pubkey = nostrService.publicKey;
+    
+    if (pubkey != null) {
+      _providerId = pubkey;
+      debugPrint('👤 Provider ID (Nostr pubkey): ${_providerId.substring(0, 16)}...');
+    } else {
+      // Fallback: gera um ID local se não tiver Nostr configurado
+      _providerId = await _storageService.getProviderId() ?? _generateProviderId();
+      await _storageService.saveProviderId(_providerId);
+      debugPrint('⚠️ Usando provider ID local: $_providerId');
+    }
     
     await _loadAll();
     await _checkTierStatus();
@@ -393,14 +404,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
               onPressed: _showTierWarningDialog,
               tooltip: 'Atenção: Garantia',
             ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () async {
-              await _loadAll();
-              await _checkTierStatus();
-            },
-            tooltip: 'Atualizar',
-          ),
+          // Removido botão refresh - pull-to-refresh já funciona
         ],
         bottom: TabBar(
           controller: _tabController,
@@ -413,9 +417,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
       ),
       body: Column(
         children: [
-          // Warning banner se tier em risco
-          if (_tierWarning)
-            _buildTierWarningBanner(),
+          // Warning banner só na aba Disponíveis (controlado pelo TabBarView)
           
           // Card de estatísticas
           _buildStatsCard(),
@@ -425,7 +427,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
             child: TabBarView(
               controller: _tabController,
               children: [
-                _buildAvailableOrdersList(),
+                _buildAvailableOrdersTab(),
                 _buildMyOrdersList(),
                 _buildHistoryList(),
               ],
@@ -438,8 +440,11 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
 
   /// Badge compacto do tier atual com indicador de status
   Widget _buildTierBadge() {
+    debugPrint('🏷️ _buildTierBadge chamado: _currentTier=${_currentTier?.tierName ?? "null"}');
+    
     // Se não tem tier, mostra "Sem Tier"
     if (_currentTier == null) {
+      debugPrint('🏷️ Mostrando badge "Sem Tier"');
       return GestureDetector(
         onTap: _showTierDetailsDialog,
         child: Container(
@@ -457,15 +462,15 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
             children: [
               Icon(
                 Icons.shield_outlined, 
-                size: 12, 
+                size: 14, 
                 color: Colors.orange,
               ),
               SizedBox(width: 4),
               Text(
                 'Sem Tier',
                 style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
                   color: Colors.orange,
                 ),
               ),
@@ -475,6 +480,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
       );
     }
     
+    debugPrint('🏷️ Mostrando badge "${_currentTier!.tierName}"');
     final tierColor = _getTierColorById(_currentTier!.tierId);
     final tierIcon = _getTierIconById(_currentTier!.tierId);
     
@@ -958,6 +964,20 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
           ),
         ],
       ),
+    );
+  }
+
+  /// Aba de ordens disponíveis com banner de warning se necessário
+  Widget _buildAvailableOrdersTab() {
+    return Column(
+      children: [
+        // Banner de warning só aparece aqui na aba Disponíveis
+        if (_tierWarning)
+          _buildTierWarningBanner(),
+        
+        // Lista de ordens disponíveis
+        Expanded(child: _buildAvailableOrdersList()),
+      ],
     );
   }
 

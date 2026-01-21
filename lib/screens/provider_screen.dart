@@ -4,7 +4,11 @@ import 'package:provider/provider.dart';
 import 'dart:io';
 import '../services/provider_service.dart';
 import '../services/storage_service.dart';
+import '../services/local_collateral_service.dart';
+import '../services/bitcoin_price_service.dart';
+import '../services/notification_service.dart';
 import '../providers/collateral_provider.dart';
+import '../models/collateral_tier.dart';
 import '../widgets/order_card.dart';
 import '../config.dart';
 import 'package:intl/intl.dart';
@@ -20,6 +24,8 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
   final ProviderService _providerService = ProviderService();
   final StorageService _storageService = StorageService();
   final ImagePicker _imagePicker = ImagePicker();
+  final LocalCollateralService _collateralService = LocalCollateralService();
+  final NotificationService _notificationService = NotificationService();
 
   late TabController _tabController;
   
@@ -28,6 +34,12 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
   List<Map<String, dynamic>> _availableOrders = [];
   List<Map<String, dynamic>> _myOrders = [];
   List<Map<String, dynamic>> _history = [];
+  
+  // Tier info
+  LocalCollateral? _currentTier;
+  double? _btcPrice;
+  bool _tierWarning = false; // Se precisa aumentar garantia
+  String? _tierWarningMessage;
   
   bool _isLoadingStats = false;
   bool _isLoadingAvailable = false;
@@ -53,6 +65,55 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
     await _storageService.saveProviderId(_providerId);
     
     await _loadAll();
+    await _checkTierStatus();
+  }
+
+  /// Verifica o status do tier e se precisa de atenção
+  Future<void> _checkTierStatus() async {
+    try {
+      // Carregar tier atual
+      _currentTier = await _collateralService.getCollateral();
+      
+      if (_currentTier == null) return;
+      
+      // Carregar preço atual do Bitcoin
+      final priceService = BitcoinPriceService();
+      _btcPrice = await priceService.getBitcoinPrice();
+      
+      if (_btcPrice == null) return;
+      
+      // Verificar se o tier ainda é válido com o preço atual
+      final tiers = CollateralTier.getAvailableTiers(_btcPrice!);
+      final currentTierDef = tiers.firstWhere(
+        (t) => t.id == _currentTier!.tierId,
+        orElse: () => tiers.first,
+      );
+      
+      // Verificar se o saldo ainda cobre o requisito
+      // O requiredSats do tier pode ter aumentado se BTC caiu
+      if (currentTierDef.requiredCollateralSats > _currentTier!.lockedSats) {
+        final deficit = currentTierDef.requiredCollateralSats - _currentTier!.lockedSats;
+        setState(() {
+          _tierWarning = true;
+          _tierWarningMessage = 'Deposite mais $deficit sats para manter o ${_currentTier!.tierName}';
+        });
+        
+        // Enviar notificação
+        await _notificationService.notifyTierAtRisk(
+          tierName: _currentTier!.tierName,
+          missingAmount: deficit,
+        );
+      } else {
+        setState(() {
+          _tierWarning = false;
+          _tierWarningMessage = null;
+        });
+      }
+    } catch (e) {
+      debugPrint('Erro ao verificar tier: $e');
+    }
+    
+    if (mounted) setState(() {});
   }
 
   String _generateProviderId() {
@@ -313,12 +374,30 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Modo Provedor'),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Modo Bro'),
+            if (_currentTier != null) ...[
+              const SizedBox(width: 8),
+              _buildTierBadge(),
+            ],
+          ],
+        ),
         elevation: 0,
         actions: [
+          if (_tierWarning)
+            IconButton(
+              icon: const Icon(Icons.warning_amber, color: Colors.orange),
+              onPressed: _showTierWarningDialog,
+              tooltip: 'Atenção: Garantia',
+            ),
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _loadAll,
+            onPressed: () async {
+              await _loadAll();
+              await _checkTierStatus();
+            },
             tooltip: 'Atualizar',
           ),
         ],
@@ -333,6 +412,10 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
       ),
       body: Column(
         children: [
+          // Warning banner se tier em risco
+          if (_tierWarning)
+            _buildTierWarningBanner(),
+          
           // Card de estatísticas
           _buildStatsCard(),
           
@@ -350,6 +433,164 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
         ],
       ),
     );
+  }
+
+  /// Badge compacto do tier atual
+  Widget _buildTierBadge() {
+    final tierColor = _getTierColorById(_currentTier!.tierId);
+    final tierIcon = _getTierIconById(_currentTier!.tierId);
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: tierColor.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: tierColor, width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(tierIcon, size: 14, color: tierColor),
+          const SizedBox(width: 4),
+          Text(
+            _currentTier!.tierName.split(' ').first, // "Bronze", "Silver", etc
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: tierColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Banner de aviso quando tier está em risco
+  Widget _buildTierWarningBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.orange.withOpacity(0.3), Colors.deepOrange.withOpacity(0.2)],
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber, color: Colors.orange, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _tierWarningMessage ?? 'Sua garantia precisa de atenção',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: _showTierWarningDialog,
+            child: const Text(
+              'Ver',
+              style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Dialog com detalhes do aviso de tier
+  void _showTierWarningDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.warning_amber, color: Colors.orange, size: 28),
+            const SizedBox(width: 12),
+            const Text('Garantia em Risco', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'O preço do Bitcoin caiu e sua garantia atual não cobre mais o requisito mínimo do seu tier.',
+              style: TextStyle(color: Color(0xB3FFFFFF)),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Tier atual: ${_currentTier?.tierName ?? "Nenhum"}',
+                    style: const TextStyle(color: Colors.white70),
+                  ),
+                  if (_tierWarningMessage != null)
+                    Text(
+                      _tierWarningMessage!,
+                      style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Se você não aumentar a garantia, poderá perder acesso a ordens de valores mais altos.',
+              style: TextStyle(color: Color(0x99FFFFFF), fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Depois', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.pushNamed(context, '/provider-collateral');
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            child: const Text('Aumentar Garantia', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _getTierColorById(String tierId) {
+    switch (tierId) {
+      case 'bronze': return const Color(0xFFCD7F32);
+      case 'silver': return Colors.grey.shade400;
+      case 'gold': return Colors.amber;
+      case 'platinum': return Colors.blueGrey.shade300;
+      case 'diamond': return Colors.cyan;
+      default: return Colors.orange;
+    }
+  }
+
+  IconData _getTierIconById(String tierId) {
+    switch (tierId) {
+      case 'bronze': return Icons.shield_outlined;
+      case 'silver': return Icons.shield;
+      case 'gold': return Icons.workspace_premium;
+      case 'platinum': return Icons.diamond_outlined;
+      case 'diamond': return Icons.diamond;
+      default: return Icons.verified_user;
+    }
   }
 
   Widget _buildStatsCard() {

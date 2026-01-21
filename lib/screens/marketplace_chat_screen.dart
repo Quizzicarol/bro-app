@@ -163,11 +163,12 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: const Color(0xFF121212),
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1E3A5F),
+        backgroundColor: const Color(0xFF1E1E1E),
         foregroundColor: Colors.white,
+        elevation: 0,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -176,6 +177,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
+                color: Colors.white,
               ),
             ),
             if (widget.offerTitle != null)
@@ -184,7 +186,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
                 style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.normal,
-                  color: Colors.white70,
+                  color: Colors.orange,
                 ),
               ),
           ],
@@ -208,13 +210,17 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            color: const Color(0xFFE3F2FD),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.orange.withOpacity(0.15), Colors.deepOrange.withOpacity(0.05)],
+              ),
+            ),
             child: Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.lock_outline,
                   size: 16,
-                  color: Color(0xFF1976D2),
+                  color: Colors.orange.shade400,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -222,7 +228,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
                     'Chat criptografado via Nostr (NIP-04)',
                     style: TextStyle(
                       fontSize: 12,
-                      color: Colors.blue.shade800,
+                      color: Colors.orange.shade300,
                     ),
                   ),
                 ),
@@ -237,9 +243,9 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        CircularProgressIndicator(),
+                        CircularProgressIndicator(color: Colors.orange),
                         SizedBox(height: 16),
-                        Text('Conectando aos relays...'),
+                        Text('Conectando aos relays...', style: TextStyle(color: Colors.white70)),
                       ],
                     ),
                   )
@@ -273,13 +279,13 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: const Color(0xFF1E3A5F).withOpacity(0.1),
+                color: Colors.orange.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
                 Icons.chat_bubble_outline,
                 size: 48,
-                color: Color(0xFF1E3A5F),
+                color: Colors.orange,
               ),
             ),
             const SizedBox(height: 24),
@@ -288,16 +294,16 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF1E3A5F),
+                color: Colors.white,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               'Envie uma mensagem para ${widget.sellerName ?? 'o vendedor'} sobre a oferta.',
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 14,
-                color: Colors.grey.shade600,
+                color: Colors.white54,
               ),
             ),
             const SizedBox(height: 16),
@@ -345,7 +351,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
           if (!isMe) ...[
             CircleAvatar(
               radius: 16,
-              backgroundColor: const Color(0xFF1E3A5F),
+              backgroundColor: Colors.orange,
               child: Text(
                 (widget.sellerName ?? 'V')[0].toUpperCase(),
                 style: const TextStyle(
@@ -364,7 +370,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
               ),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
-                color: isMe ? const Color(0xFF1E3A5F) : Colors.white,
+                color: isMe ? Colors.orange : const Color(0xFF2A2A2A),
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(16),
                   topRight: const Radius.circular(16),
@@ -373,7 +379,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: Colors.black.withOpacity(0.2),
                     blurRadius: 5,
                     offset: const Offset(0, 2),
                   ),
@@ -385,7 +391,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
                   Text(
                     message.content,
                     style: TextStyle(
-                      color: isMe ? Colors.white : Colors.black87,
+                      color: isMe ? Colors.white : Colors.white.withOpacity(0.9),
                       fontSize: 15,
                     ),
                   ),
@@ -396,7 +402,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
                       Text(
                         _formatTime(message.timestamp),
                         style: TextStyle(
-                          color: isMe ? Colors.white60 : Colors.grey,
+                          color: isMe ? Colors.white60 : Colors.white38,
                           fontSize: 11,
                         ),
                       ),
@@ -441,10 +447,10 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
           bottom: 8,
         ),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: const Color(0xFF1E1E1E),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withOpacity(0.3),
               blurRadius: 10,
               offset: const Offset(0, -2),
             ),
@@ -455,15 +461,17 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                color: const Color(0xFFF5F5F5),
+                color: const Color(0xFF2A2A2A),
                 borderRadius: BorderRadius.circular(24),
               ),
               child: TextField(
                 controller: _messageController,
                 maxLines: null,
                 textCapitalization: TextCapitalization.sentences,
+                style: const TextStyle(color: Colors.white),
                 decoration: const InputDecoration(
                   hintText: 'Digite sua mensagem...',
+                  hintStyle: TextStyle(color: Colors.white38),
                   border: InputBorder.none,
                   contentPadding: EdgeInsets.symmetric(
                     horizontal: 16,
@@ -477,7 +485,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
           const SizedBox(width: 8),
           Container(
             decoration: const BoxDecoration(
-              color: Color(0xFF1E3A5F),
+              color: Colors.orange,
               shape: BoxShape.circle,
             ),
             child: IconButton(
@@ -514,6 +522,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: const Color(0xFF1E1E1E),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -535,12 +544,12 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1E3A5F).withOpacity(0.1),
+                        color: Colors.orange.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: const Icon(
                         Icons.info_outline,
-                        color: Color(0xFF1E3A5F),
+                        color: Colors.orange,
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -549,6 +558,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
+                        color: Colors.white,
                       ),
                     ),
                   ],
@@ -580,7 +590,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
                   child: ElevatedButton(
                     onPressed: () => Navigator.pop(context),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1E3A5F),
+                      backgroundColor: Colors.orange,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
@@ -606,7 +616,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 20, color: const Color(0xFF1E3A5F)),
+          Icon(icon, size: 20, color: Colors.orange),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -617,13 +627,14 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
+                    color: Colors.white,
                   ),
                 ),
                 Text(
                   description,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 13,
-                    color: Colors.grey.shade600,
+                    color: Colors.white54,
                   ),
                 ),
               ],
@@ -639,7 +650,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Pubkey copiado!'),
-        backgroundColor: Color(0xFF1E3A5F),
+        backgroundColor: Colors.orange,
         duration: Duration(seconds: 2),
       ),
     );

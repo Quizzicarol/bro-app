@@ -47,9 +47,6 @@ class _OfferScreenState extends State<OfferScreen> {
   final List<Map<String, dynamic>> _categories = [
     {'id': 'produto', 'name': 'Produto', 'icon': Icons.shopping_bag},
     {'id': 'servico', 'name': 'Serviço', 'icon': Icons.business_center}, // Maleta
-    {'id': 'digital', 'name': 'Digital', 'icon': Icons.cloud_download},
-    {'id': 'consultoria', 'name': 'Consultoria', 'icon': Icons.support_agent},
-    {'id': 'aula', 'name': 'Aula/Curso', 'icon': Icons.school},
     {'id': 'outro', 'name': 'Outro', 'icon': Icons.more_horiz},
   ];
 

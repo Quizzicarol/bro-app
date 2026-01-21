@@ -952,38 +952,20 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
       case 'servico':
       case 'servicos':
         return {
-          'label': 'SERVIÇOS',
+          'label': 'SERVIÇO',
           'icon': Icons.business_center, // Maleta
           'color': Colors.orange,
         };
       case 'produto':
       case 'produtos':
         return {
-          'label': 'PRODUTOS',
+          'label': 'PRODUTO',
           'icon': Icons.shopping_bag,
           'color': Colors.green,
         };
-      case 'digital':
-        return {
-          'label': 'DIGITAL',
-          'icon': Icons.cloud_download,
-          'color': Colors.blue,
-        };
-      case 'consultoria':
-        return {
-          'label': 'CONSULTORIA',
-          'icon': Icons.support_agent,
-          'color': Colors.purple,
-        };
-      case 'aula':
-        return {
-          'label': 'AULA/CURSO',
-          'icon': Icons.school,
-          'color': Colors.teal,
-        };
       default:
         return {
-          'label': 'OUTROS',
+          'label': 'OUTRO',
           'icon': Icons.category,
           'color': Colors.grey,
         };

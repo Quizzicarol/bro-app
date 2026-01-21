@@ -74,6 +74,9 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
       // Carregar tier atual
       _currentTier = await _collateralService.getCollateral();
       
+      // Atualizar UI mesmo se não tiver tier (para limpar estado)
+      if (mounted) setState(() {});
+      
       if (_currentTier == null) return;
       
       // Carregar preço atual do Bitcoin

@@ -137,25 +137,25 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
     return [
       MarketplaceOffer(
         id: '1',
-        title: 'Vendo 100k sats a 85%',
-        description: 'Vendo satoshis com desconto de 15% do valor de mercado. Aceito PIX.',
-        priceSats: 100000,
-        priceDiscount: 15,
-        category: 'venda_sats',
+        title: 'Consultoria em Bitcoin',
+        description: 'Ofereço consultoria personalizada sobre Bitcoin, carteiras, segurança e DCA. 1 hora de call.',
+        priceSats: 50000,
+        priceDiscount: 0,
+        category: 'servicos',
         sellerPubkey: 'npub1example1...',
-        sellerName: 'Satoshi Trader',
+        sellerName: 'Bitcoin Coach',
         createdAt: DateTime.now().subtract(const Duration(hours: 2)),
         imageUrl: null,
       ),
       MarketplaceOffer(
         id: '2',
-        title: 'Compro sats a 105%',
-        description: 'Comprando satoshis pagando 5% acima do mercado. Tenho PIX ilimitado.',
-        priceSats: 500000,
-        priceDiscount: -5, // Premium de 5%
-        category: 'compra_sats',
+        title: 'Hardware Wallet Coldcard',
+        description: 'Coldcard MK4 nova lacrada. Melhor segurança para suas chaves Bitcoin.',
+        priceSats: 200000,
+        priceDiscount: 0,
+        category: 'produtos',
         sellerPubkey: 'npub1example2...',
-        sellerName: 'BTC Maxi',
+        sellerName: 'BTC Store',
         createdAt: DateTime.now().subtract(const Duration(hours: 5)),
         imageUrl: null,
       ),
@@ -259,7 +259,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
     if (_myOffers.isEmpty) {
       return _buildEmptyView(
         'Você não tem ofertas',
-        'Crie uma oferta para vender ou comprar sats!',
+        'Crie uma oferta de produto ou serviço!',
         Icons.sell_outlined,
       );
     }
@@ -478,7 +478,12 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
-              onPressed: _showCreateOfferDialog,
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const OfferScreen()),
+                ).then((_) => _loadOffers());
+              },
               icon: const Icon(Icons.add),
               label: const Text('Criar Oferta'),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
@@ -797,290 +802,6 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
     );
   }
 
-  void _showCreateOfferDialog() {
-    final titleController = TextEditingController();
-    final descriptionController = TextEditingController();
-    final satsController = TextEditingController();
-    final siteController = TextEditingController();
-    String selectedCategory = 'venda_sats';
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1E1E1E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      isScrollControlled: true,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setSheetState) => SafeArea(
-          child: Padding(
-            padding: EdgeInsets.only(
-              left: 24,
-              right: 24,
-              top: 24,
-              bottom: MediaQuery.of(context).viewInsets.bottom + 48,
-            ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Handle
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.white24,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                
-                const Text(
-                  'Criar Oferta',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                
-                // Categoria
-                const Text('Categoria', style: TextStyle(color: Colors.white70)),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  value: selectedCategory,
-                  dropdownColor: const Color(0xFF2E2E2E),
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: const Color(0xFF2E2E2E),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                  items: const [
-                    DropdownMenuItem(value: 'venda_sats', child: Text('Venda de Sats', style: TextStyle(color: Colors.white))),
-                    DropdownMenuItem(value: 'compra_sats', child: Text('Compra de Sats', style: TextStyle(color: Colors.white))),
-                    DropdownMenuItem(value: 'servicos', child: Text('Serviços', style: TextStyle(color: Colors.white))),
-                    DropdownMenuItem(value: 'produtos', child: Text('Produtos', style: TextStyle(color: Colors.white))),
-                    DropdownMenuItem(value: 'outros', child: Text('Outros', style: TextStyle(color: Colors.white))),
-                  ],
-                  onChanged: (value) {
-                    setSheetState(() => selectedCategory = value!);
-                  },
-                ),
-                const SizedBox(height: 16),
-                
-                // Título
-                const Text('Título', style: TextStyle(color: Colors.white70)),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: titleController,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    hintText: 'Ex: Vendo 100k sats com desconto',
-                    hintStyle: const TextStyle(color: Colors.white38),
-                    filled: true,
-                    fillColor: const Color(0xFF2E2E2E),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                
-                // Descrição
-                const Text('Descrição', style: TextStyle(color: Colors.white70)),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: descriptionController,
-                  style: const TextStyle(color: Colors.white),
-                  maxLines: 3,
-                  decoration: InputDecoration(
-                    hintText: 'Descreva sua oferta...',
-                    hintStyle: const TextStyle(color: Colors.white38),
-                    filled: true,
-                    fillColor: const Color(0xFF2E2E2E),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                
-                // Site ou Referências
-                const Text('Site ou Referências (opcional)', style: TextStyle(color: Colors.white70)),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: siteController,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    hintText: 'Ex: https://meusite.com ou @meunostr',
-                    hintStyle: const TextStyle(color: Colors.white38),
-                    prefixIcon: const Icon(Icons.link, color: Colors.blue),
-                    filled: true,
-                    fillColor: const Color(0xFF2E2E2E),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                
-                // Quantidade em sats
-                const Text('Quantidade (sats)', style: TextStyle(color: Colors.white70)),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: satsController,
-                  style: const TextStyle(color: Colors.white),
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    hintText: 'Ex: 100000',
-                    hintStyle: const TextStyle(color: Colors.white38),
-                    prefixIcon: const Icon(Icons.bolt, color: Colors.amber),
-                    filled: true,
-                    fillColor: const Color(0xFF2E2E2E),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                
-                // Botões
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(context),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          side: const BorderSide(color: Colors.white38),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        child: const Text('Cancelar'),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () async {
-                          if (titleController.text.isEmpty || descriptionController.text.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Preencha todos os campos')),
-                            );
-                            return;
-                          }
-                          
-                          Navigator.pop(context);
-                          await _createOffer(
-                            title: titleController.text,
-                            description: descriptionController.text,
-                            priceSats: int.tryParse(satsController.text) ?? 0,
-                            category: selectedCategory,
-                            siteUrl: siteController.text.trim().isEmpty ? null : siteController.text.trim(),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.orange,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        child: const Text('Publicar'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _createOffer({
-    required String title,
-    required String description,
-    required int priceSats,
-    required String category,
-    String? siteUrl,
-  }) async {
-    try {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Publicando oferta no Nostr...')),
-      );
-      
-      // Pegar chave privada
-      final privateKey = _nostrService.privateKey;
-      if (privateKey == null) {
-        throw Exception('Chave privada não disponível');
-      }
-      
-      // Publicar no Nostr
-      final offerId = await _nostrOrderService.publishMarketplaceOffer(
-        privateKey: privateKey,
-        title: title,
-        description: description,
-        priceSats: priceSats,
-        category: category,
-        siteUrl: siteUrl,
-      );
-      
-      if (offerId == null) {
-        throw Exception('Falha ao publicar nos relays');
-      }
-      
-      // Criar oferta localmente
-      final myPubkey = _nostrService.publicKey ?? 'unknown';
-      final newOffer = MarketplaceOffer(
-        id: offerId,
-        title: title,
-        description: description,
-        priceSats: priceSats,
-        priceDiscount: 0,
-        category: category,
-        sellerPubkey: myPubkey,
-        sellerName: 'Eu',
-        createdAt: DateTime.now(),
-        siteUrl: siteUrl,
-      );
-      
-      // Adicionar à lista de ofertas (principal e minhas)
-      setState(() {
-        _offers.insert(0, newOffer);
-        _myOffers.insert(0, newOffer);
-      });
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Oferta publicada no Nostr!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        
-        // Ir para aba Minhas Ofertas
-        _tabController.animateTo(1);
-      }
-    } catch (e) {
-      debugPrint('❌ Erro ao criar oferta: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),
-        );
-      }
-    }
-  }
-
   void _contactSeller(MarketplaceOffer offer) {
     // Abrir chat direto via Nostr DM (NIP-04)
     Navigator.push(
@@ -1228,29 +949,37 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
 
   Map<String, dynamic> _getCategoryInfo(String category) {
     switch (category) {
-      case 'venda_sats':
-        return {
-          'label': 'VENDA DE SATS',
-          'icon': Icons.sell,
-          'color': Colors.green,
-        };
-      case 'compra_sats':
-        return {
-          'label': 'COMPRA DE SATS',
-          'icon': Icons.shopping_cart,
-          'color': Colors.blue,
-        };
+      case 'servico':
       case 'servicos':
         return {
           'label': 'SERVIÇOS',
-          'icon': Icons.work,
-          'color': Colors.purple,
+          'icon': Icons.business_center, // Maleta
+          'color': Colors.orange,
         };
+      case 'produto':
       case 'produtos':
         return {
           'label': 'PRODUTOS',
           'icon': Icons.shopping_bag,
-          'color': Colors.pink,
+          'color': Colors.green,
+        };
+      case 'digital':
+        return {
+          'label': 'DIGITAL',
+          'icon': Icons.cloud_download,
+          'color': Colors.blue,
+        };
+      case 'consultoria':
+        return {
+          'label': 'CONSULTORIA',
+          'icon': Icons.support_agent,
+          'color': Colors.purple,
+        };
+      case 'aula':
+        return {
+          'label': 'AULA/CURSO',
+          'icon': Icons.school,
+          'color': Colors.teal,
         };
       default:
         return {

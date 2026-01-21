@@ -182,6 +182,113 @@ class NotificationService {
       importance: Importance.max,
     );
   }
+
+  // ============================================
+  // NOTIFICAÇÕES DE TIER/GARANTIA
+  // ============================================
+
+  /// Notifica que o tier está em risco devido à queda do Bitcoin
+  Future<void> notifyTierAtRisk({
+    required String tierName,
+    required int missingAmount,
+  }) async {
+    await _showNotification(
+      id: 'tier_risk'.hashCode,
+      title: '⚠️ Garantia em Risco!',
+      body: 'O preço do Bitcoin caiu. Deposite mais $missingAmount sats para manter o $tierName.',
+      payload: 'tier_at_risk',
+      importance: Importance.high,
+    );
+  }
+
+  /// Notifica que o tier foi perdido
+  Future<void> notifyTierLost({
+    required String tierName,
+    required String newTierName,
+  }) async {
+    await _showNotification(
+      id: 'tier_lost'.hashCode,
+      title: '📉 Tier Rebaixado',
+      body: 'Você perdeu o $tierName. Agora está no $newTierName.',
+      payload: 'tier_lost',
+      importance: Importance.high,
+    );
+  }
+
+  /// Notifica que subiu de tier
+  Future<void> notifyTierUpgrade({
+    required String newTierName,
+    required double maxOrderBrl,
+  }) async {
+    await _showNotification(
+      id: 'tier_upgrade'.hashCode,
+      title: '🎉 Tier Atualizado!',
+      body: 'Parabéns! Você agora é $newTierName. Limite: R\$ ${maxOrderBrl.toStringAsFixed(0)}/ordem.',
+      payload: 'tier_upgrade',
+    );
+  }
+
+  // ============================================
+  // NOTIFICAÇÕES DE MENSAGENS
+  // ============================================
+
+  /// Notifica sobre nova mensagem de chat do marketplace
+  Future<void> notifyMarketplaceMessage({
+    required String senderName,
+    required String offerTitle,
+    required String preview,
+  }) async {
+    await _showNotification(
+      id: DateTime.now().millisecondsSinceEpoch,
+      title: '💬 Mensagem de $senderName',
+      body: '[$offerTitle] $preview',
+      payload: 'marketplace_message:$senderName',
+    );
+  }
+
+  /// Notifica sobre oferta no marketplace que pode interessar
+  Future<void> notifyNewMarketplaceOffer({
+    required String title,
+    required String sellerName,
+    required double priceBrl,
+  }) async {
+    await _showNotification(
+      id: DateTime.now().millisecondsSinceEpoch,
+      title: '🛒 Nova Oferta no Marketplace',
+      body: '$title por $sellerName - R\$ ${priceBrl.toStringAsFixed(2)}',
+      payload: 'new_marketplace_offer',
+    );
+  }
+
+  // ============================================
+  // NOTIFICAÇÕES DE PAGAMENTOS
+  // ============================================
+
+  /// Notifica que recebeu sats na carteira
+  Future<void> notifyPaymentReceived_Wallet({
+    required int amountSats,
+  }) async {
+    await _showNotification(
+      id: DateTime.now().millisecondsSinceEpoch,
+      title: '⚡ Pagamento Recebido!',
+      body: 'Você recebeu $amountSats sats na sua carteira.',
+      payload: 'payment_received_wallet',
+    );
+  }
+
+  /// Notifica que enviou sats
+  Future<void> notifyPaymentSent({
+    required int amountSats,
+    required String destination,
+  }) async {
+    await _showNotification(
+      id: DateTime.now().millisecondsSinceEpoch,
+      title: '📤 Pagamento Enviado',
+      body: 'Enviado $amountSats sats para $destination',
+      payload: 'payment_sent',
+    );
+  }
+
   /// Metodo generico para mostrar notificacao
   Future<void> _showNotification({
     required int id,

@@ -1,7 +1,7 @@
 name: bro_app
 description: "Bro - Plataforma P2P para pagamento de contas com Bitcoin via Lightning Network"
 publish_to: 'none'
-version: 1.0.11+17
+version: 1.0.13+19
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -54,6 +54,10 @@ dependencies:
   # Google Fonts (para Fredoka e Inter)
   google_fonts: ^6.1.0
   flutter_local_notifications: ^19.5.0
+  
+  # Version & URL
+  package_info_plus: ^8.0.0
+  url_launcher: ^6.2.5
 
 dev_dependencies:
   flutter_test:

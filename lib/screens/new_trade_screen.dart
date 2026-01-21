@@ -32,11 +32,7 @@ class NewTradeScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Guia rapido
-              _buildQuickGuide(),
-              const SizedBox(height: 24),
-
-              // Opcoes
+              // Título direto
               const Text(
                 'O que voce quer fazer?',
                 style: TextStyle(
@@ -54,7 +50,7 @@ class NewTradeScreen extends StatelessWidget {
                 iconColor: const Color(0xFF3DE98C),
                 gradientColors: [const Color(0xFF3DE98C), const Color(0xFF00CC7A)],
                 title: 'Oferecer Produto ou Servico',
-                description: 'Anuncie algo que voce quer vender ou um servico que oferece. Receba em sats!',
+                description: 'Anuncie produtos ou servicos e receba em sats!',
                 onTap: () {
                   Navigator.push(
                     context,
@@ -71,29 +67,13 @@ class NewTradeScreen extends StatelessWidget {
                 iconColor: const Color(0xFFFF6B6B),
                 gradientColors: [const Color(0xFFFF6B6B), const Color(0xFFFF8A8A)],
                 title: 'Pagar uma Conta',
-                description: 'Cole um codigo PIX ou boleto. Um Bro vai te ajudar a pagar!',
+                description: 'Cole um codigo pix ou boleto e pague em Bitcoin.',
                 onTap: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const PaymentScreen()),
                   );
                 },
-              ),
-              const SizedBox(height: 16),
-
-              // Opcao 3: Procurar ofertas
-              const SizedBox(height: 16),
-              _buildOptionCard(
-                context,
-                icon: Icons.search,
-                iconColor: const Color(0xFF4A90E2),
-                gradientColors: [const Color(0xFF4A90E2), const Color(0xFF5BA3F5)],
-                title: 'Procurar Ofertas',
-                description: 'Veja o que outros Bros estao oferecendo na comunidade.',
-                onTap: () {
-                  Navigator.pushNamed(context, '/marketplace');
-                },
-                comingSoon: false,
               ),
               const SizedBox(height: 24), // Espaço extra para evitar botões de navegação
             ],

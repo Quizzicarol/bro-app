@@ -37,6 +37,9 @@ class _LoginScreenState extends State<LoginScreen> {
   
   // Seed da carteira Bitcoin gerada junto com nova chave Nostr
   String? _generatedWalletSeed;
+  
+  // Controle de tela: true = tela inicial, false = tela de login
+  bool _showWelcomeScreen = true;
 
   @override
   void dispose() {
@@ -952,26 +955,148 @@ class _LoginScreenState extends State<LoginScreen> {
   }
   
   Widget _buildLoginContent() {
+    // Tela inicial clean (para novos usuários)
+    if (_showWelcomeScreen) {
+      return _buildWelcomeScreen();
+    }
+    
+    // Tela de login (para quem já tem conta)
+    return _buildLoginScreen();
+  }
+  
+  /// Tela inicial clean para novos usuários - estilo Apple
+  Widget _buildWelcomeScreen() {
     return Column(
-      mainAxisAlignment: MainAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Logo
+        const SizedBox(height: 40),
+        
+        // Logo elegante
         Image.asset(
           'assets/images/bro-logo.png',
           height: 80,
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
+        
+        // Slogan minimalista
         const Text(
-          'Comunidade de escambo digital via Nostr',
+          'Escambo digital via Nostr',
           style: TextStyle(
-            fontSize: 13,
-            color: Color(0xB3FFFFFF),
+            fontSize: 15,
+            color: Color(0x99FFFFFF),
             fontWeight: FontWeight.w400,
+            letterSpacing: 0.3,
           ),
           textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 24),
+        
+        const SizedBox(height: 50),
+        
+        // Botão Nova Conta (elegante, laranja)
+        Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFFFF6B6B), Color(0xFFFF8A8A)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFFFF6B6B).withOpacity(0.25),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: ElevatedButton(
+            onPressed: _isLoading ? null : _generateNewPrivateKey,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              shadowColor: Colors.transparent,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: _isLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.add_circle_outline, color: Colors.white, size: 20),
+                      SizedBox(width: 10),
+                      Text(
+                        'Nova Conta',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+        ),
+        
+        const SizedBox(height: 16),
+        
+        // Link "Já tenho conta" (verde, discreto)
+        TextButton(
+          onPressed: () {
+            setState(() => _showWelcomeScreen = false);
+          },
+          child: const Text(
+            'Já tenho conta',
+            style: TextStyle(
+              color: Color(0xFF3DE98C),
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+        
+        const SizedBox(height: 30),
+      ],
+    );
+  }
+  
+  /// Tela de login para quem já tem conta
+  Widget _buildLoginScreen() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Botão voltar
+        Align(
+          alignment: Alignment.centerLeft,
+          child: IconButton(
+            onPressed: () {
+              setState(() {
+                _showWelcomeScreen = true;
+                _privateKeyController.clear();
+                _error = null;
+              });
+            },
+            icon: const Icon(Icons.arrow_back, color: Colors.white70),
+          ),
+        ),
+        
+        // Logo menor
+        Image.asset(
+          'assets/images/bro-logo.png',
+          height: 60,
+        ),
+        const SizedBox(height: 16),
 
               // Card de Login - CHAVE PRIVADA (PRINCIPAL)
               Container(
@@ -1023,11 +1148,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       decoration: InputDecoration(
                         labelText: _isSeedPhrase 
                             ? '🌱 Seed NIP-06 detectada!' 
-                            : 'Chave Privada Nostr',
+                            : 'Chave Privada ou Seed',
                         labelStyle: TextStyle(
                           color: _isSeedPhrase ? const Color(0xFF3DE98C) : const Color(0xB3FFFFFF),
                         ),
-                        hintText: 'nsec1... ou chave hex de 64 caracteres',
+                        hintText: 'nsec1... ou 12 palavras da seed',
                         hintStyle: const TextStyle(color: Color(0x66FFFFFF)),
                         prefixIcon: Icon(
                           _isSeedPhrase ? Icons.spa : Icons.vpn_key,
@@ -1061,45 +1186,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-
-                    // Opções secundárias
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        // Gerar nova chave
-                        TextButton.icon(
-                          onPressed: _generateNewPrivateKey,
-                          icon: const Icon(
-                            Icons.add_circle_outline,
-                            size: 16,
-                            color: Color(0xFFFF6B6B),
-                          ),
-                          label: const Text(
-                            'Nova conta',
-                            style: TextStyle(
-                              color: Color(0xFFFF6B6B),
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                        // Login via NIP-06 (seed)
-                        TextButton.icon(
-                          onPressed: _showNip06LoginDialog,
-                          icon: const Icon(
-                            Icons.spa,
-                            size: 16,
-                            color: Color(0xFF3DE98C),
-                          ),
-                          label: const Text(
-                            'Usar seed (NIP-06)',
-                            style: TextStyle(
-                              color: Color(0xFF3DE98C),
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
 
                     // Erro
                     if (_error != null) ...[

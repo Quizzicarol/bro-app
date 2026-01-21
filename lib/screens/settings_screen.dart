@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/storage_service.dart';
 import '../providers/breez_provider.dart';
 
@@ -16,11 +18,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _mnemonic;
   bool _isLoading = true;
   int _adminTapCount = 0;
+  String _appVersion = '1.0.0';
 
   @override
   void initState() {
     super.initState();
     _loadMnemonic();
+    _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      setState(() {
+        _appVersion = '${packageInfo.version}+${packageInfo.buildNumber}';
+      });
+    } catch (e) {
+      debugPrint('Erro ao carregar versão: $e');
+    }
   }
 
   void _onTitleTap() {
@@ -707,44 +722,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           leading: Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: Colors.purple.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(Icons.chat_bubble_outline, color: Colors.purple),
-                          ),
-                          title: const Text('Mensagens Nostr'),
-                          subtitle: const Text('Chat privado P2P criptografado'),
-                          trailing: const Icon(Icons.chevron_right),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 10,
-                          ),
-                          onTap: () => Navigator.pushNamed(context, '/nostr-messages'),
-                        ),
-                        const Divider(height: 1),
-                        ListTile(
-                          leading: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
                               color: Colors.blue.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: const Icon(Icons.help_outline, color: Colors.blue),
                           ),
                           title: const Text('Central de Ajuda'),
-                          subtitle: const Text('Dúvidas frequentes'),
+                          subtitle: const Text('Enviar email para suporte'),
                           trailing: const Icon(Icons.chevron_right),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20,
                             vertical: 10,
                           ),
-                          onTap: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Em breve: Central de Ajuda'),
-                                backgroundColor: Colors.blue,
-                              ),
+                          onTap: () async {
+                            final Uri emailUri = Uri(
+                              scheme: 'mailto',
+                              path: 'brostr@proton.me',
+                              queryParameters: {
+                                'subject': 'Ajuda - Bro App v$_appVersion',
+                              },
                             );
+                            if (await canLaunchUrl(emailUri)) {
+                              await launchUrl(emailUri);
+                            } else {
+                              Clipboard.setData(const ClipboardData(text: 'brostr@proton.me'));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Email copiado: brostr@proton.me'),
+                                  backgroundColor: Colors.blue,
+                                ),
+                              );
+                            }
                           },
                         ),
                       ],
@@ -774,7 +782,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ListTile(
                           leading: const Icon(Icons.info_outline, color: Colors.deepPurple),
                           title: const Text('Versão'),
-                          subtitle: const Text('1.0.0'),
+                          subtitle: Text(_appVersion),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20,
                             vertical: 10,
@@ -782,13 +790,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         const Divider(height: 1),
                         ListTile(
-                          leading: const Icon(Icons.privacy_tip_outlined, color: Colors.deepPurple),
-                          title: const Text('Tipo'),
-                          subtitle: const Text('Escambo digital via Nostr'),
+                          leading: const Icon(Icons.language, color: Colors.deepPurple),
+                          title: const Text('Site'),
+                          subtitle: const Text('brostr.app'),
+                          trailing: const Icon(Icons.open_in_new, size: 18),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20,
                             vertical: 10,
                           ),
+                          onTap: () async {
+                            final Uri url = Uri.parse('https://brostr.app');
+                            if (await canLaunchUrl(url)) {
+                              await launchUrl(url, mode: LaunchMode.externalApplication);
+                            }
+                          },
                         ),
                       ],
                     ),

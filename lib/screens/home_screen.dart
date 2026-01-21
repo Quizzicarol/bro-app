@@ -477,25 +477,12 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         const SizedBox(height: 12),
-        // Segunda linha: Minhas Ordens + Seja um Bro
+        // Segunda linha: Marketplace + Modo Bro
         Row(
           children: [
-            // Minhas Ordens
+            // Marketplace (laranja com transparência)
             Expanded(
-              child: _buildGridButton(
-                icon: Icons.receipt_long,
-                label: 'Minhas Ordens',
-                gradient: const [Color(0xFF4A90E2), Color(0xFF5BA3F5)],
-                onTap: () async {
-                  final storage = StorageService();
-                  final userId = await storage.getUserId() ?? 'temp';
-                  Navigator.pushNamed(
-                    context,
-                    '/user-orders',
-                    arguments: {'userId': userId},
-                  );
-                },
-              ),
+              child: _buildMarketplaceButton(),
             ),
             const SizedBox(width: 12),
             // Modo Bro
@@ -519,23 +506,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     // Não é provedor, mostrar educação primeiro
                     Navigator.pushNamed(context, '/provider-education');
                   }
-                },
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        // Terceira linha: Marketplace
-        Row(
-          children: [
-            // Marketplace
-            Expanded(
-              child: _buildGridButton(
-                icon: Icons.storefront,
-                label: 'Marketplace',
-                gradient: const [Color(0xFF9C27B0), Color(0xFFBA68C8)],
-                onTap: () {
-                  Navigator.pushNamed(context, '/marketplace');
                 },
               ),
             ),
@@ -636,6 +606,46 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Botão Marketplace com estilo laranja transparente (como preço Bitcoin)
+  Widget _buildMarketplaceButton() {
+    return GestureDetector(
+      onTap: () => Navigator.pushNamed(context, '/marketplace'),
+      child: Container(
+        height: 90,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              const Color(0xFFFF6B6B).withOpacity(0.3),
+              const Color(0xFFFF6B6B).withOpacity(0.15),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: const Color(0xFFFF6B6B).withOpacity(0.4),
+          ),
+        ),
+        child: const Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.storefront, color: Color(0xFFFF8A8A), size: 28),
+            SizedBox(height: 6),
+            Text(
+              'Marketplace',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }

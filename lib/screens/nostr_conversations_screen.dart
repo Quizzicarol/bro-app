@@ -46,11 +46,12 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
     try {
       setState(() => _isLoading = true);
       
-      // Obter chaves Nostr
-      final privateKey = await _storage.getData('nostr_private_key');
-      final publicKey = await _storage.getData('nostr_public_key');
+      // Obter chaves Nostr do armazenamento seguro (métodos corretos!)
+      final privateKey = await _storage.getNostrPrivateKey();
+      final publicKey = await _storage.getNostrPublicKey();
       
       if (privateKey == null || publicKey == null) {
+        debugPrint('❌ Chaves Nostr não encontradas no armazenamento seguro');
         setState(() {
           _isLoading = false;
           _isInitialized = false;
@@ -58,6 +59,7 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
         return;
       }
       
+      debugPrint('✅ Chaves Nostr encontradas!');
       _myPubkey = publicKey;
       debugPrint('💬 Conversas: Minha pubkey: ${publicKey.substring(0, 16)}...');
       
@@ -131,13 +133,17 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
         return b.lastMessage!.timestamp.compareTo(a.lastMessage!.timestamp);
       });
       
-      setState(() {
-        _conversations = conversations;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _conversations = conversations;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       debugPrint('❌ Erro ao carregar conversas: $e');
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -226,11 +232,11 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
+      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1E3A5F),
+        backgroundColor: const Color(0xFF1E1E1E),
         foregroundColor: Colors.white,
-        title: const Text('Mensagens Nostr'),
+        title: const Text('Mensagens', style: TextStyle(fontWeight: FontWeight.w600)),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -244,9 +250,9 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  CircularProgressIndicator(),
+                  CircularProgressIndicator(color: Color(0xFFFF6B6B)),
                   SizedBox(height: 16),
-                  Text('Conectando aos relays...'),
+                  Text('Conectando aos relays...', style: TextStyle(color: Colors.white70)),
                 ],
               ),
             )
@@ -268,7 +274,7 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.1),
+                color: Colors.orange.withOpacity(0.2),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -283,16 +289,17 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
+                color: Colors.white,
               ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
-            Text(
+            const Text(
               'Acesse Configurações > Identidade Nostr para configurar suas chaves e poder enviar/receber mensagens criptografadas.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 14,
-                color: Colors.grey.shade600,
+                color: Colors.white60,
               ),
             ),
             const SizedBox(height: 24),
@@ -301,7 +308,7 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
               icon: const Icon(Icons.arrow_back),
               label: const Text('Voltar'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1E3A5F),
+                backgroundColor: const Color(0xFFFF6B6B),
                 foregroundColor: Colors.white,
               ),
             ),
@@ -321,13 +328,13 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: const Color(0xFF1E3A5F).withOpacity(0.1),
+                color: const Color(0xFF9C27B0).withOpacity(0.2),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
                 Icons.chat_bubble_outline,
                 size: 48,
-                color: Color(0xFF1E3A5F),
+                color: Color(0xFFBA68C8),
               ),
             ),
             const SizedBox(height: 24),
@@ -336,36 +343,36 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF1E3A5F),
+                color: Colors.white,
               ),
             ),
             const SizedBox(height: 8),
-            Text(
+            const Text(
               'Suas conversas do marketplace P2P aparecerão aqui.\n\nInicie uma conversa acessando uma oferta e clicando em "Contatar vendedor".',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 14,
-                color: Colors.grey.shade600,
+                color: Colors.white60,
               ),
             ),
             const SizedBox(height: 24),
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.blue.shade50,
+                color: const Color(0xFF3DE98C).withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.blue.shade200),
+                border: Border.all(color: const Color(0xFF3DE98C).withOpacity(0.3)),
               ),
               child: const Row(
                 children: [
-                  Icon(Icons.lock_outline, color: Color(0xFF1976D2)),
+                  Icon(Icons.lock_outline, color: Color(0xFF3DE98C)),
                   SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       'Todas as mensagens são criptografadas de ponta a ponta usando NIP-04',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF1976D2),
+                        color: Color(0xFF3DE98C),
                       ),
                     ),
                   ),
@@ -381,10 +388,11 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
   Widget _buildConversationsList() {
     return RefreshIndicator(
       onRefresh: _loadConversations,
+      color: const Color(0xFFFF6B6B),
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(vertical: 8),
         itemCount: _conversations.length,
-        separatorBuilder: (_, __) => const Divider(height: 1),
+        separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFF2E2E2E)),
         itemBuilder: (context, index) {
           final conversation = _conversations[index];
           return _buildConversationTile(conversation);
@@ -395,10 +403,11 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
 
   Widget _buildConversationTile(ConversationInfo conversation) {
     return ListTile(
+      tileColor: const Color(0xFF1E1E1E),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       leading: CircleAvatar(
         radius: 24,
-        backgroundColor: const Color(0xFF1E3A5F),
+        backgroundColor: const Color(0xFF9C27B0),
         child: Text(
           (conversation.displayName ?? 'N')[0].toUpperCase(),
           style: const TextStyle(
@@ -416,6 +425,7 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
               style: const TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 15,
+                color: Colors.white,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -424,9 +434,9 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
           if (conversation.lastMessage != null)
             Text(
               _formatTime(conversation.lastMessage!.timestamp),
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 12,
-                color: Colors.grey.shade600,
+                color: Colors.white54,
               ),
             ),
         ],
@@ -439,32 +449,33 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
                   if (conversation.lastMessage!.isFromMe)
                     const Padding(
                       padding: EdgeInsets.only(right: 4),
-                      child: Icon(Icons.done_all, size: 14, color: Colors.grey),
+                      child: Icon(Icons.done_all, size: 14, color: Color(0xFF3DE98C)),
                     ),
                   Expanded(
                     child: Text(
                       conversation.lastMessage!.content,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 13,
-                        color: Colors.grey.shade700,
+                        color: Colors.white60,
                       ),
                     ),
                   ),
                 ],
               ),
             )
-          : Text(
+          : const Text(
               'Clique para iniciar conversa',
               style: TextStyle(
                 fontSize: 13,
-                color: Colors.grey.shade500,
+                color: Colors.white38,
                 fontStyle: FontStyle.italic,
               ),
             ),
       trailing: PopupMenuButton<String>(
-        icon: const Icon(Icons.more_vert, color: Colors.grey),
+        icon: const Icon(Icons.more_vert, color: Colors.white54),
+        color: const Color(0xFF2E2E2E),
         onSelected: (value) {
           switch (value) {
             case 'copy':
@@ -480,9 +491,9 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
             value: 'rename',
             child: Row(
               children: [
-                Icon(Icons.edit, size: 20),
+                Icon(Icons.edit, size: 20, color: Colors.white),
                 SizedBox(width: 12),
-                Text('Renomear'),
+                Text('Renomear', style: TextStyle(color: Colors.white)),
               ],
             ),
           ),
@@ -490,9 +501,9 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
             value: 'copy',
             child: Row(
               children: [
-                Icon(Icons.copy, size: 20),
+                Icon(Icons.copy, size: 20, color: Colors.white),
                 SizedBox(width: 12),
-                Text('Copiar pubkey'),
+                Text('Copiar pubkey', style: TextStyle(color: Colors.white)),
               ],
             ),
           ),

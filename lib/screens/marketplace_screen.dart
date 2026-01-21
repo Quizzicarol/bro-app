@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import '../services/nostr_service.dart';
 import '../services/nostr_order_service.dart';
 import '../services/bitcoin_price_service.dart';
+import '../services/content_moderation_service.dart';
 import 'marketplace_chat_screen.dart';
+import 'offer_screen.dart';
 
 /// Tela do Marketplace para ver ofertas publicadas no Nostr
 /// Utiliza NIP-15 (kind 30019) para listagem de classificados
@@ -17,6 +19,7 @@ class MarketplaceScreen extends StatefulWidget {
 class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTickerProviderStateMixin {
   final NostrService _nostrService = NostrService();
   final NostrOrderService _nostrOrderService = NostrOrderService();
+  final ContentModerationService _moderationService = ContentModerationService();
   
   late TabController _tabController;
   
@@ -73,6 +76,9 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
       debugPrint('🔍 Carregando ofertas do marketplace...');
       debugPrint('   Minha pubkey: ${myPubkey?.substring(0, 8) ?? "null"}');
       
+      // Carregar dados de moderação
+      await _moderationService.loadFromCache();
+      
       // Buscar ofertas do Nostr
       final nostrOffers = await _nostrOrderService.fetchMarketplaceOffers();
       debugPrint('📦 ${nostrOffers.length} ofertas do Nostr');
@@ -90,8 +96,27 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
         createdAt: DateTime.tryParse(data['createdAt'] ?? '') ?? DateTime.now(),
       )).toList();
       
+      // Filtrar conteúdo proibido/reportado
+      final filteredOffers = allOffers.where((offer) {
+        return !_moderationService.shouldHideOffer(
+          title: offer.title,
+          description: offer.description,
+          sellerPubkey: offer.sellerPubkey,
+        );
+      }).toList();
+      
+      // Ordenar por Web of Trust (ofertas de pessoas confiáveis primeiro)
+      filteredOffers.sort((a, b) {
+        final trustA = _moderationService.getTrustScore(a.sellerPubkey);
+        final trustB = _moderationService.getTrustScore(b.sellerPubkey);
+        if (trustA != trustB) return trustB.compareTo(trustA); // Maior trust primeiro
+        return b.createdAt.compareTo(a.createdAt); // Depois por data
+      });
+      
       // Se não tem ofertas do Nostr, usar exemplos
-      final finalOffers = allOffers.isEmpty ? _generateSampleOffers() : allOffers;
+      final finalOffers = filteredOffers.isEmpty && allOffers.isEmpty 
+          ? _generateSampleOffers() 
+          : filteredOffers;
       
       if (mounted) {
         setState(() {
@@ -99,7 +124,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
           _offers = finalOffers.toList();
           _myOffers = finalOffers.where((o) => o.sellerPubkey == myPubkey).toList();
         });
-        debugPrint('✅ ${_offers.length} ofertas totais, ${_myOffers.length} minhas ofertas');
+        debugPrint('✅ ${_offers.length} ofertas (${allOffers.length - filteredOffers.length} filtradas)');
       }
     } catch (e) {
       debugPrint('❌ Erro ao carregar ofertas: $e');
@@ -171,7 +196,12 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
-            onPressed: _showCreateOfferDialog,
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const OfferScreen()),
+              ).then((_) => _loadOffers());
+            },
             tooltip: 'Criar Oferta',
           ),
           IconButton(
@@ -753,6 +783,14 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
               label: const Text('Compartilhar'),
               style: TextButton.styleFrom(foregroundColor: Colors.white70),
             ),
+            const SizedBox(height: 8),
+            // Botão de Reportar (NIP-56)
+            TextButton.icon(
+              onPressed: () => _showReportDialog(offer),
+              icon: const Icon(Icons.flag_outlined, color: Colors.red),
+              label: const Text('Reportar', style: TextStyle(color: Colors.red)),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+            ),
           ],
         ),
       ),
@@ -1053,6 +1091,136 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
           sellerName: offer.sellerName,
           offerTitle: offer.title,
           offerId: offer.id,
+        ),
+      ),
+    );
+  }
+
+  /// Dialog para reportar oferta (NIP-56)
+  void _showReportDialog(MarketplaceOffer offer) {
+    String selectedType = 'spam';
+    final reasonController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.flag, color: Colors.red),
+              SizedBox(width: 8),
+              Text('Reportar Oferta', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Tipo de violação:',
+                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+                const SizedBox(height: 8),
+                ...ContentModerationService.reportTypes.entries.map((entry) {
+                  return RadioListTile<String>(
+                    title: Text(entry.value, style: const TextStyle(color: Colors.white)),
+                    value: entry.key,
+                    groupValue: selectedType,
+                    activeColor: Colors.red,
+                    onChanged: (value) {
+                      setDialogState(() => selectedType = value!);
+                    },
+                  );
+                }),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: reasonController,
+                  style: const TextStyle(color: Colors.white),
+                  maxLines: 2,
+                  decoration: InputDecoration(
+                    hintText: 'Motivo adicional (opcional)',
+                    hintStyle: const TextStyle(color: Colors.white38),
+                    filled: true,
+                    fillColor: const Color(0xFF2E2E2E),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.orange, size: 18),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Reports são publicados no Nostr (NIP-56) de forma descentralizada.',
+                          style: TextStyle(color: Colors.orange, fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
+            ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.pop(context);
+                
+                // Mostrar loading
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Enviando report...')),
+                );
+                
+                // Publicar report
+                final success = await _moderationService.reportContent(
+                  targetPubkey: offer.sellerPubkey,
+                  targetEventId: offer.id,
+                  reportType: selectedType,
+                  reason: reasonController.text.isEmpty ? null : reasonController.text,
+                );
+                
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(success 
+                        ? '✅ Report enviado! Deseja silenciar este vendedor?'
+                        : '❌ Erro ao enviar report'),
+                      backgroundColor: success ? Colors.green : Colors.red,
+                      action: success ? SnackBarAction(
+                        label: 'SILENCIAR',
+                        textColor: Colors.white,
+                        onPressed: () async {
+                          await _moderationService.mutePubkey(offer.sellerPubkey);
+                          _loadOffers(); // Recarregar sem a oferta
+                        },
+                      ) : null,
+                    ),
+                  );
+                }
+              },
+              icon: const Icon(Icons.send),
+              label: const Text('Enviar Report'),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            ),
+          ],
         ),
       ),
     );

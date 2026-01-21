@@ -134,7 +134,6 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       _tierDeficit = null;
     }
   }
-  }
 
   @override
   void didChangeDependencies() {

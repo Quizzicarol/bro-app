@@ -242,7 +242,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
                     Expanded(
                       child: Text(
                         _error!,
-                        style: const TextStyle(color: Colors.red, fontSize: 13),
+                        style: const TextStyle(color: Colors.red, fontSize: 16),
                       ),
                     ),
                   ],
@@ -299,7 +299,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
           const Text(
             'NIP-06 permite derivar suas chaves Nostr a partir de uma seed BIP-39 '
             '(as mesmas 12 ou 24 palavras usadas em carteiras Bitcoin).',
-            style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 13, height: 1.5),
+            style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 16, height: 1.5),
           ),
           const SizedBox(height: 16),
           // Esclarecimento importante
@@ -322,7 +322,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
                       style: TextStyle(
                         color: Color(0xFFFFC107),
                         fontWeight: FontWeight.bold,
-                        fontSize: 13,
+                        fontSize: 16,
                       ),
                     ),
                   ],
@@ -333,7 +333,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
                   '🟣 Chaves Nostr = Sua identidade no protocolo Nostr (npub/nsec)\n\n'
                   '🟠 Chaves Bitcoin = Suas carteiras para guardar/enviar sats\n\n'
                   '💡 Uma ÚNICA seed pode gerar ambas as chaves, facilitando o backup!',
-                  style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 12, height: 1.5),
+                  style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 15, height: 1.5),
                 ),
               ],
             ),
@@ -343,7 +343,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
             '✅ Um único backup para Bitcoin e Nostr\n'
             '✅ Chaves determinísticas e recuperáveis\n'
             '✅ Passphrase opcional para maior segurança',
-            style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 13, height: 1.5),
+            style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 16, height: 1.5),
           ),
           const SizedBox(height: 12),
           Container(
@@ -360,7 +360,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
                   "Derivation path: m/44'/1237'/0'/0/0",
                   style: TextStyle(
                     color: Color(0xB3FFFFFF),
-                    fontSize: 11,
+                    fontSize: 14,
                     fontFamily: 'monospace',
                   ),
                 ),
@@ -466,7 +466,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
                   SizedBox(width: 8),
                   Text(
                     'Usar seed atual da carteira',
-                    style: TextStyle(color: Color(0xFFBA68C8), fontSize: 12),
+                    style: TextStyle(color: Color(0xFFBA68C8), fontSize: 15),
                   ),
                 ],
               ),
@@ -502,7 +502,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
                 'Avançado',
                 style: TextStyle(
                   color: Color(0xFFFF6B6B),
-                  fontSize: 10,
+                  fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -512,7 +512,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
         const SizedBox(height: 4),
         const Text(
           'Adiciona uma camada extra de segurança. Se usar, lembre-se dela!',
-          style: TextStyle(color: Color(0x99FFFFFF), fontSize: 12),
+          style: TextStyle(color: Color(0x99FFFFFF), fontSize: 15),
         ),
         const SizedBox(height: 8),
         TextField(
@@ -775,7 +775,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
           label,
           style: TextStyle(
             color: color,
-            fontSize: 12,
+            fontSize: 15,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -796,7 +796,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
                     truncated,
                     style: const TextStyle(
                       color: Color(0xB3FFFFFF),
-                      fontSize: 12,
+                      fontSize: 15,
                       fontFamily: 'monospace',
                     ),
                   ),

@@ -159,7 +159,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         'A carteira atual será substituída!',
                         style: TextStyle(
                           color: Colors.red,
-                          fontSize: 13,
+                          fontSize: 16,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -348,7 +348,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     Text(
                                       '12 palavras de recuperação',
                                       style: TextStyle(
-                                        fontSize: 12,
+                                        fontSize: 15,
                                         color: Colors.white54,
                                       ),
                                     ),
@@ -381,7 +381,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   child: Text(
                                     'Guarde estas palavras em local seguro!',
                                     style: TextStyle(
-                                      fontSize: 12,
+                                      fontSize: 15,
                                       color: Colors.orange,
                                       fontWeight: FontWeight.w500,
                                     ),
@@ -468,7 +468,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     Expanded(
                                       child: Text(
                                         'Esta seed está vinculada à sua conta Nostr',
-                                        style: TextStyle(fontSize: 11, color: Colors.blue),
+                                        style: TextStyle(fontSize: 14, color: Colors.blue),
                                       ),
                                     ),
                                   ],
@@ -527,7 +527,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   SizedBox(height: 8),
                                   Text(
                                     'Entre em contato com o suporte se você tinha sats nesta carteira.',
-                                    style: TextStyle(color: Colors.red, fontSize: 13),
+                                    style: TextStyle(color: Colors.red, fontSize: 16),
                                   ),
                                 ],
                               ),

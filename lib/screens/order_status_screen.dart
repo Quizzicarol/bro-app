@@ -2895,19 +2895,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 setState(() {
                   _currentStatus = 'payment_received';
                 });
-                // Navegar para Minhas Ordens
-                Navigator.of(context).pushNamedAndRemoveUntil(
-                  '/user-orders',
-                  (route) => route.isFirst,
-                  arguments: {'userId': widget.userId ?? 'user_test_001'},
-                );
+                // Já estamos na tela de detalhes, só recarregar
+                _loadOrder();
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
-              child: const Text('Ver Minhas Ordens', style: TextStyle(color: Colors.white, fontSize: 16)),
+              child: const Text('OK', style: TextStyle(color: Colors.white, fontSize: 16)),
             ),
           ),
         ],

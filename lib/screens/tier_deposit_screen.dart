@@ -571,17 +571,17 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Comprometido (ordens):', style: TextStyle(color: Colors.red, fontSize: 15)),
-                      Text('-$_committedSats sats', style: const TextStyle(color: Colors.red, fontSize: 15)),
+                      const Text('Comprometido (ordens):', style: TextStyle(color: Colors.red, fontSize: 12)),
+                      Text('-$_committedSats sats', style: const TextStyle(color: Colors.red, fontSize: 12)),
                     ],
                   ),
                   const SizedBox(height: 4),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Disponível:', style: TextStyle(color: Colors.white70, fontSize: 15)),
+                      const Text('Disponível:', style: TextStyle(color: Colors.white70, fontSize: 12)),
                       Text('${(_currentBalance - _committedSats).clamp(0, _currentBalance)} sats', 
-                           style: const TextStyle(color: Colors.white54, fontSize: 15)),
+                           style: const TextStyle(color: Colors.white54, fontSize: 12)),
                     ],
                   ),
                 ],
@@ -603,7 +603,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
                 ),
                 Text(
                   '≈ R\$ ${(amountNeeded / 100000000 * 475000).toStringAsFixed(2)}',
-                  style: const TextStyle(color: Colors.white54, fontSize: 15),
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
                 ),
               ],
             ),
@@ -665,7 +665,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
               children: [
                 const Text(
                   'Já fez um depósito mas não foi detectado?',
-                  style: TextStyle(color: Colors.white70, fontSize: 15),
+                  style: TextStyle(color: Colors.white70, fontSize: 12),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
@@ -719,7 +719,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
           const SizedBox(height: 6),
           const Text(
             'Escaneie o QR code com sua carteira Lightning',
-            style: TextStyle(color: Colors.white70, fontSize: 15),
+            style: TextStyle(color: Colors.white70, fontSize: 12),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 12),
@@ -785,16 +785,16 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Colateral necessário:', style: TextStyle(color: Colors.white70, fontSize: 15)),
-                    Text('$_amountNeededSats sats', style: const TextStyle(color: Colors.white, fontSize: 15)),
+                    const Text('Colateral necessário:', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                    Text('$_amountNeededSats sats', style: const TextStyle(color: Colors.white, fontSize: 12)),
                   ],
                 ),
                 const SizedBox(height: 4),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Taxa estimada (rede):', style: TextStyle(color: Colors.white70, fontSize: 15)),
-                    Text('+$kEstimatedOnchainClaimFeeSats sats', style: const TextStyle(color: Colors.red, fontSize: 15)),
+                    const Text('Taxa estimada (rede):', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                    Text('+$kEstimatedOnchainClaimFeeSats sats', style: const TextStyle(color: Colors.red, fontSize: 12)),
                   ],
                 ),
                 const Divider(color: Colors.orange, height: 16),
@@ -834,7 +834,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
           const SizedBox(height: 2),
           Text(
             'Você receberá ~$_amountNeededSats sats após taxa',
-            style: const TextStyle(color: Colors.white54, fontSize: 14),
+            style: const TextStyle(color: Colors.white54, fontSize: 11),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 4),
@@ -857,7 +857,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
                   SizedBox(width: 8),
                   Text(
                     'Aguardando confirmações...',
-                    style: TextStyle(color: Colors.blue, fontSize: 15),
+                    style: TextStyle(color: Colors.blue, fontSize: 12),
                   ),
                 ],
               ),
@@ -865,7 +865,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
           else
             const Text(
               'Pode demorar até 30 min para confirmar',
-              style: TextStyle(color: Colors.white70, fontSize: 15),
+              style: TextStyle(color: Colors.white70, fontSize: 12),
               textAlign: TextAlign.center,
             ),
           const SizedBox(height: 12),
@@ -888,7 +888,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
                 const SnackBar(content: Text('Endereço copiado!')),
               );
             },
-            child: const Text('Copiar só o endereço', style: TextStyle(color: Colors.white54, fontSize: 15)),
+            child: const Text('Copiar só o endereço', style: TextStyle(color: Colors.white54, fontSize: 12)),
           ),
         ],
       ),

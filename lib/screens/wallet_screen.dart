@@ -155,11 +155,11 @@ class _WalletScreenState extends State<WalletScreen> {
                 _diagRow('Total Pagamentos', '${diagnostics['totalPayments'] ?? '?'}'),
                 if (diagnostics['recentPayments'] != null) ...[
                   const SizedBox(height: 8),
-                  const Text('Últimos pagamentos:', style: TextStyle(color: Colors.white70, fontSize: 15)),
+                  const Text('Últimos pagamentos:', style: TextStyle(color: Colors.white70, fontSize: 12)),
                   for (var p in (diagnostics['recentPayments'] as List))
                     Text(
                       '  ${p['amount']} sats - ${p['status']}',
-                      style: const TextStyle(color: Colors.white54, fontSize: 14),
+                      style: const TextStyle(color: Colors.white54, fontSize: 11),
                     ),
                 ],
                 // NOVO: Mostrar todas as seeds encontradas
@@ -167,7 +167,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 _diagRow('Seeds encontradas', '${diagnostics['totalSeedsFound'] ?? 0}'),
                 if (diagnostics['allSeeds'] != null) ...[
                   const SizedBox(height: 8),
-                  const Text('🔐 TODAS AS SEEDS:', style: TextStyle(color: Colors.amber, fontSize: 15, fontWeight: FontWeight.bold)),
+                  const Text('🔐 TODAS AS SEEDS:', style: TextStyle(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.bold)),
                   for (var entry in (diagnostics['allSeeds'] as Map).entries)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
@@ -178,13 +178,13 @@ class _WalletScreenState extends State<WalletScreen> {
                             '${entry.key}:',
                             style: TextStyle(
                               color: entry.key == 'CURRENT_USER' ? Colors.greenAccent : Colors.white70,
-                              fontSize: 14,
+                              fontSize: 11,
                               fontWeight: entry.key == 'CURRENT_USER' ? FontWeight.bold : FontWeight.normal,
                             ),
                           ),
                           Text(
                             '  ${(entry.value as Map)['first2Words']} (${(entry.value as Map)['wordCount']} palavras)',
-                            style: const TextStyle(color: Colors.white54, fontSize: 14),
+                            style: const TextStyle(color: Colors.white54, fontSize: 10),
                           ),
                         ],
                       ),
@@ -192,7 +192,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 ],
                 if (diagnostics['error'] != null) ...[
                   const Divider(color: Colors.red),
-                  Text('ERRO: ${diagnostics['error']}', style: const TextStyle(color: Colors.red, fontSize: 15)),
+                  Text('ERRO: ${diagnostics['error']}', style: const TextStyle(color: Colors.red, fontSize: 12)),
                 ],
               ],
             ),
@@ -220,12 +220,12 @@ class _WalletScreenState extends State<WalletScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: TextStyle(color: highlight ? Colors.amber : Colors.white70, fontSize: 15)),
+          Text(label, style: TextStyle(color: highlight ? Colors.amber : Colors.white70, fontSize: 12)),
           Text(
             value,
             style: TextStyle(
               color: highlight ? Colors.greenAccent : Colors.white,
-              fontSize: 15,
+              fontSize: 12,
               fontWeight: highlight ? FontWeight.bold : FontWeight.normal,
             ),
           ),
@@ -384,7 +384,7 @@ class _WalletScreenState extends State<WalletScreen> {
               '≈ ${balanceBtc.toStringAsFixed(8)} BTC',
               style: const TextStyle(
                 color: Colors.white70,
-                fontSize: 16,
+                fontSize: 13,
               ),
             ),
           ],
@@ -531,7 +531,7 @@ class _WalletScreenState extends State<WalletScreen> {
                               'Disponível: $availableSats sats',
                               style: TextStyle(
                                 color: availableSats > 0 ? Colors.green : Colors.orange,
-                                fontSize: 16,
+                                fontSize: 13,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -539,7 +539,7 @@ class _WalletScreenState extends State<WalletScreen> {
                               'Em ordens: $committedSats sats',
                               style: const TextStyle(
                                 color: Colors.orange,
-                                fontSize: 14,
+                                fontSize: 13,
                               ),
                             ),
                           ] else ...[
@@ -547,7 +547,7 @@ class _WalletScreenState extends State<WalletScreen> {
                               'Saldo: $balanceSats sats',
                               style: TextStyle(
                                 color: balanceSats > 0 ? Colors.green : Colors.grey,
-                                fontSize: 16,
+                                fontSize: 13,
                               ),
                             ),
                           ],
@@ -578,7 +578,7 @@ class _WalletScreenState extends State<WalletScreen> {
                         Expanded(
                           child: Text(
                             '$committedSats sats estão em ordens abertas/garantia',
-                            style: const TextStyle(color: Colors.orange, fontSize: 15),
+                            style: const TextStyle(color: Colors.orange, fontSize: 12),
                           ),
                         ),
                       ],
@@ -614,7 +614,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     hintText: 'Invoice, Lightning Address ou LNURL',
                     hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
                     helperText: 'Ex: lnbc..., user@wallet.com, LNURL...',
-                    helperStyle: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 14),
+                    helperStyle: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: const BorderSide(color: Color(0xFF333333)),
@@ -679,7 +679,7 @@ class _WalletScreenState extends State<WalletScreen> {
                         Expanded(
                           child: Text(
                             errorMessage!,
-                            style: const TextStyle(color: Colors.red, fontSize: 16),
+                            style: const TextStyle(color: Colors.red, fontSize: 13),
                           ),
                         ),
                       ],
@@ -948,7 +948,7 @@ class _WalletScreenState extends State<WalletScreen> {
                                             Expanded(
                                               child: Text(
                                                 'Deposite mais sats na sua carteira para fazer este pagamento.',
-                                                style: TextStyle(color: Colors.orange.shade200, fontSize: 16),
+                                                style: TextStyle(color: Colors.orange.shade200, fontSize: 13),
                                               ),
                                             ),
                                           ],
@@ -1073,7 +1073,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           : address,
                       style: const TextStyle(
                         color: Colors.white70,
-                        fontSize: 15,
+                        fontSize: 12,
                         fontFamily: 'monospace',
                       ),
                     ),
@@ -1096,7 +1096,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   Expanded(
                     child: Text(
                       'Pagamentos para endereços Bitcoin on-chain ainda não são suportados.\n\nUse uma Lightning Invoice (lnbc/lntb) para enviar pagamentos.',
-                      style: TextStyle(color: Colors.white70, fontSize: 16),
+                      style: TextStyle(color: Colors.white70, fontSize: 13),
                     ),
                   ),
                 ],
@@ -1158,7 +1158,7 @@ class _WalletScreenState extends State<WalletScreen> {
                             'Lightning Invoice ou Endereço Bitcoin',
                             style: TextStyle(
                               color: Colors.white54,
-                              fontSize: 15,
+                              fontSize: 12,
                             ),
                           ),
                         ],
@@ -1227,7 +1227,7 @@ class _WalletScreenState extends State<WalletScreen> {
                       'Formatos suportados:\n• Lightning Invoice (lnbc, lntb)\n• Endereço Bitcoin (bc1, 1, 3)',
                       style: TextStyle(
                         color: Colors.white54,
-                        fontSize: 15,
+                        fontSize: 12,
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -1358,7 +1358,7 @@ class _WalletScreenState extends State<WalletScreen> {
                               'Disponível: $availableSats sats',
                               style: TextStyle(
                                 color: availableSats > 0 ? Colors.green : Colors.orange,
-                                fontSize: 15,
+                                fontSize: 12,
                               ),
                             ),
                           ] else ...[
@@ -1366,7 +1366,7 @@ class _WalletScreenState extends State<WalletScreen> {
                               'Saldo: $balanceSats sats',
                               style: TextStyle(
                                 color: balanceSats > 0 ? Colors.green : Colors.grey,
-                                fontSize: 15,
+                                fontSize: 12,
                               ),
                             ),
                           ],
@@ -1397,7 +1397,7 @@ class _WalletScreenState extends State<WalletScreen> {
                         Expanded(
                           child: Text(
                             '$committedSats sats estão em ordens abertas',
-                            style: const TextStyle(color: Colors.orange, fontSize: 15),
+                            style: const TextStyle(color: Colors.orange, fontSize: 12),
                           ),
                         ),
                       ],
@@ -1427,7 +1427,7 @@ class _WalletScreenState extends State<WalletScreen> {
                             isLnurl ? 'LNURL' : 'Lightning Invoice',
                             style: const TextStyle(
                               color: Colors.amber,
-                              fontSize: 15,
+                              fontSize: 12,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -1443,7 +1443,7 @@ class _WalletScreenState extends State<WalletScreen> {
                                 '$invoiceAmountSats sats',
                                 style: const TextStyle(
                                   color: Colors.green,
-                                  fontSize: 15,
+                                  fontSize: 12,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
@@ -1458,7 +1458,7 @@ class _WalletScreenState extends State<WalletScreen> {
                             : invoice,
                         style: const TextStyle(
                           color: Colors.white70,
-                          fontSize: 14,
+                          fontSize: 11,
                           fontFamily: 'monospace',
                         ),
                       ),
@@ -1492,7 +1492,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   const SizedBox(height: 8),
                   const Text(
                     '* Este endereço requer que você informe o valor',
-                    style: TextStyle(color: Colors.amber, fontSize: 14),
+                    style: TextStyle(color: Colors.amber, fontSize: 11),
                   ),
                 ],
                 
@@ -1513,7 +1513,7 @@ class _WalletScreenState extends State<WalletScreen> {
                         Expanded(
                           child: Text(
                             errorMessage!,
-                            style: const TextStyle(color: Colors.red, fontSize: 15),
+                            style: const TextStyle(color: Colors.red, fontSize: 12),
                           ),
                         ),
                       ],
@@ -1778,7 +1778,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           Expanded(
                             child: Text(
                               errorMsg!,
-                              style: const TextStyle(color: Colors.red, fontSize: 16),
+                              style: const TextStyle(color: Colors.red, fontSize: 13),
                             ),
                           ),
                         ],
@@ -1903,7 +1903,7 @@ class _WalletScreenState extends State<WalletScreen> {
                             style: const TextStyle(
                               color: Colors.white70,
                               fontFamily: 'monospace',
-                              fontSize: 14,
+                              fontSize: 11,
                             ),
                           ),
                         ),
@@ -2062,7 +2062,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     _formatDate(date),
                     style: TextStyle(
                       color: Colors.white.withOpacity(0.5),
-                      fontSize: 14,
+                      fontSize: 11,
                     ),
                   ),
                 if (status.isNotEmpty && status != 'Complete')
@@ -2070,7 +2070,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     status,
                     style: TextStyle(
                       color: Colors.orange.withOpacity(0.8),
-                      fontSize: 14,
+                      fontSize: 10,
                     ),
                   ),
               ],
@@ -2081,7 +2081,7 @@ class _WalletScreenState extends State<WalletScreen> {
             style: TextStyle(
               color: isReceived ? Colors.green : Colors.red,
               fontWeight: FontWeight.bold,
-              fontSize: 16,
+              fontSize: 13,
             ),
           ),
         ],

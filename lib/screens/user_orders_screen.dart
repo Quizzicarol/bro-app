@@ -379,12 +379,12 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                   if (ordersPaid.isNotEmpty) ...[
                     const Text(
                       '✅ ORDENS PAGAS (confirmado na carteira):',
-                      style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 15),
+                      style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12),
                     ),
                     const SizedBox(height: 4),
                     ...ordersPaid.map((o) => Padding(
                       padding: const EdgeInsets.only(left: 8, bottom: 4),
-                      child: Text(o, style: const TextStyle(color: Colors.green, fontSize: 14)),
+                      child: Text(o, style: const TextStyle(color: Colors.green, fontSize: 11)),
                     )),
                     const SizedBox(height: 12),
                   ],
@@ -393,12 +393,12 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                   if (ordersNotPaid.isNotEmpty) ...[
                     const Text(
                       '❌ ORDENS NÃO PAGAS (não encontrado na carteira):',
-                      style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 15),
+                      style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12),
                     ),
                     const SizedBox(height: 4),
                     ...ordersNotPaid.map((o) => Padding(
                       padding: const EdgeInsets.only(left: 8, bottom: 4),
-                      child: Text(o, style: const TextStyle(color: Colors.red, fontSize: 14)),
+                      child: Text(o, style: const TextStyle(color: Colors.red, fontSize: 11)),
                     )),
                   ],
                   
@@ -702,7 +702,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                     description,
                     style: TextStyle(
                       color: Colors.grey.shade600,
-                      fontSize: 15,
+                      fontSize: 12,
                     ),
                   ),
                 ],
@@ -771,7 +771,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                             'Enviar para outra carteira Lightning',
                             style: TextStyle(
                               color: Colors.white54,
-                              fontSize: 15,
+                              fontSize: 12,
                             ),
                           ),
                         ],
@@ -1050,7 +1050,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                             'Confirme o envio dos sats',
                             style: TextStyle(
                               color: Colors.white54,
-                              fontSize: 15,
+                              fontSize: 12,
                             ),
                           ),
                         ],
@@ -1083,7 +1083,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                             'Lightning Invoice',
                             style: TextStyle(
                               color: Colors.amber,
-                              fontSize: 15,
+                              fontSize: 12,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -1094,7 +1094,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                         '${invoice.substring(0, 30)}...${invoice.substring(invoice.length - 20)}',
                         style: const TextStyle(
                           color: Colors.white70,
-                          fontSize: 15,
+                          fontSize: 12,
                           fontFamily: 'monospace',
                         ),
                       ),
@@ -1225,7 +1225,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                           'Aponte para o QR Code da invoice Lightning',
                           style: TextStyle(
                             color: Colors.white54,
-                            fontSize: 15,
+                            fontSize: 12,
                           ),
                         ),
                       ],
@@ -1316,7 +1316,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                     'Dica: Escaneie uma invoice Lightning (lnbc...) ou Lightning Address (user@wallet.com)',
                     style: TextStyle(
                       color: Colors.white54,
-                      fontSize: 15,
+                      fontSize: 12,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -1405,7 +1405,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                             padding: EdgeInsets.only(top: 8),
                             child: Text(
                               'Buscando em múltiplos relays',
-                              style: TextStyle(color: Colors.white38, fontSize: 15),
+                              style: TextStyle(color: Colors.white38, fontSize: 12),
                             ),
                           ),
                       ],
@@ -1481,7 +1481,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
               style: TextStyle(
                 color: isSelected ? Colors.white : Colors.white70,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                fontSize: 16,
+                fontSize: 13,
               ),
             ),
             const SizedBox(height: 4),
@@ -1572,7 +1572,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                         Text(
                           paymentType.toUpperCase(),
                           style: TextStyle(
-                            fontSize: 15,
+                            fontSize: 12,
                             color: Colors.grey[600],
                           ),
                         ),
@@ -1593,7 +1593,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w600,
-                        fontSize: 15,
+                        fontSize: 12,
                       ),
                     ),
                   ),
@@ -1664,7 +1664,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                           'Seus sats estão na sua carteira${order['amount_sats'] != null ? ' (${order['amount_sats']} sats)' : ''}',
                           style: const TextStyle(
                             color: Colors.blue,
-                            fontSize: 16,
+                            fontSize: 13,
                           ),
                         ),
                       ),

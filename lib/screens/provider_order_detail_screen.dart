@@ -450,7 +450,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                 children: [
                   const Text(
                     'Sua Taxa (3%)',
-                    style: TextStyle(color: Colors.white54, fontSize: 15),
+                    style: TextStyle(color: Colors.white54, fontSize: 12),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -468,7 +468,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                 children: [
                   const Text(
                     'Total a Receber',
-                    style: TextStyle(color: Colors.white54, fontSize: 15),
+                    style: TextStyle(color: Colors.white54, fontSize: 12),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -517,7 +517,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                 ),
                 Text(
                   statusInfo['description'],
-                  style: const TextStyle(color: Colors.white70, fontSize: 15),
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
                 ),
               ],
             ),
@@ -624,7 +624,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           Text(
             isPix ? 'Copie o código PIX abaixo e pague no seu banco' 
                   : 'Copie o código de barras abaixo e pague',
-            style: TextStyle(color: Colors.white70, fontSize: 16),
+            style: TextStyle(color: Colors.white70, fontSize: 13),
           ),
           const SizedBox(height: 16),
           const Divider(color: Colors.white12),
@@ -664,7 +664,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         children: [
           Text(
             label,
-            style: const TextStyle(color: Colors.white54, fontSize: 15),
+            style: const TextStyle(color: Colors.white54, fontSize: 12),
           ),
           const SizedBox(height: 4),
           Text(
@@ -689,7 +689,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         children: [
           Text(
             label,
-            style: const TextStyle(color: Colors.white54, fontSize: 15),
+            style: const TextStyle(color: Colors.white54, fontSize: 12),
           ),
           const SizedBox(height: 8),
           Row(
@@ -841,7 +841,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                   'Você pode abrir uma disputa se houver algum problema.',
                   style: TextStyle(
                     color: Colors.white70,
-                    fontSize: 16,
+                    fontSize: 13,
                     height: 1.4,
                   ),
                 ),
@@ -911,7 +911,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                       '• Houve algum problema com o pagamento\n'
                       '• O usuário alega não ter recebido\n'
                       '• Precisa de mediação para resolver o caso',
-                      style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 16, height: 1.4),
+                      style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 13, height: 1.4),
                     ),
                   ],
                 ),
@@ -931,7 +931,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                     Expanded(
                       child: Text(
                         'Lembre-se: após 24h sem confirmação, a auto-liquidação ocorre automaticamente.',
-                        style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 15),
+                        style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 12),
                       ),
                     ),
                   ],
@@ -1185,7 +1185,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           const SizedBox(height: 8),
           const Text(
             'Após pagar a conta, envie foto/arquivo do comprovante OU digite o código de confirmação.',
-            style: TextStyle(color: Colors.white70, fontSize: 16),
+            style: TextStyle(color: Colors.white70, fontSize: 13),
           ),
           const SizedBox(height: 16),
           
@@ -1220,7 +1220,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           if (_receiptImage != null) ...[
             const Text(
               'Comprovante Anexado:',
-              style: TextStyle(color: Colors.white70, fontSize: 15),
+              style: TextStyle(color: Colors.white70, fontSize: 12),
             ),
             const SizedBox(height: 8),
             ClipRRect(
@@ -1265,7 +1265,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           ] else ...[
             const Text(
               'Anexar Comprovante:',
-              style: TextStyle(color: Colors.white70, fontSize: 15),
+              style: TextStyle(color: Colors.white70, fontSize: 12),
             ),
             const SizedBox(height: 8),
             Row(

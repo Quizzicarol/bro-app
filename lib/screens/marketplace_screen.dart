@@ -320,7 +320,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                             categoryInfo['label'],
                             style: TextStyle(
                               color: categoryInfo['color'],
-                              fontSize: 14,
+                              fontSize: 13,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -349,7 +349,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                           'MINHA',
                           style: TextStyle(
                             color: Colors.orange,
-                            fontSize: 14,
+                            fontSize: 12,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -384,7 +384,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                       if (priceInBrl > 0) ...[
                         Text(
                           ' (R\$ ${priceInBrl.toStringAsFixed(2)})',
-                          style: const TextStyle(color: Colors.white54, fontSize: 15),
+                          style: const TextStyle(color: Colors.white54, fontSize: 12),
                         ),
                       ],
                     ],
@@ -404,7 +404,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                               : '+${offer.priceDiscount.abs()}%',
                           style: TextStyle(
                             color: offer.priceDiscount > 0 ? Colors.green : Colors.red,
-                            fontSize: 15,
+                            fontSize: 12,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -413,7 +413,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                     const Spacer(),
                     Text(
                       timeAgo,
-                      style: const TextStyle(color: Colors.white38, fontSize: 15),
+                      style: const TextStyle(color: Colors.white38, fontSize: 12),
                     ),
                   ],
                 ),
@@ -426,7 +426,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                     const SizedBox(width: 6),
                     Text(
                       offer.sellerName,
-                      style: const TextStyle(color: Colors.white54, fontSize: 16),
+                      style: const TextStyle(color: Colors.white54, fontSize: 13),
                     ),
                     const Spacer(),
                     TextButton.icon(
@@ -587,7 +587,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
             // Descrição
             const Text(
               'Descrição',
-              style: TextStyle(color: Colors.white54, fontSize: 15),
+              style: TextStyle(color: Colors.white54, fontSize: 12),
             ),
             const SizedBox(height: 4),
             Text(
@@ -673,7 +673,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                         children: [
                           const Text(
                             'Site ou Referências',
-                            style: TextStyle(color: Colors.white54, fontSize: 15),
+                            style: TextStyle(color: Colors.white54, fontSize: 12),
                           ),
                           const SizedBox(height: 4),
                           Text(
@@ -730,7 +730,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                         ),
                         Text(
                           '${offer.sellerPubkey.substring(0, 20)}...',
-                          style: const TextStyle(color: Colors.white38, fontSize: 15),
+                          style: const TextStyle(color: Colors.white38, fontSize: 12),
                         ),
                       ],
                     ),
@@ -882,7 +882,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                       Expanded(
                         child: Text(
                           'Reports são publicados no Nostr (NIP-56) de forma descentralizada.',
-                          style: TextStyle(color: Colors.orange, fontSize: 15),
+                          style: TextStyle(color: Colors.orange, fontSize: 12),
                         ),
                       ),
                     ],

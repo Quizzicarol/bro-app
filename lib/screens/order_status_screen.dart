@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+Ôªøimport 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -18,7 +18,7 @@ import '../services/notification_service.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:flutter/services.dart';
 
-/// Tela exibida apÛs pagamento confirmado
+/// Tela exibida ap√≥s pagamento confirmado
 /// Mostra status da ordem e aguarda provedor aceitar
 class OrderStatusScreen extends StatefulWidget {
   final String orderId;
@@ -67,28 +67,28 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     try {
       Map<String, dynamic>? order;
       
-      // Primeiro tenta pelo OrderService (com tratamento de exceÁ„o)
+      // Primeiro tenta pelo OrderService (com tratamento de exce√ß√£o)
       try {
         order = await _orderService.getOrder(widget.orderId);
       } catch (serviceError) {
-        debugPrint('?? OrderService falhou: $serviceError');
+        debugPrint('‚ö†Ô∏è OrderService falhou: $serviceError');
         // Continua para tentar o OrderProvider
       }
       
-      // Se n„o encontrou, tenta buscar pelo OrderProvider (que tem as ordens em memÛria)
+      // Se n√£o encontrou, tenta buscar pelo OrderProvider (que tem as ordens em mem√≥ria)
       if (order == null && mounted) {
-        debugPrint('?? Ordem n„o encontrada no OrderService, tentando OrderProvider...');
+        debugPrint('‚ö†Ô∏è Ordem n√£o encontrada no OrderService, tentando OrderProvider...');
         try {
           final orderProvider = Provider.of<OrderProvider>(context, listen: false);
           final orderFromProvider = orderProvider.orders.firstWhere(
             (o) => o.id == widget.orderId,
-            orElse: () => throw Exception('Ordem n„o encontrada no OrderProvider'),
+            orElse: () => throw Exception('Ordem n√£o encontrada no OrderProvider'),
           );
           // Converter Order para Map
           order = orderFromProvider.toJson();
-          debugPrint('? Ordem encontrada no OrderProvider: ${widget.orderId}');
+          debugPrint('‚úÖ Ordem encontrada no OrderProvider: ${widget.orderId}');
         } catch (providerError) {
-          debugPrint('?? OrderProvider tambÈm falhou: $providerError');
+          debugPrint('‚ö†Ô∏è OrderProvider tamb√©m falhou: $providerError');
         }
       }
       
@@ -109,12 +109,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       } else {
         if (!mounted) return;
         setState(() {
-          _error = 'Ordem n„o encontrada';
+          _error = 'Ordem n√£o encontrada';
           _isLoading = false;
         });
       }
     } catch (e) {
-      debugPrint('? Erro ao carregar ordem: $e');
+      debugPrint('‚ùå Erro ao carregar ordem: $e');
       if (!mounted) return;
       setState(() {
         _error = e.toString();
@@ -155,20 +155,20 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   void _startStatusPolling() {
     // Verificar status a cada 10 segundos (usando OrderProvider em vez de API)
     _statusCheckTimer = Timer.periodic(const Duration(seconds: 10), (timer) async {
-      // CORRE«√O: Verificar se a tela ainda est· montada antes de fazer qualquer coisa
+      // CORRE√á√ÉO: Verificar se a tela ainda est√° montada antes de fazer qualquer coisa
       if (!mounted) {
         timer.cancel();
         return;
       }
       
-      // CORRE«√O: Sincronizar com Nostr para buscar atualizaÁıes (aceites, comprovantes)
+      // CORRE√á√ÉO: Sincronizar com Nostr para buscar atualiza√ß√µes (aceites, comprovantes)
       final orderProvider = Provider.of<OrderProvider>(context, listen: false);
       
-      // ForÁar sincronizaÁ„o com Nostr a cada polling
+      // For√ßar sincroniza√ß√£o com Nostr a cada polling
       try {
         await orderProvider.syncOrdersFromNostr();
       } catch (e) {
-        debugPrint('?? Erro ao sincronizar Nostr no polling: $e');
+        debugPrint('‚ö†Ô∏è Erro ao sincronizar Nostr no polling: $e');
       }
       
       if (!mounted) return;
@@ -197,9 +197,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         }
       }
 
-      // REMOVIDO: Ordens em 'pending' N√O expiram
-      // SÛ expiram apÛs Bro aceitar e usu·rio demorar 24h para confirmar
-      // A expiraÁ„o sÛ deve ocorrer no status 'awaiting_confirmation'
+      // REMOVIDO: Ordens em 'pending' N√ÉO expiram
+      // S√≥ expiram ap√≥s Bro aceitar e usu√°rio demorar 24h para confirmar
+      // A expira√ß√£o s√≥ deve ocorrer no status 'awaiting_confirmation'
       if (!mounted) return;
       if (_currentStatus == 'awaiting_confirmation' && _expiresAt != null && _orderService.isOrderExpired(_expiresAt!)) {
         timer.cancel();
@@ -213,13 +213,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text('? Tempo Esgotado'),
+        title: const Text('‚è∞ Tempo Esgotado'),
         content: const Text(
           'Nenhum Bro aceitou sua ordem em 24 horas.\n\n'
-          'VocÍ pode:\n'
-          'ï Aguardar mais tempo\n'
-          'ï Cancelar e criar uma nova ordem\n'
-          'ï Seus fundos est„o seguros no escrow',
+          'Voc√™ pode:\n'
+          '‚Ä¢ Aguardar mais tempo\n'
+          '‚Ä¢ Cancelar e criar uma nova ordem\n'
+          '‚Ä¢ Seus fundos est√£o seguros no escrow',
         ),
         actions: [
           TextButton(
@@ -248,12 +248,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         title: const Text('Cancelar Ordem?'),
         content: const Text(
           'Tem certeza que deseja cancelar esta ordem?\n\n'
-          'Seus sats permanecer„o na sua carteira do app.',
+          'Seus sats permanecer√£o na sua carteira do app.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('N„o'),
+            child: const Text('N√£o'),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
@@ -277,22 +277,22 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         final orderProvider = Provider.of<OrderProvider>(context, listen: false);
         await orderProvider.updateOrderStatusLocal(widget.orderId, 'cancelled');
         success = true;
-        debugPrint('? Ordem ${widget.orderId} cancelada localmente');
+        debugPrint('‚úÖ Ordem ${widget.orderId} cancelada localmente');
       } catch (e) {
-        debugPrint('?? Erro ao cancelar ordem local: $e');
+        debugPrint('‚ö†Ô∏è Erro ao cancelar ordem local: $e');
       }
       
-      // Se n„o est· em modo teste, tambÈm tentar notificar backend (com timeout)
+      // Se n√£o est√° em modo teste, tamb√©m tentar notificar backend (com timeout)
       if (!AppConfig.testMode && !success) {
         try {
           success = await _orderService.cancelOrder(
             orderId: widget.orderId,
             userId: widget.userId ?? '',
-            reason: 'Cancelado pelo usu·rio',
+            reason: 'Cancelado pelo usu√°rio',
           ).timeout(
             const Duration(seconds: 5),
             onTimeout: () {
-              debugPrint('?? Timeout ao cancelar no backend, usando cancelamento local');
+              debugPrint('‚ö†Ô∏è Timeout ao cancelar no backend, usando cancelamento local');
               return false;
             },
           );
@@ -302,18 +302,18 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             final orderProvider = Provider.of<OrderProvider>(context, listen: false);
             await orderProvider.updateOrderStatusLocal(widget.orderId, 'cancelled');
             success = true;
-            debugPrint('? Ordem ${widget.orderId} cancelada localmente (fallback)');
+            debugPrint('‚úÖ Ordem ${widget.orderId} cancelada localmente (fallback)');
           }
         } catch (e) {
-          debugPrint('?? Erro ao cancelar no backend: $e');
+          debugPrint('‚ö†Ô∏è Erro ao cancelar no backend: $e');
           // Tentar cancelar local como fallback
           try {
             final orderProvider = Provider.of<OrderProvider>(context, listen: false);
             await orderProvider.updateOrderStatusLocal(widget.orderId, 'cancelled');
             success = true;
-            debugPrint('? Ordem ${widget.orderId} cancelada localmente (fallback)');
+            debugPrint('‚úÖ Ordem ${widget.orderId} cancelada localmente (fallback)');
           } catch (e2) {
-            debugPrint('? Erro ao cancelar ordem local (fallback): $e2');
+            debugPrint('‚ùå Erro ao cancelar ordem local (fallback): $e2');
           }
         }
       }
@@ -326,10 +326,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           _currentStatus = 'cancelled';
         });
         
-        // Mostrar confirmaÁ„o simples
+        // Mostrar confirma√ß√£o simples
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('? Ordem cancelada com sucesso'),
+            content: Text('‚úÖ Ordem cancelada com sucesso'),
             backgroundColor: Colors.green,
             duration: Duration(seconds: 2),
           ),
@@ -337,7 +337,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('? Erro ao cancelar ordem'),
+            content: Text('‚ùå Erro ao cancelar ordem'),
             backgroundColor: Colors.red,
           ),
         );
@@ -345,7 +345,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     }
   }
 
-  // Mantido para uso manual pelo usu·rio (bot„o de saque na tela)
+  // Mantido para uso manual pelo usu√°rio (bot√£o de saque na tela)
   void _showWithdrawInstructions() {
     _showWithdrawModal();
   }
@@ -464,7 +464,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  // Bot„o MAX
+                  // Bot√£o MAX
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
@@ -494,7 +494,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           Expanded(
                             child: Text(
                               infoMessage!,
-                              style: const TextStyle(color: Colors.blue, fontSize: 16),
+                              style: const TextStyle(color: Colors.blue, fontSize: 13),
                             ),
                           ),
                         ],
@@ -535,7 +535,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   ),
                   const SizedBox(height: 12),
                   
-                  // Botıes Colar e Escanear
+                  // Bot√µes Colar e Escanear
                   Row(
                     children: [
                       Expanded(
@@ -595,7 +595,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           Expanded(
                             child: Text(
                               errorMessage!,
-                              style: const TextStyle(color: Colors.red, fontSize: 16),
+                              style: const TextStyle(color: Colors.red, fontSize: 13),
                             ),
                           ),
                         ],
@@ -605,7 +605,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   
                   const SizedBox(height: 20),
                   
-                  // Bot„o Enviar
+                  // Bot√£o Enviar
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
@@ -616,12 +616,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         // Validar valor
                         final amount = int.tryParse(amountText);
                         if (amount == null || amount <= 0) {
-                          setModalState(() => errorMessage = 'Digite um valor v·lido');
+                          setModalState(() => errorMessage = 'Digite um valor v√°lido');
                           return;
                         }
                         
                         if (amount > realBalance) {
-                          setModalState(() => errorMessage = 'Saldo insuficiente! VocÍ tem $realBalance sats na carteira');
+                          setModalState(() => errorMessage = 'Saldo insuficiente! Voc√™ tem $realBalance sats na carteira');
                           return;
                         }
                         
@@ -638,7 +638,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         
                         String invoiceToSend = destination;
                         
-                        // Verificar se È Lightning Address ou LNURL
+                        // Verificar se √© Lightning Address ou LNURL
                         if (LnAddressService.isLightningAddress(destination) || 
                             LnAddressService.isLnurl(destination)) {
                           setModalState(() {
@@ -668,12 +668,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           minSats = resolved['minSats'] as int?;
                           maxSats = resolved['maxSats'] as int?;
                           
-                          // Verificar se o valor est· nos limites
+                          // Verificar se o valor est√° nos limites
                           if (minSats != null && amount < minSats!) {
                             setModalState(() {
                               isResolvingLnAddress = false;
-                              infoMessage = 'Destino aceita: mÌn $minSats sats, m·x $maxSats sats';
-                              errorMessage = 'Valor mÌnimo do destino: $minSats sats. Seu valor: $amount sats';
+                              infoMessage = 'Destino aceita: m√≠n $minSats sats, m√°x $maxSats sats';
+                              errorMessage = 'Valor m√≠nimo do destino: $minSats sats. Seu valor: $amount sats';
                             });
                             return;
                           }
@@ -681,8 +681,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           if (maxSats != null && amount > maxSats!) {
                             setModalState(() {
                               isResolvingLnAddress = false;
-                              infoMessage = 'Destino aceita: mÌn $minSats sats, m·x $maxSats sats';
-                              errorMessage = 'Valor m·ximo do destino: $maxSats sats. Seu valor: $amount sats';
+                              infoMessage = 'Destino aceita: m√≠n $minSats sats, m√°x $maxSats sats';
+                              errorMessage = 'Valor m√°ximo do destino: $maxSats sats. Seu valor: $amount sats';
                             });
                             return;
                           }
@@ -713,7 +713,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           });
                         } else if (!destination.toLowerCase().startsWith('lnbc') && 
                                    !destination.toLowerCase().startsWith('lntb')) {
-                          setModalState(() => errorMessage = 'Destino inv·lido. Use invoice (lnbc...), LNURL ou user@wallet.com');
+                          setModalState(() => errorMessage = 'Destino inv√°lido. Use invoice (lnbc...), LNURL ou user@wallet.com');
                           return;
                         }
                         
@@ -752,7 +752,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                               Navigator.pop(context); // Fechar modal
                               ScaffoldMessenger.of(this.context).showSnackBar(
                                 SnackBar(
-                                  content: Text('? Saque de $amount sats enviado com sucesso!'),
+                                  content: Text('‚úÖ Saque de $amount sats enviado com sucesso!'),
                                   backgroundColor: Colors.green,
                                 ),
                               );
@@ -810,7 +810,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           : const Icon(Icons.bolt),
                       label: Text(
                         isResolvingLnAddress 
-                            ? 'Resolvendo endereÁo...' 
+                            ? 'Resolvendo endere√ßo...' 
                             : (isSending ? 'Enviando...' : 'Enviar Sats'),
                       ),
                       style: ElevatedButton.styleFrom(
@@ -826,7 +826,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   
                   const SizedBox(height: 16),
                   
-                  // Outras opÁıes
+                  // Outras op√ß√µes
                   Center(
                     child: TextButton(
                       onPressed: () {
@@ -891,7 +891,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           'Invoice Lightning ou Lightning Address',
                           style: TextStyle(
                             color: Colors.white54,
-                            fontSize: 15,
+                            fontSize: 12,
                           ),
                         ),
                       ],
@@ -910,15 +910,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               child: MobileScanner(
                 onDetect: (capture) {
                   final List<Barcode> barcodes = capture.barcodes;
-                  debugPrint('?? QR Scanner detectou ${barcodes.length} cÛdigos');
+                  debugPrint('üì∑ QR Scanner detectou ${barcodes.length} c√≥digos');
                   
                   for (final barcode in barcodes) {
                     final code = barcode.rawValue;
-                    debugPrint('?? CÛdigo raw: $code');
+                    debugPrint('üì∑ C√≥digo raw: $code');
                     
                     if (code != null && code.isNotEmpty) {
                       String cleaned = code.trim();
-                      debugPrint('?? CÛdigo limpo: $cleaned');
+                      debugPrint('üì∑ C√≥digo limpo: $cleaned');
                       
                       // Remover prefixos comuns de URI
                       final lowerCleaned = cleaned.toLowerCase();
@@ -930,19 +930,19 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         cleaned = cleaned.substring(6);
                       }
                       
-                      // Remover par‚metros de query string se houver
+                      // Remover par√¢metros de query string se houver
                       if (cleaned.contains('?')) {
                         cleaned = cleaned.split('?')[0];
                       }
                       
-                      debugPrint('?? CÛdigo apÛs limpeza: $cleaned');
+                      debugPrint('üì∑ C√≥digo ap√≥s limpeza: $cleaned');
                       
                       // BOLT11 Invoice - aceitar qualquer coisa que comece com ln
                       if (cleaned.toLowerCase().startsWith('lnbc') || 
                           cleaned.toLowerCase().startsWith('lntb') ||
                           cleaned.toLowerCase().startsWith('lnurl')) {
                         scannedCode = cleaned;
-                        debugPrint('? Invoice detectada: $scannedCode');
+                        debugPrint('‚úÖ Invoice detectada: $scannedCode');
                         Navigator.pop(ctx);
                         return;
                       }
@@ -953,17 +953,17 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         final cleanedAddress = LnAddressService.cleanAddress(cleaned);
                         if (LnAddressService.isLightningAddress(cleanedAddress)) {
                           scannedCode = cleanedAddress;
-                          debugPrint('? LN Address detectado: $scannedCode');
+                          debugPrint('‚úÖ LN Address detectado: $scannedCode');
                           Navigator.pop(ctx);
                           return;
                         }
                       }
                       
-                      // Se n„o reconheceu, mas tem conte˙do, aceitar mesmo assim
-                      // O usu·rio pode ter escaneado algo que o app n„o conhece
+                      // Se n√£o reconheceu, mas tem conte√∫do, aceitar mesmo assim
+                      // O usu√°rio pode ter escaneado algo que o app n√£o conhece
                       if (cleaned.length > 10) {
                         scannedCode = cleaned;
-                        debugPrint('?? CÛdigo n„o reconhecido, aceitando: $scannedCode');
+                        debugPrint('‚ö†Ô∏è C√≥digo n√£o reconhecido, aceitando: $scannedCode');
                         Navigator.pop(ctx);
                         return;
                       }
@@ -985,7 +985,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     'Escaneie uma invoice Lightning (lnbc...) ou Lightning Address (user@wallet.com)',
                     style: TextStyle(
                       color: Colors.white54,
-                      fontSize: 15,
+                      fontSize: 12,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -1041,7 +1041,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     description,
                     style: TextStyle(
                       color: Colors.grey.shade600,
-                      fontSize: 15,
+                      fontSize: 12,
                     ),
                   ),
                 ],
@@ -1072,7 +1072,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 '$step',
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 15,
+                  fontSize: 12,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -1082,7 +1082,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(fontSize: 16),
+              style: const TextStyle(fontSize: 13),
             ),
           ),
         ],
@@ -1159,10 +1159,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               _buildInfoCard(),
               const SizedBox(height: 16),
               if (_currentStatus == 'pending') ...[
-                // Ordem aguardando um Bro aceitar - sÛ mostra bot„o cancelar
+                // Ordem aguardando um Bro aceitar - s√≥ mostra bot√£o cancelar
                 _buildCancelButton(),
               ],
-              // Bot„o cancelar para confirmed e payment_received (aguardando Bro aceitar)
+              // Bot√£o cancelar para confirmed e payment_received (aguardando Bro aceitar)
               if (_currentStatus == 'confirmed' || _currentStatus == 'payment_received') ...[
                 _buildCancelButton(),
               ],
@@ -1171,7 +1171,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 const SizedBox(height: 10),
                 _buildDisputeButton(),
               ],
-              // Bot„o de disputa tambÈm disponÌvel para status 'accepted' (provedor aceitou mas n„o enviou comprovante)
+              // Bot√£o de disputa tamb√©m dispon√≠vel para status 'accepted' (provedor aceitou mas n√£o enviou comprovante)
               if (_currentStatus == 'accepted') ...[
                 const SizedBox(height: 16),
                 _buildTalkToBroButton(),
@@ -1183,7 +1183,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 const SizedBox(height: 16),
                 _buildDisputedCard(),
               ],
-              // Bot„o de saque para ordens canceladas
+              // Bot√£o de saque para ordens canceladas
               if (_currentStatus == 'cancelled') ...[
                 const SizedBox(height: 16),
                 _buildWithdrawSatsButton(),
@@ -1239,7 +1239,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               ),
               textAlign: TextAlign.center,
             ),
-            // Mostrar data de criaÁ„o da ordem (importante para rastreamento)
+            // Mostrar data de cria√ß√£o da ordem (importante para rastreamento)
             if (_orderDetails != null && _orderDetails!['createdAt'] != null) ...[
               const SizedBox(height: 16),
               Container(
@@ -1258,14 +1258,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w600,
-                        fontSize: 16,
+                        fontSize: 13,
                       ),
                     ),
                   ],
                 ),
               ),
             ],
-            // Mostrar expiraÁ„o SOMENTE quando estiver aguardando confirmaÁ„o do usu·rio
+            // Mostrar expira√ß√£o SOMENTE quando estiver aguardando confirma√ß√£o do usu√°rio
             if (_currentStatus == 'awaiting_confirmation' && _expiresAt != null) ...[
               const SizedBox(height: 10),
               Container(
@@ -1313,9 +1313,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       if (diff.inMinutes < 1) {
         return 'agora';
       } else if (diff.inMinutes < 60) {
-        return 'h· ${diff.inMinutes} min';
+        return 'h√° ${diff.inMinutes} min';
       } else if (diff.inHours < 24) {
-        return 'h· ${diff.inHours}h';
+        return 'h√° ${diff.inHours}h';
       } else {
         return '${date.day}/${date.month}/${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
       }
@@ -1330,7 +1330,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return {
           'icon': Icons.hourglass_empty,
           'title': 'Aguardando Bro',
-          'subtitle': 'Sua ordem est· disponÌvel para Bros',
+          'subtitle': 'Sua ordem est√° dispon√≠vel para Bros',
           'color': Colors.orange,
         };
       case 'payment_received':
@@ -1344,7 +1344,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return {
           'icon': Icons.hourglass_empty,
           'title': 'Aguardando um Bro',
-          'subtitle': 'Sua ordem est· disponÌvel para Bros',
+          'subtitle': 'Sua ordem est√° dispon√≠vel para Bros',
           'color': Colors.orange,
         };
       case 'accepted':
@@ -1365,13 +1365,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return {
           'icon': Icons.receipt_long,
           'title': 'Comprovante Enviado',
-          'subtitle': 'Aguardando validaÁ„o do pagamento',
+          'subtitle': 'Aguardando valida√ß√£o do pagamento',
           'color': const Color(0xFFFF6B6B),
         };
       case 'completed':
         return {
           'icon': Icons.celebration,
-          'title': 'Pagamento ConcluÌdo!',
+          'title': 'Pagamento Conclu√≠do!',
           'subtitle': 'Sua conta foi paga com sucesso',
           'color': Colors.green,
         };
@@ -1386,7 +1386,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return {
           'icon': Icons.gavel,
           'title': 'Em Disputa',
-          'subtitle': 'Aguardando mediaÁ„o',
+          'subtitle': 'Aguardando media√ß√£o',
           'color': Colors.orange,
         };
       default:
@@ -1451,14 +1451,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           label,
           style: const TextStyle(
             color: Colors.white54,
-            fontSize: 16,
+            fontSize: 13,
           ),
         ),
         Text(
           value,
           style: const TextStyle(
             fontWeight: FontWeight.w500,
-            fontSize: 16,
+            fontSize: 13,
             color: Colors.white,
           ),
         ),
@@ -1479,7 +1479,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'PrÛximos Passos',
+              'Pr√≥ximos Passos',
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
@@ -1497,7 +1497,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             _buildTimelineStep(
               number: '2',
               title: 'Aguardando um Bro',
-              subtitle: 'Um Bro ir· aceitar sua ordem',
+              subtitle: 'Um Bro ir√° aceitar sua ordem',
               isActive: _currentStatus == 'pending' || _currentStatus == 'confirmed' || _currentStatus == 'payment_received',
               isCompleted: ['accepted', 'awaiting_confirmation', 'payment_submitted', 'completed'].contains(_currentStatus),
             ),
@@ -1554,7 +1554,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         style: TextStyle(
                           color: isActive ? Colors.white : Colors.white60,
                           fontWeight: FontWeight.bold,
-                          fontSize: 15,
+                          fontSize: 12,
                         ),
                       ),
               ),
@@ -1576,7 +1576,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 title,
                 style: TextStyle(
                   fontWeight: FontWeight.w500,
-                  fontSize: 16,
+                  fontSize: 13,
                   color: isActive ? Colors.orange : Colors.white70,
                 ),
               ),
@@ -1584,7 +1584,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               Text(
                 subtitle,
                 style: const TextStyle(
-                  fontSize: 14,
+                  fontSize: 11,
                   color: Colors.white54,
                 ),
               ),
@@ -1613,7 +1613,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 Icon(Icons.info_outline, color: Colors.blue[300], size: 18),
                 const SizedBox(width: 8),
                 Text(
-                  'InformaÁıes',
+                  'Informa√ß√µes',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
@@ -1623,13 +1623,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            _buildInfoItem('?', 'O Bro tem atÈ 24 horas para aceitar e pagar sua conta'),
+            _buildInfoItem('‚è∞', 'O Bro tem at√© 24 horas para aceitar e pagar sua conta'),
             const SizedBox(height: 12),
-            _buildInfoItem('??', 'Seus Bitcoin est„o seguros no escrow atÈ a conclus„o'),
+            _buildInfoItem('üîí', 'Seus Bitcoin est√£o seguros no escrow at√© a conclus√£o'),
             const SizedBox(height: 12),
-            _buildInfoItem('??', 'VocÍ receber· notificaÁıes sobre o andamento'),
+            _buildInfoItem('üì±', 'Voc√™ receber√° notifica√ß√µes sobre o andamento'),
             const SizedBox(height: 12),
-            _buildInfoItem('??', 'VocÍ pode cancelar a ordem se nenhum Bro aceitar'),
+            _buildInfoItem('üö´', 'Voc√™ pode cancelar a ordem se nenhum Bro aceitar'),
           ],
         ),
       ),
@@ -1646,7 +1646,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           child: Text(
             text,
             style: const TextStyle(
-              fontSize: 15,
+              fontSize: 12,
               color: Colors.white60,
             ),
           ),
@@ -1668,7 +1668,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       metadata = order?.metadata;
     }
 
-    debugPrint('?? _buildReceiptCard - metadata keys: ${metadata?.keys.toList()}');
+    debugPrint('üîç _buildReceiptCard - metadata keys: ${metadata?.keys.toList()}');
     debugPrint('   proofImage existe: ${metadata?['proofImage'] != null}');
     if (metadata?['proofImage'] != null) {
       final pi = metadata!['proofImage'] as String;
@@ -1726,7 +1726,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         const Icon(Icons.confirmation_number, color: Colors.orange, size: 20),
                         const SizedBox(width: 8),
                         const Text(
-                          'CÛdigo de ConfirmaÁ„o:',
+                          'C√≥digo de Confirma√ß√£o:',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
@@ -1787,7 +1787,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   Text(
                     'Enviado em: ${_formatDateTime(submittedAt)}',
                     style: TextStyle(
-                      fontSize: 15,
+                      fontSize: 12,
                       color: Colors.grey[600],
                     ),
                   ),
@@ -1809,7 +1809,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   const Expanded(
                     child: Text(
                       'Verifique o comprovante e confirme se o pagamento foi recebido corretamente.',
-                      style: TextStyle(fontSize: 16),
+                      style: TextStyle(fontSize: 13),
                     ),
                   ),
                 ],
@@ -1829,7 +1829,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       final year = dt.year;
       final hour = dt.hour.toString().padLeft(2, '0');
       final minute = dt.minute.toString().padLeft(2, '0');
-      return '$day/$month/$year ‡s $hour:$minute';
+      return '$day/$month/$year √†s $hour:$minute';
     } catch (e) {
       return isoString;
     }
@@ -1854,7 +1854,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 child: _buildReceiptImageWidget(imageUrl),
               ),
             ),
-            // Bot„o fechar
+            // Bot√£o fechar
             Positioned(
               top: 40,
               right: 16,
@@ -1870,7 +1870,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 onPressed: () => Navigator.pop(context),
               ),
             ),
-            // InstruÁıes
+            // Instru√ß√µes
             Positioned(
               bottom: 40,
               left: 0,
@@ -1883,8 +1883,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Text(
-                    'PinÁa para zoom ï Arraste para mover',
-                    style: TextStyle(color: Colors.white, fontSize: 16),
+                    'Pin√ßa para zoom ‚Ä¢ Arraste para mover',
+                    style: TextStyle(color: Colors.white, fontSize: 13),
                   ),
                 ),
               ),
@@ -1896,11 +1896,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   Widget _buildReceiptImageWidget(String imageUrl) {
-    debugPrint('??? _buildReceiptImageWidget chamado');
+    debugPrint('üñºÔ∏è _buildReceiptImageWidget chamado');
     debugPrint('   imageUrl length: ${imageUrl.length}');
     debugPrint('   imageUrl starts with: ${imageUrl.substring(0, imageUrl.length > 20 ? 20 : imageUrl.length)}');
     
-    // Verificar se È base64 (vindo do Nostr proofImage)
+    // Verificar se √© base64 (vindo do Nostr proofImage)
     if (imageUrl.startsWith('data:image')) {
       // Data URI format: data:image/png;base64,xxxxx
       debugPrint('   Formato: data:image URI');
@@ -1958,7 +1958,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           errorBuilder: (context, error, stackTrace) => _buildImageError('Erro ao carregar arquivo: $error'),
         );
       } else {
-        return _buildImageError('Arquivo n„o encontrado: $imageUrl');
+        return _buildImageError('Arquivo n√£o encontrado: $imageUrl');
       }
     }
   }
@@ -1980,10 +1980,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       }
     }
     
-    // Se tem mais de 1000 chars e È sÛ caracteres base64 v·lidos, provavelmente È base64
+    // Se tem mais de 1000 chars e √© s√≥ caracteres base64 v√°lidos, provavelmente √© base64
     if (str.length > 1000) {
       final base64Regex = RegExp(r'^[A-Za-z0-9+/=]+$');
-      // Testar sÛ os primeiros 100 chars para performance
+      // Testar s√≥ os primeiros 100 chars para performance
       return base64Regex.hasMatch(str.substring(0, 100));
     }
     
@@ -2005,7 +2005,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 32),
           child: Text(
             error,
-            style: const TextStyle(color: Colors.white30, fontSize: 15),
+            style: const TextStyle(color: Colors.white30, fontSize: 12),
             textAlign: TextAlign.center,
           ),
         ),
@@ -2042,7 +2042,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '?? O que È uma disputa?',
+                      '‚öñÔ∏è O que √© uma disputa?',
                       style: TextStyle(
                         color: Color(0xFFFF6B6B),
                         fontWeight: FontWeight.bold,
@@ -2051,9 +2051,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     ),
                     SizedBox(height: 8),
                     Text(
-                      'Uma disputa È aberta quando h· um desacordo entre vocÍ e o provedor sobre o pagamento. '
-                      'Um mediador ir· analisar as evidÍncias de ambas as partes para resolver o problema.',
-                      style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 16, height: 1.4),
+                      'Uma disputa √© aberta quando h√° um desacordo entre voc√™ e o provedor sobre o pagamento. '
+                      'Um mediador ir√° analisar as evid√™ncias de ambas as partes para resolver o problema.',
+                      style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 13, height: 1.4),
                     ),
                   ],
                 ),
@@ -2064,11 +2064,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
               ),
               const SizedBox(height: 8),
-              _buildDisputeReason('??', 'Pagamento n„o recebido pelo provedor'),
-              _buildDisputeReason('??', 'Comprovante inv·lido ou falsificado'),
-              _buildDisputeReason('??', 'Valor pago diferente do combinado'),
-              _buildDisputeReason('??', 'Provedor n„o enviou o comprovante'),
-              _buildDisputeReason('?', 'Outro motivo'),
+              _buildDisputeReason('üí∏', 'Pagamento n√£o recebido pelo provedor'),
+              _buildDisputeReason('üìÑ', 'Comprovante inv√°lido ou falsificado'),
+              _buildDisputeReason('üí∞', 'Valor pago diferente do combinado'),
+              _buildDisputeReason('üö´', 'Provedor n√£o enviou o comprovante'),
+              _buildDisputeReason('‚ùì', 'Outro motivo'),
               const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(12),
@@ -2083,8 +2083,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Os Bitcoin ficam retidos no escrow atÈ a resoluÁ„o da disputa.',
-                        style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 15),
+                        'Os Bitcoin ficam retidos no escrow at√© a resolu√ß√£o da disputa.',
+                        style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 12),
                       ),
                     ),
                   ],
@@ -2123,7 +2123,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(color: Color(0xB3FFFFFF), fontSize: 16),
+              style: const TextStyle(color: Color(0xB3FFFFFF), fontSize: 13),
             ),
           ),
         ],
@@ -2167,7 +2167,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 ),
                 const SizedBox(height: 20),
                 const Text(
-                  '?? Formul·rio de Disputa',
+                  'üìã Formul√°rio de Disputa',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 20,
@@ -2186,10 +2186,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 ),
                 const SizedBox(height: 8),
                 ...[
-                  'Pagamento n„o recebido',
-                  'Comprovante inv·lido',
+                  'Pagamento n√£o recebido',
+                  'Comprovante inv√°lido',
                   'Valor incorreto',
-                  'Provedor n„o respondeu',
+                  'Provedor n√£o respondeu',
                   'Outro'
                 ].map((reason) => RadioListTile<String>(
                   title: Text(reason, style: const TextStyle(color: Colors.white)),
@@ -2211,7 +2211,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   maxLines: 4,
                   style: const TextStyle(color: Colors.white),
                   onChanged: (value) {
-                    // Reconstruir o bot„o quando o texto mudar
+                    // Reconstruir o bot√£o quando o texto mudar
                     setModalState(() {});
                   },
                   decoration: InputDecoration(
@@ -2280,7 +2280,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     );
 
     try {
-      // Criar disputa usando o serviÁo
+      // Criar disputa usando o servi√ßo
       final disputeService = DisputeService();
       await disputeService.initialize();
       
@@ -2314,7 +2314,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('?? Disputa aberta com sucesso! O suporte foi notificado e ir· analisar o caso.'),
+            content: Text('‚öñÔ∏è Disputa aberta com sucesso! O suporte foi notificado e ir√° analisar o caso.'),
             backgroundColor: Color(0xFFFF6B6B),
             duration: Duration(seconds: 4),
           ),
@@ -2366,7 +2366,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('ID do Bro n„o disponÌvel'),
+                content: Text('ID do Bro n√£o dispon√≠vel'),
                 backgroundColor: Colors.orange,
               ),
             );
@@ -2399,9 +2399,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     );
   }
 
-  /// Mostra o bottom sheet com opÁıes de pagamento (Lightning ou On-Chain)
+  /// Mostra o bottom sheet com op√ß√µes de pagamento (Lightning ou On-Chain)
   void _showPaymentMethodsSheet() {
-    debugPrint('?? _showPaymentMethodsSheet chamado');
+    debugPrint('üîµ _showPaymentMethodsSheet chamado');
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1A1A1A),
@@ -2426,7 +2426,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 ),
               ),
               const Text(
-                'Escolha o mÈtodo de pagamento',
+                'Escolha o m√©todo de pagamento',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -2435,7 +2435,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'R\$ ${widget.amountBrl.toStringAsFixed(2)} ò ${widget.amountSats} sats',
+                'R\$ ${widget.amountBrl.toStringAsFixed(2)} ‚âà ${widget.amountSats} sats',
                 style: const TextStyle(
                   fontSize: 16,
                   color: Color(0x99FFFFFF),
@@ -2482,15 +2482,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Text(
-                          '? R·pido',
+                          '‚ö° R√°pido',
                           style: TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.w600),
                         ),
                       ),
                     ],
                   ),
                   subtitle: const Text(
-                    'Instant‚neo ï Taxas baixas',
-                    style: TextStyle(color: Color(0x99FFFFFF), fontSize: 15),
+                    'Instant√¢neo ‚Ä¢ Taxas baixas',
+                    style: TextStyle(color: Color(0x99FFFFFF), fontSize: 12),
                   ),
                   trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
                 ),
@@ -2525,8 +2525,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     ),
                   ),
                   subtitle: const Text(
-                    '~10 min ï Blockchain',
-                    style: TextStyle(color: Color(0x99FFFFFF), fontSize: 15),
+                    '~10 min ‚Ä¢ Blockchain',
+                    style: TextStyle(color: Color(0x99FFFFFF), fontSize: 12),
                   ),
                   trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
                 ),
@@ -2534,7 +2534,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               
               const SizedBox(height: 20),
               
-              // Bot„o cancelar
+              // Bot√£o cancelar
               TextButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text(
@@ -2552,7 +2552,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   /// Cria o invoice Lightning e mostra o dialog com QR Code
   Future<void> _createLightningInvoiceAndShow() async {
-    debugPrint('?? _createLightningInvoiceAndShow chamado');
+    debugPrint('üîµ _createLightningInvoiceAndShow chamado');
     
     // Mostrar loading
     showDialog(
@@ -2577,14 +2577,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     final breezProvider = context.read<BreezProvider>();
     
     try {
-      debugPrint('?? Criando Lightning invoice para ${widget.amountSats} sats...');
+      debugPrint('üîµ Criando Lightning invoice para ${widget.amountSats} sats...');
       final invoiceData = await breezProvider.createInvoice(
         amountSats: widget.amountSats,
         description: 'Bro ${widget.orderId}',
       ).timeout(
         const Duration(seconds: 30),
         onTimeout: () {
-          debugPrint('? Timeout ao criar invoice Lightning');
+          debugPrint('‚è∞ Timeout ao criar invoice Lightning');
           return {'success': false, 'error': 'Timeout ao criar invoice'};
         },
       );
@@ -2592,24 +2592,24 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       // Fechar loading
       if (mounted) Navigator.pop(context);
 
-      debugPrint('?? Invoice data recebido: $invoiceData');
+      debugPrint('üîµ Invoice data recebido: $invoiceData');
       
       if (invoiceData != null && invoiceData['success'] == true) {
         final invoice = invoiceData['invoice'] as String;
         final paymentHash = invoiceData['paymentHash'] as String? ?? '';
-        debugPrint('?? Invoice criada: ${invoice.substring(0, 50)}...');
+        debugPrint('üîµ Invoice criada: ${invoice.substring(0, 50)}...');
         
         if (mounted) {
           _showLightningPaymentDialog(invoice, paymentHash);
         }
       } else {
-        debugPrint('? Falha ao criar invoice: ${invoiceData?['error']}');
+        debugPrint('‚ùå Falha ao criar invoice: ${invoiceData?['error']}');
         _showError('Erro ao criar invoice: ${invoiceData?['error'] ?? 'Desconhecido'}');
       }
     } catch (e) {
       // Fechar loading
       if (mounted) Navigator.pop(context);
-      debugPrint('? Erro ao criar invoice: $e');
+      debugPrint('‚ùå Erro ao criar invoice: $e');
       _showError('Erro ao criar invoice: $e');
     }
   }
@@ -2619,7 +2619,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   void _showPaymentOptions(String invoice, String paymentHash) {
-    // MÈtodo legado - redireciona para o novo fluxo
+    // M√©todo legado - redireciona para o novo fluxo
     _showLightningPaymentDialog(invoice, paymentHash);
   }
 
@@ -2636,7 +2636,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     // Registrar callback para pagamento recebido
     final breezProvider = context.read<BreezProvider>();
     breezProvider.onPaymentReceived = (paymentId, amountSats, pHash) {
-      debugPrint('?? Callback de pagamento recebido! ID: $paymentId, Amount: $amountSats, Hash: $pHash');
+      debugPrint('üéâ Callback de pagamento recebido! ID: $paymentId, Amount: $amountSats, Hash: $pHash');
       _onPaymentReceived();
     };
     
@@ -2689,7 +2689,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         SizedBox(width: 8),
                         Text(
                           'Aguardando pagamento...',
-                          style: TextStyle(color: Colors.orange, fontSize: 16, fontWeight: FontWeight.w500),
+                          style: TextStyle(color: Colors.orange, fontSize: 13, fontWeight: FontWeight.w500),
                         ),
                       ],
                     ),
@@ -2727,7 +2727,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  // Invoice (copi·vel)
+                  // Invoice (copi√°vel)
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
@@ -2743,7 +2743,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                                 : invoice,
                             style: const TextStyle(
                               color: Color(0x99FFFFFF),
-                              fontSize: 14,
+                              fontSize: 11,
                               fontFamily: 'monospace',
                             ),
                           ),
@@ -2754,7 +2754,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                             Clipboard.setData(ClipboardData(text: invoice));
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text('? Invoice copiado!'),
+                                content: Text('‚úÖ Invoice copiado!'),
                                 backgroundColor: Colors.green,
                               ),
                             );
@@ -2768,7 +2768,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     'Escaneie o QR Code com sua\ncarteira Lightning para pagar',
                     style: TextStyle(
                       color: Color(0x99FFFFFF),
-                      fontSize: 16,
+                      fontSize: 13,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -2793,7 +2793,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   Timer? _paymentCheckTimer;
   
   void _startPaymentMonitoring(String paymentHash) {
-    debugPrint('?? Iniciando monitoramento de pagamento: $paymentHash');
+    debugPrint('üîç Iniciando monitoramento de pagamento: $paymentHash');
     
     _paymentCheckTimer?.cancel();
     _paymentCheckTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
@@ -2801,14 +2801,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         final breezProvider = context.read<BreezProvider>();
         final status = await breezProvider.checkPaymentStatus(paymentHash);
         
-        debugPrint('?? Status do pagamento: $status');
+        debugPrint('üìä Status do pagamento: $status');
         
         if (status != null && status['paid'] == true) {
           timer.cancel();
           _onPaymentReceived();
         }
       } catch (e) {
-        debugPrint('? Erro ao verificar pagamento: $e');
+        debugPrint('‚ùå Erro ao verificar pagamento: $e');
       }
     });
   }
@@ -2822,12 +2822,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       final breezProvider = context.read<BreezProvider>();
       breezProvider.onPaymentReceived = null;
     } catch (e) {
-      // Context pode n„o estar mais disponÌvel
+      // Context pode n√£o estar mais dispon√≠vel
     }
   }
   
   void _onPaymentReceived() {
-    debugPrint('? PAGAMENTO RECEBIDO!');
+    debugPrint('‚úÖ PAGAMENTO RECEBIDO!');
     
     // Fechar dialog atual
     if (mounted) Navigator.of(context).pop();
@@ -2838,7 +2838,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       orderId: widget.orderId,
       status: 'payment_received',
     ).then((_) {
-      debugPrint('?? Status da ordem ${widget.orderId} atualizado para payment_received');
+      debugPrint('üíæ Status da ordem ${widget.orderId} atualizado para payment_received');
     });
     
     // Mostrar dialog de sucesso
@@ -2891,7 +2891,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             child: ElevatedButton(
               onPressed: () {
                 Navigator.pop(context);
-                // Atualizar status local tambÈm
+                // Atualizar status local tamb√©m
                 setState(() {
                   _currentStatus = 'payment_received';
                 });
@@ -2916,7 +2916,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   void _showOnChainPaymentDialog() async {
-    // Mostrar loading enquanto obtÈm o endereÁo
+    // Mostrar loading enquanto obt√©m o endere√ßo
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -2927,7 +2927,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           children: [
             CircularProgressIndicator(color: Color(0xFFFF6B6B)),
             SizedBox(width: 16),
-            Text('Gerando endereÁo...', style: TextStyle(color: Colors.white)),
+            Text('Gerando endere√ßo...', style: TextStyle(color: Colors.white)),
           ],
         ),
       ),
@@ -2962,7 +2962,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // QR Code com endereÁo bitcoin: URI
+                    // QR Code com endere√ßo bitcoin: URI
                     Container(
                       width: 220,
                       height: 220,
@@ -2987,14 +2987,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       ),
                     ),
                     Text(
-                      '${widget.amountSats} sats ò ${btcAmount.toStringAsFixed(8)} BTC',
+                      '${widget.amountSats} sats ‚âà ${btcAmount.toStringAsFixed(8)} BTC',
                       style: const TextStyle(
                         fontSize: 14,
                         color: Color(0x99FFFFFF),
                       ),
                     ),
                     const SizedBox(height: 16),
-                    // EndereÁo (copi·vel)
+                    // Endere√ßo (copi√°vel)
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
@@ -3010,7 +3010,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                                   : address,
                               style: const TextStyle(
                                 color: Color(0x99FFFFFF),
-                                fontSize: 15,
+                                fontSize: 12,
                                 fontFamily: 'monospace',
                               ),
                             ),
@@ -3020,7 +3020,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                             onPressed: () {
                               Clipboard.setData(ClipboardData(text: address));
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('EndereÁo copiado!')),
+                                const SnackBar(content: Text('Endere√ßo copiado!')),
                               );
                             },
                           ),
@@ -3041,10 +3041,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              'TransaÁıes on-chain podem levar ~10-60 minutos para confirmar.',
+                              'Transa√ß√µes on-chain podem levar ~10-60 minutos para confirmar.',
                               style: TextStyle(
                                 color: Colors.orange,
-                                fontSize: 15,
+                                fontSize: 12,
                               ),
                             ),
                           ),
@@ -3064,18 +3064,18 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           ),
         );
       } else {
-        _showError('Erro ao gerar endereÁo Bitcoin');
+        _showError('Erro ao gerar endere√ßo Bitcoin');
       }
     } catch (e) {
       if (mounted) {
         Navigator.pop(context); // Fechar loading
-        _showError('Erro ao gerar endereÁo: $e');
+        _showError('Erro ao gerar endere√ßo: $e');
       }
     }
   }
 
-  // REMOVIDO: _buildVerifyPaymentButton - n„o deve existir no fluxo Bro
-  // O usu·rio n„o paga a ordem, ele RESERVA garantia. O Bro È quem paga a conta.
+  // REMOVIDO: _buildVerifyPaymentButton - n√£o deve existir no fluxo Bro
+  // O usu√°rio n√£o paga a ordem, ele RESERVA garantia. O Bro √© quem paga a conta.
 
   Widget _buildCancelButton() {
     return SizedBox(
@@ -3110,7 +3110,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Seus ${widget.amountSats} sats ainda est„o na sua carteira. VocÍ pode sacar para outra carteira Lightning.',
+                  'Seus ${widget.amountSats} sats ainda est√£o na sua carteira. Voc√™ pode sacar para outra carteira Lightning.',
                   style: const TextStyle(
                     color: Colors.blue,
                     fontSize: 14,
@@ -3121,7 +3121,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        // Bot„o de saque
+        // Bot√£o de saque
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
@@ -3136,7 +3136,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        // HistÛrico de saques desta ordem
+        // Hist√≥rico de saques desta ordem
         _buildWithdrawalHistory(),
       ],
     );
@@ -3162,7 +3162,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'HistÛrico de Saques desta Ordem',
+              'Hist√≥rico de Saques desta Ordem',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 16,
@@ -3211,14 +3211,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   'Destino: ${withdrawal.destinationShort}',
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.7),
-                    fontSize: 15,
+                    fontSize: 12,
                   ),
                 ),
                 Text(
                   _formatDateTime(withdrawal.createdAt.toIso8601String()),
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.5),
-                    fontSize: 14,
+                    fontSize: 11,
                   ),
                 ),
                 if (withdrawal.error != null) ...[
@@ -3227,7 +3227,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     'Erro: ${withdrawal.error}',
                     style: const TextStyle(
                       color: Colors.red,
-                      fontSize: 14,
+                      fontSize: 11,
                     ),
                   ),
                 ],
@@ -3256,14 +3256,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   Future<void> _handleConfirmPayment() async {
-    // Confirmar com o usu·rio
+    // Confirmar com o usu√°rio
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Confirmar Pagamento'),
         content: const Text(
-          'VocÍ confirma que recebeu o pagamento conforme o comprovante enviado pelo provedor?\n\n'
-          'Ao confirmar, o valor ser· liberado para o provedor.',
+          'Voc√™ confirma que recebeu o pagamento conforme o comprovante enviado pelo provedor?\n\n'
+          'Ao confirmar, o valor ser√° liberado para o provedor.',
         ),
         actions: [
           TextButton(
@@ -3284,7 +3284,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     if (confirm != true || !mounted) return;
 
     try {
-      // Buscar informaÁıes completas da ordem
+      // Buscar informa√ß√µes completas da ordem
       Map<String, dynamic>? orderDetails = _orderDetails;
       
       if (orderDetails == null) {
@@ -3303,9 +3303,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       );
       
       if (!updateSuccess) {
-        debugPrint('?? Falha ao atualizar status para completed');
+        debugPrint('‚ö†Ô∏è Falha ao atualizar status para completed');
       } else {
-        debugPrint('? Status atualizado para completed e publicado no Nostr');
+        debugPrint('‚úÖ Status atualizado para completed e publicado no Nostr');
       }
 
       // Adicionar ganho ao saldo do provedor E taxa da plataforma
@@ -3338,14 +3338,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           orderDescription: orderDescription,
         );
 
-        debugPrint('?? Ganho de $providerFee sats adicionado ao saldo do provedor');
-        debugPrint('?? Taxa de $platformFee sats adicionada ao saldo da plataforma');
+        debugPrint('üí∞ Ganho de $providerFee sats adicionado ao saldo do provedor');
+        debugPrint('üíº Taxa de $platformFee sats adicionada ao saldo da plataforma');
       }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('? Pagamento confirmado!'),
+            content: Text('‚úÖ Pagamento confirmado!'),
             backgroundColor: Colors.green,
           ),
         );
@@ -3395,7 +3395,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Disputa em An·lise',
+                        'Disputa em An√°lise',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -3404,7 +3404,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       ),
                       SizedBox(height: 4),
                       Text(
-                        'Um mediador est· analisando seu caso',
+                        'Um mediador est√° analisando seu caso',
                         style: TextStyle(fontSize: 14, color: Colors.black87),
                       ),
                     ],
@@ -3424,16 +3424,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '?? O que acontece agora?',
+                    'üìã O que acontece agora?',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                   ),
                   SizedBox(height: 8),
                   Text(
-                    '1. Um mediador ir· revisar todas as evidÍncias\n'
+                    '1. Um mediador ir√° revisar todas as evid√™ncias\n'
                     '2. Ambas as partes podem ser contactadas para esclarecimentos\n'
-                    '3. A decis„o ser· comunicada via notificaÁ„o\n'
-                    '4. Os Bitcoin permanecer„o no escrow atÈ resoluÁ„o',
-                    style: TextStyle(fontSize: 16, height: 1.5),
+                    '3. A decis√£o ser√° comunicada via notifica√ß√£o\n'
+                    '4. Os Bitcoin permanecer√£o no escrow at√© resolu√ß√£o',
+                    style: TextStyle(fontSize: 13, height: 1.5),
                   ),
                 ],
               ),
@@ -3452,7 +3452,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   Expanded(
                     child: Text(
                       'Tempo estimado: 24-72 horas',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
                     ),
                   ),
                 ],

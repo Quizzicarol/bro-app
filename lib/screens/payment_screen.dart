@@ -1,4 +1,4 @@
-import 'dart:math';
+Ôªøimport 'dart:math';
 import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -27,7 +27,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Map<String, dynamic>? _billData;
   Map<String, dynamic>? _conversionData;
 
-  /// Mascara o nome do benefici·rio para privacidade
+  /// Mascara o nome do benefici√°rio para privacidade
   /// Mostra apenas o primeiro nome e hachurado o resto
   String _maskBeneficiaryName(String fullName) {
     if (fullName.isEmpty) return '';
@@ -37,7 +37,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     
     final firstName = parts[0];
     if (parts.length == 1) {
-      // Se sÛ tem um nome, mostra as 3 primeiras letras + ***
+      // Se s√≥ tem um nome, mostra as 3 primeiras letras + ***
       if (firstName.length <= 3) return firstName;
       return '${firstName.substring(0, 3)}***';
     }
@@ -51,14 +51,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
   @override
   void initState() {
     super.initState();
-    // Listener para detecÁ„o autom·tica de cÛdigo colado
+    // Listener para detec√ß√£o autom√°tica de c√≥digo colado
     _codeController.addListener(_onCodeChanged);
-    debugPrint('?? PaymentScreen inicializado - _isProcessing: $_isProcessing');
+    debugPrint('üí≥ PaymentScreen inicializado - _isProcessing: $_isProcessing');
   }
 
-  // MÈtodo para forÁar reset do estado de processamento
+  // M√©todo para for√ßar reset do estado de processamento
   void _forceResetProcessing() {
-    debugPrint('?? ForÁando reset de _isProcessing');
+    debugPrint('üîÑ For√ßando reset de _isProcessing');
     if (mounted) {
       setState(() {
         _isProcessing = false;
@@ -71,10 +71,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
     
     final code = _codeController.text.trim();
     
-    // Detectar PIX (comeÁa com 00020126) ou Boleto (linha digit·vel de 47 dÌgitos)
+    // Detectar PIX (come√ßa com 00020126) ou Boleto (linha digit√°vel de 47 d√≠gitos)
     if (code.length >= 30) {
       if (code.startsWith('00020126') || _isValidBoletoCode(code)) {
-        // Aguardar 500ms apÛs ˙ltima digitaÁ„o antes de processar
+        // Aguardar 500ms ap√≥s √∫ltima digita√ß√£o antes de processar
         Future.delayed(const Duration(milliseconds: 500), () {
           if (_codeController.text.trim() == code && !_isProcessing) {
             _processBill(code);
@@ -85,7 +85,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   bool _isValidBoletoCode(String code) {
-    // Linha digit·vel do boleto tem 47 ou 48 dÌgitos
+    // Linha digit√°vel do boleto tem 47 ou 48 d√≠gitos
     final cleanCode = code.replaceAll(RegExp(r'[^\d]'), '');
     return cleanCode.length == 47 || cleanCode.length == 48;
   }
@@ -98,14 +98,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   Future<void> _processBill(String code) async {
-    debugPrint('?? _processBill iniciado - _isProcessing antes: $_isProcessing');
+    debugPrint('üìù _processBill iniciado - _isProcessing antes: $_isProcessing');
     if (!mounted) return;
     setState(() {
       _isProcessing = true;
       _billData = null;
       _conversionData = null;
     });
-    debugPrint('?? _isProcessing setado para TRUE');
+    debugPrint('üîí _isProcessing setado para TRUE');
 
     final orderProvider = context.read<OrderProvider>();
 
@@ -113,12 +113,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
       Map<String, dynamic>? result;
       String billType;
 
-      // Detectar tipo de cÛdigo
+      // Detectar tipo de c√≥digo
       final cleanCode = code.replaceAll(RegExp(r'[^\d]'), '');
       final isPix = code.contains('00020126') || code.contains('pix.') || code.contains('br.gov.bcb');
       
-      debugPrint('?? Processando cÛdigo: ${code.substring(0, min(50, code.length))}');
-      debugPrint('?? Tipo detectado: ${isPix ? "PIX" : "Boleto"}');
+      debugPrint('üîç Processando c√≥digo: ${code.substring(0, min(50, code.length))}');
+      debugPrint('üìä Tipo detectado: ${isPix ? "PIX" : "Boleto"}');
 
       if (isPix) {
         result = await orderProvider.decodePix(code);
@@ -128,16 +128,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
         billType = result != null ? (result['type'] as String? ?? 'boleto') : 'boleto';
       } else {
         if (!mounted) return;
-        _showError('CÛdigo inv·lido. Use um cÛdigo PIX ou linha digit·vel de boleto.');
+        _showError('C√≥digo inv√°lido. Use um c√≥digo PIX ou linha digit√°vel de boleto.');
         return;
       }
 
-      debugPrint('?? Resposta da API: $result');
+      debugPrint('üì® Resposta da API: $result');
 
       if (!mounted) return;
       
       if (result != null && result['success'] == true) {
-        debugPrint('? DecodificaÁ„o bem-sucedida: $result');
+        debugPrint('‚úÖ Decodifica√ß√£o bem-sucedida: $result');
         
         final Map<String, dynamic> billDataMap = {};
         result.forEach((key, value) {
@@ -152,9 +152,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
         final dynamic valueData = result['value'];
         final double amount = (valueData is num) ? valueData.toDouble() : 0.0;
         
-        debugPrint('?? Chamando convertPrice com amount: $amount');
+        debugPrint('üí∞ Chamando convertPrice com amount: $amount');
         final conversion = await orderProvider.convertPrice(amount);
-        debugPrint('?? Resposta do convertPrice: $conversion');
+        debugPrint('üìä Resposta do convertPrice: $conversion');
 
         if (!mounted) return;
         
@@ -162,27 +162,27 @@ class _PaymentScreenState extends State<PaymentScreen> {
           setState(() {
             _conversionData = conversion;
           });
-          debugPrint('? Convers„o calculada - Breakdown de taxas e bot„o "Criar Ordem" ser„o exibidos');
-          debugPrint('?? Conversion data: $conversion');
+          debugPrint('‚úÖ Convers√£o calculada - Breakdown de taxas e bot√£o "Criar Ordem" ser√£o exibidos');
+          debugPrint('üíé Conversion data: $conversion');
         } else {
-          debugPrint('? Falha na convers„o: ${conversion?['error']}');
-          _showError('Erro ao calcular convers„o: ${conversion?['error'] ?? 'Desconhecido'}');
+          debugPrint('‚ùå Falha na convers√£o: ${conversion?['error']}');
+          _showError('Erro ao calcular convers√£o: ${conversion?['error'] ?? 'Desconhecido'}');
         }
       } else {
-        debugPrint('? Resultado inv·lido: $result');
-        _showError('CÛdigo inv·lido ou n„o reconhecido');
+        debugPrint('‚ùå Resultado inv√°lido: $result');
+        _showError('C√≥digo inv√°lido ou n√£o reconhecido');
       }
     } catch (e) {
       if (!mounted) return;
       _showError('Erro ao processar: $e');
     } finally {
-      debugPrint('?? _processBill finally - resetando _isProcessing');
+      debugPrint('üîì _processBill finally - resetando _isProcessing');
       if (mounted) {
         setState(() {
           _isProcessing = false;
         });
       }
-      debugPrint('? _isProcessing setado para FALSE');
+      debugPrint('‚úÖ _isProcessing setado para FALSE');
     }
   }
 
@@ -203,35 +203,35 @@ class _PaymentScreenState extends State<PaymentScreen> {
       StreamSubscription<spark.SdkEvent>? eventSub;
       
       // Listen to SDK events for payment confirmation
-      debugPrint('?? Escutando eventos do Breez SDK para pagamento $paymentHash');
+      debugPrint('üí° Escutando eventos do Breez SDK para pagamento $paymentHash');
       eventSub = breezProvider.sdk?.addEventListener().listen((event) {
-        debugPrint('?? Evento recebido: ${event.runtimeType}');
+        debugPrint('üì° Evento recebido: ${event.runtimeType}');
         
-        // IMPORTANTE: N„o processar se dialog j· foi fechado ou j· processando
+        // IMPORTANTE: N√£o processar se dialog j√° foi fechado ou j√° processando
         if (dialogClosed || isProcessingPayment) {
-          debugPrint('?? Dialog fechado ou j· processando, ignorando evento');
+          debugPrint('‚ö†Ô∏è Dialog fechado ou j√° processando, ignorando evento');
           return;
         }
         
         if (event is spark.SdkEvent_PaymentSucceeded && !isPaid) {
-          // Marcar como processando ANTES de qualquer operaÁ„o
+          // Marcar como processando ANTES de qualquer opera√ß√£o
           isProcessingPayment = true;
           
           final payment = event.payment;
-          debugPrint('? PaymentSucceeded recebido! Payment ID: ${payment.id}');
+          debugPrint('‚úÖ PaymentSucceeded recebido! Payment ID: ${payment.id}');
           
-          // Verificar se È o pagamento correto atravÈs do payment hash E valor
+          // Verificar se √© o pagamento correto atrav√©s do payment hash E valor
           if (payment.details is spark.PaymentDetails_Lightning) {
             final details = payment.details as spark.PaymentDetails_Lightning;
             final receivedAmount = payment.amount.toInt();
             
-            // ValidaÁıes: payment hash deve bater E valor deve ser >= 95% do esperado
+            // Valida√ß√µes: payment hash deve bater E valor deve ser >= 95% do esperado
             final isCorrectHash = details.paymentHash == paymentHash;
             final isCorrectAmount = receivedAmount >= (amountSats * 0.95).round();
             
             if (isCorrectHash && isCorrectAmount) {
               isPaid = true;
-              debugPrint('?? … o nosso pagamento! Hash: ? Valor: $receivedAmount sats ?');
+              debugPrint('üéâ √â o nosso pagamento! Hash: ‚úÖ Valor: $receivedAmount sats ‚úÖ');
               
               orderProvider.updateOrderStatus(orderId: orderId, status: 'confirmed');
               
@@ -239,7 +239,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               try {
                 // Tentar fechar o dialog de QR code
                 Navigator.of(context, rootNavigator: true).pop();
-                debugPrint('? Dialog de QR code fechado');
+                debugPrint('‚úÖ Dialog de QR code fechado');
                 // Aguardar um frame para garantir que o dialog anterior foi fechado
                 Future.delayed(const Duration(milliseconds: 100), () {
                   showDialog(
@@ -260,7 +260,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            '? Seu pagamento Lightning foi recebido com sucesso!',
+                            '‚úÖ Seu pagamento Lightning foi recebido com sucesso!',
                             style: TextStyle(color: Colors.white, fontSize: 16),
                           ),
                           const SizedBox(height: 16),
@@ -286,13 +286,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
                                   const SizedBox(height: 8),
                                   Text(
                                     'Recebedor: $receiver',
-                                    style: const TextStyle(color: Colors.white60, fontSize: 15),
+                                    style: const TextStyle(color: Colors.white60, fontSize: 12),
                                   ),
                                 ],
                                 const SizedBox(height: 8),
                                 Text(
                                   'ID: ${payment.id.substring(0, 16)}...',
-                                  style: const TextStyle(color: Colors.white38, fontSize: 14),
+                                  style: const TextStyle(color: Colors.white38, fontSize: 11),
                                 ),
                               ],
                             ),
@@ -302,16 +302,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       actions: [
                         TextButton(
                           onPressed: () {
-                            debugPrint('?? Bot„o "Ver Minhas Ordens" clicado');
+                            debugPrint('üìã Bot√£o "Ver Minhas Ordens" clicado');
                             eventSub?.cancel();
-                            debugPrint('?? EventSub cancelado');
+                            debugPrint('üîå EventSub cancelado');
                             // Navegar para Minhas Ordens
                             Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(
                               '/user-orders',
                               (route) => route.isFirst,
                               arguments: {'userId': 'user_test_001'},
                             );
-                            debugPrint('? Navegou para Minhas Ordens');
+                            debugPrint('‚úÖ Navegou para Minhas Ordens');
                           },
                           style: TextButton.styleFrom(
                             backgroundColor: Colors.green,
@@ -327,7 +327,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   );
                 });
               } catch (e) {
-                debugPrint('? Erro ao mostrar dialog de confirmaÁ„o: $e');
+                debugPrint('‚ùå Erro ao mostrar dialog de confirma√ß√£o: $e');
               }
             }
           }
@@ -338,11 +338,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
         context: context,
         barrierDismissible: true,
         builder: (ctx) {
-          debugPrint('?? DIALOG BUILDER CHAMADO - invoice length: ${invoice.length}');
+          debugPrint('üé® DIALOG BUILDER CHAMADO - invoice length: ${invoice.length}');
           return WillPopScope(
             onWillPop: () async {
               // Cancelar listener ao fechar o dialog
-              debugPrint('?? Dialog fechado pelo usu·rio');
+              debugPrint('‚ö†Ô∏è Dialog fechado pelo usu√°rio');
               dialogClosed = true; // Marcar como fechado ANTES de cancelar
               eventSub?.cancel();
               return true;
@@ -379,7 +379,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     Text('R\$ ${totalBrl.toStringAsFixed(2)}', style: const TextStyle(color: Colors.white70)),
                     if (receiver != null) ...[
                       const SizedBox(height: 8),
-                      Text('Recebedor: $receiver', style: const TextStyle(color: Colors.white60, fontSize: 15))
+                      Text('Recebedor: $receiver', style: const TextStyle(color: Colors.white60, fontSize: 12))
                     ],
                     const SizedBox(height: 8),
                     TextButton.icon(
@@ -403,18 +403,18 @@ class _PaymentScreenState extends State<PaymentScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange),
                           ),
                     const SizedBox(height: 4),
-                    Text(isPaid ? 'Pago' : 'Aguardando pagamento...', style: const TextStyle(color: Colors.white70, fontSize: 15)),
+                    Text(isPaid ? 'Pago' : 'Aguardando pagamento...', style: const TextStyle(color: Colors.white70, fontSize: 12)),
                   ],
                 ),
               ),
               actions: [
               TextButton(
                 onPressed: () {
-                  debugPrint('?? Bot„o Fechar clicado');
+                  debugPrint('üî¥ Bot√£o Fechar clicado');
                   eventSub?.cancel();
-                  debugPrint('?? EventSub cancelado');
+                  debugPrint('üîå EventSub cancelado');
                   Navigator.of(ctx).pop();
-                  debugPrint('? Dialog fechado');
+                  debugPrint('‚úÖ Dialog fechado');
                 },
                 child: const Text('Fechar'),
               ),
@@ -424,16 +424,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
       },
       ).whenComplete(() {
         // Cleanup: cancelar subscription de eventos
-        debugPrint('?? whenComplete executado');
+        debugPrint('üßπ whenComplete executado');
         dialogClosed = true; // Marcar como fechado
         eventSub?.cancel();
-        debugPrint('?? Event subscription cancelada no whenComplete');
+        debugPrint('üîå Event subscription cancelada no whenComplete');
       });
       
-      // Se o result for null, significa que o usu·rio fechou o dialog
-      debugPrint('?? ApÛs showDialog - result: $result');
+      // Se o result for null, significa que o usu√°rio fechou o dialog
+      debugPrint('üìç Ap√≥s showDialog - result: $result');
       if (result == null && mounted) {
-        debugPrint('?? Dialog fechado sem resultado - garantindo cleanup');
+        debugPrint('‚ö†Ô∏è Dialog fechado sem resultado - garantindo cleanup');
         dialogClosed = true;
         eventSub?.cancel();
       }
@@ -441,10 +441,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
  
 
   void _showBitcoinPaymentOptions(double totalBrl, String sats) {
-    debugPrint('?? _showBitcoinPaymentOptions chamado: totalBrl=$totalBrl, sats=$sats');
-    // sats j· est· em formato correto (satoshis), sÛ converter para BTC quando necess·rio
+    debugPrint('üîµ _showBitcoinPaymentOptions chamado: totalBrl=$totalBrl, sats=$sats');
+    // sats j√° est√° em formato correto (satoshis), s√≥ converter para BTC quando necess√°rio
     final btcAmount = int.parse(sats) / 100000000; // Convert sats to BTC for display
-    debugPrint('?? BTC amount: $btcAmount, abrindo bottom sheet...');
+    debugPrint('üîµ BTC amount: $btcAmount, abrindo bottom sheet...');
     
     showModalBottomSheet(
       context: context,
@@ -477,7 +477,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   ),
                 ),
                 const Text(
-                  'Escolha o mÈtodo de pagamento',
+                  'Escolha o m√©todo de pagamento',
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -486,7 +486,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'R\$ ${totalBrl.toStringAsFixed(2)} ò $sats sats',
+                  'R\$ ${totalBrl.toStringAsFixed(2)} ‚âà $sats sats',
                   style: const TextStyle(
                     fontSize: 16,
                     color: Color(0x99FFFFFF),
@@ -517,8 +517,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     ),
                   ),
                   subtitle: const Text(
-                    'Instant‚neo ï Taxas baixas ï Recomendado',
-                    style: TextStyle(color: Color(0x99FFFFFF), fontSize: 16),
+                    'Instant√¢neo ‚Ä¢ Taxas baixas ‚Ä¢ Recomendado',
+                    style: TextStyle(color: Color(0x99FFFFFF), fontSize: 13),
                   ),
                   trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
                 ),
@@ -547,8 +547,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     ),
                   ),
                   subtitle: const Text(
-                    'Rede principal ï Mais seguro ï Pode demorar',
-                    style: TextStyle(color: Color(0x99FFFFFF), fontSize: 16),
+                    'Rede principal ‚Ä¢ Mais seguro ‚Ä¢ Pode demorar',
+                    style: TextStyle(color: Color(0x99FFFFFF), fontSize: 13),
                   ),
                   trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
                 ),
@@ -567,22 +567,22 @@ class _PaymentScreenState extends State<PaymentScreen> {
     required String sats,
     required double btcAmount,
   }) async {
-    debugPrint('?? _createPayment iniciado: $paymentType');
+    debugPrint('üöÄ _createPayment iniciado: $paymentType');
     
     if (_billData == null || _conversionData == null) {
-      debugPrint('? Dados da conta ausentes');
-      _showError('Dados da conta n„o encontrados');
+      debugPrint('‚ùå Dados da conta ausentes');
+      _showError('Dados da conta n√£o encontrados');
       return;
     }
 
     final orderProvider = context.read<OrderProvider>();
     final breezProvider = context.read<BreezProvider>();
 
-    debugPrint('?? _createPayment iniciado - _isProcessing antes: $_isProcessing');
+    debugPrint('üí≥ _createPayment iniciado - _isProcessing antes: $_isProcessing');
     setState(() {
       _isProcessing = true;
     });
-    debugPrint('?? _isProcessing setado para TRUE em _createPayment');
+    debugPrint('üîí _isProcessing setado para TRUE em _createPayment');
 
     try {
       final dynamic valueData = _billData!['value'];
@@ -591,7 +591,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final dynamic priceData = _conversionData!['bitcoinPrice'];
       final double btcPrice = (priceData is num) ? priceData.toDouble() : 0.0;
 
-      debugPrint('?? Criando ordem: R\$ $billAmount @ R\$ $btcPrice/BTC');
+      debugPrint('üí∞ Criando ordem: R\$ $billAmount @ R\$ $btcPrice/BTC');
 
       final order = await orderProvider.createOrder(
         billType: _billData!['billType'] as String,
@@ -602,22 +602,22 @@ class _PaymentScreenState extends State<PaymentScreen> {
       );
 
       if (order == null) {
-        debugPrint('? Falha ao criar ordem');
+        debugPrint('‚ùå Falha ao criar ordem');
         _showError('Erro ao criar ordem');
         return;
       }
 
-      debugPrint('? Ordem criada: ${order.id}');
+      debugPrint('‚úÖ Ordem criada: ${order.id}');
 
       if (!mounted) {
-        debugPrint('?? Widget desmontado');
+        debugPrint('‚ö†Ô∏è Widget desmontado');
         return;
       }
 
       final amountSats = int.parse(sats);
       
       if (paymentType == 'lightning') {
-        debugPrint('? Criando invoice Lightning...');
+        debugPrint('‚ö° Criando invoice Lightning...');
         
         // Create Lightning invoice and navigate to Lightning payment screen with timeout
         final invoiceData = await breezProvider.createInvoice(
@@ -626,27 +626,27 @@ class _PaymentScreenState extends State<PaymentScreen> {
         ).timeout(
           const Duration(seconds: 30),
           onTimeout: () {
-            debugPrint('? Timeout ao criar invoice Lightning');
+            debugPrint('‚è∞ Timeout ao criar invoice Lightning');
             return {'success': false, 'error': 'Timeout ao criar invoice'};
           },
         );
 
-        debugPrint('?? Invoice data: $invoiceData');
+        debugPrint('üì® Invoice data: $invoiceData');
 
         if (invoiceData != null && (invoiceData['success'] == true)) {
           final inv = (invoiceData['invoice'] ?? '') as String;
           if (inv.isEmpty || !(inv.startsWith('lnbc') || inv.startsWith('lntb') || inv.startsWith('lnbcrt'))) {
-            debugPrint('? Invoice inv·lida: $inv');
-            _showError('Invoice inv·lida recebida');
+            debugPrint('‚ùå Invoice inv√°lida: $inv');
+            _showError('Invoice inv√°lida recebida');
             return;
           }
-          debugPrint('? Invoice v·lida, navegando para LightningPaymentScreen...');
+          debugPrint('‚úÖ Invoice v√°lida, navegando para LightningPaymentScreen...');
           
-          // CRÕTICO: Salvar paymentHash na ordem para identificaÁ„o precisa do pagamento
+          // CR√çTICO: Salvar paymentHash na ordem para identifica√ß√£o precisa do pagamento
           final paymentHash = (invoiceData['paymentHash'] ?? '') as String;
           if (paymentHash.isNotEmpty) {
             await orderProvider.setOrderPaymentHash(order.id, paymentHash, inv);
-            debugPrint('? PaymentHash salvo na ordem: $paymentHash');
+            debugPrint('‚úÖ PaymentHash salvo na ordem: $paymentHash');
           }
           
           if (!mounted) return;
@@ -671,27 +671,27 @@ class _PaymentScreenState extends State<PaymentScreen> {
             ),
           );
         } else {
-          debugPrint('? Erro ao criar invoice');
+          debugPrint('‚ùå Erro ao criar invoice');
           _showError('Erro ao criar Lightning invoice: ${invoiceData?['error'] ?? 'desconhecido'}');
         }
       } else {
-        debugPrint('?? Criando endereÁo onchain...');
+        debugPrint('üîó Criando endere√ßo onchain...');
         
         // Create on-chain address and navigate to On-chain payment screen
         final addressData = await breezProvider.createOnchainAddress();
 
-        debugPrint('?? Address data: $addressData');
+        debugPrint('üì® Address data: $addressData');
 
         if (addressData != null && addressData['success'] == true && mounted) {
           final address = addressData['swap']?['bitcoinAddress'] ?? '';
           
           if (address.isEmpty) {
-            debugPrint('? EndereÁo vazio');
-            _showError('Erro ao criar endereÁo Bitcoin');
+            debugPrint('‚ùå Endere√ßo vazio');
+            _showError('Erro ao criar endere√ßo Bitcoin');
             return;
           }
           
-          debugPrint('? EndereÁo criado: $address, navegando...');
+          debugPrint('‚úÖ Endere√ßo criado: $address, navegando...');
           
           // Navigate to On-chain payment screen
           Navigator.push(
@@ -707,22 +707,22 @@ class _PaymentScreenState extends State<PaymentScreen> {
             ),
           );
         } else {
-          debugPrint('? Erro ao criar endereÁo onchain');
-          _showError('Erro ao criar endereÁo Bitcoin: ${addressData?['error'] ?? 'desconhecido'}');
+          debugPrint('‚ùå Erro ao criar endere√ßo onchain');
+          _showError('Erro ao criar endere√ßo Bitcoin: ${addressData?['error'] ?? 'desconhecido'}');
         }
       }
     } catch (e) {
-      debugPrint('? Exception em _createPayment: $e');
+      debugPrint('‚ùå Exception em _createPayment: $e');
       _showError('Erro ao criar pagamento: $e');
     } finally {
-      debugPrint('?? _createPayment finally - mounted: $mounted');
+      debugPrint('üîì _createPayment finally - mounted: $mounted');
       if (mounted) {
         setState(() {
           _isProcessing = false;
         });
-        debugPrint('? _isProcessing setado para FALSE em _createPayment');
+        debugPrint('‚úÖ _isProcessing setado para FALSE em _createPayment');
       } else {
-        debugPrint('?? Widget n„o montado, n„o pode resetar _isProcessing');
+        debugPrint('‚ö†Ô∏è Widget n√£o montado, n√£o pode resetar _isProcessing');
       }
     }
   }
@@ -738,12 +738,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint('?? PaymentScreen build - _isProcessing: $_isProcessing');
+    debugPrint('üîÑ PaymentScreen build - _isProcessing: $_isProcessing');
     return Scaffold(
       appBar: AppBar(
         title: const Text('Pagar Conta'),
         actions: [
-          // Bot„o de debug para resetar estado
+          // Bot√£o de debug para resetar estado
           if (_isProcessing)
             IconButton(
               icon: const Icon(Icons.refresh, color: Colors.orange),
@@ -793,7 +793,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           left: 0,
           right: 0,
           child: Text(
-            'Aponte para o cÛdigo de barras ou QR Code',
+            'Aponte para o c√≥digo de barras ou QR Code',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.white,
@@ -818,8 +818,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 child: TextField(
                   controller: _codeController,
                   decoration: const InputDecoration(
-                    labelText: 'CÛdigo PIX ou Boleto',
-                    hintText: 'Cole ou escaneie o cÛdigo',
+                    labelText: 'C√≥digo PIX ou Boleto',
+                    hintText: 'Cole ou escaneie o c√≥digo',
                     border: OutlineInputBorder(),
                   ),
                   maxLines: 3,
@@ -849,10 +849,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.search),
-            label: const Text('Processar CÛdigo'),
+            label: const Text('Processar C√≥digo'),
           ),
           
-          // InstruÁıes de como funciona
+          // Instru√ß√µes de como funciona
           if (_billData == null) ...[
             const SizedBox(height: 24),
             _buildInstructionsCard(),
@@ -895,7 +895,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          _buildInstructionStep('1', 'Cole acima o cÛdigo PIX ou boleto'),
+          _buildInstructionStep('1', 'Cole acima o c√≥digo PIX ou boleto'),
           const SizedBox(height: 12),
           _buildInstructionStep('2', 'Confira o valor e as taxas'),
           const SizedBox(height: 12),
@@ -905,7 +905,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           const SizedBox(height: 12),
           _buildInstructionStep('5', 'Confirme que o pagamento foi feito e libere o valor para o Bro'),
           const SizedBox(height: 12),
-          _buildInstructionStep('6', 'Pronto, conta paga de Bro para Bro! ??'),
+          _buildInstructionStep('6', 'Pronto, conta paga de Bro para Bro! ü§ù'),
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(12),
@@ -922,9 +922,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Seu pagamento fica em um endereÁo aguardando atÈ que um Bro confirme que pagou sua conta.',
+                        'Seu pagamento fica em um endere√ßo aguardando at√© que um Bro confirme que pagou sua conta.',
                         style: TextStyle(
-                          fontSize: 15,
+                          fontSize: 12,
                           color: Color(0xFF3DE98C),
                         ),
                       ),
@@ -933,9 +933,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 ),
                 SizedBox(height: 8),
                 Text(
-                  'Obs: Se vocÍ n„o confirmar em 24h o pagamento da conta, sua garantia depositada em bitcoin È liberada automaticamente para o Bro que enviou o comprovante.',
+                  'Obs: Se voc√™ n√£o confirmar em 24h o pagamento da conta, sua garantia depositada em bitcoin √© liberada automaticamente para o Bro que enviou o comprovante.',
                   style: TextStyle(
-                    fontSize: 14,
+                    fontSize: 11,
                     color: Color(0xB3FFFFFF),
                     fontStyle: FontStyle.italic,
                   ),
@@ -964,7 +964,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               number,
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 15,
+                fontSize: 12,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -990,7 +990,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final valueStr = (value is num) ? value.toStringAsFixed(2) : '0.00';
     
     return [
-      // Alert de sucesso na detecÁ„o
+      // Alert de sucesso na detec√ß√£o
       Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -1007,10 +1007,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
             SizedBox(width: 12),
             Expanded(
               child: Text(
-                '? Valor detectado automaticamente',
+                '‚úÖ Valor detectado automaticamente',
                 style: TextStyle(
                   color: Color(0xFF4CAF50),
-                  fontSize: 16,
+                  fontSize: 13,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -1083,13 +1083,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final totalBrl = accountValue + providerFee + platformFee;
     
     // Calcular sats totais baseado no valor total com taxas
-    // btcAmount È o valor em BTC para pagar APENAS a conta
+    // btcAmount √© o valor em BTC para pagar APENAS a conta
     // Precisamos calcular o BTC total (conta + taxas)
     final btcPriceNum = (btcPrice is num) ? btcPrice.toDouble() : 0.0;
     final totalBtc = btcPriceNum > 0 ? totalBrl / btcPriceNum : 0.0;
     final totalSats = (totalBtc * 100000000).round();
     
-    // Calcular taxa de convers„o BRL ? Sats
+    // Calcular taxa de convers√£o BRL ‚Üí Sats
     final brlToSatsRate = totalSats > 0 ? totalSats / totalBrl : 0.0;
 
     return [
@@ -1108,10 +1108,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
             SizedBox(width: 10),
             Expanded(
               child: Text(
-                '?? Confira abaixo o detalhamento completo das taxas',
+                'üí° Confira abaixo o detalhamento completo das taxas',
                 style: TextStyle(
                   color: Color(0xFF64B5F6),
-                  fontSize: 15,
+                  fontSize: 12,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -1160,7 +1160,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 valueColor: Colors.orange.shade900,
               ),
               _InfoRow(
-                label: 'CotaÁ„o BTC',
+                label: 'Cota√ß√£o BTC',
                 value: '${NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$').format(btcPrice)}/BTC',
               ),
               _InfoRow(

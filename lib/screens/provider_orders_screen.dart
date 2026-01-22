@@ -292,15 +292,15 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           tabs: [
             Tab(
               icon: const Icon(Icons.local_offer, size: 20),
-              child: Text('Disponíveis (${_availableOrders.length})', style: const TextStyle(fontSize: 14)),
+              child: Text('Disponíveis (${_availableOrders.length})', style: const TextStyle(fontSize: 13)),
             ),
             Tab(
               icon: const Icon(Icons.assignment_turned_in, size: 20),
-              child: Text('Minhas (${_myOrders.length})', style: const TextStyle(fontSize: 14)),
+              child: Text('Minhas (${_myOrders.length})', style: const TextStyle(fontSize: 13)),
             ),
             const Tab(
               icon: Icon(Icons.bar_chart, size: 20),
-              child: Text('Estatísticas', style: TextStyle(fontSize: 14)),
+              child: Text('Estatísticas', style: TextStyle(fontSize: 13)),
             ),
           ],
         ),
@@ -327,7 +327,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                         padding: EdgeInsets.only(top: 8),
                         child: Text(
                           'Buscando ordens de todos os usuários',
-                          style: TextStyle(color: Colors.white38, fontSize: 15),
+                          style: TextStyle(color: Colors.white38, fontSize: 12),
                         ),
                       ),
                   ],
@@ -468,7 +468,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                           style: const TextStyle(
                             color: Colors.orange,
                             fontWeight: FontWeight.bold,
-                            fontSize: 15,
+                            fontSize: 12,
                           ),
                         ),
                       ],
@@ -484,7 +484,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                         canAccept ? 'DISPONÍVEL' : 'BLOQUEADA',
                         style: TextStyle(
                           color: canAccept ? Colors.green : Colors.red,
-                          fontSize: 14,
+                          fontSize: 10,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -510,11 +510,11 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                   children: [
                     const Icon(Icons.person_outline, color: Colors.white54, size: 16),
                     const SizedBox(width: 6),
-                    Text(userName, style: const TextStyle(color: Colors.white70, fontSize: 16)),
+                    Text(userName, style: const TextStyle(color: Colors.white70, fontSize: 13)),
                     const Spacer(),
                     const Icon(Icons.access_time, color: Colors.white54, size: 16),
                     const SizedBox(width: 6),
-                    Text(timeAgo, style: const TextStyle(color: Colors.white54, fontSize: 15)),
+                    Text(timeAgo, style: const TextStyle(color: Colors.white54, fontSize: 12)),
                   ],
                 ),
                 if (!canAccept && rejectReason != null) ...[
@@ -530,7 +530,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                         const Icon(Icons.warning_amber, color: Colors.red, size: 16),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: Text(rejectReason, style: const TextStyle(color: Colors.red, fontSize: 14)),
+                          child: Text(rejectReason, style: const TextStyle(color: Colors.red, fontSize: 11)),
                         ),
                       ],
                     ),
@@ -670,7 +670,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                             statusInfo['label'],
                             style: TextStyle(
                               color: statusInfo['color'],
-                              fontSize: 14,
+                              fontSize: 11,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -686,21 +686,21 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                       'Ganho: R\$ ${earning.toStringAsFixed(2)}',
                       style: TextStyle(
                         color: status == 'completed' ? Colors.green : Colors.white54,
-                        fontSize: 16,
+                        fontSize: 13,
                         fontWeight: status == 'completed' ? FontWeight.bold : FontWeight.normal,
                       ),
                     ),
                     const Spacer(),
                     Text(
                       _formatDate(createdAt),
-                      style: const TextStyle(color: Colors.white54, fontSize: 15),
+                      style: const TextStyle(color: Colors.white54, fontSize: 12),
                     ),
                   ],
                 ),
                 const SizedBox(height: 8),
                 Text(
                   statusInfo['description'],
-                  style: const TextStyle(color: Colors.white70, fontSize: 15),
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
                 ),
               ],
             ),
@@ -846,7 +846,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
             value,
             style: TextStyle(color: color, fontSize: 28, fontWeight: FontWeight.bold),
           ),
-          Text(label, style: const TextStyle(color: Colors.white54, fontSize: 15)),
+          Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
         ],
       ),
     );
@@ -886,7 +886,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           ),
           const Text(
             'Total de comissões ganhas',
-            style: TextStyle(color: Colors.white54, fontSize: 15),
+            style: TextStyle(color: Colors.white54, fontSize: 12),
           ),
           const SizedBox(height: 12),
           TextButton.icon(
@@ -1120,7 +1120,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           child: const Text(
             'Sem Tier',
             style: TextStyle(
-              fontSize: 15,
+              fontSize: 12,
               fontWeight: FontWeight.bold,
               color: Colors.grey,
             ),
@@ -1146,7 +1146,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         child: Text(
           statusText,
           style: TextStyle(
-            fontSize: 15,
+            fontSize: 12,
             fontWeight: FontWeight.bold,
             color: statusColor,
           ),
@@ -1210,7 +1210,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                     const SizedBox(height: 8),
                     Text(
                       'Deposite $_tierDeficit sats para reativar seu tier.',
-                      style: const TextStyle(color: Colors.white70, fontSize: 16),
+                      style: const TextStyle(color: Colors.white70, fontSize: 13),
                     ),
                   ],
                 ),
@@ -1218,7 +1218,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
             ] else
               const Text(
                 '✅ Seu tier está ativo e você pode aceitar ordens normalmente.',
-                style: TextStyle(color: Colors.white70, fontSize: 16),
+                style: TextStyle(color: Colors.white70, fontSize: 13),
               ),
           ],
         ),

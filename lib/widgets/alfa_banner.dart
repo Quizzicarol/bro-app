@@ -7,9 +7,17 @@ class AlfaBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Pega o padding do status bar para posicionar corretamente
+    final statusBarHeight = MediaQuery.of(context).padding.top;
+    
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: EdgeInsets.only(
+        top: statusBarHeight + 6,
+        bottom: 8,
+        left: 16,
+        right: 16,
+      ),
       decoration: BoxDecoration(
         color: const Color(0xFFD32F2F), // Vermelho forte
         boxShadow: [
@@ -20,51 +28,48 @@ class AlfaBanner extends StatelessWidget {
           ),
         ],
       ),
-      child: SafeArea(
-        bottom: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(
-                  Icons.warning_amber_rounded,
-                  color: Colors.white,
-                  size: 16,
-                ),
-                const SizedBox(width: 6),
-                Flexible(
-                  child: const Text(
-                    'App em testes. Bugs podem acontecer.',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                const Icon(
-                  Icons.warning_amber_rounded,
-                  color: Colors.white,
-                  size: 16,
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Não negocie valores altos!',
-              style: TextStyle(
-                color: Colors.yellow,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.warning_amber_rounded,
+                color: Colors.white,
+                size: 14,
               ),
-              textAlign: TextAlign.center,
+              const SizedBox(width: 4),
+              Flexible(
+                child: const Text(
+                  'App em testes • Bugs podem acontecer',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(width: 4),
+              const Icon(
+                Icons.warning_amber_rounded,
+                color: Colors.white,
+                size: 14,
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          const Text(
+            'Não negocie valores altos!',
+            style: TextStyle(
+              color: Colors.yellow,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
             ),
-          ],
-        ),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }

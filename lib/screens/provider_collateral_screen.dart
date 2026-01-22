@@ -161,7 +161,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                   const SizedBox(width: 12),
                   const Text(
                     'Saldo Total',
-                    style: TextStyle(color: Colors.white60, fontSize: 15),
+                    style: TextStyle(color: Colors.white60, fontSize: 12),
                   ),
                   const Spacer(),
                   Text(
@@ -184,7 +184,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                 'DISTRIBUIÇÃO',
                 style: TextStyle(
                   color: Colors.white54, 
-                  fontSize: 14,
+                  fontSize: 10,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 1.2,
                 ),
@@ -243,7 +243,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                           'O tier permanece ativo enquanto você tiver saldo suficiente.',
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.7),
-                            fontSize: 14,
+                            fontSize: 11,
                           ),
                         ),
                       ),
@@ -276,7 +276,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                       const Text('Tier Ativo', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
                       Text(
                         'Máximo R\$ ${_currentCollateral!.maxOrderBrl.toStringAsFixed(0)}/ordem',
-                        style: const TextStyle(color: Colors.white70, fontSize: 15),
+                        style: const TextStyle(color: Colors.white70, fontSize: 12),
                       ),
                     ],
                   ),
@@ -303,7 +303,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
               const Spacer(),
               Text(
                 'BTC: R\$ ${_btcPrice?.toStringAsFixed(0) ?? "?"}',
-                style: const TextStyle(color: Colors.orange, fontSize: 15),
+                style: const TextStyle(color: Colors.orange, fontSize: 12),
               ),
             ],
           ),
@@ -379,7 +379,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                               ),
                               child: const Text(
                                 'ATIVO',
-                                style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                                style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                               ),
                             ),
                           ],
@@ -387,7 +387,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                       ),
                       Text(
                         tier.description,
-                        style: const TextStyle(color: Colors.white60, fontSize: 15),
+                        style: const TextStyle(color: Colors.white60, fontSize: 12),
                       ),
                     ],
                   ),
@@ -405,7 +405,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Garantia', style: TextStyle(color: Colors.white38, fontSize: 14)),
+                    const Text('Garantia', style: TextStyle(color: Colors.white38, fontSize: 11)),
                     Text(
                       '${tier.requiredCollateralSats} sats',
                       style: TextStyle(
@@ -416,14 +416,14 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                     ),
                     Text(
                       '≈ R\$ ${tier.requiredCollateralBrl.toStringAsFixed(2)}',
-                      style: const TextStyle(color: Colors.white54, fontSize: 14),
+                      style: const TextStyle(color: Colors.white54, fontSize: 11),
                     ),
                   ],
                 ),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    const Text('Máx. por Ordem', style: TextStyle(color: Colors.white38, fontSize: 14)),
+                    const Text('Máx. por Ordem', style: TextStyle(color: Colors.white38, fontSize: 11)),
                     Text(
                       'R\$ ${tier.maxOrderValueBrl.toStringAsFixed(0)}',
                       style: const TextStyle(
@@ -446,7 +446,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                 ),
                 child: Text(
                   'Deposite ${tier.requiredCollateralSats - _walletBalance} sats a mais',
-                  style: const TextStyle(color: Colors.orange, fontSize: 14),
+                  style: const TextStyle(color: Colors.orange, fontSize: 11),
                 ),
               ),
             ],
@@ -511,7 +511,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                   label,
                   style: TextStyle(
                     color: highlight ? Colors.green : Colors.white,
-                    fontSize: 16,
+                    fontSize: 13,
                     fontWeight: highlight ? FontWeight.bold : FontWeight.normal,
                   ),
                 ),
@@ -519,7 +519,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                   subtitle,
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.5),
-                    fontSize: 14,
+                    fontSize: 10,
                   ),
                 ),
               ],

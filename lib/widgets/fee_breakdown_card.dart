@@ -71,25 +71,17 @@ class FeeBreakdownCard extends StatelessWidget {
             
             const Divider(height: 24),
             
-            // Provider fee
+            // Provider fee (Bro)
             _buildFeeRow(
-              label: 'Taxa Provedor (${providerFeePercent.toStringAsFixed(0)}%)',
+              label: 'Taxa Bro (${providerFeePercent.toStringAsFixed(0)}%)',
               valueBrl: providerFee,
               valueSats: (providerFee * brlToSatsRate).round(),
               isTotal: false,
               color: const Color(0xFFFFB74D), // orange 300
             ),
             
-            const SizedBox(height: 8),
-            
-            // Platform fee
-            _buildFeeRow(
-              label: 'Taxa Plataforma (${platformFeePercent.toStringAsFixed(0)}%)',
-              valueBrl: platformFee,
-              valueSats: (platformFee * brlToSatsRate).round(),
-              isTotal: false,
-              color: const Color(0xFF64B5F6), // blue 300
-            ),
+            // Platform fee - escondido por enquanto (não estamos cobrando)
+            // TODO: Descomentar quando ativar taxa de plataforma
             
             // Network fee (only for on-chain)
             if (networkFee != null) ...[
@@ -112,30 +104,29 @@ class FeeBreakdownCard extends StatelessWidget {
               color: const Color(0xFF4CAF50), // green
             ),
             
+            // Info sobre cotação atual
             const SizedBox(height: 12),
-            
-            // Conversion rate info
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: const Color(0x1A1E88E5), // rgba(30, 136, 229, 0.1)
-                border: Border.all(color: const Color(0xFF1E88E5), width: 1),
+                color: const Color(0x1A4CAF50), // verde sutil
+                border: Border.all(color: const Color(0xFF4CAF50), width: 1),
                 borderRadius: BorderRadius.circular(6),
               ),
-              child: Row(
+              child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.info_outline,
                     size: 16,
-                    color: Color(0xFF64B5F6),
+                    color: Color(0xFF81C784),
                   ),
-                  const SizedBox(width: 6),
+                  SizedBox(width: 6),
                   Text(
-                    'Taxa de conversão: 1 BRL ≈ ${brlToSatsRate.toStringAsFixed(0)} sats',
-                    style: const TextStyle(
+                    'Cotação atualizada em tempo real',
+                    style: TextStyle(
                       fontSize: 12,
-                      color: Color(0xFF64B5F6),
+                      color: Color(0xFF81C784),
                     ),
                   ),
                 ],

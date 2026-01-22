@@ -1078,13 +1078,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final billValue = _billData!['value'];
     final billValueStr = (billValue is num) ? billValue.toStringAsFixed(2) : '0.00';
     
-    // Calculate fees (provider 5%, platform 2% - igual web)
+    // Calculate fees (provider 5%, platform 0% - não cobrando taxa de plataforma por enquanto)
     final accountValue = (billValue is num) ? billValue.toDouble() : 0.0;
     final providerFeePercent = 5.0;
-    final platformFeePercent = 2.0;
+    final platformFeePercent = 0.0; // Taxa de plataforma desativada
     final providerFee = accountValue * (providerFeePercent / 100.0);
-    final platformFee = accountValue * (platformFeePercent / 100.0);
-    final totalBrl = accountValue + providerFee + platformFee;
+    final platformFee = 0.0; // Não cobrando
+    final totalBrl = accountValue + providerFee; // Apenas valor + taxa do Bro
     
     // Calcular sats totais baseado no valor total com taxas
     // btcAmount é o valor em BTC para pagar APENAS a conta

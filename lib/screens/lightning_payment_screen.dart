@@ -33,6 +33,7 @@ class LightningPaymentScreen extends StatefulWidget {
 class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
   late ConfettiController _confettiController;
   Timer? _checkPaymentTimer;
+  StreamSubscription? _eventSubscription;
   bool _isPaid = false;
   bool _isChecking = false;
 
@@ -41,6 +42,7 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
     super.initState();
     _confettiController = ConfettiController(duration: const Duration(seconds: 3));
     _startPaymentCheck();
+    _startEventListener();
     debugPrint('Configurando deteccao automatica de pagamento...');
     debugPrint('PaymentHash: ${widget.paymentHash}');
     debugPrint('Amount: ${widget.amountSats} sats');
@@ -49,17 +51,36 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
   @override
   void dispose() {
     _checkPaymentTimer?.cancel();
+    _eventSubscription?.cancel();
     _confettiController.dispose();
     super.dispose();
   }
 
+  /// Escuta eventos do SDK em tempo real (mais rápido que polling)
+  void _startEventListener() {
+    final breezProvider = context.read<BreezProvider>();
+    _eventSubscription = breezProvider.sdk?.addEventListener().listen((event) {
+      if (_isPaid) return;
+      
+      debugPrint('📡 Evento SDK: ${event.runtimeType}');
+      
+      // Detectar pagamento recebido instantaneamente
+      if (event.toString().contains('PaymentSucceeded') || 
+          event.toString().contains('InvoicePaid')) {
+        debugPrint('⚡ Evento de pagamento detectado!');
+        _checkPayment(); // Verificar imediatamente
+      }
+    });
+    debugPrint('🎧 Escutando eventos do SDK em tempo real');
+  }
+
   void _startPaymentCheck() {
-    debugPrint('Iniciando polling a cada 5 segundos...');
-    _checkPaymentTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+    debugPrint('Iniciando polling a cada 3 segundos (backup)...');
+    _checkPaymentTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
       if (_isPaid) return;
       await _checkPayment();
     });
-    debugPrint('Polling configurado - verificando a cada 5s');
+    debugPrint('Polling configurado - verificando a cada 3s');
   }
 
   Future<void> _checkPayment() async {
@@ -132,13 +153,17 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
         ),
       );
 
-      // Aguardar 2 segundos e navegar para Minhas Ordens
+      // Aguardar 2 segundos e navegar para Detalhes da Ordem
       await Future.delayed(const Duration(seconds: 2));
       if (mounted) {
         Navigator.of(context).pushNamedAndRemoveUntil(
-          '/user-orders',
+          '/order-status',
           (route) => route.isFirst,
-          arguments: {'userId': 'user_test_001'},
+          arguments: {
+            'orderId': widget.orderId,
+            'amountBrl': widget.totalBrl,
+            'amountSats': widget.amountSats,
+          },
         );
       }
     }

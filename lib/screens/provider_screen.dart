@@ -482,7 +482,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
           child: const Text(
             'Sem Tier',
             style: TextStyle(
-              fontSize: 12,
+              fontSize: 15,
               fontWeight: FontWeight.bold,
               color: Colors.grey,
             ),
@@ -519,7 +519,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
         child: Text(
           statusText,
           style: TextStyle(
-            fontSize: 12,
+            fontSize: 15,
             fontWeight: FontWeight.bold,
             color: statusColor,
           ),
@@ -582,7 +582,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
                     const SizedBox(height: 8),
                     Text(
                       'Deposite $deficit sats para reativar seu tier.',
-                      style: const TextStyle(color: Colors.white70, fontSize: 13),
+                      style: const TextStyle(color: Colors.white70, fontSize: 16),
                     ),
                   ],
                 ),
@@ -590,7 +590,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
             ] else
               const Text(
                 '✅ Seu tier está ativo e você pode aceitar ordens normalmente.',
-                style: TextStyle(color: Colors.white70, fontSize: 13),
+                style: TextStyle(color: Colors.white70, fontSize: 16),
               ),
           ],
         ),
@@ -716,7 +716,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
                         children: [
                           const Text(
                             'Faltam para reativar:',
-                            style: TextStyle(color: Colors.white70, fontSize: 12),
+                            style: TextStyle(color: Colors.white70, fontSize: 15),
                           ),
                           Text(
                             '$deficit sats',
@@ -767,7 +767,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(color: Colors.white70, fontSize: 13),
+              style: const TextStyle(color: Colors.white70, fontSize: 16),
             ),
           ),
           Text(
@@ -802,7 +802,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
               _tierWarningMessage ?? 'Sua garantia precisa de atenção',
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 12,
+                fontSize: 15,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -867,7 +867,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
             const SizedBox(height: 16),
             const Text(
               'Se você não aumentar a garantia, poderá perder acesso a ordens de valores mais altos.',
-              style: TextStyle(color: Color(0x99FFFFFF), fontSize: 12),
+              style: TextStyle(color: Color(0x99FFFFFF), fontSize: 15),
             ),
           ],
         ),
@@ -1014,7 +1014,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 15,
                   color: Colors.grey[700],
                 ),
               ),

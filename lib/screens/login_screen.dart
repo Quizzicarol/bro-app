@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -47,18 +47,18 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  /// Detectar se input é seed (12/24 palavras) ou chave privada hex
+  /// Detectar se input � seed (12/24 palavras) ou chave privada hex
   void _detectInputType(String input) {
     final trimmed = input.trim().toLowerCase();
     final words = trimmed.split(RegExp(r'\s+'));
     
-    // Se tem 12 ou 24 palavras, provavelmente é seed
+    // Se tem 12 ou 24 palavras, provavelmente � seed
     if ((words.length == 12 || words.length == 24) && _nip06Service.validateMnemonic(trimmed)) {
       setState(() {
         _isSeedPhrase = true;
         _detectedMnemonic = trimmed;
       });
-      debugPrint('🌱 Detectado: Seed de ${words.length} palavras');
+      debugPrint('?? Detectado: Seed de ${words.length} palavras');
     } else {
       setState(() {
         _isSeedPhrase = false;
@@ -68,19 +68,19 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   /// Gerar nova conta usando NIP-06 (seed unificada)
-  /// A MESMA seed é usada para identidade Nostr E carteira Lightning!
+  /// A MESMA seed � usada para identidade Nostr E carteira Lightning!
   Future<void> _generateNewPrivateKey() async {
-    // Gerar seed BIP-39 que será usada para TUDO
+    // Gerar seed BIP-39 que ser� usada para TUDO
     final unifiedSeed = _nip06Service.generateMnemonic();
     
     // Derivar chave Nostr da seed (NIP-06)
     final keys = _nip06Service.deriveNostrKeys(unifiedSeed);
     final privateKey = keys['privateKey']!;
     
-    // Guardar a seed para usar na carteira também
+    // Guardar a seed para usar na carteira tamb�m
     _generatedWalletSeed = unifiedSeed;
     
-    // Preencher campo com a SEED (não a chave) para o usuário guardar
+    // Preencher campo com a SEED (n�o a chave) para o usu�rio guardar
     _privateKeyController.text = unifiedSeed;
     
     setState(() {
@@ -88,17 +88,17 @@ class _LoginScreenState extends State<LoginScreen> {
       _detectedMnemonic = unifiedSeed;
     });
 
-    debugPrint('🌱 Nova conta NIP-06 criada!');
+    debugPrint('?? Nova conta NIP-06 criada!');
     debugPrint('   Seed: ${unifiedSeed.split(' ').take(2).join(' ')}...');
     debugPrint('   Chave Nostr derivada: ${privateKey.substring(0, 16)}...');
 
     if (mounted) {
-      // Mostrar diálogo com APENAS a seed (uma coisa só para guardar!)
+      // Mostrar di�logo com APENAS a seed (uma coisa s� para guardar!)
       _showNewAccountDialogUnified(unifiedSeed);
     }
   }
   
-  /// Diálogo mostrando APENAS a seed unificada (mais simples!)
+  /// Di�logo mostrando APENAS a seed unificada (mais simples!)
   void _showNewAccountDialogUnified(String seed) {
     showDialog(
       context: context,
@@ -131,8 +131,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'GUARDE ESTAS 12 PALAVRAS!\nSem elas você PERDE acesso à conta e aos fundos.',
-                        style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
+                        'GUARDE ESTAS 12 PALAVRAS!\nSem elas voc� PERDE acesso � conta e aos fundos.',
+                        style: TextStyle(color: Colors.red, fontSize: 15, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ],
@@ -154,7 +154,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     Expanded(
                       child: Text(
                         'Esta seed controla sua identidade Nostr E sua carteira Lightning!',
-                        style: TextStyle(color: Color(0xFF3DE98C), fontSize: 12),
+                        style: TextStyle(color: Color(0xFF3DE98C), fontSize: 15),
                       ),
                     ),
                   ],
@@ -162,8 +162,8 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               
               const SizedBox(height: 16),
-              const Text('🌱 Sua Seed (12 palavras):', 
-                style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+              const Text('?? Sua Seed (12 palavras):', 
+                style: TextStyle(color: Colors.white70, fontSize: 15, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.all(12),
@@ -179,8 +179,8 @@ class _LoginScreenState extends State<LoginScreen> {
               
               const SizedBox(height: 16),
               const Text(
-                '💡 Dica: Anote em papel e guarde em local seguro. Nunca compartilhe!',
-                style: TextStyle(color: Colors.white54, fontSize: 11),
+                '?? Dica: Anote em papel e guarde em local seguro. Nunca compartilhe!',
+                style: TextStyle(color: Colors.white54, fontSize: 14),
               ),
             ],
           ),
@@ -192,18 +192,18 @@ class _LoginScreenState extends State<LoginScreen> {
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('✅ Seed copiada! Guarde em local seguro!'),
+                    content: Text('? Seed copiada! Guarde em local seguro!'),
                     backgroundColor: Color(0xFF3DE98C),
                   ),
                 );
               }
             },
-            child: const Text('📋 Copiar', style: TextStyle(color: Color(0xFFFF9800))),
+            child: const Text('?? Copiar', style: TextStyle(color: Color(0xFFFF9800))),
           ),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              // IMPORTANTE: Fazer login automático após fechar o diálogo!
+              // IMPORTANTE: Fazer login autom�tico ap�s fechar o di�logo!
               _login();
             },
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF3DE98C)),
@@ -214,7 +214,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
   
-  /// Diálogo mostrando chave Nostr e seed da carteira (modo avançado - LEGADO)
+  /// Di�logo mostrando chave Nostr e seed da carteira (modo avan�ado - LEGADO)
   void _showNewAccountDialog(String privateKey, String walletSeed) {
     showDialog(
       context: context,
@@ -247,8 +247,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'GUARDE ESTAS INFORMAÇÕES!\nSem elas você PERDE acesso à conta e aos fundos.',
-                        style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
+                        'GUARDE ESTAS INFORMA��ES!\nSem elas voc� PERDE acesso � conta e aos fundos.',
+                        style: TextStyle(color: Colors.red, fontSize: 15, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ],
@@ -256,8 +256,8 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 16),
               
-              const Text('🔑 Chave Privada Nostr:', 
-                style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+              const Text('?? Chave Privada Nostr:', 
+                style: TextStyle(color: Colors.white70, fontSize: 15, fontWeight: FontWeight.bold)),
               const SizedBox(height: 4),
               Container(
                 padding: const EdgeInsets.all(8),
@@ -267,13 +267,13 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 child: SelectableText(
                   privateKey,
-                  style: const TextStyle(color: Color(0xFF3DE98C), fontSize: 11, fontFamily: 'monospace'),
+                  style: const TextStyle(color: Color(0xFF3DE98C), fontSize: 14, fontFamily: 'monospace'),
                 ),
               ),
               
               const SizedBox(height: 16),
-              const Text('💰 Seed da Carteira Bitcoin:', 
-                style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+              const Text('?? Seed da Carteira Bitcoin:', 
+                style: TextStyle(color: Colors.white70, fontSize: 15, fontWeight: FontWeight.bold)),
               const SizedBox(height: 4),
               Container(
                 padding: const EdgeInsets.all(8),
@@ -283,14 +283,14 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 child: SelectableText(
                   walletSeed,
-                  style: const TextStyle(color: Color(0xFFFFB74D), fontSize: 11),
+                  style: const TextStyle(color: Color(0xFFFFB74D), fontSize: 14),
                 ),
               ),
               
               const SizedBox(height: 16),
               const Text(
-                '💡 Dica: Use a chave Nostr para login e a seed da carteira para recuperar seus fundos Bitcoin se necessário.',
-                style: TextStyle(color: Colors.white54, fontSize: 11),
+                '?? Dica: Use a chave Nostr para login e a seed da carteira para recuperar seus fundos Bitcoin se necess�rio.',
+                style: TextStyle(color: Colors.white54, fontSize: 14),
               ),
             ],
           ),
@@ -298,19 +298,19 @@ class _LoginScreenState extends State<LoginScreen> {
         actions: [
           TextButton(
             onPressed: () async {
-              // Copiar ambos para área de transferência
+              // Copiar ambos para �rea de transfer�ncia
               final text = 'CHAVE NOSTR:\n$privateKey\n\nSEED CARTEIRA:\n$walletSeed';
               await Clipboard.setData(ClipboardData(text: text));
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('✅ Copiado para área de transferência!'),
+                    content: Text('? Copiado para �rea de transfer�ncia!'),
                     backgroundColor: Color(0xFF3DE98C),
                   ),
                 );
               }
             },
-            child: const Text('📋 Copiar Tudo', style: TextStyle(color: Color(0xFFFF9800))),
+            child: const Text('?? Copiar Tudo', style: TextStyle(color: Color(0xFFFF9800))),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context),
@@ -359,7 +359,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       Expanded(
                         child: Text(
                           'A seed BIP-39 deriva sua chave Nostr E sua carteira Lightning!',
-                          style: TextStyle(color: Color(0xFF3DE98C), fontSize: 12),
+                          style: TextStyle(color: Color(0xFF3DE98C), fontSize: 15),
                         ),
                       ),
                     ],
@@ -425,7 +425,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Seed inválida! Verifique as 12 ou 24 palavras.'),
+                      content: Text('Seed inv�lida! Verifique as 12 ou 24 palavras.'),
                       backgroundColor: Colors.red,
                     ),
                   );
@@ -441,13 +441,13 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _generateKeys() async {
-    // Gerar SEED (não apenas chave) - assim pode ser usada para Nostr E Bitcoin
+    // Gerar SEED (n�o apenas chave) - assim pode ser usada para Nostr E Bitcoin
     final mnemonic = _nip06Service.generateMnemonic();
     _privateKeyController.text = mnemonic;
     
     _detectInputType(mnemonic);
 
-    debugPrint('🌱 Nova seed gerada: ${mnemonic.split(' ').take(2).join(' ')}...');
+    debugPrint('?? Nova seed gerada: ${mnemonic.split(' ').take(2).join(' ')}...');
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -460,9 +460,9 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  /// Login Avançado: permite inserir chave privada Nostr + Seed Bitcoin SEPARADAMENTE
-  /// Útil para usuários que:
-  /// 1. Já têm uma identidade Nostr criada SEM usar NIP-06
+  /// Login Avan�ado: permite inserir chave privada Nostr + Seed Bitcoin SEPARADAMENTE
+  /// �til para usu�rios que:
+  /// 1. J� t�m uma identidade Nostr criada SEM usar NIP-06
   /// 2. Querem vincular uma carteira Bitcoin a essa identidade existente
   Future<void> _showAdvancedLoginDialog() async {
     final nostrKeyController = TextEditingController();
@@ -470,7 +470,7 @@ class _LoginScreenState extends State<LoginScreen> {
     String? dialogError;
     bool dialogLoading = false;
     
-    // Capturar referências ANTES de abrir o diálogo
+    // Capturar refer�ncias ANTES de abrir o di�logo
     final breezProv = !kIsWeb ? context.read<BreezProvider>() : null;
 
     // Retorna true se login foi bem sucedido
@@ -486,7 +486,7 @@ class _LoginScreenState extends State<LoginScreen> {
               Icon(Icons.settings, color: Color(0xFFFF6B6B)),
               SizedBox(width: 10),
               Text(
-                'Login Avançado',
+                'Login Avan�ado',
                 style: TextStyle(color: Colors.white, fontSize: 18),
               ),
             ],
@@ -496,7 +496,7 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Explicação
+                // Explica��o
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
@@ -506,8 +506,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   child: const Text(
                     'Use este login se sua conta Nostr foi criada SEPARADAMENTE da sua carteira Bitcoin.\n\n'
-                    'Isso vinculará sua identidade Nostr à sua carteira Lightning permanentemente.',
-                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                    'Isso vincular� sua identidade Nostr � sua carteira Lightning permanentemente.',
+                    style: TextStyle(color: Colors.white70, fontSize: 15),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -520,15 +520,15 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 4),
                 const Text(
                   'Sua chave privada (nsec ou hex)',
-                  style: TextStyle(color: Colors.white54, fontSize: 11),
+                  style: TextStyle(color: Colors.white54, fontSize: 14),
                 ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: nostrKeyController,
-                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
                   decoration: InputDecoration(
                     hintText: 'nsec1... ou hex de 64 caracteres',
-                    hintStyle: const TextStyle(color: Colors.white24, fontSize: 12),
+                    hintStyle: const TextStyle(color: Colors.white24, fontSize: 15),
                     filled: true,
                     fillColor: const Color(0xFF2C2C2E),
                     border: OutlineInputBorder(
@@ -549,15 +549,15 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 4),
                 const Text(
                   '12 palavras da sua carteira Lightning',
-                  style: TextStyle(color: Colors.white54, fontSize: 11),
+                  style: TextStyle(color: Colors.white54, fontSize: 14),
                 ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: seedController,
-                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
                   decoration: InputDecoration(
                     hintText: 'palavra1 palavra2 palavra3...',
-                    hintStyle: const TextStyle(color: Colors.white24, fontSize: 12),
+                    hintStyle: const TextStyle(color: Colors.white24, fontSize: 15),
                     filled: true,
                     fillColor: const Color(0xFF2C2C2E),
                     border: OutlineInputBorder(
@@ -580,7 +580,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     child: Text(
                       dialogError!,
-                      style: const TextStyle(color: Colors.red, fontSize: 12),
+                      style: const TextStyle(color: Colors.red, fontSize: 15),
                     ),
                   ),
                 ],
@@ -597,7 +597,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 final nostrKey = nostrKeyController.text.trim();
                 final seed = seedController.text.trim().toLowerCase();
 
-                // Validações
+                // Valida��es
                 if (nostrKey.isEmpty) {
                   setDialogState(() => dialogError = 'Digite sua chave privada Nostr');
                   return;
@@ -607,11 +607,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   return;
                 }
                 if (!_nostrService.isValidPrivateKey(nostrKey)) {
-                  setDialogState(() => dialogError = 'Chave Nostr inválida');
+                  setDialogState(() => dialogError = 'Chave Nostr inv�lida');
                   return;
                 }
                 if (!_nip06Service.validateMnemonic(seed)) {
-                  setDialogState(() => dialogError = 'Seed inválida (use 12 ou 24 palavras BIP-39)');
+                  setDialogState(() => dialogError = 'Seed inv�lida (use 12 ou 24 palavras BIP-39)');
                   return;
                 }
 
@@ -621,10 +621,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 });
 
                 try {
-                  // Derivar chave pública Nostr
+                  // Derivar chave p�blica Nostr
                   final publicKey = _nostrService.getPublicKey(nostrKey);
                   
-                  debugPrint('🔧 LOGIN AVANÇADO:');
+                  debugPrint('?? LOGIN AVAN�ADO:');
                   debugPrint('   Nostr Pubkey: ${publicKey.substring(0, 16)}...');
                   debugPrint('   Seed (2 primeiras): ${seed.split(' ').take(2).join(' ')}...');
 
@@ -635,14 +635,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   );
                   _nostrService.setKeys(nostrKey, publicKey);
 
-                  // LOGIN AVANÇADO: FORÇA a troca de seed (o usuário escolheu explicitamente)
+                  // LOGIN AVAN�ADO: FOR�A a troca de seed (o usu�rio escolheu explicitamente)
                   await _storage.forceUpdateBreezMnemonic(seed, ownerPubkey: publicKey);
-                  debugPrint('💾 Seed FORÇADA para usuário: ${publicKey.substring(0, 16)}...');
+                  debugPrint('?? Seed FOR�ADA para usu�rio: ${publicKey.substring(0, 16)}...');
 
                   // Salvar URL do backend
                   await _storage.saveBackendUrl(AppConfig.defaultBackendUrl);
 
-                  // Capturar referências ANTES de qualquer navegação
+                  // Capturar refer�ncias ANTES de qualquer navega��o
                   final seedToUse = seed;
 
                   // Resetar o Breez para usar a nova seed
@@ -650,21 +650,21 @@ class _LoginScreenState extends State<LoginScreen> {
                     await breezProv.resetForNewUser();
                   }
 
-                  debugPrint('✅ Login Avançado completo!');
+                  debugPrint('? Login Avan�ado completo!');
 
-                  // Inicializar Breez em BACKGROUND (não bloqueia)
+                  // Inicializar Breez em BACKGROUND (n�o bloqueia)
                   if (breezProv != null) {
                     Future.microtask(() async {
                       try {
                         await breezProv.initialize(mnemonic: seedToUse);
-                        debugPrint('✅ Breez inicializado com seed vinculada!');
+                        debugPrint('? Breez inicializado com seed vinculada!');
                       } catch (e) {
-                        debugPrint('⚠️ Erro inicializando Breez: $e');
+                        debugPrint('?? Erro inicializando Breez: $e');
                       }
                     });
                   }
 
-                  // Retornar sucesso e fechar diálogo
+                  // Retornar sucesso e fechar di�logo
                   if (dialogContext.mounted) {
                     Navigator.pop(dialogContext, true);
                   }
@@ -696,7 +696,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (result == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('✅ Seed vinculada! Agora faça login com sua chave Nostr acima.'),
+          content: Text('? Seed vinculada! Agora fa�a login com sua chave Nostr acima.'),
           backgroundColor: Colors.green,
           duration: Duration(seconds: 4),
         ),
@@ -719,9 +719,9 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      // DIAGNÓSTICO: Mostrar todos os dados de seed antes do login
+      // DIAGN�STICO: Mostrar todos os dados de seed antes do login
       debugPrint('');
-      debugPrint('🔍 DIAGNÓSTICO PRÉ-LOGIN:');
+      debugPrint('?? DIAGN�STICO PR�-LOGIN:');
       await _storage.debugShowAllSeeds();
       
       String privateKey;
@@ -734,8 +734,8 @@ class _LoginScreenState extends State<LoginScreen> {
       
       if (isSeed) {
         // LOGIN VIA NIP-06 (SEED)
-        debugPrint('🌱 Login via NIP-06 (seed de ${words.length} palavras)');
-        debugPrint('🌱 Seed (primeiras 2 palavras): ${words[0]} ${words[1]}...');
+        debugPrint('?? Login via NIP-06 (seed de ${words.length} palavras)');
+        debugPrint('?? Seed (primeiras 2 palavras): ${words[0]} ${words[1]}...');
         setState(() => _statusMessage = 'Derivando chaves da seed...');
         
         mnemonic = input.toLowerCase();
@@ -743,20 +743,20 @@ class _LoginScreenState extends State<LoginScreen> {
         privateKey = keys['privateKey']!;
         publicKey = keys['publicKey']!;
         
-        debugPrint('🔑 NIP-06 derivou:');
+        debugPrint('?? NIP-06 derivou:');
         debugPrint('   Private Key: ${privateKey.substring(0, 16)}...');
         debugPrint('   Public Key: ${publicKey.substring(0, 16)}...');
         
-        // IMPORTANTE: NÃO salvar a seed aqui ainda!
+        // IMPORTANTE: N�O salvar a seed aqui ainda!
         // Primeiro salvamos as chaves Nostr, depois a seed COM o pubkey
         // Isso garante que seed e identidade Nostr fiquem SEMPRE vinculadas!
         
       } else {
         // LOGIN VIA CHAVE PRIVADA NOSTR (hex ou nsec)
-        debugPrint('🔐 Login via chave privada Nostr');
+        debugPrint('?? Login via chave privada Nostr');
         
         if (!_nostrService.isValidPrivateKey(input)) {
-          throw Exception('Input inválido. Use:\n- Seed de 12 palavras (NIP-06)\n- Chave privada hex (64 chars)\n- nsec...');
+          throw Exception('Input inv�lido. Use:\n- Seed de 12 palavras (NIP-06)\n- Chave privada hex (64 chars)\n- nsec...');
         }
         
         // Normalizar chave para hex (pode vir como nsec)
@@ -765,39 +765,39 @@ class _LoginScreenState extends State<LoginScreen> {
         privateKey = keychain.private; // Sempre retorna hex
         publicKey = keychain.public;
         
-        debugPrint('🔑 Chave normalizada para hex: ${privateKey.substring(0, 16)}...');
+        debugPrint('?? Chave normalizada para hex: ${privateKey.substring(0, 16)}...');
         
         // PRIORIDADE: Seed salva > Seed derivada
-        // Isso permite que Login Avançado vincule uma seed específica
+        // Isso permite que Login Avan�ado vincule uma seed espec�fica
         debugPrint('');
-        debugPrint('═══════════════════════════════════════════════════════════');
-        debugPrint('🔍 BUSCANDO SEED para pubkey: ${publicKey.substring(0, 16)}...');
-        debugPrint('═══════════════════════════════════════════════════════════');
+        debugPrint('-----------------------------------------------------------');
+        debugPrint('?? BUSCANDO SEED para pubkey: ${publicKey.substring(0, 16)}...');
+        debugPrint('-----------------------------------------------------------');
         
-        // PRIMEIRO: Verificar se existe seed salva (vinculada via Login Avançado)
+        // PRIMEIRO: Verificar se existe seed salva (vinculada via Login Avan�ado)
         String? existingSeed = await _storage.getBreezMnemonic(forPubkey: publicKey);
         
         if (existingSeed != null) {
           mnemonic = existingSeed;
-          debugPrint('✅ Seed SALVA encontrada (Login Avançado ou anterior)');
+          debugPrint('? Seed SALVA encontrada (Login Avan�ado ou anterior)');
           debugPrint('   Seed: ${existingSeed.split(' ').take(2).join(' ')}...');
         } else {
           // SEGUNDO: Derivar deterministicamente da chave Nostr
-          debugPrint('📭 Nenhuma seed salva. Derivando da chave Nostr...');
+          debugPrint('?? Nenhuma seed salva. Derivando da chave Nostr...');
           try {
             mnemonic = _nip06Service.deriveSeedFromNostrKey(privateKey);
-            debugPrint('✅ Seed DERIVADA com sucesso!');
+            debugPrint('? Seed DERIVADA com sucesso!');
             debugPrint('   Seed: ${mnemonic!.split(' ').take(2).join(' ')}...');
-            debugPrint('   (Use Login Avançado para vincular outra seed)');
+            debugPrint('   (Use Login Avan�ado para vincular outra seed)');
           } catch (e) {
-            debugPrint('❌ Erro ao derivar seed: $e');
+            debugPrint('? Erro ao derivar seed: $e');
           }
         }
-        debugPrint('═══════════════════════════════════════════════════════════');
+        debugPrint('-----------------------------------------------------------');
         debugPrint('');
       }
 
-      debugPrint('✅ Login com Nostr. Pubkey: ${publicKey.substring(0, 16)}...');
+      debugPrint('? Login com Nostr. Pubkey: ${publicKey.substring(0, 16)}...');
 
       // Salvar chaves Nostr PRIMEIRO
       await _storage.saveNostrKeys(
@@ -811,11 +811,11 @@ class _LoginScreenState extends State<LoginScreen> {
       // Isso garante que NIP-06 mantenha identidade Nostr + carteira Bitcoin vinculadas
       if (mnemonic != null) {
         await _storage.saveBreezMnemonic(mnemonic, ownerPubkey: publicKey);
-        debugPrint('💾 Seed salva VINCULADA ao usuário: ${publicKey.substring(0, 16)}...');
+        debugPrint('?? Seed salva VINCULADA ao usu�rio: ${publicKey.substring(0, 16)}...');
       } else if (_generatedWalletSeed != null) {
         await _storage.saveBreezMnemonic(_generatedWalletSeed!, ownerPubkey: publicKey);
-        debugPrint('💾 Seed gerada salva para usuário: ${publicKey.substring(0, 16)}...');
-        _generatedWalletSeed = null; // Limpar após salvar
+        debugPrint('?? Seed gerada salva para usu�rio: ${publicKey.substring(0, 16)}...');
+        _generatedWalletSeed = null; // Limpar ap�s salvar
       }
 
       // Buscar perfil Nostr dos relays (com timeout)
@@ -826,7 +826,7 @@ class _LoginScreenState extends State<LoginScreen> {
       try {
         final profile = await _profileService.fetchProfile(publicKey)
             .timeout(const Duration(seconds: 5), onTimeout: () {
-          debugPrint('⏰ Timeout ao buscar perfil - continuando');
+          debugPrint('? Timeout ao buscar perfil - continuando');
           return null;
         });
         if (profile != null) {
@@ -867,32 +867,32 @@ class _LoginScreenState extends State<LoginScreen> {
           final breezProvider = context.read<BreezProvider>();
           
           // SEMPRE tentar inicializar COM a seed que temos
-          // Se mnemonic é null, o BreezProvider vai buscar a seed do storage
+          // Se mnemonic � null, o BreezProvider vai buscar a seed do storage
           if (mnemonic != null) {
-            debugPrint('⚡ Inicializando Breez COM SEED EXISTENTE: ${mnemonic.split(' ').take(2).join(' ')}...');
+            debugPrint('? Inicializando Breez COM SEED EXISTENTE: ${mnemonic.split(' ').take(2).join(' ')}...');
             final success = await breezProvider.initialize(mnemonic: mnemonic)
                 .timeout(const Duration(seconds: 15), onTimeout: () {
-              debugPrint('⏰ Timeout na inicialização do Breez');
+              debugPrint('? Timeout na inicializa��o do Breez');
               return false;
             });
             
             if (success) {
-              debugPrint('✅ Breez inicializado com seed existente!');
+              debugPrint('? Breez inicializado com seed existente!');
             }
           } else {
-            // ATENÇÃO: Não temos seed - o BreezProvider vai criar uma nova!
-            debugPrint('⚠️ SEM SEED RECUPERADA - Breez vai gerar nova!');
-            debugPrint('⚠️ Se você tinha saldo, use Login Avançado para vincular seed!');
+            // ATEN��O: N�o temos seed - o BreezProvider vai criar uma nova!
+            debugPrint('?? SEM SEED RECUPERADA - Breez vai gerar nova!');
+            debugPrint('?? Se voc� tinha saldo, use Login Avan�ado para vincular seed!');
             final success = await breezProvider.initialize()
                 .timeout(const Duration(seconds: 15), onTimeout: () {
-              debugPrint('⏰ Timeout na inicialização do Breez');
+              debugPrint('? Timeout na inicializa��o do Breez');
               return false;
             });
             
             if (!success && mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('Carteira inicializará em background'),
+                  content: Text('Carteira inicializar� em background'),
                   backgroundColor: Colors.orange,
                   duration: Duration(seconds: 2),
                 ),
@@ -900,16 +900,16 @@ class _LoginScreenState extends State<LoginScreen> {
             }
           }
         } catch (e) {
-          debugPrint('❌ Erro no Breez (ignorando): $e');
+          debugPrint('? Erro no Breez (ignorando): $e');
         }
       }
 
-      // Carregar ordens do usuário
+      // Carregar ordens do usu�rio
       if (mounted) {
-        setState(() => _statusMessage = 'Carregando histórico...');
+        setState(() => _statusMessage = 'Carregando hist�rico...');
         final orderProvider = context.read<OrderProvider>();
         await orderProvider.loadOrdersForUser(publicKey);
-        debugPrint('✅ Ordens carregadas para ${publicKey.substring(0, 8)}...');
+        debugPrint('? Ordens carregadas para ${publicKey.substring(0, 8)}...');
       }
 
       if (mounted) {
@@ -943,12 +943,12 @@ class _LoginScreenState extends State<LoginScreen> {
             constraints: BoxConstraints(
               minHeight: MediaQuery.of(context).size.height - 
                          MediaQuery.of(context).padding.top - 
-                         MediaQuery.of(context).padding.bottom - 48, // Reduzir altura mínima
+                         MediaQuery.of(context).padding.bottom - 48, // Reduzir altura m�nima
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.start, // Alinhar ao topo
               children: [
-                const SizedBox(height: 40), // Espaço menor no topo
+                const SizedBox(height: 40), // Espa�o menor no topo
                 _buildLoginContent(),
               ],
             ),
@@ -959,16 +959,16 @@ class _LoginScreenState extends State<LoginScreen> {
   }
   
   Widget _buildLoginContent() {
-    // Tela inicial clean (para novos usuários)
+    // Tela inicial clean (para novos usu�rios)
     if (_showWelcomeScreen) {
       return _buildWelcomeScreen();
     }
     
-    // Tela de login (para quem já tem conta)
+    // Tela de login (para quem j� tem conta)
     return _buildLoginScreen();
   }
   
-  /// Tela inicial clean para novos usuários - estilo Apple
+  /// Tela inicial clean para novos usu�rios - estilo Apple
   Widget _buildWelcomeScreen() {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -997,7 +997,7 @@ class _LoginScreenState extends State<LoginScreen> {
         
         const SizedBox(height: 50),
         
-        // Botão Nova Conta (elegante, laranja)
+        // Bot�o Nova Conta (elegante, laranja)
         Container(
           width: double.infinity,
           decoration: BoxDecoration(
@@ -1054,13 +1054,13 @@ class _LoginScreenState extends State<LoginScreen> {
         
         const SizedBox(height: 16),
         
-        // Link "Já tenho conta" (verde, discreto)
+        // Link "J� tenho conta" (verde, discreto)
         TextButton(
           onPressed: () {
             setState(() => _showWelcomeScreen = false);
           },
           child: const Text(
-            'Já tenho conta',
+            'J� tenho conta',
             style: TextStyle(
               color: Color(0xFF3DE98C),
               fontSize: 14,
@@ -1074,13 +1074,13 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
   
-  /// Tela de login para quem já tem conta
+  /// Tela de login para quem j� tem conta
   Widget _buildLoginScreen() {
     return Column(
       mainAxisAlignment: MainAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Botão voltar
+        // Bot�o voltar
         Align(
           alignment: Alignment.centerLeft,
           child: IconButton(
@@ -1135,7 +1135,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     const Text(
                       'Entre com chave privada Nostr (nsec/hex) ou seed NIP-06',
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: 14,
                         color: Color(0x99FFFFFF),
                       ),
                       textAlign: TextAlign.center,
@@ -1151,7 +1151,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       onChanged: _detectInputType,
                       decoration: InputDecoration(
                         labelText: _isSeedPhrase 
-                            ? '🌱 Seed NIP-06 detectada!' 
+                            ? '?? Seed NIP-06 detectada!' 
                             : 'Chave Privada ou Seed',
                         labelStyle: TextStyle(
                           color: _isSeedPhrase ? const Color(0xFF3DE98C) : const Color(0xB3FFFFFF),
@@ -1215,7 +1215,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 _error!,
                                 style: const TextStyle(
                                   color: Colors.red,
-                                  fontSize: 13,
+                                  fontSize: 16,
                                 ),
                               ),
                             ),
@@ -1269,7 +1269,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     Text(
                                       _statusMessage!,
                                       style: const TextStyle(
-                                        fontSize: 12,
+                                        fontSize: 15,
                                         color: Colors.white70,
                                       ),
                                     ),
@@ -1294,7 +1294,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     
-                    // Botão Login Avançado (para vincular Nostr + Seed separados)
+                    // Bot�o Login Avan�ado (para vincular Nostr + Seed separados)
                     const SizedBox(height: 12),
                     TextButton(
                       onPressed: _isLoading ? null : _showAdvancedLoginDialog,
@@ -1307,10 +1307,10 @@ class _LoginScreenState extends State<LoginScreen> {
                           Icon(Icons.settings, color: Colors.white54, size: 16),
                           SizedBox(width: 6),
                           Text(
-                            'Login Avançado (Nostr + Seed separados)',
+                            'Login Avan�ado (Nostr + Seed separados)',
                             style: TextStyle(
                               color: Colors.white54,
-                              fontSize: 12,
+                              fontSize: 15,
                             ),
                           ),
                         ],

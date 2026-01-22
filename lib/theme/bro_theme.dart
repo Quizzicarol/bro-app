@@ -19,54 +19,54 @@ class BroTheme {
         ThemeData.dark().textTheme,
       ).copyWith(
         displayLarge: GoogleFonts.inter(
-          fontSize: 32,
+          fontSize: 34,
           fontWeight: FontWeight.bold,
           color: Colors.white,
         ),
         displayMedium: GoogleFonts.inter(
-          fontSize: 28,
+          fontSize: 30,
           fontWeight: FontWeight.bold,
           color: Colors.white,
         ),
         displaySmall: GoogleFonts.inter(
-          fontSize: 24,
+          fontSize: 26,
           fontWeight: FontWeight.w600,
           color: Colors.white,
         ),
         headlineLarge: GoogleFonts.inter(
-          fontSize: 22,
+          fontSize: 24,
           fontWeight: FontWeight.w600,
           color: Colors.white,
         ),
         headlineMedium: GoogleFonts.inter(
-          fontSize: 20,
+          fontSize: 22,
           fontWeight: FontWeight.w500,
           color: Colors.white,
         ),
         headlineSmall: GoogleFonts.inter(
-          fontSize: 18,
+          fontSize: 20,
           fontWeight: FontWeight.w500,
           color: Colors.white,
         ),
         titleLarge: GoogleFonts.inter(
-          fontSize: 16,
+          fontSize: 18,
           fontWeight: FontWeight.w500,
           color: Colors.white,
         ),
         bodyLarge: GoogleFonts.inter(
-          fontSize: 16,
+          fontSize: 17,
           color: Colors.white,
         ),
         bodyMedium: GoogleFonts.inter(
-          fontSize: 14,
+          fontSize: 15,
           color: Colors.white,
         ),
         bodySmall: GoogleFonts.inter(
-          fontSize: 12,
+          fontSize: 13,
           color: BroColors.textSecondary,
         ),
         labelLarge: GoogleFonts.inter(
-          fontSize: 14,
+          fontSize: 15,
           fontWeight: FontWeight.w600,
           color: Colors.white,
         ),
@@ -94,7 +94,7 @@ class BroTheme {
         elevation: 0,
         centerTitle: false,
         titleTextStyle: GoogleFonts.inter(
-          fontSize: 20,
+          fontSize: 22,
           fontWeight: FontWeight.w600,
           color: Colors.white,
         ),

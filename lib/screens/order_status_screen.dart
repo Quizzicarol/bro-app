@@ -2896,7 +2896,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   _currentStatus = 'payment_received';
                 });
                 // Já estamos na tela de detalhes, só recarregar
-                _loadOrder();
+                _loadOrderDetails();
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,

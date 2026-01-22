@@ -302,23 +302,27 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       actions: [
                         TextButton(
                           onPressed: () {
-                            debugPrint('📋 Botão "Ver Minhas Ordens" clicado');
+                            debugPrint('📋 Botão "Ver Detalhes" clicado');
                             eventSub?.cancel();
                             debugPrint('🔌 EventSub cancelado');
-                            // Navegar para Minhas Ordens
+                            // Navegar para Detalhes da Ordem
                             Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(
-                              '/user-orders',
+                              '/order-status',
                               (route) => route.isFirst,
-                              arguments: {'userId': 'user_test_001'},
+                              arguments: {
+                                'orderId': orderId,
+                                'amountBrl': totalBrl,
+                                'amountSats': amountSats,
+                              },
                             );
-                            debugPrint('✅ Navegou para Minhas Ordens');
+                            debugPrint('✅ Navegou para Detalhes da Ordem');
                           },
                           style: TextButton.styleFrom(
                             backgroundColor: Colors.green,
                             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                           ),
                           child: const Text(
-                            'Ver Minhas Ordens',
+                            'Ver Detalhes da Ordem',
                             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                           ),
                         ),

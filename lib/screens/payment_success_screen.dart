@@ -276,14 +276,19 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> with Single
                               Expanded(
                                 child: ElevatedButton.icon(
                                   onPressed: () {
-                                    // Navigate to orders list
-                                    Navigator.of(context).pop();
-                                    Navigator.of(context).pop();
-                                    Navigator.of(context).pop();
-                                    // TODO: Navigate to orders screen
+                                    // Navigate to order details
+                                    Navigator.of(context).pushNamedAndRemoveUntil(
+                                      '/order-status',
+                                      (route) => route.isFirst,
+                                      arguments: {
+                                        'orderId': widget.orderId,
+                                        'amountBrl': widget.totalBrl,
+                                        'amountSats': widget.amountSats,
+                                      },
+                                    );
                                   },
-                                  icon: const Icon(Icons.list_alt),
-                                  label: const Text('Minhas Ordens'),
+                                  icon: const Icon(Icons.receipt_long),
+                                  label: const Text('Ver Detalhes'),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFFFF6B6B),
                                     foregroundColor: Colors.white,

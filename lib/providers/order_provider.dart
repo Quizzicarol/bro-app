@@ -643,11 +643,22 @@ class OrderProvider with ChangeNotifier {
         final existingIndex = _orders.indexWhere((o) => o.id == pendingOrder.id);
         if (existingIndex == -1) {
           // Ordem não existe localmente, adicionar
-          _orders.add(pendingOrder);
-          added++;
+          // MAS VERIFICAR: Se ordem tem status final no Nostr, respeitar
+          if (pendingOrder.status != 'cancelled' && pendingOrder.status != 'completed') {
+            _orders.add(pendingOrder);
+            added++;
+          } else {
+            debugPrint('⚠️ Ordem ${pendingOrder.id.substring(0, 8)} tem status final (${pendingOrder.status}), ignorando');
+          }
         } else {
           // Ordem já existe - PRESERVAR dados locais que são mais recentes
           final existing = _orders[existingIndex];
+          
+          // REGRA CRÍTICA: NUNCA reverter status 'cancelled' ou 'completed'!
+          if (existing.status == 'cancelled' || existing.status == 'completed') {
+            debugPrint('🛡️ Ordem ${existing.id.substring(0, 8)} tem status final (${existing.status}), preservando');
+            continue;
+          }
           
           // Só atualizar se Nostr tem dados mais completos E local não tem providerId
           // Isso garante que ordens aceitas localmente não perdem o providerId
@@ -1467,13 +1478,21 @@ class OrderProvider with ChangeNotifier {
         
         final existingIndex = _orders.indexWhere((o) => o.id == nostrOrder.id);
         if (existingIndex == -1) {
-          // Ordem não existe localmente, adicionar
-          _orders.add(nostrOrder);
-          added++;
-          debugPrint('➕ Ordem ${nostrOrder.id.substring(0, 8)} recuperada do Nostr (R\$ ${nostrOrder.amount.toStringAsFixed(2)})');
+          // Ordem não existe localmente, adicionar (somente se não for status final)
+          if (nostrOrder.status != 'cancelled' && nostrOrder.status != 'completed') {
+            _orders.add(nostrOrder);
+            added++;
+            debugPrint('➕ Ordem ${nostrOrder.id.substring(0, 8)} recuperada do Nostr (R\$ ${nostrOrder.amount.toStringAsFixed(2)})');
+          }
         } else {
           // Ordem já existe, mesclar dados preservando os locais que não são 0
           final existing = _orders[existingIndex];
+          
+          // REGRA CRÍTICA: NUNCA reverter status 'cancelled' ou 'completed'!
+          if (existing.status == 'cancelled' || existing.status == 'completed') {
+            debugPrint('🛡️ Ordem ${existing.id.substring(0, 8)} tem status final local (${existing.status}), preservando');
+            continue;
+          }
           
           // Se Nostr tem status mais recente, atualizar apenas o status
           // MAS manter amount/btcAmount/billCode locais se Nostr tem 0

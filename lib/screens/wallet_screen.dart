@@ -1018,18 +1018,39 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
-  // Verifica se é um endereço Bitcoin válido
+  // Verifica se é um endereço Bitcoin válido (NÃO Lightning Address)
   bool _isBitcoinAddress(String code) {
-    final lowerCode = code.toLowerCase();
-    // Bitcoin mainnet/testnet addresses
-    return lowerCode.startsWith('bc1') ||  // Bech32 (SegWit)
-           lowerCode.startsWith('tb1') ||  // Testnet Bech32
-           lowerCode.startsWith('1') ||    // Legacy P2PKH
-           lowerCode.startsWith('3') ||    // P2SH
-           lowerCode.startsWith('m') ||    // Testnet P2PKH
-           lowerCode.startsWith('n') ||    // Testnet P2PKH
-           lowerCode.startsWith('2') ||    // Testnet P2SH
-           lowerCode.startsWith('bitcoin:'); // URI
+    final lowerCode = code.toLowerCase().trim();
+    
+    // ⚡ Lightning Address: contém @ e . (ex: user@wallet.com)
+    // NÃO é endereço Bitcoin on-chain!
+    if (lowerCode.contains('@') && lowerCode.contains('.')) {
+      return false;
+    }
+    
+    // LNURL também NÃO é on-chain
+    if (lowerCode.startsWith('lnurl')) {
+      return false;
+    }
+    
+    // Lightning Invoice também NÃO é on-chain
+    if (lowerCode.startsWith('lnbc') || lowerCode.startsWith('lntb') || lowerCode.startsWith('lnbcrt')) {
+      return false;
+    }
+    
+    // Bitcoin mainnet/testnet addresses (on-chain)
+    // bc1 = Bech32 SegWit mainnet
+    if (lowerCode.startsWith('bc1')) return true;
+    // tb1 = Bech32 SegWit testnet  
+    if (lowerCode.startsWith('tb1')) return true;
+    // 1xxx = Legacy P2PKH (26-35 chars, só números e letras)
+    if (lowerCode.startsWith('1') && lowerCode.length >= 26 && lowerCode.length <= 35) return true;
+    // 3xxx = P2SH (26-35 chars)
+    if (lowerCode.startsWith('3') && lowerCode.length >= 26 && lowerCode.length <= 35) return true;
+    // bitcoin: URI
+    if (lowerCode.startsWith('bitcoin:')) return true;
+    
+    return false;
   }
 
   // Mostra dialog informando que envio para endereço Bitcoin não é suportado

@@ -432,9 +432,17 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     if (AppConfig.providerTestMode) {
       canAccept = true;
     } else {
-      final (canAcceptResult, reason) = collateralProvider.canAcceptOrderWithReason(amount);
-      canAccept = canAcceptResult;
-      rejectReason = reason;
+      // IMPORTANTE: Verificar se tier está em risco (saldo insuficiente)
+      // Se tier está em risco, NENHUMA ordem pode ser aceita
+      if (_tierAtRisk) {
+        canAccept = false;
+        rejectReason = 'Saldo insuficiente: faltam ${_tierDeficit ?? 0} sats para manter o tier';
+      } else {
+        // Verificar limites do tier apenas se tier está ativo
+        final (canAcceptResult, reason) = collateralProvider.canAcceptOrderWithReason(amount);
+        canAccept = canAcceptResult;
+        rejectReason = reason;
+      }
     }
 
     return Container(
@@ -512,6 +520,14 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                     const SizedBox(width: 6),
                     Text(userName, style: const TextStyle(color: Colors.white70, fontSize: 13)),
                     const Spacer(),
+                    const Icon(Icons.tag, color: Colors.white54, size: 14),
+                    const SizedBox(width: 4),
+                    Text('${orderId.substring(0, 8)}', style: const TextStyle(color: Colors.white54, fontSize: 11, fontFamily: 'monospace')),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
                     const Icon(Icons.access_time, color: Colors.white54, size: 16),
                     const SizedBox(width: 6),
                     Text(timeAgo, style: const TextStyle(color: Colors.white54, fontSize: 12)),

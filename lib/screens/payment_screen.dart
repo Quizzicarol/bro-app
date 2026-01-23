@@ -22,6 +22,7 @@ class PaymentScreen extends StatefulWidget {
 
 class _PaymentScreenState extends State<PaymentScreen> {
   final _codeController = TextEditingController();
+  final _scrollController = ScrollController();
   bool _isScanning = false;
   bool _isProcessing = false;
   Map<String, dynamic>? _billData;
@@ -94,6 +95,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   void dispose() {
     _codeController.removeListener(_onCodeChanged);
     _codeController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -573,6 +575,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }) async {
     debugPrint('🚀 _createPayment iniciado: $paymentType');
     
+    // Fechar teclado
+    FocusScope.of(context).unfocus();
+    
     if (_billData == null || _conversionData == null) {
       debugPrint('❌ Dados da conta ausentes');
       _showError('Dados da conta não encontrados');
@@ -583,6 +588,41 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final breezProvider = context.read<BreezProvider>();
 
     debugPrint('💳 _createPayment iniciado - _isProcessing antes: $_isProcessing');
+    
+    // Mostrar popup de loading "Criando invoice"
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => WillPopScope(
+        onWillPop: () async => false,
+        child: AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(color: Color(0xFFFF6B6B)),
+              const SizedBox(height: 20),
+              Text(
+                paymentType == 'lightning' ? '⚡ Criando Invoice Lightning...' : '₿ Gerando Endereço Bitcoin...',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Aguarde um momento...',
+                style: TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    
     setState(() {
       _isProcessing = true;
     });
@@ -607,6 +647,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
       if (order == null) {
         debugPrint('❌ Falha ao criar ordem');
+        // Fechar popup de loading
+        if (mounted) Navigator.of(context).pop();
         _showError('Erro ao criar ordem');
         return;
       }
@@ -634,6 +676,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
             return {'success': false, 'error': 'Timeout ao criar invoice'};
           },
         );
+
+        // Fechar popup de loading
+        if (mounted) Navigator.of(context).pop();
 
         debugPrint('📨 Invoice data: $invoiceData');
 
@@ -684,6 +729,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
         // Create on-chain address and navigate to On-chain payment screen
         final addressData = await breezProvider.createOnchainAddress();
 
+        // Fechar popup de loading
+        if (mounted) Navigator.of(context).pop();
+
         debugPrint('📨 Address data: $addressData');
 
         if (addressData != null && addressData['success'] == true && mounted) {
@@ -717,6 +765,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
       }
     } catch (e) {
       debugPrint('❌ Exception em _createPayment: $e');
+      // Fechar popup de loading em caso de erro
+      if (mounted) Navigator.of(context).pop();
       _showError('Erro ao criar pagamento: $e');
     } finally {
       debugPrint('🔓 _createPayment finally - mounted: $mounted');
@@ -743,20 +793,26 @@ class _PaymentScreenState extends State<PaymentScreen> {
   @override
   Widget build(BuildContext context) {
     debugPrint('🔄 PaymentScreen build - _isProcessing: $_isProcessing');
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Pagar Conta'),
-        actions: [
-          // Botão de debug para resetar estado
-          if (_isProcessing)
-            IconButton(
-              icon: const Icon(Icons.refresh, color: Colors.orange),
-              tooltip: 'Reset (Debug)',
-              onPressed: _forceResetProcessing,
-            ),
-        ],
+    return GestureDetector(
+      onTap: () {
+        // Retrair teclado ao tocar no fundo da tela
+        FocusScope.of(context).unfocus();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Pagar Conta'),
+          actions: [
+            // Botão de debug para resetar estado
+            if (_isProcessing)
+              IconButton(
+                icon: const Icon(Icons.refresh, color: Colors.orange),
+                tooltip: 'Reset (Debug)',
+                onPressed: _forceResetProcessing,
+              ),
+          ],
+        ),
+        body: _isScanning ? _buildScanner() : _buildForm(),
       ),
-      body: _isScanning ? _buildScanner() : _buildForm(),
     );
   }
 
@@ -812,6 +868,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   Widget _buildForm() {
     return SingleChildScrollView(
+      controller: _scrollController,
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -840,20 +897,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 child: const Icon(Icons.qr_code_scanner),
               ),
             ],
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: _isProcessing || _codeController.text.trim().isEmpty
-                ? null
-                : () => _processBill(_codeController.text.trim()),
-            icon: _isProcessing
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.search),
-            label: const Text('Processar Código'),
           ),
           
           // Instruções de como funciona
@@ -1078,9 +1121,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final billValue = _billData!['value'];
     final billValueStr = (billValue is num) ? billValue.toStringAsFixed(2) : '0.00';
     
-    // Calculate fees (provider 5%, platform 0% - não cobrando taxa de plataforma por enquanto)
+    // Calculate fees (provider 3%, platform 0% - não cobrando taxa de plataforma por enquanto)
     final accountValue = (billValue is num) ? billValue.toDouble() : 0.0;
-    final providerFeePercent = 5.0;
+    final providerFeePercent = 3.0;  // Taxa do Bro: 3%
     final platformFeePercent = 0.0; // Taxa de plataforma desativada
     final providerFee = accountValue * (providerFeePercent / 100.0);
     final platformFee = 0.0; // Não cobrando
@@ -1177,15 +1220,41 @@ class _PaymentScreenState extends State<PaymentScreen> {
         ),
       ),
       const SizedBox(height: 24),
-      ElevatedButton.icon(
-        onPressed: _isProcessing ? null : () => _showBitcoinPaymentOptions(totalBrl, totalSats.toString()),
-        icon: const Icon(Icons.currency_bitcoin),
-        label: const Text('Pagar com Bitcoin', style: TextStyle(fontSize: 16)),
-        style: ElevatedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          backgroundColor: const Color(0xFFFF6B6B),
-        ),
-      ),
+      _isProcessing
+          ? Container(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Color(0xFFFF6B6B),
+                    ),
+                  ),
+                  SizedBox(width: 12),
+                  Text(
+                    'Criando invoice...',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Color(0xFFFF6B6B),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : ElevatedButton.icon(
+              onPressed: () => _showBitcoinPaymentOptions(totalBrl, totalSats.toString()),
+              icon: const Icon(Icons.currency_bitcoin),
+              label: const Text('Pagar com Bitcoin', style: TextStyle(fontSize: 16)),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                backgroundColor: const Color(0xFFFF6B6B),
+              ),
+            ),
     ];
   }
 }

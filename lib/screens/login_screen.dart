@@ -106,11 +106,32 @@ class _LoginScreenState extends State<LoginScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.spa, color: Color(0xFF3DE98C), size: 24),
-            SizedBox(width: 12),
-            Text('Nova Conta Criada!', style: TextStyle(color: Colors.white)),
+            // Botão voltar
+            IconButton(
+              onPressed: () {
+                Navigator.pop(context);
+                // Limpar estado para voltar à tela inicial
+                setState(() {
+                  _privateKeyController.clear();
+                  _error = null;
+                });
+              },
+              icon: const Icon(Icons.arrow_back, color: Colors.white70, size: 20),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
+            const SizedBox(width: 8),
+            const Icon(Icons.spa, color: Color(0xFF3DE98C), size: 22),
+            const SizedBox(width: 8),
+            const Flexible(
+              child: Text('Nova Conta!', 
+                style: TextStyle(color: Colors.white, fontSize: 16),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
         content: SingleChildScrollView(
@@ -995,9 +1016,41 @@ class _LoginScreenState extends State<LoginScreen> {
           textAlign: TextAlign.center,
         ),
         
-        const SizedBox(height: 50),
+        const SizedBox(height: 40),
         
-        // Botão Nova Conta (elegante, laranja)
+        // Card esfumaçado igual ao login screen
+        Container(
+          decoration: BoxDecoration(
+            color: const Color(0x0DFFFFFF),
+            border: Border.all(
+              color: const Color(0x33FF6B6B),
+              width: 1,
+            ),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.key, color: Color(0xFFFF6B6B), size: 24),
+                  SizedBox(width: 8),
+                  Text(
+                    'Login via Nostr',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+              
+              const SizedBox(height: 20),
+              
+              // Botão Nova Conta (elegante, laranja)
         Container(
           width: double.infinity,
           decoration: BoxDecoration(
@@ -1066,6 +1119,9 @@ class _LoginScreenState extends State<LoginScreen> {
               fontSize: 14,
               fontWeight: FontWeight.w500,
             ),
+          ),
+        ),
+            ],
           ),
         ),
         

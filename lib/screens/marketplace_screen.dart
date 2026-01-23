@@ -216,17 +216,20 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
           ],
         ),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.orange))
-          : _error != null
-              ? _buildErrorView()
-              : TabBarView(
-                  controller: _tabController,
-                  children: [
-                    _buildOffersTab(),
-                    _buildMyOffersTab(),
-                  ],
-                ),
+      body: SafeArea(
+        top: false,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator(color: Colors.orange))
+            : _error != null
+                ? _buildErrorView()
+                : TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildOffersTab(),
+                      _buildMyOffersTab(),
+                    ],
+                  ),
+      ),
     );
   }
 

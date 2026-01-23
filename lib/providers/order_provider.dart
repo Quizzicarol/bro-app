@@ -19,15 +19,51 @@ class OrderProvider with ChangeNotifier {
   String? _error;
   bool _isInitialized = false;
   String? _currentUserPubkey;
+  bool _isProviderMode = false;  // SEGURANÇA: Controla se mostra ordens de outros
 
   // Prefixo para salvar no SharedPreferences (será combinado com pubkey)
   static const String _ordersKeyPrefix = 'orders_';
 
-  // Getters
-  List<Order> get orders => _orders;
-  List<Order> get pendingOrders => _orders.where((o) => o.status == 'pending' || o.status == 'payment_received').toList();
-  List<Order> get activeOrders => _orders.where((o) => ['payment_received', 'confirmed', 'accepted', 'processing'].contains(o.status)).toList();
-  List<Order> get completedOrders => _orders.where((o) => o.status == 'completed').toList();
+  // SEGURANÇA: Filtrar ordens por usuário quando não estiver no modo provedor
+  List<Order> get _filteredOrders {
+    if (_isProviderMode) {
+      // Modo provedor: mostrar todas (pendentes de outros + próprias)
+      debugPrint('🔓 [FILTRO] Modo provedor: mostrando ${_orders.length} ordens');
+      return _orders;
+    }
+    
+    // SEGURANÇA CRÍTICA: Modo usuário - mostrar APENAS ordens do usuário atual
+    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) {
+      debugPrint('⚠️ [FILTRO] Sem pubkey definida! Retornando lista vazia para segurança');
+      return []; // Não mostrar nada se não temos pubkey
+    }
+    
+    final filtered = _orders.where((o) {
+      // Ordem criada por este usuário
+      final isOwner = o.userPubkey == _currentUserPubkey;
+      // Ordem que este usuário aceitou como Bro
+      final isProvider = o.providerId == _currentUserPubkey;
+      
+      if (isOwner || isProvider) {
+        return true;
+      }
+      
+      // Log ordens rejeitadas para debug
+      debugPrint('🚫 [FILTRO] Rejeitando ordem ${o.id.substring(0, 8)} - userPubkey=${o.userPubkey?.substring(0, 8) ?? "null"}, currentUser=${_currentUserPubkey?.substring(0, 8) ?? "null"}');
+      return false;
+    }).toList();
+    
+    debugPrint('🔒 [FILTRO] Modo usuário: ${filtered.length}/${_orders.length} ordens (pubkey=${_currentUserPubkey?.substring(0, 8) ?? "null"})');
+    return filtered;
+  }
+
+  // Getters - USAM _filteredOrders para SEGURANÇA
+  // NOTA: orders NÃO inclui draft (ordens não pagas não aparecem na lista do usuário)
+  List<Order> get orders => _filteredOrders.where((o) => o.status != 'draft').toList();
+  List<Order> get pendingOrders => _filteredOrders.where((o) => o.status == 'pending' || o.status == 'payment_received').toList();
+  List<Order> get activeOrders => _filteredOrders.where((o) => ['payment_received', 'confirmed', 'accepted', 'processing'].contains(o.status)).toList();
+  List<Order> get completedOrders => _filteredOrders.where((o) => o.status == 'completed').toList();
+  bool get isProviderMode => _isProviderMode;
   Order? get currentOrder => _currentOrder;
   bool get isLoading => _isLoading;
   String? get error => _error;
@@ -36,9 +72,10 @@ class OrderProvider with ChangeNotifier {
   /// Este valor deve ser SUBTRAÍDO do saldo total para calcular saldo disponível para garantia
   /// INCLUI ordens draft (aguardando pagamento) pois o saldo já está reservado
   int get committedSats {
+    // SEGURANÇA: Usar _filteredOrders para calcular apenas ordens do usuário atual
     // Somar btcAmount de todas as ordens pendentes e ativas (que ainda não foram completadas/canceladas)
     // btcAmount está em BTC, precisa converter para sats (x 100_000_000)
-    final committedOrders = _orders.where((o) => 
+    final committedOrders = _filteredOrders.where((o) => 
       o.status == 'draft' ||  // ⚠️ Incluir draft - saldo reservado mesmo antes de pagar
       o.status == 'pending' || 
       o.status == 'payment_received' || 
@@ -81,6 +118,9 @@ class OrderProvider with ChangeNotifier {
     await _loadSavedOrders();
     debugPrint('📦 ${_orders.length} ordens locais carregadas (para preservar status)');
     
+    // 🧹 LIMPEZA: Remover ordens DRAFT antigas (não pagas em 1 hora)
+    await _cleanupOldDraftOrders();
+    
     // CORREÇÃO AUTOMÁTICA: Identificar ordens marcadas incorretamente como pagas
     // Se temos múltiplas ordens "payment_received" com valores pequenos e criadas quase ao mesmo tempo,
     // é provável que a reconciliação automática tenha marcado incorretamente.
@@ -95,6 +135,30 @@ class OrderProvider with ChangeNotifier {
     
     _isInitialized = true;
     notifyListeners();
+  }
+  
+  /// 🧹 Remove ordens draft que não foram pagas em 1 hora
+  /// Isso evita acúmulo de ordens "fantasma" que o usuário abandonou
+  Future<void> _cleanupOldDraftOrders() async {
+    final now = DateTime.now();
+    final draftCutoff = now.subtract(const Duration(hours: 1));
+    
+    final oldDrafts = _orders.where((o) => 
+      o.status == 'draft' && 
+      o.createdAt != null && 
+      o.createdAt!.isBefore(draftCutoff)
+    ).toList();
+    
+    if (oldDrafts.isEmpty) return;
+    
+    debugPrint('🧹 Removendo ${oldDrafts.length} ordens draft antigas (não pagas em 1h):');
+    for (final draft in oldDrafts) {
+      debugPrint('   - ${draft.id.substring(0, 8)} criada em ${draft.createdAt}');
+      _orders.remove(draft);
+    }
+    
+    await _saveOrders();
+    debugPrint('✅ Ordens draft antigas removidas');
   }
 
   // Recarregar ordens para novo usuário (após login)
@@ -586,6 +650,25 @@ class OrderProvider with ChangeNotifier {
   Future<void> fetchOrders({String? status, bool forProvider = false}) async {
     debugPrint('📦 Sincronizando ordens com Nostr... (forProvider: $forProvider)');
     _isLoading = true;
+    
+    // SEGURANÇA: Definir modo provedor ANTES de sincronizar
+    _isProviderMode = forProvider;
+    
+    // Se SAINDO do modo provedor, limpar ordens de outros usuários da memória
+    if (!forProvider && _orders.isNotEmpty) {
+      final before = _orders.length;
+      _orders = _orders.where((o) => 
+        o.userPubkey == _currentUserPubkey || 
+        o.userPubkey == null ||
+        o.userPubkey!.isEmpty ||
+        o.providerId == _currentUserPubkey
+      ).toList();
+      final removed = before - _orders.length;
+      if (removed > 0) {
+        debugPrint('🧹 SEGURANÇA: Removidas $removed ordens de outros usuários da memória');
+      }
+    }
+    
     notifyListeners();
     
     try {

@@ -1138,44 +1138,43 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         backgroundColor: const Color(0xFF1A1A1A),
         foregroundColor: Colors.orange,
       ),
-      body: RefreshIndicator(
-        onRefresh: _loadOrderDetails,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildStatusCard(),
-              const SizedBox(height: 10),
-              _buildOrderDetailsCard(),
-              const SizedBox(height: 10),
-              if (_currentStatus == 'awaiting_confirmation') ...[
-                _buildReceiptCard(),
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: _loadOrderDetails,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildStatusCard(),
                 const SizedBox(height: 10),
-              ],
-              _buildTimelineCard(),
-              const SizedBox(height: 10),
-              _buildInfoCard(),
-              const SizedBox(height: 16),
-              if (_currentStatus == 'pending') ...[
-                // Ordem aguardando um Bro aceitar - só mostra botão cancelar
-                _buildCancelButton(),
-              ],
-              // Botão cancelar para confirmed e payment_received (aguardando Bro aceitar)
-              if (_currentStatus == 'confirmed' || _currentStatus == 'payment_received') ...[
-                _buildCancelButton(),
-              ],
-              if (_currentStatus == 'awaiting_confirmation') ...[
-                _buildConfirmPaymentButton(),
+                _buildOrderDetailsCard(),
                 const SizedBox(height: 10),
-                _buildDisputeButton(),
-              ],
-              // Botão de disputa também disponível para status 'accepted' (provedor aceitou mas não enviou comprovante)
-              if (_currentStatus == 'accepted') ...[
+                if (_currentStatus == 'awaiting_confirmation') ...[
+                  _buildReceiptCard(),
+                  const SizedBox(height: 10),
+                ],
+                _buildTimelineCard(),
+                const SizedBox(height: 10),
+                _buildInfoCard(),
                 const SizedBox(height: 16),
-                _buildTalkToBroButton(),
-                const SizedBox(height: 12),
+                if (_currentStatus == 'pending') ...[
+                  // Ordem aguardando um Bro aceitar - só mostra botão cancelar
+                  _buildCancelButton(),
+                ],
+                // Botão cancelar para confirmed e payment_received (aguardando Bro aceitar)
+                if (_currentStatus == 'confirmed' || _currentStatus == 'payment_received') ...[
+                  _buildCancelButton(),
+                ],
+                if (_currentStatus == 'awaiting_confirmation') ...[
+                  _buildConfirmPaymentButton(),
+                  const SizedBox(height: 10),
+                  _buildDisputeButton(),
+                ],
+                // Botão de disputa também disponível para status 'accepted' (provedor aceitou mas não enviou comprovante)
+                if (_currentStatus == 'accepted') ...[
+                const SizedBox(height: 16),
                 _buildDisputeButton(),
               ],
               // Status de disputa
@@ -1188,8 +1187,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 const SizedBox(height: 16),
                 _buildWithdrawSatsButton(),
               ],
+              // Espaço extra para navegação do sistema
+              const SizedBox(height: 24),
             ],
           ),
+        ),
         ),
       ),
     );
@@ -1265,6 +1267,43 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 ),
               ),
             ],
+            // Mostrar ID da ordem (visível para usuário e Bro)
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.tag, color: Colors.white70, size: 16),
+                  const SizedBox(width: 8),
+                  Text(
+                    'ID: ${widget.orderId.substring(0, 8)}...',
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  GestureDetector(
+                    onTap: () async {
+                      await Clipboard.setData(ClipboardData(text: widget.orderId));
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('ID copiado!'), duration: Duration(seconds: 1)),
+                        );
+                      }
+                    },
+                    child: const Icon(Icons.copy, color: Colors.white54, size: 14),
+                  ),
+                ],
+              ),
+            ),
             // Mostrar expiração SOMENTE quando estiver aguardando confirmação do usuário
             if (_currentStatus == 'awaiting_confirmation' && _expiresAt != null) ...[
               const SizedBox(height: 10),

@@ -1317,9 +1317,11 @@ class _WalletScreenState extends State<WalletScreen> {
       ),
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) => SafeArea(
-          child: Padding(
+          minimum: const EdgeInsets.only(bottom: 24),
+          child: SingleChildScrollView(
+            child: Padding(
             padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 24,
               left: 20,
               right: 20,
               top: 20,
@@ -1671,6 +1673,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 ),
               ],
             ),
+          ),
           ),
         ),
       ),

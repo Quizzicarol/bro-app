@@ -259,6 +259,26 @@ class OrderProvider with ChangeNotifier {
         
         debugPrint('📦 Carregadas ${_orders.length} ordens salvas');
         
+        // SEGURANÇA CRÍTICA: Filtrar ordens de OUTROS usuários que vazaram para este storage
+        // Isso pode acontecer se o modo provedor salvou ordens incorretamente
+        final beforeFilter = _orders.length;
+        _orders = _orders.where((o) {
+          // Ordem pertence ao usuário atual
+          final isOwner = o.userPubkey == _currentUserPubkey || 
+                          o.userPubkey == null || 
+                          o.userPubkey!.isEmpty;
+          // Ordem que este usuário aceitou como provedor
+          final isProvider = o.providerId == _currentUserPubkey;
+          return isOwner || isProvider;
+        }).toList();
+        
+        final removedOtherUsers = beforeFilter - _orders.length;
+        if (removedOtherUsers > 0) {
+          debugPrint('🧹 SEGURANÇA: Removidas $removedOtherUsers ordens de OUTROS usuários que vazaram para storage!');
+          // Salvar storage limpo
+          await _saveOnlyUserOrders();
+        }
+        
         // Migrar ordens antigas: corrigir providerId se ordem está aceita mas sem providerId correto
         bool needsMigration = false;
         for (int i = 0; i < _orders.length; i++) {
@@ -1643,7 +1663,9 @@ class OrderProvider with ChangeNotifier {
       // Ordenar por data (mais recente primeiro)
       _orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       
-      await _saveOrders();
+      // SEGURANÇA CRÍTICA: Salvar apenas ordens do usuário atual!
+      // Isso evita que ordens de outros usuários sejam persistidas localmente
+      await _saveOnlyUserOrders();
       notifyListeners();
       
       debugPrint('✅ Sincronização concluída: ${_orders.length} ordens totais');

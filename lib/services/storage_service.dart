@@ -5,6 +5,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../config.dart';
 import 'local_collateral_service.dart';
 import 'secure_storage_service.dart';
+import 'chat_service.dart';
+import 'content_moderation_service.dart';
 
 class StorageService {
   static final StorageService _instance = StorageService._internal();
@@ -552,6 +554,14 @@ class StorageService {
       // Limpar flag de modo provedor do usuário
       await SecureStorageService.clearProviderMode(userPubkey: currentPubkey);
       debugPrint('   🗑️ Modo provedor do usuário limpo');
+      
+      // Limpar cache de chat do usuário
+      await ChatService().clearCache();
+      debugPrint('   🗑️ Cache de chat limpo');
+      
+      // Limpar cache de moderação (following, mutados, reports)
+      await ContentModerationService().clearCache();
+      debugPrint('   🗑️ Cache de moderação limpo');
     } catch (e) {
       debugPrint('   ⚠️ Erro ao limpar dados por usuário: $e');
     }

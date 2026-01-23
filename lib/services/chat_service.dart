@@ -71,8 +71,20 @@ class ChatService {
     'wss://relay.primal.net',
   ];
 
+  /// Limpar cache de mensagens (chamado no logout)
+  Future<void> clearCache() async {
+    _messageCache.clear();
+    debugPrint('💬 ChatService: Cache de mensagens limpo');
+  }
+
   /// Inicializar serviço de chat
   Future<void> initialize(String privateKey, String publicKey) async {
+    // Limpar cache de memória ao trocar de usuário
+    if (_publicKey != null && _publicKey != publicKey) {
+      _messageCache.clear();
+      debugPrint('💬 ChatService: Cache limpo - usuário mudou');
+    }
+    
     _privateKey = privateKey;
     _publicKey = publicKey;
     
@@ -386,7 +398,9 @@ class ChatService {
   Future<void> _loadCachedMessages() async {
     try {
       final prefs = await _storage.prefs;
-      final cached = prefs?.getString('chat_messages');
+      // Usar chave per-user para não vazar mensagens entre usuários
+      final cacheKey = _publicKey != null ? 'chat_messages_${_publicKey!.substring(0, 16)}' : 'chat_messages';
+      final cached = prefs?.getString(cacheKey);
       if (cached != null) {
         final data = jsonDecode(cached) as Map<String, dynamic>;
         for (final entry in data.entries) {
@@ -410,7 +424,9 @@ class ChatService {
         data[entry.key] = entry.value.map((m) => m.toJson()).toList();
       }
       final prefs = await _storage.prefs;
-      await prefs?.setString('chat_messages', jsonEncode(data));
+      // Usar chave per-user para não vazar mensagens entre usuários
+      final cacheKey = _publicKey != null ? 'chat_messages_${_publicKey!.substring(0, 16)}' : 'chat_messages';
+      await prefs?.setString(cacheKey, jsonEncode(data));
     } catch (e) {
       debugPrint('⚠️ Chat: Erro ao salvar cache: $e');
     }

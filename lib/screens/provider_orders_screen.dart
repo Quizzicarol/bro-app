@@ -58,8 +58,9 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     debugPrint('🟢 ProviderOrdersScreen initState iniciado');
     debugPrint('   providerId: ${widget.providerId}');
     
-    SecureStorageService.setProviderMode(true);
-    debugPrint('✅ Modo provedor salvo como ativo');
+    // Salvar modo provedor com pubkey do usuário
+    SecureStorageService.setProviderMode(true, userPubkey: widget.providerId);
+    debugPrint('✅ Modo provedor salvo como ativo para pubkey: ${widget.providerId.substring(0, 8)}');
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadOrders();
@@ -74,7 +75,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     // CRÍTICO: Resetar modo provedor ao sair da tela
     // O cleanup de ordens é feito no PopScope/botão voltar
     debugPrint('🔴 ProviderOrdersScreen dispose');
-    SecureStorageService.setProviderMode(false);
+    SecureStorageService.setProviderMode(false, userPubkey: widget.providerId);
     
     super.dispose();
   }
@@ -275,7 +276,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         if (didPop) {
           // CRÍTICO: Limpar modo provedor ao sair
           debugPrint('🔴 PopScope: Saindo do modo Bro, limpando ordens de outros');
-          SecureStorageService.setProviderMode(false);
+          SecureStorageService.setProviderMode(false, userPubkey: widget.providerId);
           try {
             final orderProvider = context.read<OrderProvider>();
             orderProvider.exitProviderMode();
@@ -293,7 +294,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
             onPressed: () {
               // CRÍTICO: Limpar modo provedor ao sair
               debugPrint('🔴 Botão voltar: Saindo do modo Bro');
-              SecureStorageService.setProviderMode(false);
+              SecureStorageService.setProviderMode(false, userPubkey: widget.providerId);
               try {
                 final orderProvider = context.read<OrderProvider>();
                 orderProvider.exitProviderMode();

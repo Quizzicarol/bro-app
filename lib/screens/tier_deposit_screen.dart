@@ -381,9 +381,10 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
       debugPrint('⚠️ Private key não disponível, tier salvo apenas localmente');
     }
 
-    // ✅ IMPORTANTE: Marcar como modo provedor para persistir entre sessões
-    await SecureStorageService.setProviderMode(true);
-    debugPrint('✅ Provider mode ativado e persistido');
+    // ✅ IMPORTANTE: Marcar como modo provedor para persistir entre sessões COM PUBKEY
+    final pubkey = nostrService.publicKey;
+    await SecureStorageService.setProviderMode(true, userPubkey: pubkey);
+    debugPrint('✅ Provider mode ativado e persistido para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
 
     // ✅ IMPORTANTE: Atualizar o CollateralProvider para refletir a mudança
     if (mounted) {

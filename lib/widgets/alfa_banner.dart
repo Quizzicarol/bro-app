@@ -47,6 +47,7 @@ class AlfaBanner extends StatelessWidget {
                     color: Colors.white,
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
+                    decoration: TextDecoration.none, // Remover sublinhado
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -66,6 +67,7 @@ class AlfaBanner extends StatelessWidget {
               color: Colors.yellow,
               fontSize: 11,
               fontWeight: FontWeight.bold,
+              decoration: TextDecoration.none, // Remover qualquer sublinhado
             ),
             textAlign: TextAlign.center,
           ),

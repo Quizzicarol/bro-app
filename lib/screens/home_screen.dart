@@ -489,9 +489,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 label: 'Modo Bro',
                 gradient: const [Color(0xFF3DE98C), Color(0xFF00CC7A)],
                 onTap: () async {
+                  // Obter pubkey do usuário atual para verificar modo provedor PER-USER
+                  final pubkey = await StorageService().getNostrPublicKey();
                   // Verificar se já está em modo provedor
-                  final isProvider = await SecureStorageService.isProviderMode();
-                  debugPrint('🔍 isProviderMode: $isProvider');
+                  final isProvider = await SecureStorageService.isProviderMode(userPubkey: pubkey);
+                  debugPrint('🔍 isProviderMode: $isProvider (pubkey: ${pubkey?.substring(0, 8) ?? "null"})');
                   
                   if (isProvider) {
                     // Já é provedor, ir direto para tela de ordens
@@ -1100,9 +1102,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildProviderModeButton() {
     return GestureDetector(
       onTap: () async {
+        // Obter pubkey do usuário atual para verificar modo provedor PER-USER
+        final pubkey = await StorageService().getNostrPublicKey();
         // Verificar se já está em modo provedor
-        final isProvider = await SecureStorageService.isProviderMode();
-        debugPrint('🔍 isProviderMode (button): $isProvider');
+        final isProvider = await SecureStorageService.isProviderMode(userPubkey: pubkey);
+        debugPrint('🔍 isProviderMode (button): $isProvider (pubkey: ${pubkey?.substring(0, 8) ?? "null"})');
         
         if (isProvider) {
           // Já é provedor, ir direto para tela de ordens

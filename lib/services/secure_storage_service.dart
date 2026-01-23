@@ -26,7 +26,8 @@ class SecureStorageService {
   static const String _nostrPrivateKey = 'nostr_private_key';
   static const String _nostrPublicKey = 'nostr_public_key';
   static const String _breezMnemonic = 'breez_mnemonic';
-  static const String _isProviderMode = 'is_provider_mode';
+  static const String _isProviderModeBase = 'is_provider_mode'; // Base para chave com pubkey
+  static const String _legacyProviderModeKey = 'is_provider_mode'; // Chave legada
 
   // =============== NOSTR KEYS ===============
 
@@ -102,23 +103,52 @@ class SecureStorageService {
   }
 
   // =============== PROVIDER MODE ===============
+  // ⚠️ IMPORTANTE: isProviderMode é POR USUÁRIO (usando pubkey)
+  // Isso evita que um usuário veja modo provedor de outro
 
-  /// Salva flag de modo provedor
-  static Future<void> setProviderMode(bool isProvider) async {
+  /// Gera a chave de provider mode para um usuário específico
+  static String _getProviderModeKey(String? pubkey) {
+    if (pubkey == null || pubkey.isEmpty) {
+      return _legacyProviderModeKey;
+    }
+    final shortKey = pubkey.length > 16 ? pubkey.substring(0, 16) : pubkey;
+    return '${_isProviderModeBase}_$shortKey';
+  }
+
+  /// Salva flag de modo provedor PARA UM USUÁRIO ESPECÍFICO
+  static Future<void> setProviderMode(bool isProvider, {String? userPubkey}) async {
     try {
-      await _storage.write(key: _isProviderMode, value: isProvider.toString());
+      final key = _getProviderModeKey(userPubkey);
+      await _storage.write(key: key, value: isProvider.toString());
+      debugPrint('🔐 setProviderMode($isProvider) para key=$key');
     } catch (e) {
       debugPrint('❌ Erro ao salvar modo provedor: $e');
     }
   }
 
-  /// Recupera flag de modo provedor
-  static Future<bool> isProviderMode() async {
+  /// Recupera flag de modo provedor PARA UM USUÁRIO ESPECÍFICO
+  static Future<bool> isProviderMode({String? userPubkey}) async {
     try {
-      final value = await _storage.read(key: _isProviderMode);
-      return value == 'true';
+      final key = _getProviderModeKey(userPubkey);
+      final value = await _storage.read(key: key);
+      final result = value == 'true';
+      debugPrint('🔍 isProviderMode: key=$key, value=$result');
+      return result;
     } catch (e) {
       return false;
+    }
+  }
+  
+  /// Limpa flag de modo provedor (para logout)
+  static Future<void> clearProviderMode({String? userPubkey}) async {
+    try {
+      final key = _getProviderModeKey(userPubkey);
+      await _storage.delete(key: key);
+      // Também limpar chave legada
+      await _storage.delete(key: _legacyProviderModeKey);
+      debugPrint('🗑️ Provider mode removido para key=$key');
+    } catch (e) {
+      debugPrint('❌ Erro ao limpar modo provedor: $e');
     }
   }
 

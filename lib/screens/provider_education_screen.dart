@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../config.dart';
 import '../services/secure_storage_service.dart';
+import '../services/nostr_service.dart';
 
 /// Tela educacional sobre o sistema de provedor
 /// Explica como funciona, requisitos, riscos e benefícios
@@ -542,9 +543,12 @@ class ProviderEducationScreen extends StatelessWidget {
           width: double.infinity,
           child: ElevatedButton.icon(
             onPressed: () async {
-              // Salvar que está iniciando modo provedor
-              await SecureStorageService.setProviderMode(true);
-              debugPrint('✅ Modo provedor salvo (via Começar Agora)');
+              // Obter pubkey do usuário atual
+              final nostrService = NostrService();
+              final pubkey = nostrService.publicKey;
+              // Salvar que está iniciando modo provedor COM PUBKEY
+              await SecureStorageService.setProviderMode(true, userPubkey: pubkey);
+              debugPrint('✅ Modo provedor salvo (via Começar Agora) para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
               Navigator.pushNamed(context, '/provider-collateral');
             },
             icon: const Icon(Icons.rocket_launch),
@@ -566,9 +570,12 @@ class ProviderEducationScreen extends StatelessWidget {
               onPressed: () async {
                 debugPrint('🧪 Clicou no botão Modo Teste');
                 try {
-                  // Salvar que o usuário está em modo provedor
-                  await SecureStorageService.setProviderMode(true);
-                  debugPrint('✅ Modo provedor salvo como ativo');
+                  // Obter pubkey do usuário atual
+                  final nostrService = NostrService();
+                  final pubkey = nostrService.publicKey;
+                  // Salvar que o usuário está em modo provedor COM PUBKEY
+                  await SecureStorageService.setProviderMode(true, userPubkey: pubkey);
+                  debugPrint('✅ Modo provedor salvo como ativo para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
                   
                   // Usar providerId fixo para modo teste (mesmo do balance)
                   const providerId = 'provider_test_001';

@@ -5,6 +5,7 @@ import 'dart:convert';
 import '../services/api_service.dart';
 import '../services/nostr_service.dart';
 import '../services/nostr_order_service.dart';
+import '../services/local_collateral_service.dart';
 import '../models/order.dart';
 import '../config.dart';
 
@@ -236,13 +237,20 @@ class OrderProvider with ChangeNotifier {
     // Isso previne que ordens de usuário anterior vazem para o novo
     await _cleanupAnonymousStorage();
     
+    // 🔐 Também limpar cache de collateral para evitar vazamento de tier
+    LocalCollateralService.clearCache();
+    
     _currentUserPubkey = userPubkey;
     _orders = [];
     _isInitialized = false;
     _isProviderMode = false;  // Reset modo provedor ao trocar de usuário
     
+    // Notificar IMEDIATAMENTE que ordens foram limpas
+    // Isso garante que committedSats retorne 0 antes de carregar novas ordens
+    notifyListeners();
+    
     // Carregar ordens locais primeiro (SEMPRE, para preservar status atualizados)
-    await _loadSavedOrders();
+    await _loadSavedOrders();;
     
     // SEGURANÇA: Filtrar ordens que não pertencem a este usuário
     // (podem ter vazado de sincronizações anteriores)

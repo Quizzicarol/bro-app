@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../config.dart';
+import 'local_collateral_service.dart';
+import 'secure_storage_service.dart';
 
 class StorageService {
   static final StorageService _instance = StorageService._internal();
@@ -536,6 +538,24 @@ class StorageService {
     debugPrint('🚪 LOGOUT - Preservando TODAS as seeds...');
     debugPrint('═══════════════════════════════════════════════════════════');
     
+    // Obter pubkey ANTES de limpar (para limpar dados por usuário)
+    final currentPubkey = await getNostrPublicKey();
+    debugPrint('   👤 Pubkey atual: ${currentPubkey?.substring(0, 16) ?? "null"}');
+    
+    // 🧹 LIMPAR DADOS POR USUÁRIO - Collateral e Provider Mode
+    try {
+      // Limpar collateral local do usuário
+      final collateralService = LocalCollateralService();
+      await collateralService.clearUserCollateral(userPubkey: currentPubkey);
+      debugPrint('   🗑️ Collateral do usuário limpo');
+      
+      // Limpar flag de modo provedor do usuário
+      await SecureStorageService.clearProviderMode(userPubkey: currentPubkey);
+      debugPrint('   🗑️ Modo provedor do usuário limpo');
+    } catch (e) {
+      debugPrint('   ⚠️ Erro ao limpar dados por usuário: $e');
+    }
+    
     // PRIMEIRO: Garantir que a seed atual está salva em TODOS os backups
     final currentSeed = await getBreezMnemonic();
     if (currentSeed != null && currentSeed.split(' ').length == 12) {
@@ -592,6 +612,9 @@ class StorageService {
     // Limpar chaves Nostr do SecureStorage (usuário não está mais logado)
     await _secureStorage.delete(key: 'nostr_private_key');
     await _secureStorage.delete(key: 'nostr_public_key');
+    
+    // 🧹 Limpar cache de LocalCollateralService
+    LocalCollateralService.clearCache();
     
     debugPrint('✅ Logout concluído - ${dataToPreserve.length} seeds preservadas, is_logged_in=false');
     debugPrint('═══════════════════════════════════════════════════════════');

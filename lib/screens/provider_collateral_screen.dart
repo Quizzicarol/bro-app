@@ -133,13 +133,52 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
   }
 
   Widget _buildContent() {
+    // 🔐 SEGURANÇA: Se saldo é 0, NÃO mostrar valores comprometidos
+    // Isso evita mostrar dados inconsistentes de sessões anteriores
+    final effectiveWalletBalance = _walletBalance;
+    
+    // Se saldo é 0, tier não pode estar ativo
+    final effectiveTierLocked = effectiveWalletBalance > 0 
+        ? (_currentCollateral?.lockedSats ?? 0) 
+        : 0;
+    
+    // Se saldo é 0, não há sats comprometidos
+    final effectiveCommittedSats = effectiveWalletBalance > 0 
+        ? _committedSats 
+        : 0;
+    
     // Calcular valores para o breakdown
-    final tierLocked = _currentCollateral?.lockedSats ?? 0;
-    final totalCommitted = tierLocked + _committedSats;
-    final freeBalance = (_walletBalance - totalCommitted).clamp(0, _walletBalance);
+    final totalCommitted = effectiveTierLocked + effectiveCommittedSats;
+    final freeBalance = (effectiveWalletBalance - totalCommitted).clamp(0, effectiveWalletBalance);
     
     return Column(
       children: [
+        // Aviso se saldo zerou e tier estava ativo
+        if (_walletBalance == 0 && _currentCollateral != null) ...[
+          Container(
+            margin: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.red.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.red.withOpacity(0.5)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.warning, color: Colors.red, size: 24),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Saldo zerado! Tier "${_currentCollateral!.tierName}" INATIVO.\n'
+                    'Deposite sats para reativar a garantia.',
+                    style: TextStyle(color: Colors.red.shade300, fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        
         // Card principal de saldo com breakdown detalhado
         Container(
           margin: const EdgeInsets.all(16),
@@ -165,7 +204,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                   ),
                   const Spacer(),
                   Text(
-                    '$_walletBalance sats',
+                    '$effectiveWalletBalance sats',
                     style: const TextStyle(
                       color: Colors.white, 
                       fontSize: 18, 
@@ -194,10 +233,12 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
               // 1. Bloqueado em tier (garantia)
               _buildBreakdownRow(
                 icon: Icons.lock,
-                iconColor: Colors.purple,
+                iconColor: effectiveTierLocked > 0 ? Colors.purple : Colors.grey,
                 label: 'Garantia (Tier)',
-                value: tierLocked,
-                subtitle: _currentCollateral?.tierName ?? 'Nenhum',
+                value: effectiveTierLocked,
+                subtitle: effectiveTierLocked > 0 
+                    ? _currentCollateral?.tierName ?? 'Nenhum'
+                    : (_currentCollateral != null ? '⚠️ INATIVO' : 'Nenhum'),
               ),
               
               const SizedBox(height: 8),
@@ -205,10 +246,10 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
               // 2. Comprometido com ordens
               _buildBreakdownRow(
                 icon: Icons.pending_actions,
-                iconColor: Colors.blue,
+                iconColor: effectiveCommittedSats > 0 ? Colors.blue : Colors.grey,
                 label: 'Ordens Pendentes',
-                value: _committedSats,
-                subtitle: _committedSats > 0 ? 'Em processamento' : 'Nenhuma',
+                value: effectiveCommittedSats,
+                subtitle: effectiveCommittedSats > 0 ? 'Em processamento' : 'Nenhuma',
               ),
               
               const SizedBox(height: 8),
@@ -216,7 +257,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
               // 3. Disponível
               _buildBreakdownRow(
                 icon: Icons.check_circle,
-                iconColor: Colors.green,
+                iconColor: freeBalance > 0 ? Colors.green : Colors.grey,
                 label: 'Disponível',
                 value: freeBalance,
                 subtitle: 'Para uso livre',
@@ -224,7 +265,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
               ),
               
               // Aviso se tier estiver consumindo muito
-              if (tierLocked > 0 && _committedSats > 0) ...[
+              if (effectiveTierLocked > 0 && effectiveCommittedSats > 0) ...[
                 const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.all(10),
@@ -294,59 +335,82 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
           if (_walletBalance < _currentCollateral!.lockedSats)
             const SizedBox(height: 12),
           
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: _walletBalance >= _currentCollateral!.lockedSats 
-                  ? Colors.green.withOpacity(0.1) 
-                  : Colors.orange.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: _walletBalance >= _currentCollateral!.lockedSats 
-                    ? Colors.green.withOpacity(0.3) 
-                    : Colors.orange.withOpacity(0.3),
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  _walletBalance >= _currentCollateral!.lockedSats 
-                      ? Icons.check_circle 
-                      : Icons.warning,
-                  color: _walletBalance >= _currentCollateral!.lockedSats 
-                      ? Colors.green 
-                      : Colors.orange,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _walletBalance >= _currentCollateral!.lockedSats 
-                            ? 'Tier Ativo' 
-                            : 'Tier em Risco',
-                        style: TextStyle(
-                          color: _walletBalance >= _currentCollateral!.lockedSats 
-                              ? Colors.green 
-                              : Colors.orange,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        'Máximo R\$ ${_currentCollateral!.maxOrderBrl.toStringAsFixed(0)}/ordem',
-                        style: const TextStyle(color: Colors.white70, fontSize: 12),
-                      ),
-                    ],
+          // Status do tier atual - considerar saldo zero como INATIVO
+          Builder(
+            builder: (context) {
+              final isTierActive = _walletBalance > 0 && _walletBalance >= _currentCollateral!.lockedSats;
+              final isTierAtRisk = _walletBalance > 0 && _walletBalance < _currentCollateral!.lockedSats;
+              final isTierInactive = _walletBalance == 0;
+              
+              return Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: isTierActive 
+                      ? Colors.green.withOpacity(0.1) 
+                      : isTierAtRisk 
+                          ? Colors.orange.withOpacity(0.1)
+                          : Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isTierActive 
+                        ? Colors.green.withOpacity(0.3) 
+                        : isTierAtRisk 
+                            ? Colors.orange.withOpacity(0.3)
+                            : Colors.red.withOpacity(0.3),
                   ),
                 ),
-                TextButton(
-                  onPressed: _removeTier,
-                  child: const Text('Remover', style: TextStyle(color: Colors.red)),
+                child: Row(
+                  children: [
+                    Icon(
+                      isTierActive 
+                          ? Icons.check_circle 
+                          : isTierAtRisk 
+                              ? Icons.warning 
+                              : Icons.cancel,
+                      color: isTierActive 
+                          ? Colors.green 
+                          : isTierAtRisk 
+                              ? Colors.orange 
+                              : Colors.red,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            isTierActive 
+                                ? 'Tier Ativo' 
+                                : isTierAtRisk 
+                                    ? 'Tier em Risco'
+                                    : 'Tier INATIVO',
+                            style: TextStyle(
+                              color: isTierActive 
+                                  ? Colors.green 
+                                  : isTierAtRisk 
+                                      ? Colors.orange 
+                                      : Colors.red,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            isTierInactive 
+                                ? 'Deposite sats para reativar'
+                                : 'Máximo R\$ ${_currentCollateral!.maxOrderBrl.toStringAsFixed(0)}/ordem',
+                            style: const TextStyle(color: Colors.white70, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: _removeTier,
+                      child: const Text('Remover', style: TextStyle(color: Colors.red)),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              );
+            },
           ),
         ],
 

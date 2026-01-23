@@ -11,6 +11,9 @@ class BreezProvider with ChangeNotifier {
   
   // Callback para notificar pagamentos recebidos
   Function(String paymentId, int amountSats, String? paymentHash)? onPaymentReceived;
+  // Callback para notificar pagamentos enviados
+  Function(String paymentId, int amountSats, String? paymentHash)? onPaymentSent;
+  
   String? get lastPaymentId => null;
   int? get lastPaymentAmount => null;
   
@@ -61,6 +64,11 @@ class BreezProvider with ChangeNotifier {
   }
 
   Future<List<Map<String, dynamic>>> listPayments() async {
+    return [];
+  }
+
+  /// Buscar todos os pagamentos (stub)
+  Future<List<Map<String, dynamic>>> getAllPayments() async {
     return [];
   }
 

@@ -137,12 +137,16 @@ class OrderProvider with ChangeNotifier {
     
     debugPrint('📦 OrderProvider inicializando para usuário: ${_currentUserPubkey?.substring(0, 8) ?? 'anonymous'}...');
     
+    // 🧹 SEGURANÇA: Limpar storage 'orders_anonymous' que pode conter ordens vazadas
+    await _cleanupAnonymousStorage();
+    
     // Resetar estado
     _orders = [];
     _isInitialized = false;
     
     // SEMPRE carregar ordens locais primeiro (para preservar status atualizados)
     // Antes estava só em testMode, mas isso perdia status como payment_received
+    // NOTA: Só carrega se temos pubkey válida (prevenção de vazamento)
     await _loadSavedOrders();
     debugPrint('📦 ${_orders.length} ordens locais carregadas (para preservar status)');
     
@@ -163,6 +167,41 @@ class OrderProvider with ChangeNotifier {
     
     _isInitialized = true;
     notifyListeners();
+  }
+  
+  /// 🧹 SEGURANÇA: Limpar storage 'orders_anonymous' que pode conter ordens de usuários anteriores
+  /// Também limpa qualquer cache global que possa ter ordens vazadas
+  Future<void> _cleanupAnonymousStorage() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      // 1. Remover ordens do usuário 'anonymous'
+      if (prefs.containsKey('orders_anonymous')) {
+        await prefs.remove('orders_anonymous');
+        debugPrint('🧹 Removido storage orders_anonymous (ordens de usuário não logado)');
+      }
+      
+      // 2. Remover cache global de ordens (pode conter ordens de outros usuários)
+      if (prefs.containsKey('cached_orders')) {
+        await prefs.remove('cached_orders');
+        debugPrint('🧹 Removido cache global de ordens');
+      }
+      
+      // 3. Remover chave legada 'saved_orders'
+      if (prefs.containsKey('saved_orders')) {
+        await prefs.remove('saved_orders');
+        debugPrint('🧹 Removido storage legado saved_orders');
+      }
+      
+      // 4. Remover cache de ordens do cache_service
+      if (prefs.containsKey('cache_orders')) {
+        await prefs.remove('cache_orders');
+        debugPrint('🧹 Removido cache_orders do CacheService');
+      }
+      
+    } catch (e) {
+      debugPrint('⚠️ Erro ao limpar storage anônimo: $e');
+    }
   }
   
   /// 🧹 Remove ordens draft que não foram pagas em 1 hora
@@ -192,9 +231,15 @@ class OrderProvider with ChangeNotifier {
   // Recarregar ordens para novo usuário (após login)
   Future<void> loadOrdersForUser(String userPubkey) async {
     debugPrint('🔄 Carregando ordens para usuário: ${userPubkey.substring(0, 8)}...');
+    
+    // 🔐 SEGURANÇA CRÍTICA: Limpar TUDO antes de carregar novo usuário
+    // Isso previne que ordens de usuário anterior vazem para o novo
+    await _cleanupAnonymousStorage();
+    
     _currentUserPubkey = userPubkey;
     _orders = [];
     _isInitialized = false;
+    _isProviderMode = false;  // Reset modo provedor ao trocar de usuário
     
     // Carregar ordens locais primeiro (SEMPRE, para preservar status atualizados)
     await _loadSavedOrders();
@@ -270,6 +315,14 @@ class OrderProvider with ChangeNotifier {
 
   // Carregar ordens do SharedPreferences
   Future<void> _loadSavedOrders() async {
+    // SEGURANÇA CRÍTICA: Não carregar ordens de 'orders_anonymous'
+    // Isso previne vazamento de ordens de outros usuários para contas novas
+    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) {
+      debugPrint('⚠️ _loadSavedOrders: Sem pubkey definida, NÃO carregando ordens (segurança)');
+      debugPrint('   Isso previne vazamento de ordens do storage "orders_anonymous"');
+      return;
+    }
+    
     try {
       final prefs = await SharedPreferences.getInstance();
       final ordersJson = prefs.getString(_ordersKey);
@@ -409,15 +462,29 @@ class OrderProvider with ChangeNotifier {
   /// Expirar ordens pendentes antigas (> 2 horas sem aceite)
   /// Ordens que ficam muito tempo pendentes provavelmente foram abandonadas
   // Salvar ordens no SharedPreferences (SEMPRE salva, não só em testMode)
+  // SEGURANÇA: Agora só salva ordens do usuário atual (igual _saveOnlyUserOrders)
   Future<void> _saveOrders() async {
+    // SEGURANÇA CRÍTICA: Não salvar se não temos pubkey definida
+    // Isso previne salvar ordens de outros usuários no storage 'orders_anonymous'
+    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) {
+      debugPrint('⚠️ _saveOrders: Sem pubkey definida, NÃO salvando ordens (segurança)');
+      return;
+    }
+    
     try {
+      // SEGURANÇA: Filtrar apenas ordens do usuário atual antes de salvar
+      final userOrders = _orders.where((o) => 
+        o.userPubkey == _currentUserPubkey || 
+        o.providerId == _currentUserPubkey
+      ).toList();
+      
       final prefs = await SharedPreferences.getInstance();
-      final ordersJson = json.encode(_orders.map((o) => o.toJson()).toList());
+      final ordersJson = json.encode(userOrders.map((o) => o.toJson()).toList());
       await prefs.setString(_ordersKey, ordersJson);
-      debugPrint('💾 ${_orders.length} ordens salvas no SharedPreferences');
+      debugPrint('💾 SEGURO: ${userOrders.length}/${_orders.length} ordens salvas (apenas do usuário atual)');
       
       // Log de cada ordem salva
-      for (var order in _orders) {
+      for (var order in userOrders) {
         debugPrint('   - ${order.id.substring(0, 8)}: status="${order.status}", providerId=${order.providerId ?? "null"}, R\$ ${order.amount}');
       }
     } catch (e) {
@@ -428,6 +495,13 @@ class OrderProvider with ChangeNotifier {
   /// SEGURANÇA: Salvar APENAS ordens do usuário atual no SharedPreferences
   /// Ordens de outros usuários (visualizadas no modo provedor) ficam apenas em memória
   Future<void> _saveOnlyUserOrders() async {
+    // SEGURANÇA CRÍTICA: Não salvar se não temos pubkey definida
+    // Isso previne que ordens de outros usuários sejam salvas em 'orders_anonymous'
+    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) {
+      debugPrint('⚠️ _saveOnlyUserOrders: Sem pubkey definida, NÃO salvando (segurança)');
+      return;
+    }
+    
     try {
       // Filtrar apenas ordens do usuário atual
       final userOrders = _orders.where((o) => 

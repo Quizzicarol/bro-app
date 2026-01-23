@@ -9,6 +9,7 @@ import '../services/bitcoin_price_service.dart';
 import '../services/notification_service.dart';
 import '../services/nostr_service.dart';
 import '../providers/collateral_provider.dart';
+import '../providers/breez_provider_export.dart';
 import '../models/collateral_tier.dart';
 import '../widgets/order_card.dart';
 import '../config.dart';
@@ -618,7 +619,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
     // Calcular valores detalhados
     final lockedSats = _currentTier?.lockedSats ?? 0;
     final tierName = _currentTier?.tierName ?? 'Nenhum';
-    final maxTransaction = _currentTier?.maxTransactionBrl ?? 0;
+    final maxTransaction = _currentTier?.maxOrderBrl ?? 0;
     
     // Calcular déficit se houver
     int deficit = 0;

@@ -263,13 +263,23 @@ class OrderProvider with ChangeNotifier {
         // Isso pode acontecer se o modo provedor salvou ordens incorretamente
         final beforeFilter = _orders.length;
         _orders = _orders.where((o) {
-          // Ordem pertence ao usuário atual
-          final isOwner = o.userPubkey == _currentUserPubkey || 
-                          o.userPubkey == null || 
-                          o.userPubkey!.isEmpty;
+          // REGRA ESTRITA: Ordem DEVE ter userPubkey igual ao usuário atual
+          // Não aceitar mais ordens sem pubkey (eram causando vazamento)
+          final isOwner = o.userPubkey == _currentUserPubkey;
           // Ordem que este usuário aceitou como provedor
           final isProvider = o.providerId == _currentUserPubkey;
-          return isOwner || isProvider;
+          
+          if (isOwner || isProvider) {
+            return true;
+          }
+          
+          // Log ordens removidas
+          if (o.userPubkey == null || o.userPubkey!.isEmpty) {
+            debugPrint('🚫 Removendo ordem ${o.id.substring(0, 8)} SEM userPubkey (legado/corrompido)');
+          } else {
+            debugPrint('🚫 Removendo ordem ${o.id.substring(0, 8)} de outro usuário: ${o.userPubkey?.substring(0, 8)}');
+          }
+          return false;
         }).toList();
         
         final removedOtherUsers = beforeFilter - _orders.length;

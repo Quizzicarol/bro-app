@@ -68,6 +68,34 @@ class OrderProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
+  /// CRÍTICO: Método para sair do modo provedor e limpar ordens de outros
+  /// Deve ser chamado quando o usuário sai da tela de modo Bro
+  void exitProviderMode() {
+    debugPrint('🚪 exitProviderMode chamado - limpando ordens de outros usuários');
+    _isProviderMode = false;
+    
+    // Remover TODAS as ordens que não pertencem ao usuário atual
+    final before = _orders.length;
+    _orders = _orders.where((o) {
+      // Manter apenas ordens deste usuário
+      final isOwner = o.userPubkey == _currentUserPubkey;
+      // Manter ordens que este usuário aceitou como provedor
+      final isProvider = o.providerId == _currentUserPubkey;
+      return isOwner || isProvider;
+    }).toList();
+    
+    final removed = before - _orders.length;
+    if (removed > 0) {
+      debugPrint('🧹 exitProviderMode: Removidas $removed ordens de outros usuários');
+    }
+    
+    // Salvar apenas ordens do usuário
+    _saveOnlyUserOrders();
+    
+    notifyListeners();
+    debugPrint('✅ exitProviderMode concluído: ${_orders.length} ordens restantes');
+  }
+
   /// Calcula o total de sats comprometidos com ordens pendentes/ativas (modo cliente)
   /// Este valor deve ser SUBTRAÍDO do saldo total para calcular saldo disponível para garantia
   /// INCLUI ordens draft (aguardando pagamento) pois o saldo já está reservado
@@ -684,18 +712,21 @@ class OrderProvider with ChangeNotifier {
     // SEGURANÇA: Definir modo provedor ANTES de sincronizar
     _isProviderMode = forProvider;
     
-    // Se SAINDO do modo provedor, limpar ordens de outros usuários da memória
+    // Se SAINDO do modo provedor (ou em modo usuário), limpar ordens de outros usuários
     if (!forProvider && _orders.isNotEmpty) {
       final before = _orders.length;
-      _orders = _orders.where((o) => 
-        o.userPubkey == _currentUserPubkey || 
-        o.userPubkey == null ||
-        o.userPubkey!.isEmpty ||
-        o.providerId == _currentUserPubkey
-      ).toList();
+      _orders = _orders.where((o) {
+        // REGRA ESTRITA: Apenas ordens deste usuário
+        final isOwner = o.userPubkey == _currentUserPubkey;
+        // Ou ordens que este usuário aceitou como provedor
+        final isProvider = o.providerId == _currentUserPubkey;
+        return isOwner || isProvider;
+      }).toList();
       final removed = before - _orders.length;
       if (removed > 0) {
         debugPrint('🧹 SEGURANÇA: Removidas $removed ordens de outros usuários da memória');
+        // Salvar storage limpo
+        await _saveOnlyUserOrders();
       }
     }
     

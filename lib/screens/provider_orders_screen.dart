@@ -70,6 +70,12 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   @override
   void dispose() {
     _tabController.dispose();
+    
+    // CRÍTICO: Resetar modo provedor ao sair da tela
+    // O cleanup de ordens é feito no PopScope/botão voltar
+    debugPrint('🔴 ProviderOrdersScreen dispose');
+    SecureStorageService.setProviderMode(false);
+    
     super.dispose();
   }
 
@@ -264,43 +270,72 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF121212),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Modo Bro'),
-            const SizedBox(width: 8),
-            _buildTierBadge(),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.account_balance_wallet),
-            onPressed: () => Navigator.pushNamed(context, '/wallet'),
-            tooltip: 'Minha Carteira',
+    return PopScope(
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) {
+          // CRÍTICO: Limpar modo provedor ao sair
+          debugPrint('🔴 PopScope: Saindo do modo Bro, limpando ordens de outros');
+          SecureStorageService.setProviderMode(false);
+          try {
+            final orderProvider = context.read<OrderProvider>();
+            orderProvider.exitProviderMode();
+          } catch (e) {
+            debugPrint('⚠️ Erro ao limpar modo provedor: $e');
+          }
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFF121212),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF1E1E1E),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () {
+              // CRÍTICO: Limpar modo provedor ao sair
+              debugPrint('🔴 Botão voltar: Saindo do modo Bro');
+              SecureStorageService.setProviderMode(false);
+              try {
+                final orderProvider = context.read<OrderProvider>();
+                orderProvider.exitProviderMode();
+              } catch (e) {
+                debugPrint('⚠️ Erro ao limpar modo provedor: $e');
+              }
+              Navigator.pop(context);
+            },
           ),
-          // Removido botão refresh - pull-to-refresh já funciona
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.orange,
-          labelColor: Colors.orange,
-          unselectedLabelColor: Colors.white60,
-          tabs: [
-            Tab(
-              icon: const Icon(Icons.local_offer, size: 20),
-              child: Text('Disponíveis (${_availableOrders.length})', style: const TextStyle(fontSize: 13)),
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Modo Bro'),
+              const SizedBox(width: 8),
+              _buildTierBadge(),
+            ],
+          ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.account_balance_wallet),
+              onPressed: () => Navigator.pushNamed(context, '/wallet'),
+              tooltip: 'Minha Carteira',
             ),
-            Tab(
-              icon: const Icon(Icons.assignment_turned_in, size: 20),
-              child: Text('Minhas (${_myOrders.length})', style: const TextStyle(fontSize: 13)),
-            ),
-            const Tab(
-              icon: Icon(Icons.bar_chart, size: 20),
-              child: Text('Estatísticas', style: TextStyle(fontSize: 13)),
+            // Removido botão refresh - pull-to-refresh já funciona
+          ],
+          bottom: TabBar(
+            controller: _tabController,
+            indicatorColor: Colors.orange,
+            labelColor: Colors.orange,
+            unselectedLabelColor: Colors.white60,
+            tabs: [
+              Tab(
+                icon: const Icon(Icons.local_offer, size: 20),
+                child: Text('Disponíveis (${_availableOrders.length})', style: const TextStyle(fontSize: 13)),
+              ),
+              Tab(
+                icon: const Icon(Icons.assignment_turned_in, size: 20),
+                child: Text('Minhas (${_myOrders.length})', style: const TextStyle(fontSize: 13)),
+              ),
+              const Tab(
+                icon: Icon(Icons.bar_chart, size: 20),
+                child: Text('Estatísticas', style: TextStyle(fontSize: 13)),
             ),
           ],
         ),
@@ -357,6 +392,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           },
         ),
       ),
+    ),  // Fecha PopScope
     );
   }
 

@@ -624,12 +624,23 @@ class NostrOrderService {
     final statusUpdates = await _fetchAllOrderStatusUpdates();
     
     // Converter para Orders e aplicar status atualizado
+    // SEGURANÇA CRÍTICA: Filtrar novamente para garantir que só retorne ordens deste usuário
+    // (alguns relays podem ignorar o filtro 'authors')
     final orders = rawOrders
         .map((e) => eventToOrder(e))
         .whereType<Order>()
+        .where((order) {
+          // Verificar se a ordem realmente pertence ao usuário
+          if (order.userPubkey != pubkey) {
+            debugPrint('🚫 SEGURANÇA: Ordem ${order.id.substring(0, 8)} é de ${order.userPubkey?.substring(0, 8) ?? "null"}, esperado $pubkey - REMOVENDO');
+            return false;
+          }
+          return true;
+        })
         .map((order) => _applyStatusUpdate(order, statusUpdates))
         .toList();
     
+    debugPrint('✅ fetchUserOrders: ${orders.length} ordens VERIFICADAS para $pubkey');
     return orders;
   }
   

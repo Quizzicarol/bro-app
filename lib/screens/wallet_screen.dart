@@ -8,6 +8,7 @@ import '../providers/provider_balance_provider.dart';
 import '../providers/order_provider.dart';
 import '../services/storage_service.dart';
 import '../services/lnaddress_service.dart';
+import '../services/local_collateral_service.dart';
 
 /// Tela de Carteira Lightning - Apenas BOLT11 (invoice)
 /// Funções: Ver saldo, Enviar pagamento, Receber (gerar invoice)
@@ -463,7 +464,7 @@ class _WalletScreenState extends State<WalletScreen> {
   }
 
   // ==================== ENVIAR ====================
-  void _showSendDialog() {
+  void _showSendDialog() async {
     final invoiceController = TextEditingController();
     final amountController = TextEditingController();
     bool isSending = false;
@@ -473,11 +474,23 @@ class _WalletScreenState extends State<WalletScreen> {
     // Get current balance
     final balanceSats = int.tryParse(_balance?['balance']?.toString() ?? '0') ?? 0;
     
-    // Get committed sats (orders in progress) and calculate available balance
+    // Get committed sats (orders in progress)
     final orderProvider = context.read<OrderProvider>();
     final committedSats = orderProvider.committedSats;
-    final availableSats = (balanceSats - committedSats).clamp(0, balanceSats);
-    final hasLockedFunds = committedSats > 0;
+    
+    // Get tier locked sats (if any)
+    final collateralService = LocalCollateralService();
+    final collateral = await collateralService.getCollateral();
+    final tierLockedSats = collateral?.lockedSats ?? 0;
+    final tierName = collateral?.tierName;
+    
+    // Total locked = orders + tier
+    final totalLockedSats = committedSats + tierLockedSats;
+    final availableSats = (balanceSats - totalLockedSats).clamp(0, balanceSats);
+    final hasLockedFunds = totalLockedSats > 0;
+    final hasTierActive = tierLockedSats > 0;
+    
+    if (!mounted) return;
     
     showModalBottomSheet(
       context: context,
@@ -571,16 +584,42 @@ class _WalletScreenState extends State<WalletScreen> {
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: Colors.orange.withOpacity(0.3)),
                     ),
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(Icons.lock, color: Colors.orange, size: 18),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '$committedSats sats estão em ordens abertas/garantia',
-                            style: const TextStyle(color: Colors.orange, fontSize: 12),
-                          ),
+                        Row(
+                          children: [
+                            const Icon(Icons.lock, color: Colors.orange, size: 18),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '$totalLockedSats sats bloqueados',
+                                style: const TextStyle(color: Colors.orange, fontSize: 12, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
                         ),
+                        if (hasTierActive) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            '• $tierLockedSats sats no Tier "$tierName"',
+                            style: const TextStyle(color: Colors.orange, fontSize: 11),
+                          ),
+                        ],
+                        if (committedSats > 0) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            '• $committedSats sats em ordens abertas',
+                            style: const TextStyle(color: Colors.orange, fontSize: 11),
+                          ),
+                        ],
+                        if (hasTierActive) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            '⚠️ Sacar tudo desativará seu Tier!',
+                            style: TextStyle(color: Colors.red.shade300, fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -805,8 +844,10 @@ class _WalletScreenState extends State<WalletScreen> {
                         }
                         
                         if (amountSats > availableSats) {
-                          if (hasLockedFunds) {
-                            setModalState(() => errorMessage = 'Saldo insuficiente! Disponível: $availableSats sats ($committedSats em ordens)');
+                          if (hasTierActive && amountSats > balanceSats - tierLockedSats) {
+                            setModalState(() => errorMessage = 'Você precisa manter $tierLockedSats sats para o Tier "$tierName". Remova o tier primeiro em Níveis de Garantia.');
+                          } else if (hasLockedFunds) {
+                            setModalState(() => errorMessage = 'Saldo insuficiente! Disponível: $availableSats sats ($totalLockedSats bloqueados)');
                           } else {
                             setModalState(() => errorMessage = 'Saldo insuficiente! Você tem $balanceSats sats');
                           }

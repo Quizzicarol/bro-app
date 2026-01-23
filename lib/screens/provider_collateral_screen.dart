@@ -256,24 +256,84 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
         ),
 
         // Tier atual (se houver)
-        if (_currentCollateral != null)
+        if (_currentCollateral != null) ...[
+          // Aviso se saldo insuficiente para manter tier
+          if (_walletBalance < _currentCollateral!.lockedSats)
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.red.withOpacity(0.5)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.warning_amber, color: Colors.red, size: 24),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '⚠️ SALDO INSUFICIENTE!',
+                          style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Seu tier requer ${_currentCollateral!.lockedSats} sats, mas você só tem $_walletBalance sats.\n'
+                          'O tier será desativado automaticamente se você não depositar mais saldo.',
+                          style: const TextStyle(color: Colors.white70, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (_walletBalance < _currentCollateral!.lockedSats)
+            const SizedBox(height: 12),
+          
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 16),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.green.withOpacity(0.1),
+              color: _walletBalance >= _currentCollateral!.lockedSats 
+                  ? Colors.green.withOpacity(0.1) 
+                  : Colors.orange.withOpacity(0.1),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.green.withOpacity(0.3)),
+              border: Border.all(
+                color: _walletBalance >= _currentCollateral!.lockedSats 
+                    ? Colors.green.withOpacity(0.3) 
+                    : Colors.orange.withOpacity(0.3),
+              ),
             ),
             child: Row(
               children: [
-                const Icon(Icons.check_circle, color: Colors.green),
+                Icon(
+                  _walletBalance >= _currentCollateral!.lockedSats 
+                      ? Icons.check_circle 
+                      : Icons.warning,
+                  color: _walletBalance >= _currentCollateral!.lockedSats 
+                      ? Colors.green 
+                      : Colors.orange,
+                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Tier Ativo', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                      Text(
+                        _walletBalance >= _currentCollateral!.lockedSats 
+                            ? 'Tier Ativo' 
+                            : 'Tier em Risco',
+                        style: TextStyle(
+                          color: _walletBalance >= _currentCollateral!.lockedSats 
+                              ? Colors.green 
+                              : Colors.orange,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       Text(
                         'Máximo R\$ ${_currentCollateral!.maxOrderBrl.toStringAsFixed(0)}/ordem',
                         style: const TextStyle(color: Colors.white70, fontSize: 12),
@@ -288,6 +348,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
               ],
             ),
           ),
+        ],
 
         const SizedBox(height: 16),
 

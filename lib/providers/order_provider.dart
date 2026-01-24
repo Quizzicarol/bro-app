@@ -99,13 +99,11 @@ class OrderProvider with ChangeNotifier {
 
   /// Calcula o total de sats comprometidos com ordens pendentes/ativas (modo cliente)
   /// Este valor deve ser SUBTRAÍDO do saldo total para calcular saldo disponível para garantia
-  /// INCLUI ordens draft (aguardando pagamento) pois o saldo já está reservado
   int get committedSats {
     // SEGURANÇA: Usar _filteredOrders para calcular apenas ordens do usuário atual
     // Somar btcAmount de todas as ordens pendentes e ativas (que ainda não foram completadas/canceladas)
     // btcAmount está em BTC, precisa converter para sats (x 100_000_000)
     final committedOrders = _filteredOrders.where((o) => 
-      o.status == 'draft' ||  // ⚠️ Incluir draft - saldo reservado mesmo antes de pagar
       o.status == 'pending' || 
       o.status == 'payment_received' || 
       o.status == 'confirmed' || 
@@ -694,7 +692,8 @@ class OrderProvider with ChangeNotifier {
       final platformFee = amount * 0.02;
       final total = amount + providerFee + platformFee;
       
-      // CRÍTICO: Status 'draft' = aguardando pagamento, não visível para Bros
+      // 🔥 SIMPLIFICADO: Status 'pending' = Aguardando Bro
+      // A ordem já está paga (invoice/endereço já foi criado)
       final order = Order(
         id: const Uuid().v4(),
         userPubkey: _currentUserPubkey,
@@ -706,29 +705,30 @@ class OrderProvider with ChangeNotifier {
         providerFee: providerFee,
         platformFee: platformFee,
         total: total,
-        status: 'draft',  // ⚠️ DRAFT = não publicado no Nostr ainda
+        status: 'pending',  // ✅ Direto para pending = Aguardando Bro
         createdAt: DateTime.now(),
       );
       
       // LOG DE VALIDAÇÃO
-      debugPrint('✅ Ordem DRAFT criada: amount=${order.amount}, btcAmount=${order.btcAmount}, total=${order.total}');
-      debugPrint('⚠️ IMPORTANTE: Ordem NÃO publicada no Nostr - aguardando pagamento!');
+      debugPrint('✅ Ordem criada: amount=${order.amount}, btcAmount=${order.btcAmount}, status=pending');
+      debugPrint('✅ Ordem pronta para publicar no Nostr!');
       
       _orders.insert(0, order);
       _currentOrder = order;
       
-      // Salvar localmente (NÃO publica no Nostr!)
+      // Salvar localmente
       final prefs = await SharedPreferences.getInstance();
       final ordersJson = json.encode(_orders.map((o) => o.toJson()).toList());
       await prefs.setString(_ordersKey, ordersJson);
       
       notifyListeners();
       
-      // ⛔ NÃO PUBLICAR NO NOSTR AQUI!
-      // A publicação ocorre em publishOrderAfterPayment() após pagamento confirmado
+      // 🔥 PUBLICAR NO NOSTR IMEDIATAMENTE
+      // A ordem já está com pagamento sendo processado
+      debugPrint('📡 Publicando ordem no Nostr...');
+      _publishOrderToNostr(order);
       
-      debugPrint('✅ Ordem DRAFT criada localmente: ${order.id}');
-      debugPrint('⏳ Aguardando pagamento Lightning para publicar no Nostr...');
+      debugPrint('✅ Ordem criada e publicada: ${order.id}');
       return order;
     } catch (e) {
       _error = e.toString();

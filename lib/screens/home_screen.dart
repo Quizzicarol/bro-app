@@ -901,24 +901,20 @@ class _HomeScreenState extends State<HomeScreen> {
   String _getStatusLabel(String status) {
     switch (status.toLowerCase()) {
       case 'pending':
-        return 'Aguardando Bro';
       case 'payment_received':
-        return 'Saldo Reservado';
       case 'confirmed':
         return 'Aguardando Bro';
       case 'accepted':
         return 'Bro Encontrado';
       case 'awaiting_confirmation':
-        return 'Aguardando Confirmação';
       case 'payment_submitted':
-        return 'Em Validação';
       case 'processing':
-        return 'Processando';
+        return 'Bro Pagou';  // Bro já fez o pagamento da conta
       case 'completed':
       case 'paid':
-        return 'Concluído';
+        return 'Concluída';
       case 'cancelled':
-        return 'Cancelado';
+        return 'Cancelada';
       case 'disputed':
         return 'Em Disputa';
       case 'failed':

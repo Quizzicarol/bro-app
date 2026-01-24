@@ -1366,23 +1366,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   Map<String, dynamic> _getStatusInfo() {
     switch (_currentStatus) {
       case 'pending':
-        return {
-          'icon': Icons.hourglass_empty,
-          'title': 'Aguardando Bro',
-          'subtitle': 'Sua ordem está disponível para Bros',
-          'color': Colors.orange,
-        };
       case 'payment_received':
-        return {
-          'icon': Icons.hourglass_empty,
-          'title': 'Saldo Reservado',
-          'subtitle': 'Aguardando um Bro aceitar sua ordem',
-          'color': Colors.orange,
-        };
       case 'confirmed':
         return {
           'icon': Icons.hourglass_empty,
-          'title': 'Aguardando um Bro',
+          'title': 'Aguardando Bro',
           'subtitle': 'Sua ordem está disponível para Bros',
           'color': Colors.orange,
         };
@@ -1394,30 +1382,24 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           'color': Colors.green,
         };
       case 'awaiting_confirmation':
-        return {
-          'icon': Icons.receipt_long,
-          'title': 'Comprovante Enviado',
-          'subtitle': 'Verifique o comprovante e confirme o pagamento',
-          'color': const Color(0xFFFF6B6B),
-        };
       case 'payment_submitted':
         return {
-          'icon': Icons.receipt_long,
-          'title': 'Comprovante Enviado',
-          'subtitle': 'Aguardando validação do pagamento',
+          'icon': Icons.payment,
+          'title': 'Bro Pagou!',
+          'subtitle': 'O Bro já pagou sua conta, confirme o recebimento',
           'color': const Color(0xFFFF6B6B),
         };
       case 'completed':
         return {
           'icon': Icons.celebration,
-          'title': 'Pagamento Concluído!',
+          'title': 'Concluída!',
           'subtitle': 'Sua conta foi paga com sucesso',
           'color': Colors.green,
         };
       case 'cancelled':
         return {
           'icon': Icons.cancel_outlined,
-          'title': 'Ordem Cancelada',
+          'title': 'Cancelada',
           'subtitle': 'Seus sats permanecem na sua carteira',
           'color': Colors.red,
         };
@@ -1529,28 +1511,28 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             _buildTimelineStep(
               number: '1',
               title: 'Ordem Criada',
-              subtitle: 'Saldo reservado na sua carteira',
+              subtitle: 'Sua ordem está pronta',
               isActive: false,
               isCompleted: true,
             ),
             _buildTimelineStep(
               number: '2',
-              title: 'Aguardando um Bro',
+              title: 'Aguardando Bro',
               subtitle: 'Um Bro irá aceitar sua ordem',
               isActive: _currentStatus == 'pending' || _currentStatus == 'confirmed' || _currentStatus == 'payment_received',
               isCompleted: ['accepted', 'awaiting_confirmation', 'payment_submitted', 'completed'].contains(_currentStatus),
             ),
             _buildTimelineStep(
               number: '3',
-              title: 'Bro Realiza Pagamento',
-              subtitle: 'O provedor paga a conta com PIX/Boleto',
+              title: 'Bro Paga a Conta',
+              subtitle: 'O Bro paga sua conta com PIX/Boleto',
               isActive: _currentStatus == 'accepted',
               isCompleted: ['awaiting_confirmation', 'payment_submitted', 'completed'].contains(_currentStatus),
             ),
             _buildTimelineStep(
               number: '4',
-              title: 'Validar Comprovante',
-              subtitle: 'Confirme que o pagamento foi feito corretamente',
+              title: 'Concluído',
+              subtitle: 'Conta paga com sucesso!',
               isActive: _currentStatus == 'awaiting_confirmation' || _currentStatus == 'payment_submitted',
               isCompleted: _currentStatus == 'completed',
               isLast: true,

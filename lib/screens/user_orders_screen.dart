@@ -1695,17 +1695,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
   Map<String, dynamic> _getStatusInfo(String status) {
     switch (status) {
       case 'pending':
-        return {
-          'label': 'Aguardando Bro',
-          'color': Colors.blue,
-          'icon': Icons.hourglass_empty,
-        };
       case 'payment_received':
-        return {
-          'label': 'Saldo Reservado ✓',
-          'color': Colors.teal,
-          'icon': Icons.check,
-        };
       case 'confirmed':
         return {
           'label': 'Aguardando Bro',
@@ -1714,31 +1704,26 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
         };
       case 'accepted':
         return {
-          'label': 'Bro Aceitou',
+          'label': 'Bro Encontrado',
           'color': Colors.amber,
           'icon': Icons.check_circle_outline,
         };
       case 'awaiting_confirmation':
-        return {
-          'label': 'Verificar Comprovante',
-          'color': Colors.purple,
-          'icon': Icons.receipt_long,
-        };
       case 'payment_submitted':
         return {
-          'label': 'Em Validação',
+          'label': 'Bro Pagou',
           'color': Colors.purple,
-          'icon': Icons.pending,
+          'icon': Icons.payment,
         };
       case 'completed':
         return {
-          'label': 'Concluído ✓',
+          'label': 'Concluída ✓',
           'color': Colors.green,
           'icon': Icons.celebration,
         };
       case 'cancelled':
         return {
-          'label': 'Cancelado',
+          'label': 'Cancelada',
           'color': Colors.red,
           'icon': Icons.cancel,
         };

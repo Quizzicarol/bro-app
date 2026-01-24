@@ -634,41 +634,18 @@ class _PaymentScreenState extends State<PaymentScreen> {
       
       final dynamic priceData = _conversionData!['bitcoinPrice'];
       final double btcPrice = (priceData is num) ? priceData.toDouble() : 0.0;
-
-      debugPrint('💰 Criando ordem: R\$ $billAmount @ R\$ $btcPrice/BTC');
-
-      final order = await orderProvider.createOrder(
-        billType: _billData!['billType'] as String,
-        billCode: _codeController.text.trim(),
-        amount: billAmount,
-        btcAmount: btcAmount,
-        btcPrice: btcPrice,
-      );
-
-      if (order == null) {
-        debugPrint('❌ Falha ao criar ordem');
-        // Fechar popup de loading
-        if (mounted) Navigator.of(context).pop();
-        _showError('Erro ao criar ordem');
-        return;
-      }
-
-      debugPrint('✅ Ordem criada: ${order.id}');
-
-      if (!mounted) {
-        debugPrint('⚠️ Widget desmontado');
-        return;
-      }
-
       final amountSats = int.parse(sats);
-      
+
+      debugPrint('💰 Preparando pagamento: R\$ $billAmount @ R\$ $btcPrice/BTC');
+
       if (paymentType == 'lightning') {
-        debugPrint('⚡ Criando invoice Lightning...');
+        debugPrint('⚡ Criando invoice Lightning PRIMEIRO...');
         
-        // Create Lightning invoice and navigate to Lightning payment screen with timeout
+        // 🔥 NOVO FLUXO: Criar invoice ANTES da ordem!
+        // Isso evita criar ordem "fantasma" se usuário sair da tela
         final invoiceData = await breezProvider.createInvoice(
           amountSats: amountSats,
-          description: 'Bro ${order.id}',
+          description: 'Bro Payment',
         ).timeout(
           const Duration(seconds: 30),
           onTimeout: () {
@@ -677,91 +654,109 @@ class _PaymentScreenState extends State<PaymentScreen> {
           },
         );
 
-        // Fechar popup de loading
-        if (mounted) Navigator.of(context).pop();
-
         debugPrint('📨 Invoice data: $invoiceData');
 
-        if (invoiceData != null && (invoiceData['success'] == true)) {
-          final inv = (invoiceData['invoice'] ?? '') as String;
-          if (inv.isEmpty || !(inv.startsWith('lnbc') || inv.startsWith('lntb') || inv.startsWith('lnbcrt'))) {
-            debugPrint('❌ Invoice inválida: $inv');
-            _showError('Invoice inválida recebida');
-            return;
-          }
-          debugPrint('✅ Invoice válida, navegando para LightningPaymentScreen...');
-          
-          // CRÍTICO: Salvar paymentHash na ordem para identificação precisa do pagamento
-          final paymentHash = (invoiceData['paymentHash'] ?? '') as String;
-          if (paymentHash.isNotEmpty) {
-            await orderProvider.setOrderPaymentHash(order.id, paymentHash, inv);
-            debugPrint('✅ PaymentHash salvo na ordem: $paymentHash');
-          }
-          
-          if (!mounted) return;
-          
-          // Reset processing flag before navigating
-          setState(() {
-            _isProcessing = false;
-          });
-          
-          // Navigate to full Lightning payment screen instead of dialog
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => LightningPaymentScreen(
-                invoice: inv,
-                paymentHash: paymentHash,
-                amountSats: amountSats,
-                totalBrl: totalBrl,
-                orderId: order.id,
-                receiver: invoiceData['receiver'] as String?,
-              ),
-            ),
-          );
-        } else {
+        if (invoiceData == null || invoiceData['success'] != true) {
+          // Fechar popup de loading
+          if (mounted) Navigator.of(context).pop();
           debugPrint('❌ Erro ao criar invoice');
           _showError('Erro ao criar Lightning invoice: ${invoiceData?['error'] ?? 'desconhecido'}');
+          return;
         }
-      } else {
-        debugPrint('🔗 Criando endereço onchain...');
         
-        // Create on-chain address and navigate to On-chain payment screen
-        final addressData = await breezProvider.createOnchainAddress();
-
+        final inv = (invoiceData['invoice'] ?? '') as String;
+        if (inv.isEmpty || !(inv.startsWith('lnbc') || inv.startsWith('lntb') || inv.startsWith('lnbcrt'))) {
+          if (mounted) Navigator.of(context).pop();
+          debugPrint('❌ Invoice inválida: $inv');
+          _showError('Invoice inválida recebida');
+          return;
+        }
+        
+        final paymentHash = (invoiceData['paymentHash'] ?? '') as String;
+        debugPrint('✅ Invoice criada! NÃO criando ordem ainda - só após pagamento!');
+        
         // Fechar popup de loading
         if (mounted) Navigator.of(context).pop();
+        
+        if (!mounted) return;
+        
+        // Reset processing flag before navigating
+        setState(() {
+          _isProcessing = false;
+        });
+        
+        // 🔥 NOVO FLUXO: NÃO criar ordem agora!
+        // Ordem será criada SOMENTE quando pagamento for confirmado
+        // Passar dados da conta para LightningPaymentScreen criar a ordem depois
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => LightningPaymentScreen(
+              invoice: inv,
+              paymentHash: paymentHash,
+              amountSats: amountSats,
+              totalBrl: totalBrl,
+              orderId: '', // Ordem será criada após pagamento
+              receiver: invoiceData['receiver'] as String?,
+              // Dados para criar ordem após pagamento
+              billType: _billData!['billType'] as String,
+              billCode: _codeController.text.trim(),
+              billAmount: billAmount,
+              btcAmount: btcAmount,
+              btcPrice: btcPrice,
+            ),
+          ),
+        );
+      } else {
+        debugPrint('🔗 Criando endereço onchain PRIMEIRO...');
+        
+        // 🔥 NOVO FLUXO: Criar endereço ANTES da ordem!
+        final addressData = await breezProvider.createOnchainAddress();
 
         debugPrint('📨 Address data: $addressData');
 
-        if (addressData != null && addressData['success'] == true && mounted) {
-          final address = addressData['swap']?['bitcoinAddress'] ?? '';
-          
-          if (address.isEmpty) {
-            debugPrint('❌ Endereço vazio');
-            _showError('Erro ao criar endereço Bitcoin');
-            return;
-          }
-          
-          debugPrint('✅ Endereço criado: $address, navegando...');
-          
-          // Navigate to On-chain payment screen
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => OnchainPaymentScreen(
-                address: address,
-                btcAmount: btcAmount,
-                totalBrl: totalBrl,
-                amountSats: amountSats,
-                orderId: order.id,
-              ),
-            ),
-          );
-        } else {
+        if (addressData == null || addressData['success'] != true) {
+          if (mounted) Navigator.of(context).pop();
           debugPrint('❌ Erro ao criar endereço onchain');
           _showError('Erro ao criar endereço Bitcoin: ${addressData?['error'] ?? 'desconhecido'}');
+          return;
         }
+        
+        final address = addressData['swap']?['bitcoinAddress'] ?? '';
+        
+        if (address.isEmpty) {
+          if (mounted) Navigator.of(context).pop();
+          debugPrint('❌ Endereço vazio');
+          _showError('Erro ao criar endereço Bitcoin');
+          return;
+        }
+        
+        debugPrint('✅ Endereço criado! NÃO criando ordem ainda - só após pagamento!');
+        
+        // Fechar popup de loading
+        if (mounted) Navigator.of(context).pop();
+        
+        if (!mounted) return;
+        
+        // 🔥 NOVO FLUXO: NÃO criar ordem agora!
+        // Ordem será criada SOMENTE quando pagamento for confirmado
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => OnchainPaymentScreen(
+              address: address,
+              btcAmount: btcAmount,
+              totalBrl: totalBrl,
+              amountSats: amountSats,
+              orderId: '', // Ordem será criada após pagamento
+              // Dados para criar ordem após pagamento
+              billType: _billData!['billType'] as String,
+              billCode: _codeController.text.trim(),
+              billAmount: billAmount,
+              btcPrice: btcPrice,
+            ),
+          ),
+        );
       }
     } catch (e) {
       debugPrint('❌ Exception em _createPayment: $e');

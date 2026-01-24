@@ -12,7 +12,13 @@ class OnchainPaymentScreen extends StatefulWidget {
   final double btcAmount;
   final double totalBrl;
   final int amountSats;
-  final String orderId;
+  final String orderId; // Pode ser vazio se ordem ainda não foi criada
+  
+  // 🔥 NOVOS CAMPOS: Dados para criar ordem APÓS pagamento
+  final String? billType;
+  final String? billCode;
+  final double? billAmount;
+  final double? btcPrice;
 
   const OnchainPaymentScreen({
     Key? key,
@@ -21,6 +27,10 @@ class OnchainPaymentScreen extends StatefulWidget {
     required this.totalBrl,
     required this.amountSats,
     required this.orderId,
+    this.billType,
+    this.billCode,
+    this.billAmount,
+    this.btcPrice,
   }) : super(key: key);
 
   @override
@@ -33,6 +43,7 @@ class _OnchainPaymentScreenState extends State<OnchainPaymentScreen> {
   int _confirmations = 0;
   int _secondsElapsed = 0;
   Timer? _timerForDisplay;
+  String? _createdOrderId; // ID da ordem criada após pagamento
 
   @override
   void initState() {
@@ -44,7 +55,7 @@ class _OnchainPaymentScreenState extends State<OnchainPaymentScreen> {
     
     _monitor = PaymentMonitorService(breezProvider);
     _monitor!.monitorOnchainAddress(
-      paymentId: widget.orderId,
+      paymentId: widget.orderId.isNotEmpty ? widget.orderId : 'pending_${DateTime.now().millisecondsSinceEpoch}',
       address: widget.address,
       expectedSats: widget.amountSats,
       checkInterval: const Duration(seconds: 30), // On-chain é mais lento
@@ -55,18 +66,51 @@ class _OnchainPaymentScreenState extends State<OnchainPaymentScreen> {
             _confirmations = 1;
           });
           
-          // ⚡ CRÍTICO: Primeiro publicar ordem no Nostr AGORA que o pagamento foi confirmado!
-          debugPrint('🚀 Pagamento on-chain confirmado! Publicando ordem no Nostr...');
-          final published = await orderProvider.publishOrderAfterPayment(widget.orderId);
-          if (published) {
-            debugPrint('✅ Ordem publicada no Nostr - Bros agora podem vê-la!');
+          // 🔥 NOVO FLUXO: Criar ordem SOMENTE AGORA que o pagamento foi confirmado!
+          String orderId = widget.orderId;
+          
+          if (orderId.isEmpty && widget.billType != null) {
+            debugPrint('🚀 Pagamento on-chain confirmado! CRIANDO ORDEM AGORA...');
+            
+            final order = await orderProvider.createOrder(
+              billType: widget.billType!,
+              billCode: widget.billCode ?? '',
+              amount: widget.billAmount ?? 0,
+              btcAmount: widget.btcAmount,
+              btcPrice: widget.btcPrice ?? 0,
+            );
+            
+            if (order != null) {
+              orderId = order.id;
+              _createdOrderId = orderId;
+              debugPrint('✅ Ordem CRIADA após pagamento on-chain: $orderId');
+            } else {
+              debugPrint('❌ Falha ao criar ordem após pagamento on-chain!');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Erro ao criar ordem. Pagamento recebido mas ordem não foi criada.'),
+                    backgroundColor: Colors.orange,
+                    duration: Duration(seconds: 5),
+                  ),
+                );
+              }
+              return;
+            }
           } else {
-            debugPrint('⚠️ Falha ao publicar ordem no Nostr');
+            // Ordem já existe (fluxo antigo) - apenas publicar
+            debugPrint('🚀 Pagamento on-chain confirmado! Publicando ordem existente...');
+            final published = await orderProvider.publishOrderAfterPayment(orderId);
+            if (published) {
+              debugPrint('✅ Ordem publicada no Nostr - Bros agora podem vê-la!');
+            } else {
+              debugPrint('⚠️ Falha ao publicar ordem no Nostr');
+            }
           }
           
           // Atualizar status da ordem
           await orderProvider.updateOrderStatus(
-            orderId: widget.orderId,
+            orderId: orderId,
             status: 'confirmed',
           );
           

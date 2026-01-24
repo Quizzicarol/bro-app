@@ -644,7 +644,8 @@ class NostrOrderService {
     return orders;
   }
   
-  /// Busca TODOS os eventos de UPDATE de status (kind 30080)
+  /// Busca TODOS os eventos de UPDATE de status (kind 30080, 30081)
+  /// Inclui: updates de status, conclusões de ordem
   Future<Map<String, Map<String, dynamic>>> _fetchAllOrderStatusUpdates() async {
     final updates = <String, Map<String, dynamic>>{}; // orderId -> latest update
     
@@ -652,10 +653,11 @@ class NostrOrderService {
     
     for (final relay in _relays.take(3)) {
       try {
+        // Buscar TODOS os tipos de update: 30080 (update), 30081 (complete)
         final events = await _fetchFromRelay(
           relay,
-          kinds: [kindBroPaymentProof], // kind 30080 = updates
-          tags: {'#t': ['bro-update']},
+          kinds: [kindBroPaymentProof, kindBroComplete], // 30080 e 30081
+          tags: {'#t': [broTag]}, // Buscar por bro-order tag genérica
           limit: 200,
         );
         
@@ -663,9 +665,10 @@ class NostrOrderService {
           try {
             final content = event['parsedContent'] ?? jsonDecode(event['content']);
             final eventType = content['type'] as String?;
+            final eventKind = event['kind'] as int?;
             
-            // Só processar eventos de update
-            if (eventType != 'bro_order_update') continue;
+            // Processar eventos de update OU complete
+            if (eventType != 'bro_order_update' && eventType != 'bro_complete') continue;
             
             final orderId = content['orderId'] as String?;
             if (orderId == null) continue;
@@ -677,13 +680,19 @@ class NostrOrderService {
             final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
             
             if (existingUpdate == null || createdAt > existingCreatedAt) {
+              // Determinar status baseado no tipo de evento
+              String? status = content['status'] as String?;
+              if (eventType == 'bro_complete' || eventKind == kindBroComplete) {
+                status = 'awaiting_confirmation'; // Bro pagou, aguardando confirmação do usuário
+              }
+              
               updates[orderId] = {
                 'orderId': orderId,
-                'status': content['status'],
+                'status': status,
                 'providerId': content['providerId'],
                 'created_at': createdAt,
               };
-              debugPrint('   📥 Update: $orderId -> status=${content['status']}');
+              debugPrint('   📥 Update: $orderId -> status=$status (type=$eventType)');
             }
           } catch (e) {
             // Ignorar eventos mal formatados

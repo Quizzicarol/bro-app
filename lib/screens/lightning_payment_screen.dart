@@ -12,9 +12,16 @@ class LightningPaymentScreen extends StatefulWidget {
   final String invoice;
   final int amountSats;
   final double totalBrl;
-  final String orderId;
+  final String orderId; // Pode ser vazio se ordem ainda não foi criada
   final String paymentHash;
   final String? receiver;
+  
+  // 🔥 NOVOS CAMPOS: Dados para criar ordem APÓS pagamento
+  final String? billType;
+  final String? billCode;
+  final double? billAmount;
+  final double? btcAmount;
+  final double? btcPrice;
 
   const LightningPaymentScreen({
     Key? key,
@@ -24,6 +31,11 @@ class LightningPaymentScreen extends StatefulWidget {
     required this.orderId,
     required this.paymentHash,
     this.receiver,
+    this.billType,
+    this.billCode,
+    this.billAmount,
+    this.btcAmount,
+    this.btcPrice,
   }) : super(key: key);
 
   @override
@@ -36,6 +48,7 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
   StreamSubscription? _eventSubscription;
   bool _isPaid = false;
   bool _isChecking = false;
+  String? _createdOrderId; // ID da ordem criada após pagamento
 
   @override
   void initState() {
@@ -112,28 +125,64 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
     if (mounted) {
       final orderProvider = context.read<OrderProvider>();
       
-      // ⚡ CRÍTICO: Primeiro publicar ordem no Nostr AGORA que o pagamento foi confirmado!
-      // Antes a ordem estava em 'draft' (não visível para Bros)
-      // Agora vai para 'pending' e é publicada no Nostr
-      debugPrint('🚀 Pagamento confirmado! Publicando ordem no Nostr...');
-      final published = await orderProvider.publishOrderAfterPayment(widget.orderId);
-      if (published) {
-        debugPrint('✅ Ordem publicada no Nostr - Bros agora podem vê-la!');
+      // 🔥 NOVO FLUXO: Criar ordem SOMENTE AGORA que o pagamento foi confirmado!
+      // Isso evita criar ordens "fantasma" que não foram pagas
+      String orderId = widget.orderId;
+      
+      if (orderId.isEmpty && widget.billType != null) {
+        debugPrint('🚀 Pagamento confirmado! CRIANDO ORDEM AGORA...');
+        
+        final order = await orderProvider.createOrder(
+          billType: widget.billType!,
+          billCode: widget.billCode ?? '',
+          amount: widget.billAmount ?? 0,
+          btcAmount: widget.btcAmount ?? 0,
+          btcPrice: widget.btcPrice ?? 0,
+        );
+        
+        if (order != null) {
+          orderId = order.id;
+          _createdOrderId = orderId;
+          debugPrint('✅ Ordem CRIADA após pagamento: $orderId');
+          
+          // Salvar paymentHash na ordem
+          if (widget.paymentHash.isNotEmpty) {
+            await orderProvider.setOrderPaymentHash(orderId, widget.paymentHash, widget.invoice);
+            debugPrint('✅ PaymentHash salvo na ordem: ${widget.paymentHash}');
+          }
+        } else {
+          debugPrint('❌ Falha ao criar ordem após pagamento!');
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Erro ao criar ordem. Pagamento recebido mas ordem não foi criada.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 5),
+            ),
+          );
+          return;
+        }
       } else {
-        debugPrint('⚠️ Falha ao publicar ordem no Nostr');
+        // Ordem já existe (fluxo antigo) - apenas publicar
+        debugPrint('🚀 Pagamento confirmado! Publicando ordem existente...');
+        final published = await orderProvider.publishOrderAfterPayment(orderId);
+        if (published) {
+          debugPrint('✅ Ordem publicada no Nostr - Bros agora podem vê-la!');
+        } else {
+          debugPrint('⚠️ Falha ao publicar ordem no Nostr');
+        }
       }
       
       // Status payment_received = usuário pagou via Lightning, aguardando Bro aceitar
       await orderProvider.updateOrderStatus(
-        orderId: widget.orderId,
+        orderId: orderId,
         status: 'payment_received',
       );
-      debugPrint('✅ Ordem ${widget.orderId} atualizada para payment_received');
+      debugPrint('✅ Ordem $orderId atualizada para payment_received');
 
       // Registrar taxa da plataforma (2%)
       try {
         await PlatformFeeService.recordFee(
-          orderId: widget.orderId,
+          orderId: orderId,
           transactionBrl: widget.totalBrl,
           transactionSats: widget.amountSats,
           providerPubkey: widget.receiver ?? 'unknown',
@@ -160,7 +209,7 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
           '/order-status',
           (route) => route.isFirst,
           arguments: {
-            'orderId': widget.orderId,
+            'orderId': orderId,
             'amountBrl': widget.totalBrl,
             'amountSats': widget.amountSats,
           },

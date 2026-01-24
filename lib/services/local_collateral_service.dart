@@ -237,10 +237,14 @@ class LocalCollateralService {
       return (false, 'Ordem acima do limite do tier (máx R\$ ${collateral.maxOrderBrl.toStringAsFixed(0)})');
     }
     
-    // Verificar se carteira tem saldo suficiente para a garantia
-    if (walletBalanceSats < collateral.lockedSats) {
+    // 🔥 TOLERÂNCIA DE 10% - Permitir pequenas oscilações do Bitcoin
+    final tolerancePercent = 0.10; // 10%
+    final minRequired = (collateral.lockedSats * (1 - tolerancePercent)).round();
+    
+    // Verificar se carteira tem saldo suficiente (com tolerância)
+    if (walletBalanceSats < minRequired) {
       final deficit = collateral.lockedSats - walletBalanceSats;
-      debugPrint('❌ canAcceptOrder: Saldo insuficiente ($walletBalanceSats < ${collateral.lockedSats})');
+      debugPrint('❌ canAcceptOrder: Saldo insuficiente ($walletBalanceSats < $minRequired com tolerância 10%)');
       return (false, 'Saldo insuficiente: faltam $deficit sats para manter o tier ${collateral.tierName}');
     }
     

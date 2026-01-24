@@ -116,17 +116,23 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         );
         
         final requiredSats = currentTierDef.requiredCollateralSats;
-        debugPrint('🏷️ Tier ${currentTierDef.id}: requer $requiredSats sats, carteira tem $walletBalance sats');
         
-        // O tier está em risco se o SALDO DA CARTEIRA for menor que o requerido
-        if (walletBalance < requiredSats) {
+        // 🔥 TOLERÂNCIA DE 10% - Não exigir mais sats por pequenas oscilações
+        // Só considera "em risco" se faltar mais de 10% do requerido
+        final tolerancePercent = 0.10; // 10%
+        final minRequired = (requiredSats * (1 - tolerancePercent)).round();
+        
+        debugPrint('🏷️ Tier ${currentTierDef.id}: requer $requiredSats sats (mín com tolerância: $minRequired), carteira tem $walletBalance sats');
+        
+        // O tier está em risco se o SALDO DA CARTEIRA for menor que o mínimo COM TOLERÂNCIA
+        if (walletBalance < minRequired) {
           _tierAtRisk = true;
           _tierDeficit = requiredSats - walletBalance;
-          debugPrint('⚠️ Tier em risco! Faltam $_tierDeficit sats');
+          debugPrint('⚠️ Tier em risco! Saldo abaixo de 90% do requerido. Faltam $_tierDeficit sats');
         } else {
           _tierAtRisk = false;
           _tierDeficit = null;
-          debugPrint('✅ Tier ativo! Saldo suficiente');
+          debugPrint('✅ Tier ativo! Saldo suficiente (tolerância 10%)');
         }
       } else {
         // Se não conseguiu preço, assume que está ok

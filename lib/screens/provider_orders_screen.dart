@@ -49,6 +49,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   LocalCollateral? _currentTier;
   bool _tierAtRisk = false;
   int? _tierDeficit;
+  bool _tierDataLoaded = false; // Indica se os dados do tier foram carregados com sucesso
 
   @override
   void initState() {
@@ -82,6 +83,10 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
 
   /// Verifica o status do tier e se precisa de atenção
   Future<void> _checkTierStatus() async {
+    // Resetar flag de dados carregados até ter certeza
+    _tierDataLoaded = false;
+    if (mounted) setState(() {});
+    
     try {
       _currentTier = await _collateralService.getCollateral();
       debugPrint('🏷️ _checkTierStatus: tier=${_currentTier?.tierName ?? "null"}');
@@ -89,6 +94,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       if (_currentTier == null) {
         _tierAtRisk = false;
         _tierDeficit = null;
+        _tierDataLoaded = true; // Dados carregados: não tem tier
         if (mounted) setState(() {});
         return;
       }
@@ -134,10 +140,12 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           _tierDeficit = null;
           debugPrint('✅ Tier ativo! Saldo suficiente (tolerância 10%)');
         }
+        _tierDataLoaded = true; // Dados carregados com sucesso
       } else {
-        // Se não conseguiu preço, assume que está ok
+        // Se não conseguiu preço, assume que está ok MAS marca como carregado
         _tierAtRisk = false;
         _tierDeficit = null;
+        _tierDataLoaded = true;
       }
       
       if (mounted) setState(() {});
@@ -145,6 +153,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       debugPrint('⚠️ Erro ao verificar tier: $e');
       _tierAtRisk = false;
       _tierDeficit = null;
+      _tierDataLoaded = true; // Marcar como carregado mesmo com erro, para não travar a UI
     }
   }
 
@@ -351,7 +360,8 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         top: false, // AppBar já lida com safe area superior
         child: Consumer2<CollateralProvider, OrderProvider>(
           builder: (context, collateralProvider, orderProvider, child) {
-            if (_isLoading) {
+            // Mostrar loading enquanto dados do tier não foram carregados
+            if (_isLoading || !_tierDataLoaded) {
               return Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -359,9 +369,11 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                     const CircularProgressIndicator(color: Colors.orange),
                     const SizedBox(height: 16),
                     Text(
-                      _isSyncingNostr 
-                          ? '🔄 Sincronizando com Nostr...'
-                          : 'Carregando ordens...',
+                      !_tierDataLoaded
+                          ? '🔒 Verificando status do tier...'
+                          : _isSyncingNostr 
+                              ? '🔄 Sincronizando com Nostr...'
+                              : 'Carregando ordens...',
                       style: const TextStyle(color: Colors.white70, fontSize: 14),
                     ),
                     if (_isSyncingNostr)
@@ -750,6 +762,20 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                       ),
                     ),
                     const Spacer(),
+                    // ID da ordem para controle
+                    const Icon(Icons.tag, color: Colors.white38, size: 12),
+                    const SizedBox(width: 4),
+                    Text(
+                      orderId.length > 8 ? orderId.substring(0, 8) : orderId,
+                      style: const TextStyle(color: Colors.white38, fontSize: 11, fontFamily: 'monospace'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Icon(Icons.access_time, color: Colors.white54, size: 14),
+                    const SizedBox(width: 4),
                     Text(
                       _formatDate(createdAt),
                       style: const TextStyle(color: Colors.white54, fontSize: 12),

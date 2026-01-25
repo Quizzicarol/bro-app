@@ -399,8 +399,9 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             const SizedBox(height: 16),
           ],
           
-          // Upload de comprovante (se já aceitou)
-          if (_orderAccepted && _orderDetails!['status'] != 'awaiting_confirmation') ...[
+          // Upload de comprovante - APENAS quando Bro aceitou mas ainda não pagou
+          // NÃO mostrar em ordens concluídas, canceladas ou aguardando confirmação
+          if (_orderAccepted && _orderDetails!['status'] == 'accepted') ...[
             _buildReceiptSection(),
           ],
           
@@ -426,9 +427,25 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Valor da Conta',
-            style: TextStyle(color: Colors.white60, fontSize: 14),
+          // ID da ordem no topo do card
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Valor da Conta',
+                style: TextStyle(color: Colors.white60, fontSize: 14),
+              ),
+              Row(
+                children: [
+                  const Icon(Icons.tag, color: Colors.white38, size: 14),
+                  const SizedBox(width: 4),
+                  Text(
+                    widget.orderId.length > 8 ? widget.orderId.substring(0, 8) : widget.orderId,
+                    style: const TextStyle(color: Colors.white38, fontSize: 12, fontFamily: 'monospace'),
+                  ),
+                ],
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           Text(

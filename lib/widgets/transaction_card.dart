@@ -6,6 +6,7 @@ class TransactionCard extends StatelessWidget {
   final String amount;
   final String status;
   final String statusLabel;
+  final String? orderId; // ID da ordem para controle administrativo
   final VoidCallback? onTap;
 
   const TransactionCard({
@@ -14,6 +15,7 @@ class TransactionCard extends StatelessWidget {
     required this.amount,
     required this.status,
     required this.statusLabel,
+    this.orderId,
     this.onTap,
   }) : super(key: key);
 
@@ -61,13 +63,31 @@ class TransactionCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      Row(
+                        children: [
+                          Text(
+                            title,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const Spacer(),
+                          // ID da ordem para controle
+                          if (orderId != null && orderId!.isNotEmpty) ...[
+                            Icon(Icons.tag, color: Colors.white38, size: 12),
+                            const SizedBox(width: 4),
+                            Text(
+                              orderId!.length > 8 ? orderId!.substring(0, 8) : orderId!,
+                              style: const TextStyle(
+                                color: Colors.white38,
+                                fontSize: 10,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                       const SizedBox(height: 4),
                       Text(

@@ -1682,11 +1682,17 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     
     if (_orderDetails != null && _orderDetails!['metadata'] != null) {
       metadata = _orderDetails!['metadata'] as Map<String, dynamic>;
-    } else if (AppConfig.testMode) {
-      // Em modo teste, buscar do OrderProvider
+    }
+    
+    // SEMPRE tentar buscar do OrderProvider também (não só em testMode)
+    // porque o metadata pode ter sido atualizado após sincronização do Nostr
+    if (metadata == null || metadata.isEmpty) {
       final orderProvider = context.read<OrderProvider>();
       final order = orderProvider.getOrderById(widget.orderId);
-      metadata = order?.metadata;
+      if (order?.metadata != null) {
+        metadata = order!.metadata;
+        debugPrint('🔍 Metadata carregado do OrderProvider');
+      }
     }
 
     debugPrint('🔍 _buildReceiptCard - metadata keys: ${metadata?.keys.toList()}');

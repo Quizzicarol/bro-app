@@ -920,10 +920,13 @@ class NostrOrderService {
     final updates = <String, Map<String, dynamic>>{}; // orderId -> latest update
     
     debugPrint('🔍 Buscando atualizações para provedor ${providerPubkey.substring(0, 16)}...');
+    if (orderIds != null) {
+      debugPrint('   Ordens a verificar: ${orderIds.map((id) => id.substring(0, 8)).join(", ")}');
+    }
 
     for (final relay in _relays.take(3)) {
       try {
-        // Buscar eventos de UPDATE (kind 30080) onde o provedor é tagged
+        // ESTRATÉGIA 1: Buscar eventos de UPDATE (kind 30080) onde o provedor é tagged
         var events = await _fetchFromRelay(
           relay,
           kinds: [kindBroPaymentProof], // 30080 = updates de status
@@ -931,28 +934,52 @@ class NostrOrderService {
           limit: 100,
         );
         
-        debugPrint('   $relay: ${events.length} eventos de update via #p');
+        debugPrint('   $relay: ${events.length} eventos via #p');
         
-        // Também buscar por tag #t genérica se não encontrou
-        if (events.isEmpty && orderIds != null && orderIds.isNotEmpty) {
+        // ESTRATÉGIA 2: Buscar por tag #t genérica e filtrar por orderId
+        if (orderIds != null && orderIds.isNotEmpty) {
           final altEvents = await _fetchFromRelay(
             relay,
             kinds: [kindBroPaymentProof],
             tags: {'#t': ['bro-update']},
-            limit: 100,
+            limit: 200,
           );
           debugPrint('   $relay: ${altEvents.length} eventos via #t (fallback)');
           
-          // Filtrar apenas eventos das ordens que nos interessam
-          events = altEvents.where((e) {
+          // Adicionar eventos que correspondem às ordens que buscamos
+          for (final e in altEvents) {
             try {
               final content = e['parsedContent'] ?? jsonDecode(e['content']);
               final eventOrderId = content['orderId'] as String?;
-              return eventOrderId != null && orderIds.contains(eventOrderId);
-            } catch (_) {
-              return false;
-            }
-          }).toList();
+              if (eventOrderId != null && orderIds.contains(eventOrderId)) {
+                // Verificar se já não temos este evento
+                final eventId = e['id'] as String?;
+                final alreadyHave = events.any((existing) => existing['id'] == eventId);
+                if (!alreadyHave) {
+                  events.add(e);
+                  debugPrint('   📥 Encontrado via fallback: ordem $eventOrderId');
+                }
+              }
+            } catch (_) {}
+          }
+        }
+        
+        // ESTRATÉGIA 3: Buscar diretamente por cada orderId (mais específico)
+        if (orderIds != null && events.isEmpty) {
+          for (final orderId in orderIds.take(5)) { // Limitar a 5 para não sobrecarregar
+            try {
+              final orderEvents = await _fetchFromRelay(
+                relay,
+                kinds: [kindBroPaymentProof],
+                tags: {'#orderId': [orderId]},
+                limit: 10,
+              );
+              if (orderEvents.isNotEmpty) {
+                debugPrint('   📥 Encontrado via #orderId: ${orderEvents.length} eventos para $orderId');
+                events.addAll(orderEvents);
+              }
+            } catch (_) {}
+          }
         }
         
         for (final event in events) {
@@ -975,7 +1002,7 @@ class NostrOrderService {
                 'created_at': createdAt,
               };
               
-              debugPrint('   📥 Update para provedor: $orderId -> status=$status');
+              debugPrint('   📥 Update: ${orderId.substring(0, 8)} -> status=$status');
             }
           } catch (e) {
             debugPrint('   ⚠️ Erro ao processar evento: $e');

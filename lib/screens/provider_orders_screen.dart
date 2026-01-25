@@ -907,9 +907,9 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           ),
           const SizedBox(height: 12),
           TextButton.icon(
-            onPressed: () => Navigator.pushNamed(context, '/provider-balance'),
+            onPressed: () => Navigator.pushNamed(context, '/wallet'),
             icon: const Icon(Icons.account_balance_wallet, size: 18),
-            label: const Text('Ver Carteira do Bro'),
+            label: const Text('Ver Carteira'),
             style: TextButton.styleFrom(foregroundColor: Colors.orange),
           ),
         ],

@@ -50,11 +50,15 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   bool _tierAtRisk = false;
   int? _tierDeficit;
   bool _tierDataLoaded = false; // Indica se os dados do tier foram carregados com sucesso
+  int _lastTabIndex = 0; // Para detectar mudança de aba
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    
+    // Adicionar listener para ressincronizar ao mudar de aba
+    _tabController.addListener(_onTabChanged);
     
     debugPrint('🟢 ProviderOrdersScreen initState iniciado');
     debugPrint('   providerId: ${widget.providerId}');
@@ -68,9 +72,25 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       _checkTierStatus();
     });
   }
+  
+  /// Handler para mudança de aba - ressincroniza dados
+  void _onTabChanged() {
+    if (_tabController.indexIsChanging) return; // Só queremos quando acabou de mudar
+    
+    final newIndex = _tabController.index;
+    if (newIndex != _lastTabIndex) {
+      _lastTabIndex = newIndex;
+      debugPrint('🔄 Tab mudou para $newIndex - ressincronizando dados...');
+      
+      // Ressincronizar ordens e status do tier
+      _loadOrders();
+      _checkTierStatus();
+    }
+  }
 
   @override
   void dispose() {
+    _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     
     // CRÍTICO: Resetar modo provedor ao sair da tela

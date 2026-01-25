@@ -335,6 +335,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
 
   Widget _buildContent() {
     final amount = (_orderDetails!['amount'] as num).toDouble();
+    final status = _orderDetails!['status'] as String? ?? 'pending';
     // Usar billType e billCode diretamente do modelo Order
     final billType = _orderDetails!['billType'] as String? ?? 
                      _orderDetails!['bill_type'] as String? ?? 
@@ -343,7 +344,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                      _orderDetails!['bill_code'] as String? ?? '';
     
     // DEBUG: Log para verificar se billCode está presente
-    debugPrint('🔍 _buildContent: billType=$billType, billCode=${billCode.isNotEmpty ? "${billCode.substring(0, billCode.length > 20 ? 20 : billCode.length)}..." : "EMPTY"}');
+    debugPrint('🔍 _buildContent: billType=$billType, status=$status, billCode=${billCode.isNotEmpty ? "${billCode.substring(0, billCode.length > 20 ? 20 : billCode.length)}..." : "EMPTY"}');
     
     // SEMPRE construir payment_data a partir do billCode se existir
     Map<String, dynamic>? paymentData;
@@ -367,42 +368,62 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     }
     
     final providerFee = amount * EscrowService.providerFeePercent / 100;
+    
+    // Verificar se ordem está concluída ou aguardando confirmação
+    final isCompleted = status == 'completed';
+    final isAwaitingConfirmation = status == 'awaiting_confirmation';
+    final isAccepted = status == 'accepted';
+    final isPending = status == 'pending' || status == 'payment_received';
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Valor da ordem
-          _buildAmountCard(amount, providerFee),
-          const SizedBox(height: 16),
-
-          // Status
-          _buildStatusCard(),
-          const SizedBox(height: 16),
-
-          // Dados de pagamento - SEMPRE mostrar se tiver billCode
-          if (paymentData != null && paymentData.isNotEmpty) ...[
-            _buildPaymentDataCard(billType, paymentData),
+          // ========== ORDEM CONCLUÍDA - Tela de Resumo ==========
+          if (isCompleted) ...[
+            _buildCompletedOrderView(amount, providerFee, billType),
+          ]
+          // ========== AGUARDANDO CONFIRMAÇÃO DO USUÁRIO ==========
+          else if (isAwaitingConfirmation) ...[
+            _buildAmountCard(amount, providerFee),
             const SizedBox(height: 16),
-          ],
-
-          // Botão de aceitar (se ainda não aceitou)
-          if (!_orderAccepted) ...[
-            _buildAcceptButton(),
+            _buildStatusCard(),
             const SizedBox(height: 16),
-          ],
-
-          // Seção de timer e disputa (se aguardando confirmação)
-          if (_orderDetails!['status'] == 'awaiting_confirmation') ...[  
             _buildAwaitingConfirmationSection(),
             const SizedBox(height: 16),
-          ],
-          
-          // Upload de comprovante - APENAS quando Bro aceitou mas ainda não pagou
-          // NÃO mostrar em ordens concluídas, canceladas ou aguardando confirmação
-          if (_orderAccepted && _orderDetails!['status'] == 'accepted') ...[
+          ]
+          // ========== BRO ACEITOU - PRECISA PAGAR A CONTA ==========
+          else if (isAccepted) ...[
+            _buildAmountCard(amount, providerFee),
+            const SizedBox(height: 16),
+            _buildStatusCard(),
+            const SizedBox(height: 16),
+            // Mostrar código de pagamento APENAS quando Bro precisa pagar
+            if (paymentData != null && paymentData.isNotEmpty) ...[
+              _buildPaymentDataCard(billType, paymentData),
+              const SizedBox(height: 16),
+            ],
             _buildReceiptSection(),
+          ]
+          // ========== ORDEM DISPONÍVEL - PODE ACEITAR ==========
+          else if (isPending) ...[
+            _buildAmountCard(amount, providerFee),
+            const SizedBox(height: 16),
+            _buildStatusCard(),
+            const SizedBox(height: 16),
+            // Mostrar código de pagamento para Bro ver antes de aceitar
+            if (paymentData != null && paymentData.isNotEmpty) ...[
+              _buildPaymentDataCard(billType, paymentData),
+              const SizedBox(height: 16),
+            ],
+            _buildAcceptButton(),
+          ]
+          // ========== OUTROS STATUS ==========
+          else ...[
+            _buildAmountCard(amount, providerFee),
+            const SizedBox(height: 16),
+            _buildStatusCard(),
           ],
           
           // Padding extra para não ficar sob a barra de navegação
@@ -410,6 +431,265 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         ],
       ),
     );
+  }
+  
+  /// Tela de resumo para ordem concluída - mostra ganho, timeline, sucesso
+  Widget _buildCompletedOrderView(double amount, double providerFee, String billType) {
+    final totalGanho = providerFee;
+    final metadata = _orderDetails?['metadata'] as Map<String, dynamic>?;
+    final proofImage = metadata?['paymentProof'] as String?;
+    final createdAt = _orderDetails?['createdAt'] != null 
+        ? DateTime.tryParse(_orderDetails!['createdAt'].toString())
+        : null;
+    
+    return Column(
+      children: [
+        // Card de Sucesso
+        Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.green.withOpacity(0.2), Colors.green.withOpacity(0.05)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.green.withOpacity(0.5)),
+          ),
+          child: Column(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.green, size: 64),
+              const SizedBox(height: 16),
+              const Text(
+                '🎉 Ordem Concluída!',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'O usuário confirmou o recebimento',
+                style: TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+              const SizedBox(height: 24),
+              
+              // ID da Ordem
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.tag, color: Colors.white38, size: 16),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Ordem #${widget.orderId.length > 8 ? widget.orderId.substring(0, 8) : widget.orderId}',
+                    style: const TextStyle(color: Colors.white54, fontSize: 13, fontFamily: 'monospace'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        
+        // Resumo Financeiro
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1E1E),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.orange.withOpacity(0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '💰 Resumo Financeiro',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              _buildFinancialRow('Valor da conta', 'R\$ ${amount.toStringAsFixed(2)}', Colors.white70),
+              const SizedBox(height: 8),
+              _buildFinancialRow('Tipo', billType.toUpperCase(), Colors.orange),
+              const SizedBox(height: 8),
+              const Divider(color: Colors.white24),
+              const SizedBox(height: 8),
+              _buildFinancialRow(
+                'Seu Ganho (${EscrowService.providerFeePercent}%)', 
+                '+ R\$ ${totalGanho.toStringAsFixed(2)}', 
+                Colors.green,
+                bold: true,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        
+        // Timeline de etapas
+        _buildCompletedTimeline(createdAt),
+        const SizedBox(height: 20),
+        
+        // Ver comprovante (se existir)
+        if (proofImage != null && proofImage != 'image_base64_stored') ...[
+          _buildViewProofButton(proofImage),
+          const SizedBox(height: 16),
+        ],
+      ],
+    );
+  }
+  
+  Widget _buildFinancialRow(String label, String value, Color valueColor, {bool bold = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.white60, fontSize: 14)),
+        Text(
+          value,
+          style: TextStyle(
+            color: valueColor,
+            fontSize: bold ? 18 : 14,
+            fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildCompletedTimeline(DateTime? createdAt) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '📋 Etapas Concluídas',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 16),
+          _buildTimelineStep('Ordem criada pelo usuário', true, isFirst: true),
+          _buildTimelineStep('Você aceitou a ordem', true),
+          _buildTimelineStep('Conta paga por você', true),
+          _buildTimelineStep('Comprovante enviado', true),
+          _buildTimelineStep('Usuário confirmou recebimento', true, isLast: true),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildTimelineStep(String label, bool completed, {bool isFirst = false, bool isLast = false}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Column(
+          children: [
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: completed ? Colors.green : Colors.grey,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                completed ? Icons.check : Icons.circle,
+                size: 16,
+                color: Colors.white,
+              ),
+            ),
+            if (!isLast)
+              Container(
+                width: 2,
+                height: 30,
+                color: completed ? Colors.green.withOpacity(0.5) : Colors.grey.withOpacity(0.3),
+              ),
+          ],
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(bottom: isLast ? 0 : 20),
+            child: Text(
+              label,
+              style: TextStyle(
+                color: completed ? Colors.white : Colors.white54,
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildViewProofButton(String proofImage) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: () => _showProofImage(proofImage),
+        icon: const Icon(Icons.receipt_long),
+        label: const Text('Ver Comprovante Enviado'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: Colors.orange,
+          side: const BorderSide(color: Colors.orange),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+        ),
+      ),
+    );
+  }
+  
+  void _showProofImage(String base64Image) {
+    try {
+      final imageBytes = base64Decode(base64Image);
+      showDialog(
+        context: context,
+        builder: (context) => Dialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppBar(
+                backgroundColor: Colors.transparent,
+                title: const Text('Comprovante Enviado'),
+                leading: IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.memory(
+                    imageBytes,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const Center(
+                      child: Text('Não foi possível carregar a imagem',
+                          style: TextStyle(color: Colors.white70)),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Erro ao carregar comprovante')),
+      );
+    }
   }
 
   Widget _buildAmountCard(double amount, double fee) {
@@ -764,126 +1044,269 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
 
   /// Seção exibida quando provedor enviou comprovante e aguarda confirmação
   Widget _buildAwaitingConfirmationSection() {
+    final amount = (_orderDetails!['amount'] as num).toDouble();
+    final providerFee = amount * EscrowService.providerFeePercent / 100;
     final hoursRemaining = _timeRemaining?.inHours ?? 24;
     final minutesRemaining = (_timeRemaining?.inMinutes ?? 0) % 60;
     final isExpiringSoon = hoursRemaining < 4;
+    final isExpired = _timeRemaining != null && _timeRemaining!.isNegative;
+    final metadata = _orderDetails?['metadata'] as Map<String, dynamic>?;
+    final proofImage = metadata?['paymentProof'] as String?;
     
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isExpiringSoon 
-            ? Colors.red.withOpacity(0.1)
-            : Colors.purple.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isExpiringSoon 
-              ? Colors.red.withOpacity(0.3) 
-              : Colors.purple.withOpacity(0.3),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    // Se o prazo expirou, executar auto-liquidação
+    if (isExpired && !_isProcessingAutoLiquidation) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _executeAutoLiquidation();
+      });
+    }
+    
+    return Column(
+      children: [
+        // Card de Status - Esperando Usuário
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: isExpiringSoon 
+                  ? [Colors.red.withOpacity(0.2), Colors.red.withOpacity(0.05)]
+                  : [Colors.purple.withOpacity(0.2), Colors.purple.withOpacity(0.05)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isExpiringSoon 
+                  ? Colors.red.withOpacity(0.5) 
+                  : Colors.purple.withOpacity(0.5),
+            ),
+          ),
+          child: Column(
             children: [
               Icon(
                 Icons.hourglass_empty, 
                 color: isExpiringSoon ? Colors.red : Colors.purple,
+                size: 48,
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Aguardando Confirmação do Usuário',
-                  style: TextStyle(
-                    color: isExpiringSoon ? Colors.red : Colors.purple,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+              const SizedBox(height: 12),
+              Text(
+                '⏳ Aguardando Usuário',
+                style: TextStyle(
+                  color: isExpiringSoon ? Colors.red : Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'O usuário precisa confirmar que recebeu o pagamento para liberar seus ganhos',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              
+              // ID da Ordem
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.tag, color: Colors.white38, size: 16),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Ordem #${widget.orderId.length > 8 ? widget.orderId.substring(0, 8) : widget.orderId}',
+                    style: const TextStyle(color: Colors.white54, fontSize: 13, fontFamily: 'monospace'),
                   ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        
+        // Resumo do que você vai ganhar
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1E1E),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.green.withOpacity(0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '💰 Você vai receber',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Valor da conta', style: TextStyle(color: Colors.white60, fontSize: 14)),
+                  Text('R\$ ${amount.toStringAsFixed(2)}', style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Seu ganho (${EscrowService.providerFeePercent}%)', style: const TextStyle(color: Colors.white60, fontSize: 14)),
+                  Text(
+                    '+ R\$ ${providerFee.toStringAsFixed(2)}',
+                    style: const TextStyle(color: Colors.green, fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        
+        // Timer
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.black26,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.timer, color: isExpiringSoon ? Colors.red : Colors.orange),
+              const SizedBox(width: 8),
+              Text(
+                isExpired
+                    ? '🔄 Auto-liquidação em andamento...'
+                    : 'Tempo restante: ${hoursRemaining}h ${minutesRemaining}min',
+                style: TextStyle(
+                  color: isExpiringSoon ? Colors.red : Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          
-          // Timer
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.black26,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.timer, color: isExpiringSoon ? Colors.red : Colors.white70),
-                const SizedBox(width: 8),
-                Text(
-                  _timeRemaining != null && !_timeRemaining!.isNegative
-                      ? 'Tempo restante: ${hoursRemaining}h ${minutesRemaining}min'
-                      : 'Prazo expirado - Auto-liquidação em andamento',
-                  style: TextStyle(
-                    color: isExpiringSoon ? Colors.red : Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          
-          // Informação sobre auto-liquidação
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0x1AFF6B35),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text(
-                  '💡 Auto-liquidação após 24h',
-                  style: TextStyle(
-                    color: Color(0xFFFF6B6B),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  'Se o usuário não confirmar o recebimento em 24 horas, '
-                  'os Bitcoin em escrow serão automaticamente liquidados para:\n\n'
-                  '• Pagar você pelo serviço realizado\n'
-                  '• Cobrir as taxas da plataforma\n\n'
-                  'Você pode abrir uma disputa se houver algum problema.',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 13,
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          
-          // Botão de disputa
+        ),
+        const SizedBox(height: 16),
+        
+        // Ver comprovante enviado
+        if (proofImage != null && proofImage != 'image_base64_stored') ...[
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: _showProviderDisputeDialog,
-              icon: const Icon(Icons.gavel),
-              label: const Text('Abrir Disputa'),
+              onPressed: () => _showProofImage(proofImage),
+              icon: const Icon(Icons.receipt_long),
+              label: const Text('Ver Comprovante Enviado'),
               style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFFF6B6B),
-                side: const BorderSide(color: Color(0xFFFF6B6B)),
+                foregroundColor: Colors.orange,
+                side: const BorderSide(color: Colors.orange),
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
             ),
           ),
+          const SizedBox(height: 16),
         ],
-      ),
+        
+        // Informação sobre auto-liquidação
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0x1A4CAF50),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0x334CAF50)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: const [
+              Icon(Icons.info_outline, color: Color(0xFF4CAF50), size: 20),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '💡 Se o usuário não confirmar em 24 horas, a auto-liquidação libera seu pagamento automaticamente.',
+                  style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        
+        // Botão de disputa
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _showProviderDisputeDialog,
+            icon: const Icon(Icons.gavel),
+            label: const Text('Abrir Disputa'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFFF6B6B),
+              side: const BorderSide(color: Color(0xFFFF6B6B)),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+          ),
+        ),
+      ],
     );
+  }
+  
+  bool _isProcessingAutoLiquidation = false;
+  
+  /// Executa auto-liquidação quando prazo de 24h expira
+  Future<void> _executeAutoLiquidation() async {
+    if (_isProcessingAutoLiquidation) return;
+    
+    setState(() {
+      _isProcessingAutoLiquidation = true;
+    });
+    
+    try {
+      debugPrint('🔄 Executando auto-liquidação para ordem ${widget.orderId}');
+      
+      final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+      
+      // Usar o proof existente ou um placeholder para auto-liquidação
+      final metadata = _orderDetails?['metadata'] as Map<String, dynamic>?;
+      final existingProof = metadata?['paymentProof'] as String? ?? 'AUTO_LIQUIDATED';
+      
+      // Completar ordem como provedor (isso já marca como awaiting_confirmation -> completed)
+      final success = await orderProvider.completeOrderAsProvider(widget.orderId, existingProof);
+      
+      if (mounted) {
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Auto-liquidação concluída! Seus ganhos foram liberados.'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('⚠️ Erro ao processar auto-liquidação'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        
+        // Recarregar detalhes
+        await _loadOrderDetails();
+      }
+    } catch (e) {
+      debugPrint('❌ Erro na auto-liquidação: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro na auto-liquidação: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessingAutoLiquidation = false;
+        });
+      }
+    }
   }
 
   void _showProviderDisputeDialog() {

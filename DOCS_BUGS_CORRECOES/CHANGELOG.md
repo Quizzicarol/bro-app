@@ -1,5 +1,33 @@
 # 📋 Changelog - Bro App
 
+## [1.0.41] - 2026-01-25
+
+### 🐛 Bug Corrigido
+- **Status "completed" não chegava ao Bro após confirmação do usuário**
+  - Problema: Usuário confirmava pagamento mas Bro continuava vendo "Aguardando Confirmação"
+  - Causa: `providerId` podia ser `null`, então evento Nostr não tinha tag `#p`
+  - Solução: Buscar `providerId` de múltiplas fontes, adicionar logs de debug
+
+### Arquivos Modificados
+- `lib/screens/order_status_screen.dart` - Fallback para buscar providerId
+- `lib/providers/order_provider.dart` - Logs detalhados de publicação Nostr
+
+---
+
+## [1.0.40] - 2026-01-25
+
+### 🐛 Bug Corrigido
+- **Comprovante do Bro não aparecia na tela de status (via Nostr)**
+  - Problema: Card "Comprovante do Bro" aparecia mas sem imagem
+  - Causa: `proofImage` não era capturado dos eventos Nostr durante sincronização
+  - Solução: Salvar `proofImage` em `_fetchAllOrderStatusUpdates` e passar `metadata` em `_applyStatusUpdate`
+
+### Arquivos Modificados
+- `lib/services/nostr_order_service.dart` - Incluir proofImage nos updates
+- `lib/providers/order_provider.dart` - Mesclar metadata ao sincronizar
+
+---
+
 ## [1.0.39] - 2026-01-25
 
 ### 🐛 Bug Crítico Corrigido

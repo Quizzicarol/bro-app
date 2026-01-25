@@ -3319,8 +3319,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       // Buscar informações completas da ordem
       Map<String, dynamic>? orderDetails = _orderDetails;
       
+      // Tentar obter do OrderProvider se não temos _orderDetails
+      final orderProvider = context.read<OrderProvider>();
       if (orderDetails == null) {
-        final orderProvider = context.read<OrderProvider>();
         final order = orderProvider.getOrderById(widget.orderId);
         if (order != null) {
           orderDetails = order.toJson();
@@ -3328,12 +3329,24 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       }
       
       // Pegar o providerId da ordem para notificar o Bro via Nostr
-      final providerId = orderDetails?['providerId'] as String?;
-      debugPrint('📤 Confirmando ordem - providerId: ${providerId?.substring(0, 8) ?? "null"}');
+      // IMPORTANTE: Tentar múltiplas fontes para garantir que temos o providerId
+      String? providerId = orderDetails?['providerId'] as String?;
+      
+      // Fallback: buscar diretamente da ordem no provider
+      if (providerId == null || providerId.isEmpty) {
+        final order = orderProvider.getOrderById(widget.orderId);
+        providerId = order?.providerId;
+      }
+      
+      debugPrint('📤 Confirmando ordem ${widget.orderId.substring(0, 8)}');
+      debugPrint('   providerId: ${providerId?.substring(0, 16) ?? "NULL - PROBLEMA!"}');
+      
+      if (providerId == null || providerId.isEmpty) {
+        debugPrint('⚠️ AVISO: providerId é null - o Bro pode não receber a notificação!');
+      }
 
       // Atualizar status para 'completed' - SEMPRE usar OrderProvider que publica no Nostr
       // IMPORTANTE: Passar providerId para que o Bro seja notificado via tag #p
-      final orderProvider = context.read<OrderProvider>();
       final updateSuccess = await orderProvider.updateOrderStatus(
         orderId: widget.orderId,
         status: 'completed',

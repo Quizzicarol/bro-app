@@ -105,6 +105,94 @@ O `paymentProof` era truncado ao salvar:
 
 ---
 
+## 🐛 Comprovante Não Exibido ao Usuário (Sincronização Nostr) - v1.0.40
+
+### Sintoma
+Usuário abria a tela de status da ordem, o card "Comprovante do Bro" aparecia mas SEM a imagem do comprovante, mesmo o Bro tendo enviado.
+
+### Causa Raiz (3 problemas)
+1. `_fetchAllOrderStatusUpdates()` não salvava o `proofImage` do evento `kindBroComplete`
+2. `_applyStatusUpdate()` criava nova Order mas NÃO passava `metadata` com o comprovante
+3. `syncOrdersFromNostr()` não mesclava `metadata` ao atualizar ordens existentes
+
+### Solução
+```dart
+// Em _fetchAllOrderStatusUpdates() - INCLUIR proofImage:
+updates[orderId] = {
+  'orderId': orderId,
+  'status': status,
+  'providerId': content['providerId'],
+  'proofImage': content['proofImage'], // NOVO!
+  'completedAt': content['completedAt'],
+  'created_at': createdAt,
+};
+
+// Em _applyStatusUpdate() - INCLUIR metadata:
+final proofImage = update['proofImage'] as String?;
+final updatedMetadata = Map<String, dynamic>.from(order.metadata ?? {});
+if (proofImage != null && proofImage.isNotEmpty) {
+  updatedMetadata['proofImage'] = proofImage;
+  updatedMetadata['paymentProof'] = proofImage; // Compatibilidade
+}
+return Order(
+  // ... outros campos ...
+  metadata: updatedMetadata, // NOVO!
+);
+
+// Em syncOrdersFromNostr() - MESCLAR metadata:
+final mergedMetadata = <String, dynamic>{
+  ...?existing.metadata,
+  ...?nostrOrder.metadata,
+};
+_orders[existingIndex] = existing.copyWith(
+  // ... outros campos ...
+  metadata: mergedMetadata.isNotEmpty ? mergedMetadata : null,
+);
+```
+
+### Arquivos
+- `lib/services/nostr_order_service.dart`
+- `lib/providers/order_provider.dart`
+
+---
+
+## 🐛 Status "Completed" Não Propagado para o Bro - v1.0.41
+
+### Sintoma
+Usuário confirmava recebimento do pagamento (marca como "completed"), mas o Bro continuava vendo "Aguardando Confirmação" mesmo após sincronizar.
+
+### Causa Raiz
+O `providerId` poderia ser `null` quando o usuário confirmava, fazendo com que o evento Nostr fosse publicado SEM a tag `['p', providerId]`. O Bro busca updates por `#p: [providerPubkey]` então não encontrava.
+
+### Solução
+```dart
+// Em _handleConfirmPayment() - Garantir providerId:
+String? providerId = orderDetails?['providerId'] as String?;
+
+// Fallback: buscar diretamente da ordem no provider
+if (providerId == null || providerId.isEmpty) {
+  final order = orderProvider.getOrderById(widget.orderId);
+  providerId = order?.providerId;
+}
+
+if (providerId == null || providerId.isEmpty) {
+  debugPrint('⚠️ AVISO: providerId é null - Bro pode não receber!');
+}
+
+// Passar providerId ao atualizar status
+await orderProvider.updateOrderStatus(
+  orderId: widget.orderId,
+  status: 'completed',
+  providerId: providerId,  // CRÍTICO!
+);
+```
+
+### Arquivos
+- `lib/screens/order_status_screen.dart`
+- `lib/providers/order_provider.dart`
+
+---
+
 ## 🐛 Sats "Pendentes" Incorretos
 
 ### Sintoma

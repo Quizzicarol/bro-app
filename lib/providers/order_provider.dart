@@ -987,25 +987,39 @@ class OrderProvider with ChangeNotifier {
             final update = entry.value;
             final newStatus = update['status'] as String?;
             
-            if (newStatus == null) continue;
+            if (newStatus == null) {
+              debugPrint('   ⚠️ ${orderId.substring(0, 8)}: status é null, ignorando');
+              continue;
+            }
             
             final existingIndex = _orders.indexWhere((o) => o.id == orderId);
-            if (existingIndex != -1) {
-              final existing = _orders[existingIndex];
-              
-              debugPrint('   🔍 Verificando ${orderId.substring(0, 8)}: local=${existing.status} vs nostr=$newStatus');
-              
-              // Só atualizar se o novo status é mais avançado
-              if (_isStatusMoreRecent(newStatus, existing.status)) {
-                _orders[existingIndex] = existing.copyWith(
-                  status: newStatus,
-                  completedAt: newStatus == 'completed' ? DateTime.now() : existing.completedAt,
-                );
-                statusUpdated++;
-                debugPrint('   ✅ Ordem ${orderId.substring(0, 8)}: ${existing.status} -> $newStatus');
-              } else {
-                debugPrint('   ⏭️ Ordem ${orderId.substring(0, 8)}: status local ($existing.status) é igual ou mais recente que nostr ($newStatus)');
-              }
+            if (existingIndex == -1) {
+              debugPrint('   ⚠️ ${orderId.substring(0, 8)}: ordem não encontrada localmente');
+              continue;
+            }
+            
+            final existing = _orders[existingIndex];
+            debugPrint('   🔍 Verificando ${orderId.substring(0, 8)}: local="${existing.status}" vs nostr="$newStatus"');
+            
+            // Verificar se é completed e local é awaiting_confirmation
+            if (newStatus == 'completed' && existing.status == 'awaiting_confirmation') {
+              debugPrint('   🎯 MATCH! Usuário confirmou pagamento, atualizando para completed');
+              _orders[existingIndex] = existing.copyWith(
+                status: 'completed',
+                completedAt: DateTime.now(),
+              );
+              statusUpdated++;
+              debugPrint('   ✅ Ordem ${orderId.substring(0, 8)}: awaiting_confirmation -> completed');
+            } else if (_isStatusMoreRecent(newStatus, existing.status)) {
+              // Caso genérico
+              _orders[existingIndex] = existing.copyWith(
+                status: newStatus,
+                completedAt: newStatus == 'completed' ? DateTime.now() : existing.completedAt,
+              );
+              statusUpdated++;
+              debugPrint('   ✅ Ordem ${orderId.substring(0, 8)}: ${existing.status} -> $newStatus');
+            } else {
+              debugPrint('   ⏭️ Status local "${existing.status}" é igual ou mais recente que "$newStatus"');
             }
           }
           

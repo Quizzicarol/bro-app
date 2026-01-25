@@ -3316,16 +3316,20 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     if (confirm != true || !mounted) return;
 
     try {
+      final orderProvider = context.read<OrderProvider>();
+      
+      // NOVO: Sincronizar do Nostr para garantir que temos o providerId atualizado
+      debugPrint('🔄 Sincronizando ordem antes de confirmar...');
+      await orderProvider.syncOrdersFromNostr();
+      
       // Buscar informações completas da ordem
       Map<String, dynamic>? orderDetails = _orderDetails;
       
-      // Tentar obter do OrderProvider se não temos _orderDetails
-      final orderProvider = context.read<OrderProvider>();
-      if (orderDetails == null) {
-        final order = orderProvider.getOrderById(widget.orderId);
-        if (order != null) {
-          orderDetails = order.toJson();
-        }
+      // Tentar obter do OrderProvider (já atualizado após sync)
+      final order = orderProvider.getOrderById(widget.orderId);
+      if (order != null) {
+        orderDetails = order.toJson();
+        debugPrint('📋 Ordem carregada do provider: providerId=${order.providerId?.substring(0, 16) ?? "NULL"}');
       }
       
       // Pegar o providerId da ordem para notificar o Bro via Nostr

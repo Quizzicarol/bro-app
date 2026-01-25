@@ -99,26 +99,41 @@ class OrderProvider with ChangeNotifier {
 
   /// Calcula o total de sats comprometidos com ordens pendentes/ativas (modo cliente)
   /// Este valor deve ser SUBTRAÍDO do saldo total para calcular saldo disponível para garantia
+  /// 
+  /// IMPORTANTE: Só conta ordens que ainda NÃO foram pagas via Lightning!
+  /// - 'draft': Invoice ainda não pago - COMPROMETIDO
+  /// - 'pending': Invoice pago, aguardando Bro aceitar - JÁ SAIU DA CARTEIRA
+  /// - 'payment_received': Invoice pago, aguardando Bro - JÁ SAIU DA CARTEIRA
+  /// - 'accepted', 'awaiting_confirmation', 'completed': JÁ PAGO
+  /// 
+  /// Na prática, APENAS ordens 'draft' deveriam ser contadas, mas removemos
+  /// esse status ao refatorar o fluxo (invoice é pago antes de criar ordem)
   int get committedSats {
-    // SEGURANÇA: Usar _filteredOrders para calcular apenas ordens do usuário atual
-    // Somar btcAmount de todas as ordens pendentes e ativas (que ainda não foram completadas/canceladas)
-    // btcAmount está em BTC, precisa converter para sats (x 100_000_000)
-    final committedOrders = _filteredOrders.where((o) => 
+    // CORRIGIDO: Não contar nenhuma ordem como "comprometida" porque:
+    // 1. 'draft' foi removido - invoice é pago ANTES de criar ordem
+    // 2. Todas as outras já tiveram a invoice paga (sats não estão na carteira)
+    //
+    // Se o usuário tem uma ordem 'pending', os sats JÁ FORAM para o escrow
+    // quando ele pagou a invoice Lightning na tela de pagamento
+    
+    // Manter o log para debug, mas retornar 0
+    final filteredForDebug = _filteredOrders.where((o) => 
       o.status == 'pending' || 
       o.status == 'payment_received' || 
-      o.status == 'confirmed' || 
-      o.status == 'accepted' ||
-      o.status == 'awaiting_confirmation' ||
-      o.status == 'processing'
-    );
+      o.status == 'confirmed'
+    ).toList();
     
-    int total = 0;
-    for (final order in committedOrders) {
-      total += (order.btcAmount * 100000000).toInt();
+    if (filteredForDebug.isNotEmpty) {
+      debugPrint('📋 Ordens do usuário aguardando Bro: ${filteredForDebug.length}');
+      for (final o in filteredForDebug) {
+        debugPrint('   - ${o.id.substring(0, 8)}: ${o.status}, R\$ ${o.amount}, userPubkey=${o.userPubkey?.substring(0, 8) ?? "null"}');
+      }
     }
     
-    debugPrint('💰 Sats comprometidos com ordens: $total sats (${committedOrders.length} ordens)');
-    return total;
+    // RETORNAR 0: Nenhum sat está "comprometido" na carteira
+    // Os sats já saíram quando o usuário pagou a invoice Lightning
+    debugPrint('💰 Sats comprometidos: 0 (ordens pagas já saíram da carteira)');
+    return 0;
   }
 
   // Chave única para salvar ordens deste usuário

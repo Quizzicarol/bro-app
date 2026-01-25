@@ -1128,12 +1128,16 @@ class OrderProvider with ChangeNotifier {
         final ordersJson = json.encode(_orders.map((o) => o.toJson()).toList());
         await prefs.setString(_ordersKey, ordersJson);
         
-        debugPrint('💾 Ordem $orderId atualizada: status=$status, providerId=$providerId');
+        debugPrint('💾 Ordem $orderId atualizada: status=$status, providerId=${providerId ?? "NULL"}');
         
         // IMPORTANTE: Publicar atualização no Nostr para sincronização P2P
         final privateKey = _nostrService.privateKey;
         if (privateKey != null) {
           debugPrint('📤 Publicando atualização de status no Nostr...');
+          debugPrint('   orderId: $orderId');
+          debugPrint('   newStatus: $status');
+          debugPrint('   providerId (tag #p): ${providerId ?? "NENHUM - Bro não receberá!"}');
+          
           final success = await _nostrOrderService.updateOrderStatus(
             privateKey: privateKey,
             orderId: orderId,
@@ -1141,10 +1145,12 @@ class OrderProvider with ChangeNotifier {
             providerId: providerId,
           );
           if (success) {
-            debugPrint('✅ Status publicado no Nostr');
+            debugPrint('✅ Status "$status" publicado no Nostr com tag #p=${providerId ?? "nenhuma"}');
           } else {
             debugPrint('⚠️ Falha ao publicar status no Nostr (ordem salva localmente)');
           }
+        } else {
+          debugPrint('⚠️ Sem chave privada - não publicando no Nostr');
         }
       } else {
         debugPrint('⚠️ Ordem $orderId não encontrada para atualizar');

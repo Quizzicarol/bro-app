@@ -4,7 +4,51 @@ Este documento detalha cada bug encontrado, sua causa raiz e solução implement
 
 ---
 
-## 🚨 CRÍTICO: Vazamento de Ordens Entre Usuários
+## � Status "Completed" Não Atualizado no Modo Bro - v1.0.42 (25/01/2026)
+
+### Sintoma
+Quando usuário confirmava pagamento (status = completed), o Bro continuava vendo "Aguardando confirmação do usuário" mesmo após sincronizar.
+
+### Causa Raiz (múltiplas)
+1. A função `fetchOrderUpdatesForProvider()` só executava a busca por `#orderId` quando `events.isEmpty`, ignorando quando já tinha eventos parciais
+2. Faltava busca por tag `#e` (referência ao evento original)
+3. O `providerId` poderia não ser encontrado por usar diferentes formatos (`providerId` vs `provider_id`)
+4. Faltava logging para debugar quando os updates eram encontrados mas não aplicados
+
+### Solução
+```dart
+// 1. SEMPRE executar busca por #orderId, não apenas quando events.isEmpty
+// Em fetchOrderUpdatesForProvider():
+if (orderIds != null && orderIds.isNotEmpty) {
+  for (final orderId in orderIds.take(10)) { // Aumentado de 5 para 10
+    // Buscar por tag #orderId
+    final orderEvents = await _fetchFromRelay(relay, kinds: [30080], tags: {'#orderId': [orderId]});
+    
+    // NOVO: Buscar também por tag #e (referência ao evento)
+    final eTagEvents = await _fetchFromRelay(relay, kinds: [30080], tags: {'#e': [orderId]});
+  }
+}
+
+// 2. Fallback para múltiplos formatos de providerId em _handleConfirmPayment():
+providerId = orderDetails?['providerId'] as String?;
+providerId ??= orderDetails?['provider_id'] as String?;
+providerId ??= order?.providerId;
+providerId ??= order?.metadata?['providerId'];
+providerId ??= order?.metadata?['provider_id'];
+
+// 3. Logging detalhado para debug:
+debugPrint('📥 [PROVEDOR] Updates encontrados: ${providerUpdates.length}');
+debugPrint('🔍 Verificando: local=$existing.status vs nostr=$newStatus');
+```
+
+### Arquivos
+- `lib/services/nostr_order_service.dart` - Melhorias em fetchOrderUpdatesForProvider()
+- `lib/providers/order_provider.dart` - Logging detalhado na sincronização
+- `lib/screens/order_status_screen.dart` - Fallbacks para providerId
+
+---
+
+## �🚨 CRÍTICO: Vazamento de Ordens Entre Usuários
 
 ### Sintoma
 Ordens criadas por um usuário apareciam em outro dispositivo com conta diferente.

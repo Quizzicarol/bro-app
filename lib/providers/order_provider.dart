@@ -956,7 +956,17 @@ class OrderProvider with ChangeNotifier {
             .map((o) => o.id)
             .toList();
         
+        // Também buscar ordens em awaiting_confirmation que podem ter sido atualizadas
+        final awaitingOrderIds = _orders
+            .where((o) => o.providerId == _currentUserPubkey && o.status == 'awaiting_confirmation')
+            .map((o) => o.id)
+            .toList();
+        
         debugPrint('🔍 [PROVEDOR] Ordens aceitas por mim: ${myOrderIds.length}');
+        debugPrint('   Ordens aguardando confirmação: ${awaitingOrderIds.length}');
+        if (awaitingOrderIds.isNotEmpty) {
+          debugPrint('   IDs aguardando: ${awaitingOrderIds.map((id) => id.substring(0, 8)).join(", ")}');
+        }
         
         if (myOrderIds.isNotEmpty) {
           debugPrint('🔍 [PROVEDOR] Buscando updates para ${myOrderIds.length} ordens aceitas...');
@@ -965,6 +975,11 @@ class OrderProvider with ChangeNotifier {
             _currentUserPubkey!,
             orderIds: myOrderIds,
           );
+          
+          debugPrint('📥 [PROVEDOR] Updates encontrados: ${providerUpdates.length}');
+          for (final entry in providerUpdates.entries) {
+            debugPrint('   📋 ${entry.key.substring(0, 8)}: status=${entry.value['status']}');
+          }
           
           int statusUpdated = 0;
           for (final entry in providerUpdates.entries) {
@@ -978,6 +993,8 @@ class OrderProvider with ChangeNotifier {
             if (existingIndex != -1) {
               final existing = _orders[existingIndex];
               
+              debugPrint('   🔍 Verificando ${orderId.substring(0, 8)}: local=${existing.status} vs nostr=$newStatus');
+              
               // Só atualizar se o novo status é mais avançado
               if (_isStatusMoreRecent(newStatus, existing.status)) {
                 _orders[existingIndex] = existing.copyWith(
@@ -986,12 +1003,16 @@ class OrderProvider with ChangeNotifier {
                 );
                 statusUpdated++;
                 debugPrint('   ✅ Ordem ${orderId.substring(0, 8)}: ${existing.status} -> $newStatus');
+              } else {
+                debugPrint('   ⏭️ Ordem ${orderId.substring(0, 8)}: status local ($existing.status) é igual ou mais recente que nostr ($newStatus)');
               }
             }
           }
           
           if (statusUpdated > 0) {
             debugPrint('🎉 [PROVEDOR] $statusUpdated ordens tiveram status atualizado!');
+          } else {
+            debugPrint('ℹ️ [PROVEDOR] Nenhuma ordem precisou de atualização');
           }
         }
       }

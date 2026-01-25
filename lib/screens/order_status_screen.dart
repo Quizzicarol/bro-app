@@ -3332,10 +3332,22 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       // IMPORTANTE: Tentar múltiplas fontes para garantir que temos o providerId
       String? providerId = orderDetails?['providerId'] as String?;
       
+      // Fallback: verificar provider_id com underscore (algumas fontes usam esse formato)
+      if (providerId == null || providerId.isEmpty) {
+        providerId = orderDetails?['provider_id'] as String?;
+      }
+      
       // Fallback: buscar diretamente da ordem no provider
       if (providerId == null || providerId.isEmpty) {
         final order = orderProvider.getOrderById(widget.orderId);
         providerId = order?.providerId;
+      }
+      
+      // Fallback final: buscar do metadata da ordem
+      if (providerId == null || providerId.isEmpty) {
+        final order = orderProvider.getOrderById(widget.orderId);
+        providerId = order?.metadata?['providerId'] as String?;
+        providerId ??= order?.metadata?['provider_id'] as String?;
       }
       
       debugPrint('📤 Confirmando ordem ${widget.orderId.substring(0, 8)}');
@@ -3343,6 +3355,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       
       if (providerId == null || providerId.isEmpty) {
         debugPrint('⚠️ AVISO: providerId é null - o Bro pode não receber a notificação!');
+        // Mesmo sem providerId, continuar para pelo menos atualizar localmente
       }
 
       // Atualizar status para 'completed' - SEMPRE usar OrderProvider que publica no Nostr

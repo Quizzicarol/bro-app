@@ -972,9 +972,11 @@ class NostrOrderService {
         }
         
         // ESTRATÉGIA 3: Buscar diretamente por cada orderId (mais específico)
-        if (orderIds != null && events.isEmpty) {
-          for (final orderId in orderIds.take(5)) { // Limitar a 5 para não sobrecarregar
+        // SEMPRE executar esta estratégia quando temos orderIds para garantir que encontramos os updates
+        if (orderIds != null && orderIds.isNotEmpty) {
+          for (final orderId in orderIds.take(10)) { // Aumentado para 10 ordens
             try {
+              // Buscar por tag #orderId
               final orderEvents = await _fetchFromRelay(
                 relay,
                 kinds: [kindBroPaymentProof],
@@ -982,8 +984,33 @@ class NostrOrderService {
                 limit: 10,
               );
               if (orderEvents.isNotEmpty) {
-                debugPrint('   📥 Encontrado via #orderId: ${orderEvents.length} eventos para $orderId');
-                events.addAll(orderEvents);
+                // Adicionar apenas eventos que ainda não temos
+                for (final e in orderEvents) {
+                  final eventId = e['id'] as String?;
+                  final alreadyHave = events.any((existing) => existing['id'] == eventId);
+                  if (!alreadyHave) {
+                    events.add(e);
+                    debugPrint('   📥 Encontrado via #orderId: ordem ${orderId.substring(0, 8)}');
+                  }
+                }
+              }
+              
+              // ESTRATÉGIA 4: Buscar por tag #e (referência ao orderId como evento)
+              final eTagEvents = await _fetchFromRelay(
+                relay,
+                kinds: [kindBroPaymentProof],
+                tags: {'#e': [orderId]},
+                limit: 10,
+              );
+              if (eTagEvents.isNotEmpty) {
+                for (final e in eTagEvents) {
+                  final eventId = e['id'] as String?;
+                  final alreadyHave = events.any((existing) => existing['id'] == eventId);
+                  if (!alreadyHave) {
+                    events.add(e);
+                    debugPrint('   📥 Encontrado via #e: ordem ${orderId.substring(0, 8)}');
+                  }
+                }
               }
             } catch (_) {}
           }

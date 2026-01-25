@@ -31,6 +31,13 @@ class _DepositScreenState extends State<DepositScreen>
   bool _isGeneratingOnchain = false;
   double _estimatedNetworkFee = 0.0;
   
+  // On-chain confirmation tracking
+  bool _txInMempool = false;
+  int _confirmations = 0;
+  String? _txId;
+  DateTime? _txDetectedAt;
+  static const int _requiredConfirmations = 3; // Exigir 3 confirmações para evitar RBF
+  
   // Fees
   final double _providerFeePercent = 7.0;
   final double _platformFeePercent = 2.0;
@@ -222,18 +229,49 @@ class _DepositScreenState extends State<DepositScreen>
   
   void _startOnchainPolling(String address) {
     _onchainPollingTimer?.cancel();
+    
+    // Reset estado de tracking
+    setState(() {
+      _txInMempool = false;
+      _confirmations = 0;
+      _txId = null;
+      _txDetectedAt = null;
+    });
+    
     _onchainPollingTimer = Timer.periodic(
-      const Duration(seconds: 30),
+      const Duration(seconds: 10), // Polling mais frequente
       (timer) async {
         try {
           final breezProvider = context.read<BreezProvider>();
           final status = await breezProvider.checkAddressStatus(address);
           
-          if (status != null && 
-              status['confirmations'] is int && 
-              status['confirmations'] > 0) {
-            timer.cancel();
-            _onBitcoinReceived(status['confirmations'] as int);
+          if (status != null) {
+            final confirmations = status['confirmations'] as int? ?? 0;
+            final txId = status['txid'] as String?;
+            final inMempool = status['in_mempool'] as bool? ?? (confirmations == 0 && txId != null);
+            
+            // Transação detectada (mempool ou confirmada)
+            if (txId != null && _txId == null) {
+              setState(() {
+                _txId = txId;
+                _txDetectedAt = DateTime.now();
+                _txInMempool = confirmations == 0;
+              });
+            }
+            
+            // Atualizar confirmações
+            if (confirmations != _confirmations) {
+              setState(() {
+                _confirmations = confirmations;
+                _txInMempool = confirmations == 0;
+              });
+            }
+            
+            // Só considerar "recebido" após N confirmações
+            if (confirmations >= _requiredConfirmations) {
+              timer.cancel();
+              _onBitcoinConfirmed(confirmations);
+            }
           }
         } catch (e) {
           debugPrint('Polling error: $e');
@@ -242,11 +280,15 @@ class _DepositScreenState extends State<DepositScreen>
     );
   }
   
-  void _onBitcoinReceived(int confirmations) {
-    _showSuccess('Pagamento Bitcoin recebido! Confirmações: $confirmations');
+  void _onBitcoinConfirmed(int confirmations) {
+    _showSuccess('✅ Pagamento Bitcoin confirmado com $confirmations confirmações!');
     setState(() {
       _bitcoinAddress = null;
       _bitcoinQrData = null;
+      _txInMempool = false;
+      _confirmations = 0;
+      _txId = null;
+      _txDetectedAt = null;
       _amountController.clear();
     });
     // Refresh balance
@@ -512,6 +554,205 @@ class _DepositScreenState extends State<DepositScreen>
     );
   }
   
+  /// Widget que mostra o status do pagamento on-chain
+  /// Detecta mempool, mostra confirmações e tempo estimado
+  Widget _buildOnchainStatusCard() {
+    // Se não temos TX ainda, mostra aguardando
+    if (!_txInMempool && _confirmations == 0) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.orange.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.orange.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.orange[700]!),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Aguardando pagamento...',
+                    style: TextStyle(
+                      color: Colors.orange[700],
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Envie Bitcoin para o endereço acima',
+                    style: TextStyle(
+                      color: Colors.orange[600],
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    // Se está na mempool mas sem confirmações
+    if (_txInMempool && _confirmations == 0) {
+      final minutesSinceDetected = _txDetectedAt != null 
+          ? DateTime.now().difference(_txDetectedAt!).inMinutes 
+          : 0;
+      final estimatedMinutesRemaining = (10 - minutesSinceDetected).clamp(1, 30);
+      
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.blue.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.blue.withOpacity(0.3)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.search, color: Colors.blue[700], size: 24),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '🔍 Detectado na mempool!',
+                    style: TextStyle(
+                      color: Colors.blue[700],
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Aguardando primeira confirmação...',
+              style: TextStyle(color: Colors.blue[600]),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '⏱️ Estimativa: ~$estimatedMinutesRemaining minutos',
+              style: TextStyle(color: Colors.blue[600], fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            // Progress bar
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: 0.1, // Na mempool = 10% do progresso
+                backgroundColor: Colors.blue.withOpacity(0.2),
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.blue[600]!),
+                minHeight: 8,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '0 de $_requiredConfirmations confirmações',
+              style: TextStyle(color: Colors.blue[600], fontSize: 11),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    // Se tem confirmações (1, 2 ou 3)
+    final progress = _confirmations / _requiredConfirmations;
+    final isComplete = _confirmations >= _requiredConfirmations;
+    final color = isComplete ? Colors.green : Colors.amber;
+    final estimatedMinutesRemaining = isComplete 
+        ? 0 
+        : (_requiredConfirmations - _confirmations) * 10;
+    
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isComplete ? Icons.check_circle : Icons.hourglass_bottom,
+                color: color[700],
+                size: 24,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  isComplete 
+                      ? '✅ Pagamento confirmado!' 
+                      : '⏳ Confirmando...',
+                  style: TextStyle(
+                    color: color[700],
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Progress bar
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progress.clamp(0.0, 1.0),
+              backgroundColor: color.withOpacity(0.2),
+              valueColor: AlwaysStoppedAnimation<Color>(color[600]!),
+              minHeight: 8,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '$_confirmations de $_requiredConfirmations confirmações',
+                style: TextStyle(color: color[700], fontWeight: FontWeight.w500),
+              ),
+              if (!isComplete)
+                Text(
+                  '~${estimatedMinutesRemaining}min',
+                  style: TextStyle(color: color[600], fontSize: 12),
+                ),
+            ],
+          ),
+          if (!isComplete) ...[
+            const SizedBox(height: 8),
+            Text(
+              '🛡️ 3 confirmações = proteção contra RBF',
+              style: TextStyle(color: color[600], fontSize: 11),
+            ),
+          ],
+          if (isComplete) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Seu tier será atualizado automaticamente!',
+              style: TextStyle(color: color[700], fontSize: 12),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+  
   Widget _buildOnchainTab() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
@@ -604,7 +845,7 @@ class _DepositScreenState extends State<DepositScreen>
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          'Depósitos on-chain requerem 1 confirmação',
+                          'Depósitos on-chain requerem $_requiredConfirmations confirmações',
                           style: TextStyle(
                             fontSize: 12,
                             color: Colors.blue[600],
@@ -705,30 +946,19 @@ class _DepositScreenState extends State<DepositScreen>
                     ),
                     const SizedBox(height: 16),
                     
-                    // Polling indicator
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Theme.of(context).primaryColor,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        const Text('Aguardando confirmações...'),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
+                    // Status do pagamento - Mempool ou Confirmações
+                    _buildOnchainStatusCard(),
+                    
+                    const SizedBox(height: 16),
                     TextButton(
                       onPressed: () {
                         setState(() {
                           _bitcoinAddress = null;
                           _bitcoinQrData = null;
+                          _txInMempool = false;
+                          _confirmations = 0;
+                          _txId = null;
+                          _txDetectedAt = null;
                         });
                         _onchainPollingTimer?.cancel();
                       },
@@ -739,6 +969,8 @@ class _DepositScreenState extends State<DepositScreen>
               ),
             ),
           ],
+          // Padding para não ficar atrás da barra de navegação
+          const SizedBox(height: 100),
         ],
       ),
     );

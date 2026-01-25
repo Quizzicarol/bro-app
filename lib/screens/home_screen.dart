@@ -868,6 +868,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         amount: _currencyFormat.format(order.amount),
                         status: order.status,
                         statusLabel: _getStatusLabel(order.status),
+                        orderId: order.id, // ID da ordem para controle
                         onTap: () {
                           _showOrderDetails(order);
                         },

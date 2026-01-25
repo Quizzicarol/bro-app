@@ -1,5 +1,23 @@
 # 📋 Changelog - Bro App
 
+## [1.0.43] - 2026-01-25
+
+### 🐛 Bug CRÍTICO Corrigido
+- **Status "completed" AINDA não chegava ao Bro (causa raiz encontrada!)**
+  - Problema: `_fetchAllOrderStatusUpdates` não buscava eventos `kindBroAccept` (30079)
+  - Consequência: `providerId` nunca era propagado para as ordens via Nostr
+  - Resultado: Bro não conseguia identificar suas ordens aceitas → status never sync
+  - Solução: 
+    1. Incluir `kindBroAccept` (30079) na busca de updates
+    2. Extrair `providerId` do `pubkey` do evento para accepts
+    3. `loadOrdersForUser` agora mantém ordens onde `providerId == userPubkey`
+
+### Arquivos Modificados
+- `lib/services/nostr_order_service.dart` - Buscar eventos 30079 (accept)
+- `lib/providers/order_provider.dart` - Manter ordens aceitas + logs detalhados
+
+---
+
 ## [1.0.42] - 2026-01-25
 
 ### 🐛 Bug Corrigido

@@ -1691,16 +1691,25 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
     debugPrint('🔍 _buildReceiptCard - metadata keys: ${metadata?.keys.toList()}');
     debugPrint('   proofImage existe: ${metadata?['proofImage'] != null}');
+    debugPrint('   paymentProof existe: ${metadata?['paymentProof'] != null}');
     if (metadata?['proofImage'] != null) {
       final pi = metadata!['proofImage'] as String;
       debugPrint('   proofImage length: ${pi.length}');
       debugPrint('   proofImage preview: ${pi.substring(0, pi.length > 50 ? 50 : pi.length)}');
     }
+    if (metadata?['paymentProof'] != null) {
+      final pp = metadata!['paymentProof'] as String;
+      debugPrint('   paymentProof length: ${pp.length}');
+      debugPrint('   paymentProof preview: ${pp.substring(0, pp.length > 50 ? 50 : pp.length)}');
+    }
 
-    // Compatibilidade com ambos os formatos de comprovante
+    // Compatibilidade com TODOS os formatos de comprovante
     // Antigo: receipt_url, confirmation_code, receipt_submitted_at
     // Novo (via Nostr): proofImage, proofReceivedAt
-    final receiptUrl = metadata?['receipt_url'] as String? ?? metadata?['proofImage'] as String?;
+    // Bro: paymentProof (usado pelo provider_order_detail_screen)
+    final receiptUrl = metadata?['receipt_url'] as String? 
+        ?? metadata?['proofImage'] as String?
+        ?? metadata?['paymentProof'] as String?;
     final confirmationCode = metadata?['confirmation_code'] as String?;
     final submittedAt = metadata?['receipt_submitted_at'] as String? ?? metadata?['proofReceivedAt'] as String?;
 

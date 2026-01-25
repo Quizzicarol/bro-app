@@ -44,12 +44,6 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   String? _error;
   int _lastOrderCount = 0;
   String? _currentPubkey;
-  
-  // Tier info para badge
-  LocalCollateral? _currentTier;
-  bool _tierAtRisk = false;
-  int? _tierDeficit;
-  bool _tierDataLoaded = false; // Indica se os dados do tier foram carregados com sucesso
   int _lastTabIndex = 0; // Para detectar mudança de aba
 
   @override
@@ -69,7 +63,6 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadOrders();
-      _checkTierStatus();
     });
   }
   
@@ -82,9 +75,8 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       _lastTabIndex = newIndex;
       debugPrint('🔄 Tab mudou para $newIndex - ressincronizando dados...');
       
-      // Ressincronizar ordens e status do tier
+      // Ressincronizar ordens
       _loadOrders();
-      _checkTierStatus();
     }
   }
 
@@ -99,82 +91,6 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     SecureStorageService.setProviderMode(false, userPubkey: widget.providerId);
     
     super.dispose();
-  }
-
-  /// Verifica o status do tier e se precisa de atenção
-  Future<void> _checkTierStatus() async {
-    // Resetar flag de dados carregados até ter certeza
-    _tierDataLoaded = false;
-    if (mounted) setState(() {});
-    
-    try {
-      _currentTier = await _collateralService.getCollateral();
-      debugPrint('🏷️ _checkTierStatus: tier=${_currentTier?.tierName ?? "null"}');
-      
-      if (_currentTier == null) {
-        _tierAtRisk = false;
-        _tierDeficit = null;
-        _tierDataLoaded = true; // Dados carregados: não tem tier
-        if (mounted) setState(() {});
-        return;
-      }
-      
-      // Buscar saldo ATUAL da carteira
-      int walletBalance = 0;
-      try {
-        final breezProvider = context.read<BreezProvider>();
-        final balanceInfo = await breezProvider.getBalance();
-        walletBalance = int.tryParse(balanceInfo['balance']?.toString() ?? '0') ?? 0;
-        debugPrint('🏷️ Saldo da carteira: $walletBalance sats');
-      } catch (e) {
-        debugPrint('⚠️ Erro ao buscar saldo: $e');
-      }
-      
-      // Carregar preço atual do Bitcoin para verificar requisito atual do tier
-      final priceService = BitcoinPriceService();
-      final btcPrice = await priceService.getBitcoinPrice();
-      
-      if (btcPrice != null) {
-        final tiers = CollateralTier.getAvailableTiers(btcPrice);
-        final currentTierDef = tiers.firstWhere(
-          (t) => t.id == _currentTier!.tierId,
-          orElse: () => tiers.first,
-        );
-        
-        final requiredSats = currentTierDef.requiredCollateralSats;
-        
-        // 🔥 TOLERÂNCIA DE 10% - Não exigir mais sats por pequenas oscilações
-        // Só considera "em risco" se faltar mais de 10% do requerido
-        final tolerancePercent = 0.10; // 10%
-        final minRequired = (requiredSats * (1 - tolerancePercent)).round();
-        
-        debugPrint('🏷️ Tier ${currentTierDef.id}: requer $requiredSats sats (mín com tolerância: $minRequired), carteira tem $walletBalance sats');
-        
-        // O tier está em risco se o SALDO DA CARTEIRA for menor que o mínimo COM TOLERÂNCIA
-        if (walletBalance < minRequired) {
-          _tierAtRisk = true;
-          _tierDeficit = requiredSats - walletBalance;
-          debugPrint('⚠️ Tier em risco! Saldo abaixo de 90% do requerido. Faltam $_tierDeficit sats');
-        } else {
-          _tierAtRisk = false;
-          _tierDeficit = null;
-          debugPrint('✅ Tier ativo! Saldo suficiente (tolerância 10%)');
-        }
-        _tierDataLoaded = true; // Dados carregados com sucesso
-      } else {
-        // Se não conseguiu preço, assume que está ok MAS marca como carregado
-        _tierAtRisk = false;
-        _tierDeficit = null;
-        _tierDataLoaded = true;
-      }
-      
-      if (mounted) setState(() {});
-    } catch (e) {
-      debugPrint('⚠️ Erro ao verificar tier: $e');
-      _tierAtRisk = false;
-      _tierDeficit = null;
-      _tierDataLoaded = true; // Marcar como carregado mesmo com erro, para não travar a UI
-    }
   }
 
   @override
@@ -380,8 +296,8 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         top: false, // AppBar já lida com safe area superior
         child: Consumer2<CollateralProvider, OrderProvider>(
           builder: (context, collateralProvider, orderProvider, child) {
-            // Mostrar loading enquanto dados do tier não foram carregados
-            if (_isLoading || !_tierDataLoaded) {
+            // Mostrar loading enquanto sincronizando
+            if (_isLoading) {
               return Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -389,11 +305,9 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                     const CircularProgressIndicator(color: Colors.orange),
                     const SizedBox(height: 16),
                     Text(
-                      !_tierDataLoaded
-                          ? '🔒 Verificando status do tier...'
-                          : _isSyncingNostr 
-                              ? '🔄 Sincronizando com Nostr...'
-                              : 'Carregando ordens...',
+                      _isSyncingNostr 
+                          ? '🔄 Sincronizando com Nostr...'
+                          : 'Carregando ordens...',
                       style: const TextStyle(color: Colors.white70, fontSize: 14),
                     ),
                     if (_isSyncingNostr)
@@ -507,17 +421,15 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     if (AppConfig.providerTestMode) {
       canAccept = true;
     } else {
-      // IMPORTANTE: Verificar se tier está em risco (saldo insuficiente)
-      // Se tier está em risco, NENHUMA ordem pode ser aceita
-      if (_tierAtRisk) {
-        canAccept = false;
-        rejectReason = 'Saldo insuficiente: faltam ${_tierDeficit ?? 0} sats para manter o tier';
-      } else {
-        // Verificar limites do tier apenas se tier está ativo
-        final (canAcceptResult, reason) = collateralProvider.canAcceptOrderWithReason(amount);
-        canAccept = canAcceptResult;
-        rejectReason = reason;
-      }
+      // CRÍTICO: Usar APENAS collateralProvider.canAcceptOrderWithReason()
+      // NÃO usar _tierAtRisk aqui porque pode estar desatualizado!
+      // O collateralProvider sempre usa dados frescos do estado atual
+      final (canAcceptResult, reason) = collateralProvider.canAcceptOrderWithReason(amount);
+      canAccept = canAcceptResult;
+      rejectReason = reason;
+      
+      // Debug para rastrear
+      debugPrint('🔍 Card ordem $orderId: canAccept=$canAccept, hasCollateral=${collateralProvider.hasCollateral}');
     }
 
     return Container(
@@ -1207,63 +1119,76 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
   }
 
-  /// Badge compacto do tier - TEXTO CLARO: Ativo ou Inativo
+  /// Badge compacto do tier - USA COLLATERAL PROVIDER DIRETAMENTE para evitar inconsistências
   Widget _buildTierBadge() {
-    debugPrint('🏷️ _buildTierBadge: tier=${_currentTier?.tierName ?? "null"}, atRisk=$_tierAtRisk, deficit=$_tierDeficit');
-    
-    // Se não tem tier, mostra "Sem Tier"
-    if (_currentTier == null) {
-      return GestureDetector(
-        onTap: () => Navigator.pushNamed(context, '/provider-collateral'),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: Colors.grey.withOpacity(0.2),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.grey, width: 1),
-          ),
-          child: const Text(
-            'Sem Tier',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey,
+    // CRÍTICO: Usar Consumer para reagir às mudanças do CollateralProvider
+    return Consumer<CollateralProvider>(
+      builder: (context, collateralProvider, _) {
+        final localCollateral = collateralProvider.localCollateral;
+        final hasCollateral = collateralProvider.hasCollateral;
+        
+        debugPrint('🏷️ _buildTierBadge: hasCollateral=$hasCollateral, tier=${localCollateral?.tierName ?? "null"}, balance=${collateralProvider.effectiveBalanceSats}');
+        
+        // Se não tem tier, mostra "Sem Tier"
+        if (!hasCollateral || localCollateral == null) {
+          return GestureDetector(
+            onTap: () => Navigator.pushNamed(context, '/provider-collateral'),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.grey.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey, width: 1),
+              ),
+              child: const Text(
+                'Sem Tier',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                ),
+              ),
+            ),
+          );
+        }
+        
+        // Verificar se pode aceitar pelo menos uma ordem de R$ 1 (teste mínimo)
+        // Se não pode, tier está inativo por saldo insuficiente
+        final (canAcceptTest, _) = collateralProvider.canAcceptOrderWithReason(1.0);
+        final isActive = canAcceptTest;
+        final statusText = isActive ? 'Tier Ativo' : 'Tier Inativo';
+        final statusColor = isActive ? Colors.green : Colors.orange;
+        
+        return GestureDetector(
+          onTap: () => _showTierStatusDialog(),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: statusColor.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: statusColor, width: 1.5),
+            ),
+            child: Text(
+              statusText,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: statusColor,
+              ),
             ),
           ),
-        ),
-      );
-    }
-    
-    // Tier ativo ou inativo baseado no déficit
-    final isActive = !_tierAtRisk;
-    final statusText = isActive ? 'Tier Ativo' : 'Tier Inativo';
-    final statusColor = isActive ? Colors.green : Colors.orange;
-    
-    return GestureDetector(
-      onTap: () => _showTierStatusDialog(),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: statusColor.withOpacity(0.2),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: statusColor, width: 1.5),
-        ),
-        child: Text(
-          statusText,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            color: statusColor,
-          ),
-        ),
-      ),
+        );
+      },
     );
   }
   
-  /// Dialog explicando status do tier
+  /// Dialog explicando status do tier - USA COLLATERAL PROVIDER
   void _showTierStatusDialog() {
-    final isActive = !_tierAtRisk;
-    final tierName = _currentTier?.tierName ?? 'Nenhum';
+    final collateralProvider = context.read<CollateralProvider>();
+    final localCollateral = collateralProvider.localCollateral;
+    final (canAccept, _) = collateralProvider.canAcceptOrderWithReason(1.0);
+    final isActive = canAccept;
+    final tierName = localCollateral?.tierName ?? 'Nenhum';
     
     showDialog(
       context: context,
@@ -1293,7 +1218,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
               style: const TextStyle(color: Colors.white70, fontSize: 14),
             ),
             const SizedBox(height: 12),
-            if (!isActive && _tierDeficit != null) ...[
+            if (!isActive) ...[
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -1305,7 +1230,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      '⚠️ Bitcoin oscilou de preço',
+                      '⚠️ Saldo insuficiente',
                       style: TextStyle(
                         color: Colors.orange,
                         fontWeight: FontWeight.bold,
@@ -1314,7 +1239,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Deposite $_tierDeficit sats para reativar seu tier.',
+                      'Seu saldo de ${collateralProvider.effectiveBalanceSats} sats está abaixo do requerido para o tier. Deposite mais Bitcoin para reativar.',
                       style: const TextStyle(color: Colors.white70, fontSize: 13),
                     ),
                   ],

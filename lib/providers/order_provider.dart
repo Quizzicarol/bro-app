@@ -324,12 +324,13 @@ class OrderProvider with ChangeNotifier {
     });
   }
 
-  // Limpar ordens ao fazer logout
+  // Limpar ordens ao fazer logout - SEGURANÇA CRÍTICA
   void clearOrders() {
     debugPrint('🗑️ Limpando ordens da memória (logout)');
     _orders = [];
     _currentOrder = null;
     _currentUserPubkey = null;
+    _isProviderMode = false;  // Reset modo provedor
     _isInitialized = false;
     notifyListeners();
   }
@@ -731,10 +732,8 @@ class OrderProvider with ChangeNotifier {
       _orders.insert(0, order);
       _currentOrder = order;
       
-      // Salvar localmente
-      final prefs = await SharedPreferences.getInstance();
-      final ordersJson = json.encode(_orders.map((o) => o.toJson()).toList());
-      await prefs.setString(_ordersKey, ordersJson);
+      // Salvar localmente - USAR _saveOrders() para garantir filtro de segurança!
+      await _saveOrders();
       
       notifyListeners();
       
@@ -964,6 +963,15 @@ class OrderProvider with ChangeNotifier {
       
       if (orderData != null) {
         final order = Order.fromJson(orderData);
+        
+        // SEGURANÇA: Só inserir se for ordem do usuário atual ou modo provedor ativo
+        final isUserOrder = order.userPubkey == _currentUserPubkey;
+        final isProviderOrder = order.providerId == _currentUserPubkey;
+        
+        if (!_isProviderMode && !isUserOrder && !isProviderOrder) {
+          debugPrint('🚫 fetchOrder: Bloqueando ordem ${order.id.substring(0, 8)} de outro usuário');
+          return null;
+        }
         
         // Atualizar na lista
         final index = _orders.indexWhere((o) => o.id == orderId);
@@ -1262,14 +1270,14 @@ class OrderProvider with ChangeNotifier {
           status: 'awaiting_confirmation',
           metadata: {
             ...(_orders[index].metadata ?? {}),
-            'paymentProof': proof.length > 100 ? 'image_base64_stored' : proof,
+            // CORRIGIDO: Salvar imagem completa em base64, não truncar!
+            'paymentProof': proof,
+            'proofSentAt': DateTime.now().toIso8601String(),
           },
         );
         
-        // Salvar localmente
-        final prefs = await SharedPreferences.getInstance();
-        final ordersJson = json.encode(_orders.map((o) => o.toJson()).toList());
-        await prefs.setString(_ordersKey, ordersJson);
+        // Salvar localmente usando _saveOrders() com filtro de segurança
+        await _saveOrders();
         
         debugPrint('✅ Ordem $orderId completada, aguardando confirmação');
       }

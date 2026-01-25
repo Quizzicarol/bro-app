@@ -267,10 +267,13 @@ class OrderProvider with ChangeNotifier {
     
     // SEGURANÇA: Filtrar ordens que não pertencem a este usuário
     // (podem ter vazado de sincronizações anteriores)
+    // IMPORTANTE: Manter ordens que este usuário CRIOU ou ACEITOU como Bro!
     final originalCount = _orders.length;
     _orders = _orders.where((order) {
-      // Manter ordens deste usuário
+      // Manter ordens deste usuário (criador)
       if (order.userPubkey == userPubkey) return true;
+      // Manter ordens que este usuário aceitou como Bro
+      if (order.providerId == userPubkey) return true;
       // Manter ordens sem pubkey definido (legado, mas marcar como deste usuário)
       if (order.userPubkey == null || order.userPubkey!.isEmpty) {
         debugPrint('⚠️ Ordem ${order.id.substring(0, 8)} sem userPubkey - removendo por segurança');
@@ -938,13 +941,26 @@ class OrderProvider with ChangeNotifier {
         
         // CRÍTICO: Buscar updates de status para ordens que este provedor aceitou
         // Isso permite que o Bro veja quando o usuário confirmou (status=completed)
+        debugPrint('🔍 [DEBUG] _currentUserPubkey: ${_currentUserPubkey!.substring(0, 16)}');
+        debugPrint('🔍 [DEBUG] Total de ordens em memória: ${_orders.length}');
+        
+        // Log de todas as ordens e seus providerIds
+        for (final o in _orders) {
+          final provId = o.providerId;
+          final match = provId == _currentUserPubkey;
+          debugPrint('   📋 ${o.id.substring(0, 8)}: status=${o.status}, providerId=${provId?.substring(0, 8) ?? "null"}, match=$match');
+        }
+        
         final myOrderIds = _orders
             .where((o) => o.providerId == _currentUserPubkey)
             .map((o) => o.id)
             .toList();
         
+        debugPrint('🔍 [PROVEDOR] Ordens aceitas por mim: ${myOrderIds.length}');
+        
         if (myOrderIds.isNotEmpty) {
           debugPrint('🔍 [PROVEDOR] Buscando updates para ${myOrderIds.length} ordens aceitas...');
+          debugPrint('   IDs: ${myOrderIds.map((id) => id.substring(0, 8)).join(", ")}');
           final providerUpdates = await _nostrOrderService.fetchOrderUpdatesForProvider(
             _currentUserPubkey!,
             orderIds: myOrderIds,

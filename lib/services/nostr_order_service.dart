@@ -653,10 +653,10 @@ class NostrOrderService {
     
     for (final relay in _relays.take(3)) {
       try {
-        // Buscar TODOS os tipos de update: 30080 (update), 30081 (complete)
+        // Buscar TODOS os tipos de update: 30079 (accept), 30080 (update), 30081 (complete)
         final events = await _fetchFromRelay(
           relay,
-          kinds: [kindBroPaymentProof, kindBroComplete], // 30080 e 30081
+          kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete], // 30079, 30080 e 30081
           tags: {'#t': [broTag]}, // Buscar por bro-order tag genérica
           limit: 200,
         );
@@ -667,8 +667,10 @@ class NostrOrderService {
             final eventType = content['type'] as String?;
             final eventKind = event['kind'] as int?;
             
-            // Processar eventos de update OU complete
-            if (eventType != 'bro_order_update' && eventType != 'bro_complete') continue;
+            // Processar eventos de accept, update OU complete
+            if (eventType != 'bro_accept' && 
+                eventType != 'bro_order_update' && 
+                eventType != 'bro_complete') continue;
             
             final orderId = content['orderId'] as String?;
             if (orderId == null) continue;
@@ -682,22 +684,27 @@ class NostrOrderService {
             if (existingUpdate == null || createdAt > existingCreatedAt) {
               // Determinar status baseado no tipo de evento
               String? status = content['status'] as String?;
-              if (eventType == 'bro_complete' || eventKind == kindBroComplete) {
+              if (eventType == 'bro_accept' || eventKind == kindBroAccept) {
+                status = 'accepted';
+              } else if (eventType == 'bro_complete' || eventKind == kindBroComplete) {
                 status = 'awaiting_confirmation'; // Bro pagou, aguardando confirmação do usuário
               }
               
               // IMPORTANTE: Incluir proofImage do comprovante para o usuário ver
               final proofImage = content['proofImage'] as String?;
               
+              // providerId pode vir do content ou do pubkey do evento (para accepts)
+              final providerId = content['providerId'] as String? ?? event['pubkey'] as String?;
+              
               updates[orderId] = {
                 'orderId': orderId,
                 'status': status,
-                'providerId': content['providerId'],
+                'providerId': providerId,
                 'proofImage': proofImage, // Comprovante enviado pelo Bro
                 'completedAt': content['completedAt'],
                 'created_at': createdAt,
               };
-              debugPrint('   📥 Update: $orderId -> status=$status, hasProof=${proofImage != null} (type=$eventType)');
+              debugPrint('   📥 Update: $orderId -> status=$status, providerId=${providerId?.substring(0, 8) ?? "null"} (type=$eventType)');
             }
           } catch (e) {
             // Ignorar eventos mal formatados

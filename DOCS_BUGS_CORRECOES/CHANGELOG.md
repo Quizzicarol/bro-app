@@ -1,5 +1,26 @@
 # 📋 Changelog - Bro App
 
+## [1.0.42] - 2026-01-25
+
+### 🐛 Bug Corrigido
+- **Status "completed" ainda não chegava ao Bro (v1.0.41 incompleto)**
+  - Problema: Mesmo com tag `#p`, relays nem sempre retornavam eventos
+  - Solução: 3 estratégias de busca:
+    1. Buscar por `#p` (tag do provedor) - principal
+    2. Buscar por `#t` (bro-update) e filtrar por orderId - fallback
+    3. Buscar por `#orderId` diretamente - último recurso
+
+### ✨ Melhoria UX
+- **Unificar carteiras**: "Ver Carteira do Bro" → "Ver Carteira"
+  - Remove duplicação de telas de carteira
+  - Navega para `/wallet` (mesma tela de "Minha Carteira")
+
+### Arquivos Modificados
+- `lib/services/nostr_order_service.dart` - 3 estratégias de busca
+- `lib/screens/provider_orders_screen.dart` - Unificar carteira
+
+---
+
 ## [1.0.41] - 2026-01-25
 
 ### 🐛 Bug Corrigido

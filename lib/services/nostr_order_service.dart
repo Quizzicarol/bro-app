@@ -686,13 +686,18 @@ class NostrOrderService {
                 status = 'awaiting_confirmation'; // Bro pagou, aguardando confirmação do usuário
               }
               
+              // IMPORTANTE: Incluir proofImage do comprovante para o usuário ver
+              final proofImage = content['proofImage'] as String?;
+              
               updates[orderId] = {
                 'orderId': orderId,
                 'status': status,
                 'providerId': content['providerId'],
+                'proofImage': proofImage, // Comprovante enviado pelo Bro
+                'completedAt': content['completedAt'],
                 'created_at': createdAt,
               };
-              debugPrint('   📥 Update: $orderId -> status=$status (type=$eventType)');
+              debugPrint('   📥 Update: $orderId -> status=$status, hasProof=${proofImage != null} (type=$eventType)');
             }
           } catch (e) {
             // Ignorar eventos mal formatados
@@ -714,9 +719,22 @@ class NostrOrderService {
     
     final newStatus = update['status'] as String?;
     final providerId = update['providerId'] as String?;
+    final proofImage = update['proofImage'] as String?;
+    final completedAt = update['completedAt'] as String?;
     
     if (newStatus != null && newStatus != order.status) {
-      debugPrint('   🔄 Aplicando status: ${order.id.substring(0, 8)} ${order.status} -> $newStatus');
+      debugPrint('   🔄 Aplicando status: ${order.id.substring(0, 8)} ${order.status} -> $newStatus (hasProof=${proofImage != null})');
+      
+      // Mesclar metadata existente com novos dados do comprovante
+      final updatedMetadata = Map<String, dynamic>.from(order.metadata ?? {});
+      if (proofImage != null && proofImage.isNotEmpty) {
+        updatedMetadata['proofImage'] = proofImage;
+        updatedMetadata['paymentProof'] = proofImage; // Compatibilidade
+      }
+      if (completedAt != null) {
+        updatedMetadata['proofReceivedAt'] = completedAt;
+      }
+      
       return Order(
         id: order.id,
         eventId: order.eventId,
@@ -732,6 +750,7 @@ class NostrOrderService {
         status: newStatus,
         providerId: providerId ?? order.providerId,
         createdAt: order.createdAt,
+        metadata: updatedMetadata, // IMPORTANTE: Incluir metadata com proofImage!
       );
     }
     

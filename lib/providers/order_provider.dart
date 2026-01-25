@@ -1790,6 +1790,13 @@ class OrderProvider with ChangeNotifier {
           // MAS manter amount/btcAmount/billCode locais se Nostr tem 0
           if (_isStatusMoreRecent(nostrOrder.status, existing.status) || 
               existing.amount == 0 && nostrOrder.amount > 0) {
+            
+            // Mesclar metadata: preservar local e adicionar do Nostr (proofImage, etc)
+            final mergedMetadata = <String, dynamic>{
+              ...?existing.metadata,
+              ...?nostrOrder.metadata, // Dados do Nostr (incluindo proofImage)
+            };
+            
             _orders[existingIndex] = existing.copyWith(
               status: _isStatusMoreRecent(nostrOrder.status, existing.status) 
                   ? nostrOrder.status 
@@ -1802,9 +1809,10 @@ class OrderProvider with ChangeNotifier {
               billCode: nostrOrder.billCode.isNotEmpty ? nostrOrder.billCode : existing.billCode,
               providerId: nostrOrder.providerId ?? existing.providerId,
               eventId: nostrOrder.eventId ?? existing.eventId,
+              metadata: mergedMetadata.isNotEmpty ? mergedMetadata : null,
             );
             updated++;
-            debugPrint('🔄 Ordem ${nostrOrder.id.substring(0, 8)} mesclada (preservando dados locais)');
+            debugPrint('🔄 Ordem ${nostrOrder.id.substring(0, 8)} mesclada (hasProof=${mergedMetadata["proofImage"] != null})');
           }
         }
       }

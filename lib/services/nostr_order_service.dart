@@ -894,6 +894,82 @@ class NostrOrderService {
     debugPrint('✅ ${updates.length} atualizações encontradas');
     return updates;
   }
+  
+  /// Busca eventos de update de status para ordens que o provedor aceitou
+  /// Isso permite que o Bro veja quando o usuário confirmou o pagamento (completed)
+  Future<Map<String, Map<String, dynamic>>> fetchOrderUpdatesForProvider(String providerPubkey, {List<String>? orderIds}) async {
+    final updates = <String, Map<String, dynamic>>{}; // orderId -> latest update
+    
+    debugPrint('🔍 Buscando atualizações para provedor ${providerPubkey.substring(0, 16)}...');
+
+    for (final relay in _relays.take(3)) {
+      try {
+        // Buscar eventos de UPDATE (kind 30080) onde o provedor é tagged
+        var events = await _fetchFromRelay(
+          relay,
+          kinds: [kindBroPaymentProof], // 30080 = updates de status
+          tags: {'#p': [providerPubkey]}, // Eventos direcionados ao provedor
+          limit: 100,
+        );
+        
+        debugPrint('   $relay: ${events.length} eventos de update via #p');
+        
+        // Também buscar por tag #t genérica se não encontrou
+        if (events.isEmpty && orderIds != null && orderIds.isNotEmpty) {
+          final altEvents = await _fetchFromRelay(
+            relay,
+            kinds: [kindBroPaymentProof],
+            tags: {'#t': ['bro-update']},
+            limit: 100,
+          );
+          debugPrint('   $relay: ${altEvents.length} eventos via #t (fallback)');
+          
+          // Filtrar apenas eventos das ordens que nos interessam
+          events = altEvents.where((e) {
+            try {
+              final content = e['parsedContent'] ?? jsonDecode(e['content']);
+              final eventOrderId = content['orderId'] as String?;
+              return eventOrderId != null && orderIds.contains(eventOrderId);
+            } catch (_) {
+              return false;
+            }
+          }).toList();
+        }
+        
+        for (final event in events) {
+          try {
+            final content = event['parsedContent'] ?? jsonDecode(event['content']);
+            final orderId = content['orderId'] as String?;
+            final status = content['status'] as String?;
+            final createdAt = event['created_at'] as int? ?? 0;
+            
+            if (orderId == null || status == null) continue;
+            
+            // Verificar se este evento é mais recente
+            final existingUpdate = updates[orderId];
+            final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
+            
+            if (existingUpdate == null || createdAt > existingCreatedAt) {
+              updates[orderId] = {
+                'orderId': orderId,
+                'status': status,
+                'created_at': createdAt,
+              };
+              
+              debugPrint('   📥 Update para provedor: $orderId -> status=$status');
+            }
+          } catch (e) {
+            debugPrint('   ⚠️ Erro ao processar evento: $e');
+          }
+        }
+      } catch (e) {
+        debugPrint('⚠️ Falha ao buscar de $relay: $e');
+      }
+    }
+
+    debugPrint('✅ ${updates.length} updates encontrados para provedor');
+    return updates;
+  }
 
   // ============================================
   // TIER/COLLATERAL - Persistência no Nostr

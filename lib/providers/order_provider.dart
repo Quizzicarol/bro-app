@@ -935,6 +935,49 @@ class OrderProvider with ChangeNotifier {
             added++;
           }
         }
+        
+        // CRÍTICO: Buscar updates de status para ordens que este provedor aceitou
+        // Isso permite que o Bro veja quando o usuário confirmou (status=completed)
+        final myOrderIds = _orders
+            .where((o) => o.providerId == _currentUserPubkey)
+            .map((o) => o.id)
+            .toList();
+        
+        if (myOrderIds.isNotEmpty) {
+          debugPrint('🔍 [PROVEDOR] Buscando updates para ${myOrderIds.length} ordens aceitas...');
+          final providerUpdates = await _nostrOrderService.fetchOrderUpdatesForProvider(
+            _currentUserPubkey!,
+            orderIds: myOrderIds,
+          );
+          
+          int statusUpdated = 0;
+          for (final entry in providerUpdates.entries) {
+            final orderId = entry.key;
+            final update = entry.value;
+            final newStatus = update['status'] as String?;
+            
+            if (newStatus == null) continue;
+            
+            final existingIndex = _orders.indexWhere((o) => o.id == orderId);
+            if (existingIndex != -1) {
+              final existing = _orders[existingIndex];
+              
+              // Só atualizar se o novo status é mais avançado
+              if (_isStatusMoreRecent(newStatus, existing.status)) {
+                _orders[existingIndex] = existing.copyWith(
+                  status: newStatus,
+                  completedAt: newStatus == 'completed' ? DateTime.now() : existing.completedAt,
+                );
+                statusUpdated++;
+                debugPrint('   ✅ Ordem ${orderId.substring(0, 8)}: ${existing.status} -> $newStatus');
+              }
+            }
+          }
+          
+          if (statusUpdated > 0) {
+            debugPrint('🎉 [PROVEDOR] $statusUpdated ordens tiveram status atualizado!');
+          }
+        }
       }
       
       // Ordenar por data (mais recente primeiro)

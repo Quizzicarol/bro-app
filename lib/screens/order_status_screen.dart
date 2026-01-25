@@ -3326,12 +3326,18 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           orderDetails = order.toJson();
         }
       }
+      
+      // Pegar o providerId da ordem para notificar o Bro via Nostr
+      final providerId = orderDetails?['providerId'] as String?;
+      debugPrint('📤 Confirmando ordem - providerId: ${providerId?.substring(0, 8) ?? "null"}');
 
       // Atualizar status para 'completed' - SEMPRE usar OrderProvider que publica no Nostr
+      // IMPORTANTE: Passar providerId para que o Bro seja notificado via tag #p
       final orderProvider = context.read<OrderProvider>();
       final updateSuccess = await orderProvider.updateOrderStatus(
         orderId: widget.orderId,
         status: 'completed',
+        providerId: providerId,  // CRÍTICO: Para notificar o Bro via Nostr!
       );
       
       if (!updateSuccess) {

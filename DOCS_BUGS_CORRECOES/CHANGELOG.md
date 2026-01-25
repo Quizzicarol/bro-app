@@ -1,0 +1,112 @@
+# 📋 Changelog - Bro App
+
+## [1.0.39] - 2026-01-25
+
+### 🐛 Bug Crítico Corrigido
+- **Sincronização de status entre usuário e Bro**
+  - Problema: Ordem mostrava "Concluída" para usuário mas "Aguardando Usuário" para Bro
+  - Causa: Evento Nostr de update não incluía `providerId` na tag `#p`
+  - Solução: Passar `providerId` ao confirmar e criar `fetchOrderUpdatesForProvider()`
+
+### Arquivos Modificados
+- `lib/screens/order_status_screen.dart` - Passa providerId ao confirmar
+- `lib/services/nostr_order_service.dart` - Nova função fetchOrderUpdatesForProvider()
+- `lib/providers/order_provider.dart` - Busca updates para ordens aceitas
+
+---
+
+## [1.0.38] - 2026-01-25
+
+### 🚨 Bug CRÍTICO de Segurança Corrigido
+- **Vazamento de ordens entre usuários**
+  - Problema: Ordens de um usuário apareciam em outro dispositivo com conta diferente
+  - Causa: `createOrder()` salvava diretamente sem filtro, `fetchOrder()` inseria sem verificar pubkey
+  - Solução: Usar `_saveOrders()` com filtro, verificar pubkey antes de inserir
+
+### 🐛 Bug Corrigido
+- **Comprovante do Bro não aparecia para usuário**
+  - Problema: `paymentProof` era truncado para `'image_base64_stored'`
+  - Solução: Salvar imagem completa em base64
+
+### Arquivos Modificados
+- `lib/providers/order_provider.dart` - Filtros de segurança rigorosos
+- `lib/screens/order_status_screen.dart` - Buscar metadata do OrderProvider sempre
+
+---
+
+## [1.0.37] - 2026-01-25
+
+### ✨ Melhorias na Tela de Depósito On-chain
+- Detecção de transação na mempool
+- Barra de progresso com confirmações (0/3, 1/3, 2/3, 3/3)
+- Tempo estimado até tier ser liberado (~10min/confirmação)
+- 3 confirmações obrigatórias (proteção contra RBF)
+- Polling mais rápido: 10s ao invés de 30s
+- Padding no final para não ficar atrás da navegação
+
+### Arquivos Modificados
+- `lib/screens/deposit_screen.dart` - Widget _buildOnchainStatusCard()
+
+---
+
+## [1.0.36] - 2026-01-25
+
+### 🐛 Bug Corrigido
+- **Sats "pendentes" incorretos**
+  - Problema: Mostrava 37445 sats como "Ordens Pendentes" mesmo com só 13 sats na carteira
+  - Causa: `committedSats` contava ordens que já tiveram invoice paga
+  - Solução: `committedSats` retorna 0 (sats já saíram da carteira quando invoice foi paga)
+
+### Arquivos Modificados
+- `lib/providers/order_provider.dart` - Getter committedSats retorna 0
+
+---
+
+## [1.0.35] - 2026-01-25
+
+### 🐛 Bugs Corrigidos
+1. **Badge "Tier Ativo" inconsistente com ordens bloqueadas**
+   - Problema: Badge mostrava "Tier Ativo" mas ordens mostravam "BLOQUEADA"
+   - Causa: Estado `_tierAtRisk` redundante não sincronizado com CollateralProvider
+   - Solução: Usar CollateralProvider.isTierAtRisk diretamente
+
+2. **Comprovante não visível para usuário**
+   - Problema: Usuário não via o comprovante enviado pelo Bro
+   - Solução: Adicionar `paymentProof` à cadeia de lookup no metadata
+
+### Arquivos Modificados
+- `lib/screens/provider_orders_screen.dart` - Remover _tierAtRisk
+- `lib/screens/order_status_screen.dart` - Adicionar paymentProof ao lookup
+
+---
+
+## [1.0.34] - 2026-01-24
+
+### 🐛 Bug Corrigido
+- **Erro "order is not a subtype of Map"**
+  - Problema: Crash ao entrar no modo Bro
+  - Causa: Código esperava Map mas recebia Order
+  - Solução: Converter Order para Map usando .toJson()
+
+---
+
+## [1.0.33] - 2026-01-24
+
+### ✨ Melhorias
+- Labels de status simplificados (4 categorias principais)
+- Tolerância de 10% no saldo de tier para flutuação BTC
+
+---
+
+## [1.0.32] - 2026-01-24
+
+### 🐛 Bug Corrigido
+- **Ordens fantasma**
+  - Problema: Ordens apareciam sem o usuário ter pago
+  - Causa: Ordem era criada ANTES da invoice ser paga
+  - Solução: Criar invoice ANTES da ordem, só criar ordem após pagamento
+
+---
+
+## [Anteriores]
+Versões anteriores não documentadas neste formato.

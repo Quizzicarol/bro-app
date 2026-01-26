@@ -1018,7 +1018,7 @@ class NostrOrderService {
                 final createdAt = event['created_at'] as int? ?? 0;
                 
                 // SEGURANÇA: Verificar se é a ordem correta
-                if (eventOrderId != orderId) continue;
+                if (eventOrderId == null || eventOrderId != orderId) continue;
                 if (status == null) continue;
                 
                 final existingUpdate = updates[eventOrderId];

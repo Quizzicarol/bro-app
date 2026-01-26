@@ -163,7 +163,10 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       
       // Buscar ordens do Nostr
       final orderProvider = context.read<OrderProvider>();
+      debugPrint('🔵 [PROVIDER_ORDERS] Antes de fetchOrders - isProviderMode: ${orderProvider.isProviderMode}');
       await orderProvider.fetchOrders(forProvider: true);
+      debugPrint('🔵 [PROVIDER_ORDERS] Após fetchOrders - isProviderMode: ${orderProvider.isProviderMode}');
+      debugPrint('🔵 [PROVIDER_ORDERS] Total de ordens no provider: ${orderProvider.orders.length}');
       
       if (mounted) {
         setState(() {
@@ -178,10 +181,12 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       
       // Separar ordens disponíveis e minhas ordens
       final allOrders = orderProvider.orders;
+      debugPrint('🔵 [PROVIDER_ORDERS] Processando ${allOrders.length} ordens...');
       List<Map<String, dynamic>> available = [];
       List<Map<String, dynamic>> myOrders = [];
       
       for (final order in allOrders) {
+        debugPrint('   📋 Ordem ${order.id.substring(0, 8)}: status=${order.status}, providerId=${order.providerId?.substring(0, 8) ?? "null"}, userPubkey=${order.userPubkey?.substring(0, 8) ?? "null"}');
         final orderMap = order.toJson();
         orderMap['amount'] = order.amount;
         orderMap['payment_type'] = order.billType;

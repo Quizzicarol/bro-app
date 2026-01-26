@@ -940,35 +940,39 @@ class NostrOrderService {
   
   /// Busca eventos de update de status para ordens que o provedor aceitou
   /// Isso permite que o Bro veja quando o usuário confirmou o pagamento (completed)
+  /// SEGURANÇA: Só retorna updates para ordens específicas do provedor
   Future<Map<String, Map<String, dynamic>>> fetchOrderUpdatesForProvider(String providerPubkey, {List<String>? orderIds}) async {
     final updates = <String, Map<String, dynamic>>{}; // orderId -> latest update
     
-    debugPrint('🔍 [BUSCA UPDATES] Buscando atualizações para provedor ${providerPubkey.substring(0, 16)}...');
-    if (orderIds != null && orderIds.isNotEmpty) {
-      debugPrint('   Ordens a verificar (${orderIds.length}): ${orderIds.map((id) => id.substring(0, 8)).join(", ")}');
+    // SEGURANÇA: Se não temos orderIds específicos, não buscar nada
+    // Isso previne vazamento de ordens de outros usuários
+    if (orderIds == null || orderIds.isEmpty) {
+      debugPrint('⚠️ [BUSCA UPDATES] Nenhum orderId fornecido, retornando vazio (segurança)');
+      return updates;
     }
+    
+    debugPrint('🔍 [BUSCA UPDATES] Buscando atualizações para provedor ${providerPubkey.substring(0, 16)}...');
+    debugPrint('   Ordens a verificar (${orderIds.length}): ${orderIds.map((id) => id.substring(0, 8)).join(", ")}');
 
     // Converter orderIds para Set para busca O(1)
-    final orderIdSet = orderIds?.toSet() ?? <String>{};
+    final orderIdSet = orderIds.toSet();
 
-    for (final relay in _relays.take(4)) { // Aumentado para 4 relays
+    for (final relay in _relays.take(3)) {
       try {
         debugPrint('   🔍 Buscando em $relay...');
         
-        // ESTRATÉGIA PRINCIPAL: Buscar TODOS os eventos kind 30080 recentes
-        // e filtrar no cliente pelos orderIds que nos interessam
-        // Isso é mais confiável do que depender de tags específicas
-        final allEvents = await _fetchFromRelay(
+        // ESTRATÉGIA 1: Buscar por tag #p (eventos direcionados ao provedor)
+        // Esta é a forma mais segura - só retorna eventos onde o provedor foi tagueado
+        final pTagEvents = await _fetchFromRelay(
           relay,
           kinds: [kindBroPaymentProof], // 30080
-          tags: {'#t': ['bro-update']}, // Tag genérica que todos os updates têm
-          limit: 300, // Buscar mais eventos para garantir
+          tags: {'#p': [providerPubkey]},
+          limit: 100,
         );
         
-        debugPrint('   📥 $relay: ${allEvents.length} eventos totais');
+        debugPrint('   📥 $relay: ${pTagEvents.length} eventos via #p');
         
-        int matchCount = 0;
-        for (final event in allEvents) {
+        for (final event in pTagEvents) {
           try {
             final content = event['parsedContent'] ?? jsonDecode(event['content']);
             final eventOrderId = content['orderId'] as String?;
@@ -977,51 +981,46 @@ class NostrOrderService {
             
             if (eventOrderId == null || status == null) continue;
             
-            // Verificar se este evento é para uma das ordens que buscamos
-            if (orderIdSet.isEmpty || orderIdSet.contains(eventOrderId)) {
-              // Verificar se este evento é mais recente que o que já temos
-              final existingUpdate = updates[eventOrderId];
-              final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
-              
-              if (existingUpdate == null || createdAt > existingCreatedAt) {
-                updates[eventOrderId] = {
-                  'orderId': eventOrderId,
-                  'status': status,
-                  'created_at': createdAt,
-                  'userPubkey': content['userPubkey'], // Quem publicou
-                };
-                matchCount++;
-                debugPrint('   ✅ Update encontrado: ${eventOrderId.substring(0, 8)} -> $status (ts: $createdAt)');
-              }
+            // SEGURANÇA: Só processar se a ordem está na lista que buscamos
+            if (!orderIdSet.contains(eventOrderId)) continue;
+            
+            final existingUpdate = updates[eventOrderId];
+            final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
+            
+            if (existingUpdate == null || createdAt > existingCreatedAt) {
+              updates[eventOrderId] = {
+                'orderId': eventOrderId,
+                'status': status,
+                'created_at': createdAt,
+              };
+              debugPrint('   ✅ Update via #p: ${eventOrderId.substring(0, 8)} -> $status');
             }
-          } catch (e) {
-            // Ignorar eventos malformados
-          }
+          } catch (_) {}
         }
         
-        debugPrint('   📊 $relay: $matchCount updates relevantes encontrados');
-        
-        // ESTRATÉGIA BACKUP: Buscar por tag #p (eventos direcionados ao provedor)
-        if (matchCount == 0) {
-          final pTagEvents = await _fetchFromRelay(
-            relay,
-            kinds: [kindBroPaymentProof],
-            tags: {'#p': [providerPubkey]},
-            limit: 100,
-          );
-          
-          debugPrint('   📥 $relay: ${pTagEvents.length} eventos via #p (backup)');
-          
-          for (final event in pTagEvents) {
-            try {
-              final content = event['parsedContent'] ?? jsonDecode(event['content']);
-              final eventOrderId = content['orderId'] as String?;
-              final status = content['status'] as String?;
-              final createdAt = event['created_at'] as int? ?? 0;
-              
-              if (eventOrderId == null || status == null) continue;
-              
-              if (orderIdSet.isEmpty || orderIdSet.contains(eventOrderId)) {
+        // ESTRATÉGIA 2: Buscar diretamente por cada orderId específico
+        // Fallback para quando a tag #p não foi indexada
+        for (final orderId in orderIds.take(5)) {
+          try {
+            // Buscar por tag #e (referência ao orderId)
+            final eTagEvents = await _fetchFromRelay(
+              relay,
+              kinds: [kindBroPaymentProof],
+              tags: {'#e': [orderId]},
+              limit: 5,
+            );
+            
+            for (final event in eTagEvents) {
+              try {
+                final content = event['parsedContent'] ?? jsonDecode(event['content']);
+                final eventOrderId = content['orderId'] as String?;
+                final status = content['status'] as String?;
+                final createdAt = event['created_at'] as int? ?? 0;
+                
+                // SEGURANÇA: Verificar se é a ordem correta
+                if (eventOrderId != orderId) continue;
+                if (status == null) continue;
+                
                 final existingUpdate = updates[eventOrderId];
                 final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
                 
@@ -1031,11 +1030,11 @@ class NostrOrderService {
                     'status': status,
                     'created_at': createdAt,
                   };
-                  debugPrint('   ✅ Update via #p: ${eventOrderId.substring(0, 8)} -> $status');
+                  debugPrint('   ✅ Update via #e: ${eventOrderId.substring(0, 8)} -> $status');
                 }
-              }
-            } catch (_) {}
-          }
+              } catch (_) {}
+            }
+          } catch (_) {}
         }
         
       } catch (e) {
@@ -1044,9 +1043,6 @@ class NostrOrderService {
     }
 
     debugPrint('🔍 [BUSCA UPDATES] Total: ${updates.length} updates encontrados');
-    for (final entry in updates.entries) {
-      debugPrint('   📋 ${entry.key.substring(0, 8)}: status=${entry.value['status']}');
-    }
     return updates;
   }
 

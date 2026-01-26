@@ -4,7 +4,56 @@ Este documento detalha cada bug encontrado, sua causa raiz e solução implement
 
 ---
 
-## � Status "Completed" Não Atualizado no Modo Bro - v1.0.42 (25/01/2026)
+## 🚨 CRÍTICO: Vazamento de Ordens ao Sair do Modo Bro - v1.0.43+57 (26/01/2026)
+
+### Sintoma
+Quando usuário saía do Modo Bro para "Minhas Trocas", ordens de OUTROS usuários apareciam na lista.
+
+### Causa Raiz (múltiplas)
+1. O `dispose()` do ProviderOrdersScreen NÃO chamava `exitProviderMode()`, apenas setava `SecureStorageService`
+2. O `PopScope.onPopInvokedWithResult` pode falhar silenciosamente se o contexto estiver desmontado
+3. Não havia verificação de segurança nas telas Home e UserOrders para resetar modo provedor
+
+### Solução
+```dart
+// 1. Em ProviderOrdersScreen - Armazenar referência ao OrderProvider:
+OrderProvider? _orderProviderRef;
+
+@override
+void didChangeDependencies() {
+  super.didChangeDependencies();
+  // SEGURANÇA: Capturar referência para uso no dispose
+  _orderProviderRef = Provider.of<OrderProvider>(context, listen: false);
+}
+
+@override
+void dispose() {
+  // SEGURANÇA: Chamar exitProviderMode usando referência salva
+  _orderProviderRef?.exitProviderMode();
+  super.dispose();
+}
+
+// 2. Em HomeScreen._loadData() - Verificação de segurança:
+if (orderProvider.isProviderMode) {
+  debugPrint('⚠️ [HOME] Detectado modo provedor ativo! Forçando reset...');
+  orderProvider.exitProviderMode();
+}
+
+// 3. Em UserOrdersScreen._loadOrdersWithAutoReconcile() - Mesma verificação
+if (orderProvider.isProviderMode) {
+  debugPrint('⚠️ [MINHAS TROCAS] Detectado modo provedor ativo! Forçando reset...');
+  orderProvider.exitProviderMode();
+}
+```
+
+### Arquivos
+- `lib/screens/provider_orders_screen.dart` - Armazena referência e chama exitProviderMode no dispose
+- `lib/screens/home_screen.dart` - Verificação de segurança em _loadData
+- `lib/screens/user_orders_screen.dart` - Verificação de segurança em _loadOrdersWithAutoReconcile
+
+---
+
+## 🛡️ Status "Completed" Não Atualizado no Modo Bro - v1.0.42 (25/01/2026)
 
 ### Sintoma
 Quando usuário confirmava pagamento (status = completed), o Bro continuava vendo "Aguardando confirmação do usuário" mesmo após sincronizar.

@@ -95,7 +95,14 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
       final orderProvider = Provider.of<OrderProvider>(context, listen: false);
       final breezProvider = Provider.of<BreezProvider>(context, listen: false);
       
-      // Sincronizar com Nostr primeiro
+      // SEGURANÇA CRÍTICA: Garantir que NÃO estamos em modo provedor
+      // Isso previne vazamento de dados se o exitProviderMode falhou
+      if (orderProvider.isProviderMode) {
+        debugPrint('⚠️ [MINHAS TROCAS] Detectado modo provedor ativo! Forçando reset...');
+        orderProvider.exitProviderMode();
+      }
+      
+      // Sincronizar com Nostr primeiro (SEMPRE com forProvider: false)
       await orderProvider.fetchOrders();
       
       if (mounted) {

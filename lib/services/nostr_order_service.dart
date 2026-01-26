@@ -711,20 +711,26 @@ class NostrOrderService {
   
   /// Busca TODOS os eventos de UPDATE de status (kind 30080, 30081)
   /// Inclui: updates de status, conclusões de ordem
+  /// CRÍTICO: Busca de TODOS os relays para garantir sincronização
   Future<Map<String, Map<String, dynamic>>> _fetchAllOrderStatusUpdates() async {
     final updates = <String, Map<String, dynamic>>{}; // orderId -> latest update
     
-    debugPrint('🔄 Buscando eventos de UPDATE de status...');
+    debugPrint('🔄 ══════════════════════════════════════════════════');
+    debugPrint('🔄 BUSCANDO UPDATES DE STATUS DE TODOS OS RELAYS');
+    debugPrint('🔄 ══════════════════════════════════════════════════');
     
-    for (final relay in _relays.take(3)) {
+    // Buscar de TODOS os relays em paralelo
+    for (final relay in _relays) {
       try {
         // Buscar TODOS os tipos de update: 30079 (accept), 30080 (update), 30081 (complete)
+        // CRÍTICO: Não usar filtro de tag - buscar por kind apenas
         final events = await _fetchFromRelay(
           relay,
           kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete], // 30079, 30080 e 30081
-          tags: {'#t': [broTag]}, // Buscar por bro-order tag genérica
-          limit: 200,
+          limit: 300,
         );
+        
+        debugPrint('   📥 $relay retornou ${events.length} eventos de update');
         
         for (final event in events) {
           try {
@@ -780,7 +786,9 @@ class NostrOrderService {
       }
     }
     
+    debugPrint('🔄 ══════════════════════════════════════════════════');
     debugPrint('✅ ${updates.length} updates de status encontrados');
+    debugPrint('🔄 ══════════════════════════════════════════════════');
     return updates;
   }
   
@@ -830,81 +838,83 @@ class NostrOrderService {
   }
 
   /// Busca ordens pendentes (raw) - todas as ordens disponíveis para Bros
+  /// CRÍTICO: Busca em TODOS os relays para garantir sincronização entre dispositivos
   Future<List<Map<String, dynamic>>> _fetchPendingOrdersRaw() async {
     final orders = <Map<String, dynamic>>[];
     final seenIds = <String>{};
 
-    debugPrint('🔍 Buscando ordens disponíveis para Bros nos relays...');
-    debugPrint('   Relays: ${_relays.join(", ")}');
+    debugPrint('🔍 ══════════════════════════════════════════════════');
+    debugPrint('🔍 BUSCANDO ORDENS PENDENTES DE TODOS OS RELAYS');
+    debugPrint('🔍 ══════════════════════════════════════════════════');
+    debugPrint('   Relays configurados: ${_relays.length}');
+    for (final r in _relays) {
+      debugPrint('      - $r');
+    }
     
-    // IMPORTANTE: Buscar ordens dos últimos 7 dias apenas
-    // Isso melhora a sincronização entre dispositivos e evita ordens antigas
-    final sevenDaysAgo = DateTime.now().subtract(const Duration(days: 7));
-    final sinceTimestamp = (sevenDaysAgo.millisecondsSinceEpoch / 1000).floor();
-    debugPrint('   Since: ${sevenDaysAgo.toIso8601String()} (timestamp: $sinceTimestamp)');
+    // IMPORTANTE: Buscar ordens dos últimos 14 dias (aumentado de 7)
+    // Isso melhora a sincronização entre dispositivos
+    final fourteenDaysAgo = DateTime.now().subtract(const Duration(days: 14));
+    final sinceTimestamp = (fourteenDaysAgo.millisecondsSinceEpoch / 1000).floor();
+    debugPrint('   Since: ${fourteenDaysAgo.toIso8601String()} (timestamp: $sinceTimestamp)');
 
-    // ESTRATÉGIA 1: Buscar com tag #t (mais eficiente quando funciona)
+    // ESTRATÉGIA: Buscar por KIND diretamente (mais confiável que tags)
+    // Buscar de TODOS os relays em paralelo para maior velocidade
+    final futures = <Future<List<Map<String, dynamic>>>>[];
+    
     for (final relay in _relays) {
-      debugPrint('   [TAG] Tentando relay: $relay');
-      try {
-        final relayOrders = await _fetchFromRelayWithSince(
-          relay,
-          kinds: [kindBroOrder],
-          tags: {'#t': [broTag]},
-          since: sinceTimestamp,
-          limit: 100,
-        );
-        
-        debugPrint('   [TAG] $relay retornou ${relayOrders.length} eventos');
-        
-        for (final order in relayOrders) {
-          final id = order['id'];
-          if (!seenIds.contains(id)) {
-            seenIds.add(id);
+      futures.add(_fetchPendingFromRelay(relay, sinceTimestamp));
+    }
+    
+    // Aguardar todas as buscas em paralelo
+    final results = await Future.wait(futures, eagerError: false);
+    
+    // Processar resultados
+    for (int i = 0; i < results.length; i++) {
+      final relayOrders = results[i];
+      final relay = _relays[i];
+      debugPrint('   📥 $relay retornou ${relayOrders.length} eventos');
+      
+      for (final order in relayOrders) {
+        final id = order['id'];
+        if (!seenIds.contains(id)) {
+          seenIds.add(id);
+          orders.add(order);
+          debugPrint('      ✅ Nova ordem: ${id.substring(0, 8)}');
+        }
+      }
+    }
+    debugPrint('🔍 ══════════════════════════════════════════════════');
+    debugPrint('✅ TOTAL: ${orders.length} ordens únicas encontradas');
+    debugPrint('🔍 ══════════════════════════════════════════════════');
+    return orders;
+  }
+  
+  /// Helper: Busca ordens pendentes de um relay específico
+  Future<List<Map<String, dynamic>>> _fetchPendingFromRelay(String relay, int sinceTimestamp) async {
+    final orders = <Map<String, dynamic>>[];
+    
+    try {
+      // Buscar por KIND 30078 diretamente (mais confiável)
+      final relayOrders = await _fetchFromRelayWithSince(
+        relay,
+        kinds: [kindBroOrder],
+        since: sinceTimestamp,
+        limit: 200, // Aumentado para pegar mais ordens
+      );
+      
+      for (final order in relayOrders) {
+        // Verificar se é ordem do Bro app (verificando content)
+        try {
+          final content = order['parsedContent'] ?? jsonDecode(order['content'] ?? '{}');
+          if (content['type'] == 'bro_order') {
             orders.add(order);
           }
-        }
-      } catch (e) {
-        debugPrint('⚠️ [TAG] Falha ao buscar de $relay: $e');
+        } catch (_) {}
       }
+    } catch (e) {
+      debugPrint('⚠️ Falha ao buscar de $relay: $e');
     }
     
-    // ESTRATÉGIA 2: Se não encontrou ordens com tag, buscar por kind apenas
-    // Isso é um fallback para relays que não suportam bem filtro por tag
-    if (orders.isEmpty) {
-      debugPrint('⚠️ Nenhuma ordem encontrada com tag, tentando busca por kind...');
-      for (final relay in _relays) {
-        debugPrint('   [KIND] Tentando relay: $relay');
-        try {
-          final relayOrders = await _fetchFromRelayWithSince(
-            relay,
-            kinds: [kindBroOrder],
-            since: sinceTimestamp,
-            limit: 100,
-          );
-          
-          debugPrint('   [KIND] $relay retornou ${relayOrders.length} eventos');
-          
-          for (final order in relayOrders) {
-            final id = order['id'];
-            // Verificar se é ordem do Bro app (verificando content)
-            try {
-              final content = order['parsedContent'] ?? jsonDecode(order['content'] ?? '{}');
-              if (content['type'] == 'bro_order') {
-                if (!seenIds.contains(id)) {
-                  seenIds.add(id);
-                  orders.add(order);
-                }
-              }
-            } catch (_) {}
-          }
-        } catch (e) {
-          debugPrint('⚠️ [KIND] Falha ao buscar de $relay: $e');
-        }
-      }
-    }
-
-    debugPrint('✅ Encontradas ${orders.length} ordens totais nos relays');
     return orders;
   }
 
@@ -913,35 +923,66 @@ class NostrOrderService {
     final orders = <Map<String, dynamic>>[];
     final seenIds = <String>{};
 
-    debugPrint('🔍 Buscando ordens do usuário ${pubkey.substring(0, 16)}...');
-    debugPrint('   Relays: ${_relays.join(", ")}');
+    debugPrint('🔍 ══════════════════════════════════════════════════');
+    debugPrint('🔍 BUSCANDO ORDENS DO USUÁRIO ${pubkey.substring(0, 16)}');
+    debugPrint('🔍 ══════════════════════════════════════════════════');
 
+    // Buscar de TODOS os relays em paralelo
+    final futures = <Future<List<Map<String, dynamic>>>>[];
+    
     for (final relay in _relays) {
-      debugPrint('   Tentando relay: $relay');
-      try {
-        final relayOrders = await _fetchFromRelay(
-          relay,
-          kinds: [kindBroOrder],
-          authors: [pubkey],
-          tags: {'#t': [broTag]},
-          limit: 100,
-        );
-        
-        debugPrint('   $relay retornou ${relayOrders.length} eventos');
-        
-        for (final order in relayOrders) {
-          final id = order['id'];
-          if (!seenIds.contains(id)) {
-            seenIds.add(id);
-            orders.add(order);
-          }
+      futures.add(_fetchUserOrdersFromRelay(relay, pubkey));
+    }
+    
+    // Aguardar todas as buscas em paralelo
+    final results = await Future.wait(futures, eagerError: false);
+    
+    // Processar resultados
+    for (int i = 0; i < results.length; i++) {
+      final relayOrders = results[i];
+      final relay = _relays[i];
+      debugPrint('   📥 $relay retornou ${relayOrders.length} eventos');
+      
+      for (final order in relayOrders) {
+        final id = order['id'];
+        if (!seenIds.contains(id)) {
+          seenIds.add(id);
+          orders.add(order);
         }
-      } catch (e) {
-        debugPrint('⚠️ Falha ao buscar de $relay: $e');
       }
     }
 
     debugPrint('✅ Total: ${orders.length} ordens únicas do usuário');
+    debugPrint('🔍 ══════════════════════════════════════════════════');
+    return orders;
+  }
+  
+  /// Helper: Busca ordens de um usuário de um relay específico
+  Future<List<Map<String, dynamic>>> _fetchUserOrdersFromRelay(String relay, String pubkey) async {
+    final orders = <Map<String, dynamic>>[];
+    
+    try {
+      // ESTRATÉGIA 1: Buscar por author
+      final relayOrders = await _fetchFromRelay(
+        relay,
+        kinds: [kindBroOrder],
+        authors: [pubkey],
+        limit: 100,
+      );
+      
+      for (final order in relayOrders) {
+        // Verificar se é ordem do Bro app
+        try {
+          final content = order['parsedContent'] ?? jsonDecode(order['content'] ?? '{}');
+          if (content['type'] == 'bro_order') {
+            orders.add(order);
+          }
+        } catch (_) {}
+      }
+    } catch (e) {
+      debugPrint('⚠️ Falha ao buscar de $relay: $e');
+    }
+    
     return orders;
   }
 

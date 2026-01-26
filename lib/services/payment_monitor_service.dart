@@ -81,7 +81,7 @@ class PaymentMonitorService {
     required String address,
     required int expectedSats,
     required PaymentMonitorCallback onStatusChange,
-    Duration checkInterval = const Duration(seconds: 10),
+    Duration checkInterval = const Duration(seconds: 5), // Reduzido para 5s para detecção mais rápida
   }) {
     debugPrint('🔍 Iniciando monitoramento onchain: $address');
     

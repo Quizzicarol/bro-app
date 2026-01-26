@@ -286,6 +286,27 @@ class NostrOrderService {
     Map<String, List<String>>? tags,
     int limit = 50,
   }) async {
+    return _fetchFromRelayWithSince(
+      relayUrl,
+      kinds: kinds,
+      authors: authors,
+      tags: tags,
+      limit: limit,
+      since: null,
+    );
+  }
+  
+  /// Busca eventos de um relay com suporte a 'since' timestamp
+  /// CRÍTICO para sincronização entre dispositivos - o 'since' permite
+  /// que relays retornem apenas eventos recentes, melhorando consistência
+  Future<List<Map<String, dynamic>>> _fetchFromRelayWithSince(
+    String relayUrl, {
+    required List<int> kinds,
+    List<String>? authors,
+    Map<String, List<String>>? tags,
+    int? since,
+    int limit = 50,
+  }) async {
     final events = <Map<String, dynamic>>[];
     final completer = Completer<List<Map<String, dynamic>>>();
     WebSocketChannel? channel;
@@ -346,6 +367,11 @@ class NostrOrderService {
       
       if (tags != null) {
         filter.addAll(tags);
+      }
+      
+      // CRÍTICO: Adicionar 'since' para melhor sincronização entre dispositivos
+      if (since != null) {
+        filter['since'] = since;
       }
 
       // Enviar requisição
@@ -810,20 +836,26 @@ class NostrOrderService {
 
     debugPrint('🔍 Buscando ordens disponíveis para Bros nos relays...');
     debugPrint('   Relays: ${_relays.join(", ")}');
+    
+    // IMPORTANTE: Buscar ordens dos últimos 7 dias apenas
+    // Isso melhora a sincronização entre dispositivos e evita ordens antigas
+    final sevenDaysAgo = DateTime.now().subtract(const Duration(days: 7));
+    final sinceTimestamp = (sevenDaysAgo.millisecondsSinceEpoch / 1000).floor();
+    debugPrint('   Since: ${sevenDaysAgo.toIso8601String()} (timestamp: $sinceTimestamp)');
 
+    // ESTRATÉGIA 1: Buscar com tag #t (mais eficiente quando funciona)
     for (final relay in _relays) {
-      debugPrint('   Tentando relay: $relay');
+      debugPrint('   [TAG] Tentando relay: $relay');
       try {
-        // Buscar TODAS as ordens com tag bro (sem filtrar por status específico)
-        // O status é filtrado depois no EscrowService
-        final relayOrders = await _fetchFromRelay(
+        final relayOrders = await _fetchFromRelayWithSince(
           relay,
           kinds: [kindBroOrder],
           tags: {'#t': [broTag]},
+          since: sinceTimestamp,
           limit: 100,
         );
         
-        debugPrint('   $relay retornou ${relayOrders.length} eventos');
+        debugPrint('   [TAG] $relay retornou ${relayOrders.length} eventos');
         
         for (final order in relayOrders) {
           final id = order['id'];
@@ -833,7 +865,42 @@ class NostrOrderService {
           }
         }
       } catch (e) {
-        debugPrint('⚠️ Falha ao buscar de $relay: $e');
+        debugPrint('⚠️ [TAG] Falha ao buscar de $relay: $e');
+      }
+    }
+    
+    // ESTRATÉGIA 2: Se não encontrou ordens com tag, buscar por kind apenas
+    // Isso é um fallback para relays que não suportam bem filtro por tag
+    if (orders.isEmpty) {
+      debugPrint('⚠️ Nenhuma ordem encontrada com tag, tentando busca por kind...');
+      for (final relay in _relays) {
+        debugPrint('   [KIND] Tentando relay: $relay');
+        try {
+          final relayOrders = await _fetchFromRelayWithSince(
+            relay,
+            kinds: [kindBroOrder],
+            since: sinceTimestamp,
+            limit: 100,
+          );
+          
+          debugPrint('   [KIND] $relay retornou ${relayOrders.length} eventos');
+          
+          for (final order in relayOrders) {
+            final id = order['id'];
+            // Verificar se é ordem do Bro app (verificando content)
+            try {
+              final content = order['parsedContent'] ?? jsonDecode(order['content'] ?? '{}');
+              if (content['type'] == 'bro_order') {
+                if (!seenIds.contains(id)) {
+                  seenIds.add(id);
+                  orders.add(order);
+                }
+              }
+            } catch (_) {}
+          }
+        } catch (e) {
+          debugPrint('⚠️ [KIND] Falha ao buscar de $relay: $e');
+        }
       }
     }
 

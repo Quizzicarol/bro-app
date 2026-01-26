@@ -3287,7 +3287,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     );
   }
 
+  bool _isConfirming = false; // Prevenir duplo clique
+  
   Future<void> _handleConfirmPayment() async {
+    if (_isConfirming) return; // Prevenir duplo clique
+    
     // Confirmar com o usuário
     final confirm = await showDialog<bool>(
       context: context,
@@ -3314,6 +3318,31 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     );
 
     if (confirm != true || !mounted) return;
+
+    // FEEDBACK IMEDIATO: Mostrar loading e atualizar status visual
+    setState(() {
+      _isConfirming = true;
+      _currentStatus = 'completing'; // Estado transitório visual
+    });
+    
+    // Mostrar snackbar de feedback imediato
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+            ),
+            SizedBox(width: 12),
+            Text('Processando confirmação...'),
+          ],
+        ),
+        backgroundColor: Colors.orange,
+        duration: Duration(seconds: 10),
+      ),
+    );
 
     try {
       final orderProvider = context.read<OrderProvider>();
@@ -3411,6 +3440,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       }
 
       if (mounted) {
+        // Esconder snackbar de loading
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('✅ Pagamento confirmado!'),
@@ -3421,16 +3453,22 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         // Atualizar status local
         setState(() {
           _currentStatus = 'completed';
+          _isConfirming = false;
         });
       }
     } catch (e) {
       if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Erro ao confirmar: $e'),
             backgroundColor: Colors.red,
           ),
         );
+        setState(() {
+          _isConfirming = false;
+          _currentStatus = 'awaiting_confirmation'; // Reverter para status anterior
+        });
       }
     }
   }

@@ -590,49 +590,73 @@ class BreezProvider with ChangeNotifier {
     debugPrint('⚡ Criando invoice de $amountSats sats...');
     debugPrint('📝 Descrição: ${description ?? "Pagamento Bro"}');
 
-    try {
-      // NOTA: Removido syncWallet antes de criar invoice para acelerar
-      // O sync é feito periodicamente em background
-      
-      final resp = await _sdk!.receivePayment(
-        request: spark.ReceivePaymentRequest(
-          paymentMethod: spark.ReceivePaymentMethod.bolt11Invoice(
-            description: description ?? 'Pagamento Bro',
-            amountSats: BigInt.from(amountSats),
-          ),
-        ),
-      );
-
-      final bolt11 = resp.paymentRequest;
-      debugPrint('✅ Invoice BOLT11 criado: ${bolt11.substring(0, 50)}...');
-
-      // Try to parse to extract payment hash for tracking
-      String? paymentHash;
+    // Retry logic para erros transientes do SDK (como RangeError)
+    int retries = 0;
+    const maxRetries = 3;
+    
+    while (retries < maxRetries) {
       try {
-        final parsed = await _sdk!.parse(input: bolt11);
-        if (parsed is spark.InputType_Bolt11Invoice) {
-          paymentHash = parsed.field0.paymentHash;
-          debugPrint('🔑 Payment Hash: $paymentHash');
-        }
-      } catch (e) {
-        debugPrint('⚠️ Erro ao extrair payment hash: $e');
-      }
+        // NOTA: Removido syncWallet antes de criar invoice para acelerar
+        // O sync é feito periodicamente em background
+        
+        final resp = await _sdk!.receivePayment(
+          request: spark.ReceivePaymentRequest(
+            paymentMethod: spark.ReceivePaymentMethod.bolt11Invoice(
+              description: description ?? 'Pagamento Bro',
+              amountSats: BigInt.from(amountSats),
+            ),
+          ),
+        );
 
-      return {
-        'success': true,
-        'bolt11': bolt11,  // Chave esperada pelo wallet_screen
-        'invoice': bolt11, // Alias para compatibilidade
-        'paymentHash': paymentHash,
-        'receiver': 'Breez Spark Wallet',
-      };
-    } catch (e) {
-      final errMsg = 'Erro ao criar invoice: $e';
-      _setError(errMsg);
-      debugPrint('? $errMsg');
-      return {'success': false, 'error': errMsg};
-    } finally {
-      _setLoading(false);
+        final bolt11 = resp.paymentRequest;
+        debugPrint('✅ Invoice BOLT11 criado: ${bolt11.substring(0, 50)}...');
+
+        // Try to parse to extract payment hash for tracking
+        String? paymentHash;
+        try {
+          final parsed = await _sdk!.parse(input: bolt11);
+          if (parsed is spark.InputType_Bolt11Invoice) {
+            paymentHash = parsed.field0.paymentHash;
+            debugPrint('🔑 Payment Hash: $paymentHash');
+          }
+        } catch (e) {
+          debugPrint('⚠️ Erro ao extrair payment hash: $e');
+          // Continua mesmo sem payment hash - não é crítico
+        }
+
+        _setLoading(false);
+        return {
+          'success': true,
+          'bolt11': bolt11,  // Chave esperada pelo wallet_screen
+          'invoice': bolt11, // Alias para compatibilidade
+          'paymentHash': paymentHash,
+          'receiver': 'Breez Spark Wallet',
+        };
+      } catch (e) {
+        retries++;
+        final isRangeError = e.toString().contains('RangeError');
+        
+        debugPrint('⚠️ Tentativa $retries/$maxRetries falhou: $e');
+        
+        if (isRangeError && retries < maxRetries) {
+          // RangeError é erro transiente do SDK - tentar novamente após delay
+          debugPrint('🔄 RangeError detectado - aguardando 500ms antes de retry...');
+          await Future.delayed(const Duration(milliseconds: 500));
+          continue;
+        }
+        
+        if (retries >= maxRetries) {
+          final errMsg = 'Erro ao criar invoice após $maxRetries tentativas: $e';
+          _setError(errMsg);
+          debugPrint('❌ $errMsg');
+          _setLoading(false);
+          return {'success': false, 'error': errMsg};
+        }
+      }
     }
+    
+    _setLoading(false);
+    return {'success': false, 'error': 'Erro desconhecido ao criar invoice'};
   }
 
   /// Check payment status by payment hash

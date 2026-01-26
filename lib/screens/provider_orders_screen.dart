@@ -45,6 +45,9 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   int _lastOrderCount = 0;
   String? _currentPubkey;
   int _lastTabIndex = 0; // Para detectar mudança de aba
+  
+  // SEGURANÇA: Referência para cleanup no dispose
+  OrderProvider? _orderProviderRef;
 
   @override
   void initState() {
@@ -85,10 +88,19 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     
-    // CRÍTICO: Resetar modo provedor ao sair da tela
-    // O cleanup de ordens é feito no PopScope/botão voltar
-    debugPrint('🔴 ProviderOrdersScreen dispose');
+    // CRÍTICO: Limpar modo provedor E ordens de outros usuários
+    // Isso é ESSENCIAL para evitar vazamento de dados!
+    debugPrint('🔴 ProviderOrdersScreen dispose - LIMPANDO ordens de outros');
     SecureStorageService.setProviderMode(false, userPubkey: widget.providerId);
+    
+    // SEGURANÇA: Chamar exitProviderMode usando a referência salva
+    // Isso GARANTE que ordens de outros usuários sejam removidas da memória
+    try {
+      _orderProviderRef?.exitProviderMode();
+      debugPrint('✅ exitProviderMode chamado no dispose com sucesso');
+    } catch (e) {
+      debugPrint('⚠️ Erro ao chamar exitProviderMode no dispose: $e');
+    }
     
     super.dispose();
   }
@@ -96,11 +108,15 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    
+    // SEGURANÇA CRÍTICA: Capturar referência ao OrderProvider para uso no dispose
+    // Isso garante que podemos limpar ordens mesmo quando o contexto está inválido
+    _orderProviderRef = Provider.of<OrderProvider>(context, listen: false);
+    
     if (AppConfig.testMode && mounted) {
-      final orderProvider = Provider.of<OrderProvider>(context, listen: false);
-      if (orderProvider.orders.length != _lastOrderCount) {
+      if (_orderProviderRef!.orders.length != _lastOrderCount) {
         debugPrint('🔄 Ordens mudaram, recarregando lista do provedor...');
-        _lastOrderCount = orderProvider.orders.length;
+        _lastOrderCount = _orderProviderRef!.orders.length;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _loadOrders();
         });

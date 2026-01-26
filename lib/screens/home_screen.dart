@@ -275,12 +275,19 @@ class _HomeScreenState extends State<HomeScreen> {
       final breezProvider = context.read<BreezProvider>();
       final orderProvider = context.read<OrderProvider>();
 
+      // SEGURANÇA CRÍTICA: Garantir que NÃO estamos em modo provedor na home
+      // Isso previne vazamento de dados se o exitProviderMode falhou
+      if (orderProvider.isProviderMode) {
+        debugPrint('⚠️ [HOME] Detectado modo provedor ativo! Forçando reset...');
+        orderProvider.exitProviderMode();
+      }
+
       // Mostrar mensagem de progresso
       _showSyncSnackbar('🔄 Conectando com a rede Nostr...');
       
       await Future.wait([
         breezProvider.refresh(),
-        orderProvider.fetchOrders(),
+        orderProvider.fetchOrders(), // SEMPRE com forProvider: false (default)
       ]);
       
       // Mostrar conclusão

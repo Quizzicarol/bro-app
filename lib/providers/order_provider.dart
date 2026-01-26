@@ -14,47 +14,48 @@ class OrderProvider with ChangeNotifier {
   final NostrService _nostrService = NostrService();
   final NostrOrderService _nostrOrderService = NostrOrderService();
 
-  List<Order> _orders = [];
+  List<Order> _orders = [];  // APENAS ordens do usuário atual
+  List<Order> _availableOrdersForProvider = [];  // Ordens disponíveis para Bros (NUNCA salvas)
   Order? _currentOrder;
   bool _isLoading = false;
   String? _error;
   bool _isInitialized = false;
   String? _currentUserPubkey;
-  bool _isProviderMode = false;  // SEGURANÇA: Controla se mostra ordens de outros
+  bool _isProviderMode = false;  // Modo provedor ativo (para UI, não para filtro de ordens)
 
   // Prefixo para salvar no SharedPreferences (será combinado com pubkey)
   static const String _ordersKeyPrefix = 'orders_';
 
-  // SEGURANÇA: Filtrar ordens por usuário quando não estiver no modo provedor
+  // SEGURANÇA CRÍTICA: Filtrar ordens por usuário - NUNCA mostrar ordens de outros!
+  // Esta lista é usada por TODOS os getters (orders, pendingOrders, etc)
   List<Order> get _filteredOrders {
-    if (_isProviderMode) {
-      // Modo provedor: mostrar todas (pendentes de outros + próprias)
-      debugPrint('🔓 [FILTRO] Modo provedor: mostrando ${_orders.length} ordens');
-      return _orders;
-    }
-    
-    // SEGURANÇA CRÍTICA: Modo usuário - mostrar APENAS ordens do usuário atual
+    // SEGURANÇA ABSOLUTA: Sem pubkey = sem ordens
     if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) {
       debugPrint('⚠️ [FILTRO] Sem pubkey definida! Retornando lista vazia para segurança');
-      return []; // Não mostrar nada se não temos pubkey
+      return [];
     }
     
+    // SEMPRE filtrar por usuário - mesmo no modo provedor!
+    // No modo provedor, mostramos ordens disponíveis em tela separada, não aqui
     final filtered = _orders.where((o) {
-      // Ordem criada por este usuário
-      final isOwner = o.userPubkey == _currentUserPubkey;
-      // Ordem que este usuário aceitou como Bro
-      final isProvider = o.providerId == _currentUserPubkey;
-      
-      if (isOwner || isProvider) {
-        return true;
+      // REGRA 1: Ordens SEM userPubkey são rejeitadas (dados corrompidos/antigos)
+      if (o.userPubkey == null || o.userPubkey!.isEmpty) {
+        return false; // Silenciosamente rejeitar - não logar para não poluir
       }
       
-      // Log ordens rejeitadas para debug
-      debugPrint('🚫 [FILTRO] Rejeitando ordem ${o.id.substring(0, 8)} - userPubkey=${o.userPubkey?.substring(0, 8) ?? "null"}, currentUser=${_currentUserPubkey?.substring(0, 8) ?? "null"}');
-      return false;
+      // REGRA 2: Ordem criada por este usuário
+      final isOwner = o.userPubkey == _currentUserPubkey;
+      
+      // REGRA 3: Ordem que este usuário aceitou como Bro (providerId)
+      final isMyProviderOrder = o.providerId == _currentUserPubkey;
+      
+      return isOwner || isMyProviderOrder;
     }).toList();
     
-    debugPrint('🔒 [FILTRO] Modo usuário: ${filtered.length}/${_orders.length} ordens (pubkey=${_currentUserPubkey?.substring(0, 8) ?? "null"})');
+    // Log apenas se houver discrepância significativa (evita spam)
+    if (_orders.length > filtered.length && _orders.length - filtered.length > 0) {
+      debugPrint('🔒 [FILTRO] ${filtered.length}/${_orders.length} ordens do usuário ${_currentUserPubkey!.substring(0, 8)}');
+    }
     return filtered;
   }
 
@@ -72,30 +73,31 @@ class OrderProvider with ChangeNotifier {
   /// CRÍTICO: Método para sair do modo provedor e limpar ordens de outros
   /// Deve ser chamado quando o usuário sai da tela de modo Bro
   void exitProviderMode() {
-    debugPrint('🚪 exitProviderMode chamado - limpando ordens de outros usuários');
+    debugPrint('🚪 exitProviderMode chamado');
     _isProviderMode = false;
     
-    // Remover TODAS as ordens que não pertencem ao usuário atual
-    final before = _orders.length;
+    // Limpar lista de ordens disponíveis para provedor (NUNCA eram salvas)
+    _availableOrdersForProvider = [];
+    
+    // A lista _orders já contém apenas ordens do usuário (graças ao filtro)
+    // Mas vamos forçar uma limpeza por segurança
     _orders = _orders.where((o) {
-      // Manter apenas ordens deste usuário
+      if (o.userPubkey == null || o.userPubkey!.isEmpty) return false;
       final isOwner = o.userPubkey == _currentUserPubkey;
-      // Manter ordens que este usuário aceitou como provedor
       final isProvider = o.providerId == _currentUserPubkey;
       return isOwner || isProvider;
     }).toList();
     
-    final removed = before - _orders.length;
-    if (removed > 0) {
-      debugPrint('🧹 exitProviderMode: Removidas $removed ordens de outros usuários');
-    }
-    
-    // Salvar apenas ordens do usuário
+    // Salvar lista limpa
     _saveOnlyUserOrders();
     
     notifyListeners();
-    debugPrint('✅ exitProviderMode concluído: ${_orders.length} ordens restantes');
+    debugPrint('✅ exitProviderMode: ${_orders.length} ordens do usuário mantidas');
   }
+  
+  /// Getter para ordens disponíveis para Bros (usadas na tela de provedor)
+  /// Esta lista NUNCA é salva localmente!
+  List<Order> get availableOrdersForProvider => _availableOrdersForProvider;
 
   /// Calcula o total de sats comprometidos com ordens pendentes/ativas (modo cliente)
   /// Este valor deve ser SUBTRAÍDO do saldo total para calcular saldo disponível para garantia
@@ -154,8 +156,9 @@ class OrderProvider with ChangeNotifier {
     // 🧹 SEGURANÇA: Limpar storage 'orders_anonymous' que pode conter ordens vazadas
     await _cleanupAnonymousStorage();
     
-    // Resetar estado
+    // Resetar estado - CRÍTICO: Limpar AMBAS as listas de ordens!
     _orders = [];
+    _availableOrdersForProvider = [];
     _isInitialized = false;
     
     // SEMPRE carregar ordens locais primeiro (para preservar status atualizados)
@@ -255,6 +258,7 @@ class OrderProvider with ChangeNotifier {
     
     _currentUserPubkey = userPubkey;
     _orders = [];
+    _availableOrdersForProvider = [];  // Limpar também lista de disponíveis
     _isInitialized = false;
     _isProviderMode = false;  // Reset modo provedor ao trocar de usuário
     
@@ -263,7 +267,7 @@ class OrderProvider with ChangeNotifier {
     notifyListeners();
     
     // Carregar ordens locais primeiro (SEMPRE, para preservar status atualizados)
-    await _loadSavedOrders();;
+    await _loadSavedOrders();
     
     // SEGURANÇA: Filtrar ordens que não pertencem a este usuário
     // (podem ter vazado de sincronizações anteriores)
@@ -331,6 +335,7 @@ class OrderProvider with ChangeNotifier {
   void clearOrders() {
     debugPrint('🗑️ Limpando ordens da memória (logout)');
     _orders = [];
+    _availableOrdersForProvider = [];  // Também limpar lista de disponíveis
     _currentOrder = null;
     _currentUserPubkey = null;
     _isProviderMode = false;  // Reset modo provedor
@@ -859,7 +864,8 @@ class OrderProvider with ChangeNotifier {
   }
   
   /// Buscar TODAS as ordens pendentes do Nostr (para modo Provedor/Bro)
-  /// Isso permite que o Bro veja ordens de outros usuários
+  /// SEGURANÇA: Ordens de outros usuários vão para _availableOrdersForProvider
+  /// e NUNCA são adicionadas à lista principal _orders!
   Future<void> syncAllPendingOrdersFromNostr() async {
     try {
       debugPrint('🔄 [PROVEDOR] Buscando TODAS as ordens pendentes do Nostr...');
@@ -868,74 +874,63 @@ class OrderProvider with ChangeNotifier {
       final allPendingOrders = await _nostrOrderService.fetchPendingOrders();
       debugPrint('📦 Recebidas ${allPendingOrders.length} ordens pendentes do Nostr');
       
-      // Log das ordens recebidas
-      for (var order in allPendingOrders) {
-        debugPrint('   📋 Ordem ${order.id.substring(0, 8)}: R\$ ${order.amount.toStringAsFixed(2)}, pubkey=${order.userPubkey?.substring(0, 8) ?? "?"}, status=${order.status}');
-      }
+      // SEGURANÇA: Separar ordens em duas listas:
+      // 1. Ordens do usuário atual -> _orders
+      // 2. Ordens de outros (disponíveis para aceitar) -> _availableOrdersForProvider
       
-      // Mesclar com ordens locais (sem duplicar)
-      int added = 0;
+      _availableOrdersForProvider = []; // Limpar lista anterior
+      int addedToAvailable = 0;
       int updated = 0;
+      
       for (var pendingOrder in allPendingOrders) {
         // Ignorar ordens com amount=0
-        if (pendingOrder.amount <= 0) {
-          debugPrint('⚠️ IGNORANDO ordem ${pendingOrder.id.substring(0, 8)} com amount=0');
-          continue;
-        }
+        if (pendingOrder.amount <= 0) continue;
         
-        final existingIndex = _orders.indexWhere((o) => o.id == pendingOrder.id);
-        if (existingIndex == -1) {
-          // Ordem não existe localmente, adicionar
-          // MAS VERIFICAR: Se ordem tem status final no Nostr, respeitar
-          if (pendingOrder.status != 'cancelled' && pendingOrder.status != 'completed') {
+        // Ignorar ordens com status final
+        if (pendingOrder.status == 'cancelled' || pendingOrder.status == 'completed') continue;
+        
+        // Verificar se é ordem do usuário atual
+        final isMyOrder = pendingOrder.userPubkey == _currentUserPubkey;
+        final isMyProviderOrder = pendingOrder.providerId == _currentUserPubkey;
+        
+        if (isMyOrder || isMyProviderOrder) {
+          // Ordem do usuário: atualizar na lista _orders
+          final existingIndex = _orders.indexWhere((o) => o.id == pendingOrder.id);
+          if (existingIndex == -1) {
             _orders.add(pendingOrder);
-            added++;
           } else {
-            debugPrint('⚠️ Ordem ${pendingOrder.id.substring(0, 8)} tem status final (${pendingOrder.status}), ignorando');
+            final existing = _orders[existingIndex];
+            // Preservar status final local
+            if (existing.status != 'cancelled' && existing.status != 'completed') {
+              _orders[existingIndex] = existing.copyWith(
+                providerId: existing.providerId ?? pendingOrder.providerId,
+                status: _isStatusMoreRecent(pendingOrder.status, existing.status) 
+                    ? pendingOrder.status : existing.status,
+              );
+              updated++;
+            }
           }
         } else {
-          // Ordem já existe - PRESERVAR dados locais que são mais recentes
-          final existing = _orders[existingIndex];
-          
-          // REGRA CRÍTICA: NUNCA reverter status 'cancelled' ou 'completed'!
-          if (existing.status == 'cancelled' || existing.status == 'completed') {
-            debugPrint('🛡️ Ordem ${existing.id.substring(0, 8)} tem status final (${existing.status}), preservando');
-            continue;
-          }
-          
-          // Só atualizar se Nostr tem dados mais completos E local não tem providerId
-          // Isso garante que ordens aceitas localmente não perdem o providerId
-          if (pendingOrder.amount > 0 && existing.amount == 0) {
-            _orders[existingIndex] = existing.copyWith(
-              amount: pendingOrder.amount,
-              btcAmount: pendingOrder.btcAmount,
-              btcPrice: pendingOrder.btcPrice,
-              total: pendingOrder.total,
-              billCode: pendingOrder.billCode,
-              // IMPORTANTE: Preservar providerId local se existir!
-              providerId: existing.providerId ?? pendingOrder.providerId,
-              status: existing.providerId != null ? existing.status : pendingOrder.status,
-            );
-            updated++;
-          } else if (existing.providerId == null && pendingOrder.providerId != null) {
-            // Se Nostr tem providerId e local não, atualizar
-            _orders[existingIndex] = existing.copyWith(
-              providerId: pendingOrder.providerId,
-              status: pendingOrder.status,
-            );
-            updated++;
-          }
+          // Ordem de OUTRO usuário: adicionar apenas à lista de disponíveis
+          // NUNCA adicionar à lista principal _orders!
+          _availableOrdersForProvider.add(pendingOrder);
+          addedToAvailable++;
         }
       }
       
+      debugPrint('📊 [PROVEDOR] Separação de ordens:');
+      debugPrint('   - Minhas ordens atualizadas: $updated');
+      debugPrint('   - Ordens disponíveis para aceitar: $addedToAvailable');
+      
       // Também buscar ordens do próprio usuário
+      int addedFromUser = 0;
       if (_currentUserPubkey != null && _currentUserPubkey!.isNotEmpty) {
         final userOrders = await _nostrOrderService.fetchUserOrders(_currentUserPubkey!);
         for (var order in userOrders) {
           final existingIndex = _orders.indexWhere((o) => o.id == order.id);
           if (existingIndex == -1 && order.amount > 0) {
             _orders.add(order);
-            added++;
+            addedFromUser++;
           }
         }
         
@@ -1040,7 +1035,7 @@ class OrderProvider with ChangeNotifier {
       await _saveOnlyUserOrders();
       notifyListeners();
       
-      debugPrint('✅ [PROVEDOR] Sincronização concluída: ${_orders.length} ordens totais (added: $added, updated: $updated)');
+      debugPrint('✅ [PROVEDOR] Sincronização concluída: ${_orders.length} ordens do usuário, $addedToAvailable disponíveis para aceitar');
     } catch (e) {
       debugPrint('❌ [PROVEDOR] Erro ao sincronizar ordens: $e');
     }
@@ -1523,6 +1518,7 @@ class OrderProvider with ChangeNotifier {
   // Clear all orders (memory only)
   void clear() {
     _orders = [];
+    _availableOrdersForProvider = [];  // Limpar também lista de disponíveis
     _currentOrder = null;
     _error = null;
     _isInitialized = false;
@@ -1533,6 +1529,7 @@ class OrderProvider with ChangeNotifier {
   Future<void> clearAllOrders() async {
     debugPrint('🔄 Limpando ordens da memória (logout) - dados mantidos no storage');
     _orders = [];
+    _availableOrdersForProvider = [];  // Limpar também lista de disponíveis
     _currentOrder = null;
     _error = null;
     _currentUserPubkey = null;
@@ -1543,6 +1540,7 @@ class OrderProvider with ChangeNotifier {
   // Permanently delete all orders (for testing/reset)
   Future<void> permanentlyDeleteAllOrders() async {
     _orders = [];
+    _availableOrdersForProvider = [];  // Limpar também lista de disponíveis
     _currentOrder = null;
     _error = null;
     _isInitialized = false;

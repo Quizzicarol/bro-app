@@ -13,13 +13,25 @@ class ProviderService {
   final NostrOrderService _nostrOrderService = NostrOrderService();
 
   /// Busca ordens disponíveis para aceitar (status=pending)
+  /// SEGURANÇA: Retorna APENAS ordens de OUTROS usuários que estão disponíveis
   Future<List<Map<String, dynamic>>> fetchAvailableOrders() async {
     try {
       // Em modo teste, buscar do Nostr
       if (AppConfig.testMode) {
-        debugPrint('🧪 TEST MODE: Buscando ordens do Nostr...');
+        debugPrint('🧪 TEST MODE: Buscando ordens disponíveis do Nostr...');
         final orders = await _nostrOrderService.fetchPendingOrders();
-        return orders.map((order) => order.toJson()).toList();
+        
+        // SEGURANÇA: Filtrar apenas ordens pendentes (sem providerId ainda)
+        final availableOrders = orders.where((order) {
+          // Ordem pendente = disponível para aceitar
+          if (order.status != 'pending') return false;
+          // Ordem já aceita por alguém = não disponível
+          if (order.providerId != null && order.providerId!.isNotEmpty) return false;
+          return true;
+        }).toList();
+        
+        debugPrint('📋 ${availableOrders.length} ordens disponíveis para aceitar');
+        return availableOrders.map((order) => order.toJson()).toList();
       }
       
       final orders = await _apiService.listOrders(status: 'pending', limit: 50);

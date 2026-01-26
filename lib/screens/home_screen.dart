@@ -27,11 +27,13 @@ class _HomeScreenState extends State<HomeScreen> {
   final _currencyFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
   double _btcPrice = 0.0;
   Timer? _priceUpdateTimer;
+  String? _currentUserPubkey; // Para filtro extra de segurança
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadCurrentUserPubkey();
       _initializeBreezSdk();
       _loadData();
       _fetchBitcoinPrice();
@@ -41,6 +43,17 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
   
+  /// Carrega a pubkey do usuário atual para filtro extra de segurança
+  Future<void> _loadCurrentUserPubkey() async {
+    final pubkey = await StorageService().getNostrPublicKey();
+    if (mounted) {
+      setState(() {
+        _currentUserPubkey = pubkey;
+      });
+      debugPrint('🔑 [HOME] Pubkey carregada: ${pubkey?.substring(0, 16) ?? "null"}');
+    }
+  }
+
   /// Verifica se precisa recuperar seed perdida (situação crítica!)
   Future<void> _checkSeedRecoveryStatus() async {
     await Future.delayed(const Duration(milliseconds: 500));
@@ -863,25 +876,44 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
 
-          // Body
-          Container(
-            padding: const EdgeInsets.all(20),
-            child: orderProvider.orders.isEmpty
-                ? const EmptyTransactionState()
-                : Column(
-                    children: orderProvider.orders.map((order) {
-                      return TransactionCard(
-                        title: order.billType == 'pix' ? 'PIX' : 'Boleto',
-                        amount: _currencyFormat.format(order.amount),
-                        status: order.status,
-                        statusLabel: _getStatusLabel(order.status),
-                        orderId: order.id, // ID da ordem para controle
-                        onTap: () {
-                          _showOrderDetails(order);
-                        },
-                      );
-                    }).toList(),
-                  ),
+          // Body - SEGURANÇA EXTRA: Filtrar apenas ordens deste usuário
+          Builder(
+            builder: (context) {
+              // FILTRO EXTRA DE SEGURANÇA na UI
+              // Mesmo que o provider retorne ordens erradas, filtramos aqui
+              final myOrders = orderProvider.orders.where((order) {
+                // Só mostrar ordens onde ESTE usuário é o DONO (criador)
+                // NÃO mostrar ordens onde ele é apenas o providerId
+                if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) {
+                  return false; // Sem pubkey = não mostrar nada
+                }
+                final isOwner = order.userPubkey == _currentUserPubkey;
+                if (!isOwner) {
+                  debugPrint('🚫 [HOME UI] Bloqueando ordem ${order.id.substring(0, 8)} - não é dono (userPubkey=${order.userPubkey?.substring(0, 8) ?? "null"})');
+                }
+                return isOwner;
+              }).toList();
+              
+              return Container(
+                padding: const EdgeInsets.all(20),
+                child: myOrders.isEmpty
+                    ? const EmptyTransactionState()
+                    : Column(
+                        children: myOrders.map((order) {
+                          return TransactionCard(
+                            title: order.billType == 'pix' ? 'PIX' : 'Boleto',
+                            amount: _currencyFormat.format(order.amount),
+                            status: order.status,
+                            statusLabel: _getStatusLabel(order.status),
+                            orderId: order.id, // ID da ordem para controle
+                            onTap: () {
+                              _showOrderDetails(order);
+                            },
+                          );
+                        }).toList(),
+                      ),
+              );
+            },
           ),
         ],
       ),

@@ -19,12 +19,13 @@ class NostrOrderService {
   NostrOrderService._internal();
 
   // Relays para publicar ordens
+  // NOTA: relay.snort.social movido para o final pois tem histórico de timeouts
   final List<String> _relays = [
     'wss://relay.damus.io',
     'wss://nos.lol',
     'wss://nostr.wine',
     'wss://relay.primal.net',
-    'wss://relay.snort.social',
+    // 'wss://relay.snort.social', // DESABILITADO: Causando timeouts frequentes
   ];
 
   // Kind para ordens Bro (usando addressable event para poder atualizar)
@@ -641,10 +642,16 @@ class NostrOrderService {
   /// Busca ordens pendentes e retorna como List<Order>
   /// Para modo Bro: retorna APENAS ordens que ainda não foram aceitas por nenhum Bro
   Future<List<Order>> fetchPendingOrders() async {
+    debugPrint('🔍 ══════════════════════════════════════════════════');
+    debugPrint('🔍 FETCH PENDING ORDERS - INÍCIO');
+    debugPrint('🔍 ══════════════════════════════════════════════════');
+    
     final rawOrders = await _fetchPendingOrdersRaw();
+    debugPrint('📦 rawOrders retornadas: ${rawOrders.length}');
     
     // Buscar eventos de UPDATE para saber quais ordens já foram aceitas
     final statusUpdates = await _fetchAllOrderStatusUpdates();
+    debugPrint('📦 statusUpdates encontrados: ${statusUpdates.length}');
     
     // Converter para Orders
     final allOrders = rawOrders
@@ -652,7 +659,14 @@ class NostrOrderService {
         .whereType<Order>()
         .toList();
     
-    debugPrint('📦 Total de ordens RAW encontradas: ${allOrders.length}');
+    debugPrint('📦 Total de ordens válidas após conversão: ${allOrders.length}');
+    
+    // LOG DETALHADO de cada ordem
+    for (var order in allOrders) {
+      final hasUpdate = statusUpdates.containsKey(order.id);
+      final update = statusUpdates[order.id];
+      debugPrint('   📋 ${order.id.substring(0, 8)}: amount=R\$${order.amount}, status=${order.status}, hasUpdate=$hasUpdate, updateStatus=${update?['status']}');
+    }
     
     // FILTRAR: Mostrar apenas ordens que NÃO foram aceitas por nenhum Bro
     // OU que têm status pending/payment_received
@@ -675,7 +689,9 @@ class NostrOrderService {
       }
     }
     
+    debugPrint('🔍 ══════════════════════════════════════════════════');
     debugPrint('📦 Ordens disponíveis para Bros: ${availableOrders.length}/${allOrders.length}');
+    debugPrint('🔍 ══════════════════════════════════════════════════');
     
     return availableOrders;
   }
@@ -719,7 +735,7 @@ class NostrOrderService {
     debugPrint('🔄 BUSCANDO UPDATES DE STATUS DE TODOS OS RELAYS');
     debugPrint('🔄 ══════════════════════════════════════════════════');
     
-    // Buscar de TODOS os relays em paralelo
+    // Buscar de TODOS os relays (sequencialmente para evitar sobrecarga)
     for (final relay in _relays) {
       try {
         // Buscar TODOS os tipos de update: 30079 (accept), 30080 (update), 30081 (complete)
@@ -728,6 +744,12 @@ class NostrOrderService {
           relay,
           kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete], // 30079, 30080 e 30081
           limit: 300,
+        ).timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            debugPrint('⏰ Timeout ao buscar updates de $relay');
+            return <Map<String, dynamic>>[];
+          },
         );
         
         debugPrint('   📥 $relay retornou ${events.length} eventos de update');
@@ -890,6 +912,7 @@ class NostrOrderService {
   }
   
   /// Helper: Busca ordens pendentes de um relay específico
+  /// ROBUSTO: Retorna lista vazia em caso de QUALQUER erro (timeout, conexão, etc)
   Future<List<Map<String, dynamic>>> _fetchPendingFromRelay(String relay, int sinceTimestamp) async {
     final orders = <Map<String, dynamic>>[];
     
@@ -900,6 +923,12 @@ class NostrOrderService {
         kinds: [kindBroOrder],
         since: sinceTimestamp,
         limit: 200, // Aumentado para pegar mais ordens
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          debugPrint('⏰ Timeout ao buscar de $relay');
+          return <Map<String, dynamic>>[];
+        },
       );
       
       for (final order in relayOrders) {
@@ -958,16 +987,23 @@ class NostrOrderService {
   }
   
   /// Helper: Busca ordens de um usuário de um relay específico
+  /// ROBUSTO: Retorna lista vazia em caso de QUALQUER erro
   Future<List<Map<String, dynamic>>> _fetchUserOrdersFromRelay(String relay, String pubkey) async {
     final orders = <Map<String, dynamic>>[];
     
     try {
-      // ESTRATÉGIA 1: Buscar por author
+      // ESTRATÉGIA 1: Buscar por author (com timeout)
       final relayOrders = await _fetchFromRelay(
         relay,
         kinds: [kindBroOrder],
         authors: [pubkey],
         limit: 100,
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          debugPrint('⏰ Timeout ao buscar ordens do usuário de $relay');
+          return <Map<String, dynamic>>[];
+        },
       );
       
       for (final order in relayOrders) {

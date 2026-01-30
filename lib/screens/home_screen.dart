@@ -949,7 +949,7 @@ class _HomeScreenState extends State<HomeScreen> {
       case 'awaiting_confirmation':
       case 'payment_submitted':
       case 'processing':
-        return 'Bro Pagou';  // Bro já fez o pagamento da conta
+        return 'Confirme Pagamento';  // Bro já fez o pagamento, usuário precisa confirmar
       case 'completed':
       case 'paid':
         return 'Concluída';

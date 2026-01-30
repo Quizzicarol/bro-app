@@ -1166,15 +1166,17 @@ class NostrOrderService {
         
         // ESTRATÉGIA 2: Buscar diretamente por cada orderId específico
         // Fallback para quando a tag #p não foi indexada
-        for (final orderId in orderIds.take(5)) {
+        for (final orderId in orderIds.take(20)) { // Aumentado de 5 para 20
           try {
             // Buscar por tag #e (referência ao orderId)
             final eTagEvents = await _fetchFromRelay(
               relay,
               kinds: [kindBroPaymentProof],
               tags: {'#e': [orderId]},
-              limit: 5,
+              limit: 10,
             );
+            
+            debugPrint('   📥 Busca #e para ${orderId.substring(0, 8)}: ${eTagEvents.length} eventos');
             
             for (final event in eTagEvents) {
               try {
@@ -1197,6 +1199,47 @@ class NostrOrderService {
                     'created_at': createdAt,
                   };
                   debugPrint('   ✅ Update via #e: ${eventOrderId.substring(0, 8)} -> $status');
+                }
+              } catch (_) {}
+            }
+          } catch (_) {}
+        }
+        
+        // ESTRATÉGIA 3: Buscar todos os eventos bro-update e filtrar
+        // Último recurso quando as tags específicas não funcionam
+        if (updates.isEmpty) {
+          try {
+            final updateEvents = await _fetchFromRelay(
+              relay,
+              kinds: [kindBroPaymentProof],
+              tags: {'#t': ['bro-update']},
+              limit: 100,
+            );
+            
+            debugPrint('   📥 Busca #t=bro-update: ${updateEvents.length} eventos');
+            
+            for (final event in updateEvents) {
+              try {
+                final content = event['parsedContent'] ?? jsonDecode(event['content']);
+                final eventOrderId = content['orderId'] as String?;
+                final status = content['status'] as String?;
+                final createdAt = event['created_at'] as int? ?? 0;
+                
+                if (eventOrderId == null || status == null) continue;
+                
+                // Verificar se esta ordem está na lista que buscamos
+                if (!orderIdSet.contains(eventOrderId)) continue;
+                
+                final existingUpdate = updates[eventOrderId];
+                final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
+                
+                if (existingUpdate == null || createdAt > existingCreatedAt) {
+                  updates[eventOrderId] = {
+                    'orderId': eventOrderId,
+                    'status': status,
+                    'created_at': createdAt,
+                  };
+                  debugPrint('   ✅ Update via #t: ${eventOrderId.substring(0, 8)} -> $status');
                 }
               } catch (_) {}
             }

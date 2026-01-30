@@ -10,14 +10,10 @@ import '../services/local_collateral_service.dart';
 import '../services/payment_monitor_service.dart';
 import '../services/secure_storage_service.dart';
 import '../services/nostr_service.dart';
-import '../services/nostr_order_service.dart';
 import 'provider_orders_screen.dart';
 
-/// Taxa estimada para claim de depósito on-chain (em sats)
-/// Baseado em ~200-400 sats observados na rede, com margem de segurança
-const int kEstimatedOnchainClaimFeeSats = 500;
-
 /// Tela para depositar garantia para um tier específico
+/// VERSÃO LIGHTNING-ONLY (sem on-chain para evitar taxas altas)
 class TierDepositScreen extends StatefulWidget {
   final CollateralTier tier;
   final String providerId;
@@ -35,108 +31,18 @@ class TierDepositScreen extends StatefulWidget {
 class _TierDepositScreenState extends State<TierDepositScreen> {
   String? _lightningInvoice;
   String? _lightningPaymentHash;
-  String? _bitcoinAddress;
   bool _isLoading = true;
   String? _error;
   int _currentBalance = 0;
   int _committedSats = 0; // Sats comprometidos com ordens pendentes
   bool _depositCompleted = false;
   int _amountNeededSats = 0; // Valor líquido necessário (colateral)
-  int _amountNeededSatsWithFee = 0; // Valor bruto para on-chain (colateral + taxa)
   PaymentMonitorService? _paymentMonitor;
-  bool _paymentDetected = false; // Pagamento detectado mas aguardando confirmações
-  int _confirmations = 0;
-  bool _isRecovering = false; // Estado de recuperação de depósitos
 
   @override
   void initState() {
     super.initState();
     _generatePaymentOptions();
-  }
-
-  /// RECUPERAÇÃO: Tentar recuperar depósitos on-chain não processados
-  Future<void> _recoverPendingDeposits() async {
-    if (_isRecovering) return;
-    
-    setState(() {
-      _isRecovering = true;
-    });
-    
-    try {
-      final breezProvider = context.read<BreezProvider>();
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('🔍 Buscando depósitos pendentes...'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-      
-      final result = await breezProvider.recoverUnclaimedDeposits();
-      
-      if (!mounted) return;
-      
-      if (result['success'] == true) {
-        final claimed = result['claimed'] ?? 0;
-        final totalAmount = result['totalAmount'] ?? '0';
-        final newBalance = result['newBalance'] ?? '0';
-        
-        if (claimed > 0) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('✅ Recuperados $claimed depósitos! Total: $totalAmount sats'),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 4),
-            ),
-          );
-          
-          // Atualizar saldo e verificar se atingiu o tier
-          setState(() {
-            _currentBalance = int.tryParse(newBalance) ?? _currentBalance;
-          });
-          
-          // Verificar se já pode ativar o tier
-          final orderProvider = context.read<OrderProvider>();
-          final committedSats = orderProvider.committedSats;
-          final availableBalance = (_currentBalance - committedSats).clamp(0, _currentBalance);
-          
-          if (availableBalance >= widget.tier.requiredCollateralSats) {
-            await _activateTier(availableBalance);
-          }
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(result['message'] ?? 'Nenhum depósito pendente encontrado'),
-              backgroundColor: Colors.orange,
-              duration: const Duration(seconds: 3),
-            ),
-          );
-        }
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Erro: ${result['error']}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Erro: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isRecovering = false;
-        });
-      }
-    }
   }
 
   Future<void> _generatePaymentOptions() async {
@@ -190,11 +96,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
       final amountNeeded = widget.tier.requiredCollateralSats - availableForCollateral;
       _amountNeededSats = amountNeeded;
       
-      // Para on-chain: adicionar taxa estimada de claim
-      // Isso garante que após a taxa, o usuário terá o valor necessário de colateral
-      _amountNeededSatsWithFee = amountNeeded + kEstimatedOnchainClaimFeeSats;
-      
-      // Gerar invoice Lightning (sem taxa extra - Lightning é mais eficiente)
+      // Gerar invoice Lightning (única opção agora)
       final invoiceResult = await breezProvider.createInvoice(
         amountSats: amountNeeded,
         description: 'Garantia Bro - Tier ${widget.tier.name}',
@@ -203,12 +105,6 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
       if (invoiceResult != null && invoiceResult['invoice'] != null) {
         _lightningInvoice = invoiceResult['invoice'];
         _lightningPaymentHash = invoiceResult['paymentHash'];
-      }
-
-      // Gerar endereço Bitcoin on-chain
-      final addressResult = await breezProvider.createOnchainAddress();
-      if (addressResult != null && addressResult['success'] == true) {
-        _bitcoinAddress = addressResult['swap']?['bitcoinAddress'];
       }
 
       setState(() {
@@ -253,28 +149,6 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
       );
     }
     
-    // Monitorar On-chain (se endereço disponível)
-    if (_bitcoinAddress != null) {
-      debugPrint('🔗 Monitorando pagamento On-chain...');
-      _paymentMonitor!.monitorOnchainAddress(
-        paymentId: 'tier_deposit_onchain',
-        address: _bitcoinAddress!,
-        expectedSats: expectedAmount,
-        checkInterval: const Duration(seconds: 15), // On-chain mais lento
-        onStatusChange: (status, data) async {
-          if (!mounted) return;
-          
-          if (status == PaymentStatus.confirmed) {
-            debugPrint('✅ Pagamento On-chain confirmado para tier!');
-            await _onPaymentReceived();
-          } else if (status == PaymentStatus.pending && !_paymentDetected) {
-            // Pode mostrar status intermediário
-            debugPrint('⏳ Aguardando confirmações on-chain...');
-          }
-        },
-      );
-    }
-    
     // Também fazer polling de saldo como fallback
     _listenForBalanceChange();
   }
@@ -303,7 +177,6 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
         if (mounted) {
           setState(() {
             _currentBalance = totalBalance;
-            _paymentDetected = true;
           });
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -329,59 +202,46 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
     // Forçar sync para garantir saldo atualizado
     await breezProvider.forceSyncWallet();
     
+    // Obter saldo atualizado
     final balanceInfo = await breezProvider.getBalance();
     final balanceStr = balanceInfo['balance']?.toString() ?? '0';
     final totalBalance = int.tryParse(balanceStr) ?? 0;
     
+    // Calcular saldo disponível
     final committedSats = orderProvider.committedSats;
     final availableBalance = (totalBalance - committedSats).clamp(0, totalBalance);
     
-    // Parar monitoramento
-    _paymentMonitor?.stopAll();
+    debugPrint('💰 Pagamento detectado! Saldo total: $totalBalance, disponível: $availableBalance');
     
-    // Ativar tier
-    await _activateTier(availableBalance);
+    if (availableBalance >= widget.tier.requiredCollateralSats) {
+      // Ativar o tier
+      await _activateTier(availableBalance);
+    } else {
+      // Atualizar UI e continuar esperando
+      if (mounted) {
+        setState(() {
+          _currentBalance = totalBalance;
+        });
+      }
+    }
   }
 
   Future<void> _activateTier(int balance) async {
-    final collateralService = LocalCollateralService();
-    final nostrService = NostrService();
-    final nostrOrderService = NostrOrderService();
+    debugPrint('🎯 Ativando tier ${widget.tier.name} com saldo disponível: $balance sats');
     
-    // Salvar tier localmente
-    await collateralService.setCollateral(
+    // Usar LocalCollateralService instance
+    final localCollateralService = LocalCollateralService();
+    await localCollateralService.setCollateral(
       tierId: widget.tier.id,
       tierName: widget.tier.name,
       requiredSats: widget.tier.requiredCollateralSats,
       maxOrderBrl: widget.tier.maxOrderValueBrl,
     );
-
-    // ✅ IMPORTANTE: Publicar tier no Nostr para persistência entre logins
-    final privateKey = nostrService.privateKey;
-    if (privateKey != null) {
-      try {
-        final published = await nostrOrderService.publishProviderTier(
-          privateKey: privateKey,
-          tierId: widget.tier.id,
-          tierName: widget.tier.name,
-          depositedSats: widget.tier.requiredCollateralSats,
-          maxOrderValue: widget.tier.maxOrderValueBrl.round(),
-          activatedAt: DateTime.now().toIso8601String(),
-        );
-        
-        if (published) {
-          debugPrint('✅ Tier publicado no Nostr com sucesso!');
-        } else {
-          debugPrint('⚠️ Falha ao publicar tier no Nostr (salvo apenas localmente)');
-        }
-      } catch (e) {
-        debugPrint('⚠️ Erro ao publicar tier no Nostr: $e');
-      }
-    } else {
-      debugPrint('⚠️ Private key não disponível, tier salvo apenas localmente');
-    }
+    
+    debugPrint('✅ Tier salvo localmente');
 
     // ✅ IMPORTANTE: Marcar como modo provedor para persistir entre sessões COM PUBKEY
+    final nostrService = NostrService();
     final pubkey = nostrService.publicKey;
     await SecureStorageService.setProviderMode(true, userPubkey: pubkey);
     debugPrint('✅ Provider mode ativado e persistido para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
@@ -611,95 +471,67 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
           ),
           const SizedBox(height: 24),
 
-          // Tabs para Lightning/On-chain
-          DefaultTabController(
-            length: 2,
-            child: Column(
-              children: [
-                Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E1E1E),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const TabBar(
-                    indicatorColor: Colors.orange,
-                    labelColor: Colors.orange,
-                    unselectedLabelColor: Colors.white54,
-                    tabs: [
-                      Tab(icon: Icon(Icons.flash_on), text: 'Lightning'),
-                      Tab(icon: Icon(Icons.link), text: 'On-chain'),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // Altura fixa mas com margem de segurança
-                ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    minHeight: 350,
-                    maxHeight: 500,
-                  ),
-                  child: SizedBox(
-                    height: 420,
-                    child: TabBarView(
-                      children: [
-                        _buildLightningTab(),
-                        _buildOnchainTab(),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Espaçamento extra no final para evitar overflow
-          const SizedBox(height: 16),
+          // Lightning Payment Section
+          _buildLightningSection(),
           
-          // BOTÃO DE RECUPERAÇÃO DE DEPÓSITOS
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.blue.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.blue.withOpacity(0.3)),
-            ),
-            child: Column(
-              children: [
-                const Text(
-                  'Já fez um depósito mas não foi detectado?',
-                  style: TextStyle(color: Colors.white70, fontSize: 12),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                ElevatedButton.icon(
-                  onPressed: _isRecovering ? null : _recoverPendingDeposits,
-                  icon: _isRecovering 
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.refresh, size: 18),
-                  label: Text(_isRecovering ? 'Recuperando...' : 'Recuperar Depósitos Pendentes'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-              ],
-            ),
-          ),
           const SizedBox(height: 24),
         ],
       ),
     );
   }
 
-  Widget _buildLightningTab() {
+  Widget _buildLightningSection() {
     if (_lightningInvoice == null) {
-      return const Center(
-        child: Text('Erro ao gerar invoice', style: TextStyle(color: Colors.red)),
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Column(
+          children: [
+            Icon(Icons.error_outline, color: Colors.red, size: 48),
+            SizedBox(height: 8),
+            Text('Erro ao gerar invoice', style: TextStyle(color: Colors.red)),
+          ],
+        ),
       );
     }
 
-    return SingleChildScrollView(
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Column(
         children: [
+          // Lightning header
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.orange.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.flash_on, color: Colors.orange),
+                SizedBox(width: 8),
+                Text(
+                  '⚡ Lightning Network',
+                  style: TextStyle(
+                    color: Colors.orange,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          
+          // QR Code
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -709,12 +541,13 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
             child: QrImageView(
               data: _lightningInvoice!,
               version: QrVersions.auto,
-              size: 180,
+              size: 200,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
+          
           const Text(
-            '⚡ Pagamento instantâneo',
+            'Pagamento instantâneo',
             style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 6),
@@ -723,7 +556,9 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
             style: TextStyle(color: Colors.white70, fontSize: 12),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
+          
+          // Copy button
           OutlinedButton.icon(
             onPressed: () {
               Clipboard.setData(ClipboardData(text: _lightningInvoice!));
@@ -735,161 +570,26 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
             label: const Text('Copiar Invoice'),
             style: OutlinedButton.styleFrom(foregroundColor: Colors.orange),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOnchainTab() {
-    if (_bitcoinAddress == null) {
-      return const Center(
-        child: Text('Erro ao gerar endereço', style: TextStyle(color: Colors.red)),
-      );
-    }
-
-    // Para on-chain: usar valor COM taxa para garantir colateral suficiente após claim
-    final amountToSend = _amountNeededSatsWithFee;
-    // Converter sats para BTC para o URI BIP21
-    final amountBtc = amountToSend / 100000000.0;
-    // URI BIP21: bitcoin:<address>?amount=<btc>&label=<label>
-    final bitcoinUri = 'bitcoin:$_bitcoinAddress?amount=${amountBtc.toStringAsFixed(8)}&label=Garantia%20Bro%20${widget.tier.name}';
-    
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          // AVISO IMPORTANTE SOBRE TAXA
-          Container(
-            padding: const EdgeInsets.all(12),
-            margin: const EdgeInsets.only(bottom: 12),
-            decoration: BoxDecoration(
-              color: Colors.orange.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.orange.withOpacity(0.5)),
-            ),
-            child: Column(
-              children: [
-                const Row(
-                  children: [
-                    Icon(Icons.info_outline, color: Colors.orange, size: 20),
-                    SizedBox(width: 8),
-                    Text(
-                      'Taxa de Rede Bitcoin',
-                      style: TextStyle(
-                        color: Colors.orange,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
+          const SizedBox(height: 16),
+          
+          // Waiting indicator
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.orange,
                 ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Colateral necessário:', style: TextStyle(color: Colors.white70, fontSize: 12)),
-                    Text('$_amountNeededSats sats', style: const TextStyle(color: Colors.white, fontSize: 12)),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Taxa estimada (rede):', style: TextStyle(color: Colors.white70, fontSize: 12)),
-                    Text('+$kEstimatedOnchainClaimFeeSats sats', style: const TextStyle(color: Colors.red, fontSize: 12)),
-                  ],
-                ),
-                const Divider(color: Colors.orange, height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('ENVIAR:', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                    Text('$amountToSend sats', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 14)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: QrImageView(
-              data: bitcoinUri,
-              version: QrVersions.auto,
-              size: 160,
-            ),
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            '🔗 Bitcoin On-chain',
-            style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Enviar: $amountToSend sats (${amountBtc.toStringAsFixed(8)} BTC)',
-            style: const TextStyle(color: Colors.green, fontSize: 14, fontWeight: FontWeight.bold),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 2),
-          Text(
-            'Você receberá ~$_amountNeededSats sats após taxa',
-            style: const TextStyle(color: Colors.white54, fontSize: 11),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 4),
-          if (_paymentDetected)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              margin: const EdgeInsets.only(bottom: 8),
-              decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(8),
               ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blue),
-                  ),
-                  SizedBox(width: 8),
-                  Text(
-                    'Aguardando confirmações...',
-                    style: TextStyle(color: Colors.blue, fontSize: 12),
-                  ),
-                ],
+              const SizedBox(width: 8),
+              const Text(
+                'Aguardando pagamento...',
+                style: TextStyle(color: Colors.white54, fontSize: 12),
               ),
-            )
-          else
-            const Text(
-              'Pode demorar até 30 min para confirmar',
-              style: TextStyle(color: Colors.white70, fontSize: 12),
-              textAlign: TextAlign.center,
-            ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: bitcoinUri));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('URI Bitcoin copiado (com valor)!')),
-              );
-            },
-            icon: const Icon(Icons.copy, size: 16),
-            label: const Text('Copiar URI (com valor)'),
-            style: OutlinedButton.styleFrom(foregroundColor: Colors.blue),
-          ),
-          const SizedBox(height: 6),
-          TextButton(
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: _bitcoinAddress!));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Endereço copiado!')),
-              );
-            },
-            child: const Text('Copiar só o endereço', style: TextStyle(color: Colors.white54, fontSize: 12)),
+            ],
           ),
         ],
       ),

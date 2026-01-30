@@ -1210,7 +1210,7 @@ class BreezProvider with ChangeNotifier {
     }
   }
 
-  /// List payment history
+  /// List payment history with full details
   Future<List<Map<String, dynamic>>> listPayments() async {
     if (!_isInitialized || _sdk == null) {
       debugPrint('⚠️ listPayments: SDK não inicializado');
@@ -1231,18 +1231,44 @@ class BreezProvider with ChangeNotifier {
 
       return resp.payments.map((payment) {
         String? paymentHash;
+        DateTime? timestamp;
         
+        // Extrair timestamp do pagamento (se disponível)
+        // O SDK pode retornar timestamp como BigInt (segundos desde epoch)
+        try {
+          if (payment.timestamp != null) {
+            // timestamp é BigInt, converter para int em segundos
+            final timestampSecs = payment.timestamp!.toInt();
+            timestamp = DateTime.fromMillisecondsSinceEpoch(timestampSecs * 1000);
+          }
+        } catch (e) {
+          debugPrint('⚠️ Erro ao converter timestamp: $e');
+        }
+        
+        // Extrair detalhes específicos do tipo Lightning
         if (payment.details is spark.PaymentDetails_Lightning) {
           final details = payment.details as spark.PaymentDetails_Lightning;
           paymentHash = details.paymentHash;
         }
-
+        
+        // Determinar direção (recebido ou enviado)
+        final paymentTypeStr = payment.paymentType.toString().toLowerCase();
+        final isReceived = paymentTypeStr.contains('receive');
+        
+        // amount é BigInt no SDK
+        final amountSats = payment.amount.toInt();
+        
         return {
           'id': payment.id,
           'paymentType': payment.paymentType.toString(),
+          'type': isReceived ? 'received' : 'sent',
+          'direction': isReceived ? 'incoming' : 'outgoing',
           'status': payment.status.toString(),
-          'amount': payment.amount.toString(),
+          'amount': amountSats,
+          'amountSats': amountSats,
           'paymentHash': paymentHash,
+          'timestamp': timestamp,
+          'createdAt': timestamp,
         };
       }).toList();
     } catch (e) {

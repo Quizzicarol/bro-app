@@ -69,11 +69,8 @@ class CollateralProvider with ChangeNotifier {
         debugPrint('💰 Saldo efetivo para garantia: $effectiveBalanceSats sats');
       }
 
-      // IMPORTANTE: Limpar cache para forçar releitura do storage
-      // Isso garante que sempre temos os dados mais recentes ao entrar no modo Bro
-      LocalCollateralService.clearCache();
-      
       // 🔑 CRÍTICO: Obter pubkey do Nostr e setar no service ANTES de carregar
+      // O setCurrentUser já gerencia cache e verifica se usuário mudou
       final nostrService = NostrService();
       final pubkey = nostrService.publicKey;
       debugPrint('🔑 CollateralProvider: carregando tier para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');

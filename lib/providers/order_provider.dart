@@ -253,8 +253,9 @@ class OrderProvider with ChangeNotifier {
     // Isso previne que ordens de usuário anterior vazem para o novo
     await _cleanupAnonymousStorage();
     
-    // 🔐 Também limpar cache de collateral para evitar vazamento de tier
-    LocalCollateralService.clearCache();
+    // ⚠️ NÃO limpar cache de collateral aqui!
+    // O CollateralProvider gerencia isso próprio e verifica se usuário mudou
+    // Limpar aqui causa problema de tier "caindo" durante a sessão
     
     _currentUserPubkey = userPubkey;
     _orders = [];
@@ -1458,6 +1459,7 @@ class OrderProvider with ChangeNotifier {
     try {
       debugPrint('🔍 getOrder: Buscando ordem $orderId');
       debugPrint('🔍 getOrder: Total de ordens em memória: ${_orders.length}');
+      debugPrint('🔍 getOrder: Total de ordens disponíveis: ${_availableOrdersForProvider.length}');
       
       // Primeiro, tentar encontrar na lista em memória (mais rápido)
       final localOrder = _orders.cast<Order?>().firstWhere(
@@ -1466,8 +1468,19 @@ class OrderProvider with ChangeNotifier {
       );
       
       if (localOrder != null) {
-        debugPrint('✅ getOrder: Ordem encontrada em memória');
+        debugPrint('✅ getOrder: Ordem encontrada em _orders');
         return localOrder.toJson();
+      }
+      
+      // Também verificar nas ordens disponíveis para provider
+      final availableOrder = _availableOrdersForProvider.cast<Order?>().firstWhere(
+        (o) => o?.id == orderId,
+        orElse: () => null,
+      );
+      
+      if (availableOrder != null) {
+        debugPrint('✅ getOrder: Ordem encontrada em _availableOrdersForProvider');
+        return availableOrder.toJson();
       }
       
       debugPrint('⚠️ getOrder: Ordem não encontrada em memória, tentando backend...');

@@ -2086,85 +2086,345 @@ class _WalletScreenState extends State<WalletScreen> {
       icon = Icons.arrow_upward;
     }
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: isBroEarning ? const Color(0xFF1A2A1A) : const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: isBroEarning ? Colors.green.withOpacity(0.3) : const Color(0xFF333333)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(18),
+    return GestureDetector(
+      onTap: () => _showTransactionDetails(payment),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: isBroEarning ? const Color(0xFF1A2A1A) : const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: isBroEarning ? Colors.green.withOpacity(0.3) : const Color(0xFF333333)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: iconColor.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Icon(
+                icon,
+                color: iconColor,
+                size: 18,
+              ),
             ),
-            child: Icon(
-              icon,
-              color: iconColor,
-              size: 18,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  if (date != null)
+                    Text(
+                      _formatDateFull(date),
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.5),
+                        fontSize: 11,
+                      ),
+                    ),
+                  if (status.isNotEmpty && status != 'Complete' && !status.contains('completed'))
+                    Text(
+                      status.replaceAll('PaymentStatus.', ''),
+                      style: TextStyle(
+                        color: Colors.orange.withOpacity(0.8),
+                        fontSize: 10,
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  label,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
+                  '${isReceived ? '+' : '-'}$amount sats',
+                  style: TextStyle(
+                    color: isReceived ? Colors.green : Colors.red,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
                   ),
                 ),
-                if (date != null)
-                  Text(
-                    _formatDate(date),
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.5),
-                      fontSize: 11,
+                Icon(
+                  Icons.chevron_right,
+                  color: Colors.white.withOpacity(0.3),
+                  size: 16,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showTransactionDetails(Map<String, dynamic> payment) {
+    final isReceived = payment['type'] == 'received' || 
+                       payment['direction'] == 'incoming' ||
+                       payment['type'] == 'Receive';
+    final isBroEarning = payment['isBroEarning'] == true;
+    final amount = payment['amountSats'] ?? payment['amount'] ?? 0;
+    final status = payment['status']?.toString() ?? '';
+    final date = payment['createdAt'] ?? payment['timestamp'];
+    final description = payment['description']?.toString() ?? '';
+    final paymentHash = payment['paymentHash']?.toString() ?? '';
+    final paymentId = payment['id']?.toString() ?? '';
+    
+    // Determinar tipo para exibição
+    String typeLabel;
+    Color typeColor;
+    IconData typeIcon;
+    
+    if (isBroEarning) {
+      typeLabel = 'Ganho como Bro';
+      typeColor = Colors.green;
+      typeIcon = Icons.volunteer_activism;
+    } else if (isReceived) {
+      typeLabel = 'Recebido via Lightning';
+      typeColor = Colors.green;
+      typeIcon = Icons.arrow_downward;
+    } else {
+      typeLabel = 'Enviado via Lightning';
+      typeColor = Colors.red;
+      typeIcon = Icons.arrow_upward;
+    }
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header
+                Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: typeColor.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: Icon(typeIcon, color: typeColor, size: 24),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            typeLabel,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            '${isReceived ? '+' : '-'}$amount sats',
+                            style: TextStyle(
+                              color: typeColor,
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white54),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+                
+                const SizedBox(height: 24),
+                const Divider(color: Color(0xFF333333)),
+                const SizedBox(height: 16),
+                
+                // Detalhes
+                _buildDetailRow('📅 Data/Hora', date != null ? _formatDateFull(date) : 'Não disponível'),
+                _buildDetailRow('📊 Status', status.replaceAll('PaymentStatus.', '').toUpperCase()),
+                if (description.isNotEmpty)
+                  _buildDetailRow('📝 Descrição', description),
+                _buildDetailRow('⚡ Rede', 'Lightning Network'),
+                  
+                const SizedBox(height: 16),
+                const Divider(color: Color(0xFF333333)),
+                const SizedBox(height: 16),
+                
+                // Dados técnicos
+                const Text(
+                  'Dados Técnicos',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                
+                if (paymentHash.isNotEmpty && paymentHash != 'N/A' && paymentHash != 'null')
+                  _buildDetailRow('🔑 Payment Hash', paymentHash, copyable: true, monospace: true),
+                if (paymentId.isNotEmpty)
+                  _buildDetailRow('🆔 ID Transação', paymentId, copyable: true, monospace: true),
+                
+                const SizedBox(height: 24),
+                
+                // Botão de copiar tudo
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _copyAllDetails(payment),
+                    icon: const Icon(Icons.copy, size: 18),
+                    label: const Text('Copiar todos os dados'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF333333),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                   ),
-                if (status.isNotEmpty && status != 'Complete')
-                  Text(
-                    status,
-                    style: TextStyle(
-                      color: Colors.orange.withOpacity(0.8),
-                      fontSize: 10,
-                    ),
-                  ),
+                ),
+                
+                const SizedBox(height: 16),
               ],
             ),
           ),
-          Text(
-            '${isReceived ? '+' : '-'}$amount sats',
-            style: TextStyle(
-              color: isReceived ? Colors.green : Colors.red,
-              fontWeight: FontWeight.bold,
-              fontSize: 13,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value, {bool copyable = false, bool monospace = false, String? fullText}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.6),
+                fontSize: 13,
+              ),
             ),
           ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontFamily: monospace ? 'monospace' : null,
+              ),
+            ),
+          ),
+          if (copyable)
+            GestureDetector(
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: fullText ?? value));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('$label copiado!'),
+                    backgroundColor: const Color(0xFFFF9800),
+                    duration: const Duration(seconds: 1),
+                  ),
+                );
+              },
+              child: Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Icon(
+                  Icons.copy,
+                  color: Colors.white.withOpacity(0.4),
+                  size: 16,
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 
-  String _formatDate(dynamic date) {
+  void _copyAllDetails(Map<String, dynamic> payment) {
+    final isReceived = payment['type'] == 'received' || 
+                       payment['direction'] == 'incoming';
+    final amount = payment['amountSats'] ?? payment['amount'] ?? 0;
+    final date = payment['createdAt'] ?? payment['timestamp'];
+    final description = payment['description']?.toString() ?? '';
+    final paymentHash = payment['paymentHash']?.toString() ?? '';
+    final paymentId = payment['id']?.toString() ?? '';
+    final status = payment['status']?.toString() ?? '';
+    
+    final buffer = StringBuffer();
+    buffer.writeln('=== Detalhes da Transação ===');
+    buffer.writeln('Tipo: ${isReceived ? "Recebido" : "Enviado"}');
+    buffer.writeln('Valor: $amount sats');
+    if (date != null) buffer.writeln('Data: ${_formatDateFull(date)}');
+    buffer.writeln('Status: ${status.replaceAll('PaymentStatus.', '')}');
+    buffer.writeln('Rede: Lightning Network');
+    if (description.isNotEmpty) buffer.writeln('Descrição: $description');
+    buffer.writeln('');
+    buffer.writeln('=== Dados Técnicos ===');
+    if (paymentId.isNotEmpty) buffer.writeln('ID: $paymentId');
+    if (paymentHash.isNotEmpty && paymentHash != 'null') buffer.writeln('Payment Hash: $paymentHash');
+    
+    Clipboard.setData(ClipboardData(text: buffer.toString()));
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Todos os dados copiados!'),
+        backgroundColor: Color(0xFFFF9800),
+        duration: Duration(seconds: 2),
+      ),
+    );
+    
+    Navigator.pop(context);
+  }
+
+  String _formatDateFull(dynamic date) {
     if (date == null) return '';
     try {
+      DateTime dt;
       if (date is DateTime) {
-        return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+        dt = date;
+      } else {
+        final str = date.toString();
+        dt = DateTime.parse(str);
       }
-      final str = date.toString();
-      if (str.length >= 16) {
-        return str.substring(0, 16).replaceAll('T', ' ');
+      
+      final now = DateTime.now();
+      final isToday = dt.day == now.day && dt.month == now.month && dt.year == now.year;
+      final isYesterday = dt.day == now.day - 1 && dt.month == now.month && dt.year == now.year;
+      
+      final time = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      
+      if (isToday) {
+        return 'Hoje às $time';
+      } else if (isYesterday) {
+        return 'Ontem às $time';
+      } else {
+        return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} às $time';
       }
-      return str;
     } catch (e) {
       return date.toString();
     }

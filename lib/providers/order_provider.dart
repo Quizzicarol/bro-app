@@ -79,20 +79,33 @@ class OrderProvider with ChangeNotifier {
     // Limpar lista de ordens disponíveis para provedor (NUNCA eram salvas)
     _availableOrdersForProvider = [];
     
-    // A lista _orders já contém apenas ordens do usuário (graças ao filtro)
-    // Mas vamos forçar uma limpeza por segurança
+    // IMPORTANTE: NÃO remover ordens que este usuário aceitou como provedor!
+    // Mesmo que userPubkey seja diferente, se providerId == _currentUserPubkey,
+    // essa ordem deve ser mantida para aparecer em "Minhas Ordens" do provedor
+    final before = _orders.length;
     _orders = _orders.where((o) {
-      if (o.userPubkey == null || o.userPubkey!.isEmpty) return false;
+      // Sempre manter ordens que este usuário criou
       final isOwner = o.userPubkey == _currentUserPubkey;
+      // SEMPRE manter ordens que este usuário aceitou como provedor
       final isProvider = o.providerId == _currentUserPubkey;
+      
+      if (isProvider) {
+        debugPrint('   ✅ Mantendo ordem ${o.id.substring(0, 8)} - aceitei como provedor');
+      }
+      
       return isOwner || isProvider;
     }).toList();
+    
+    final removed = before - _orders.length;
+    if (removed > 0) {
+      debugPrint('🧹 Removidas $removed ordens de outros usuários');
+    }
     
     // Salvar lista limpa
     _saveOnlyUserOrders();
     
     notifyListeners();
-    debugPrint('✅ exitProviderMode: ${_orders.length} ordens do usuário mantidas');
+    debugPrint('✅ exitProviderMode: ${_orders.length} ordens mantidas (próprias + aceitas como provedor)');
   }
   
   /// Getter para ordens disponíveis para Bros (usadas na tela de provedor)
@@ -887,28 +900,34 @@ class OrderProvider with ChangeNotifier {
         // Ignorar ordens com amount=0
         if (pendingOrder.amount <= 0) continue;
         
-        // Ignorar ordens com status final
-        if (pendingOrder.status == 'cancelled' || pendingOrder.status == 'completed') continue;
-        
-        // Verificar se é ordem do usuário atual
+        // Verificar se é ordem do usuário atual OU ordem que ele aceitou como provedor
         final isMyOrder = pendingOrder.userPubkey == _currentUserPubkey;
         final isMyProviderOrder = pendingOrder.providerId == _currentUserPubkey;
         
+        // Se NÃO é minha ordem e NÃO é ordem que aceitei, verificar status
+        // Ordens de outros com status final não interessam
+        if (!isMyOrder && !isMyProviderOrder) {
+          if (pendingOrder.status == 'cancelled' || pendingOrder.status == 'completed') continue;
+        }
+        
         if (isMyOrder || isMyProviderOrder) {
-          // Ordem do usuário: atualizar na lista _orders
+          // Ordem do usuário OU ordem aceita como provedor: atualizar na lista _orders
           final existingIndex = _orders.indexWhere((o) => o.id == pendingOrder.id);
           if (existingIndex == -1) {
             _orders.add(pendingOrder);
+            debugPrint('   ➕ Adicionada ordem ${pendingOrder.id.substring(0, 8)} (myOrder=$isMyOrder, myProvider=$isMyProviderOrder)');
           } else {
             final existing = _orders[existingIndex];
-            // Preservar status final local
-            if (existing.status != 'cancelled' && existing.status != 'completed') {
+            // CORREÇÃO: Sempre atualizar se status do Nostr é mais recente
+            // Mesmo para ordens completed (para que provedor veja completed)
+            if (_isStatusMoreRecent(pendingOrder.status, existing.status)) {
               _orders[existingIndex] = existing.copyWith(
                 providerId: existing.providerId ?? pendingOrder.providerId,
-                status: _isStatusMoreRecent(pendingOrder.status, existing.status) 
-                    ? pendingOrder.status : existing.status,
+                status: pendingOrder.status,
+                completedAt: pendingOrder.status == 'completed' ? DateTime.now() : existing.completedAt,
               );
               updated++;
+              debugPrint('   🔄 Atualizada ordem ${pendingOrder.id.substring(0, 8)}: ${existing.status} -> ${pendingOrder.status}');
             }
           }
         } else {
@@ -1154,7 +1173,41 @@ class OrderProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      // SEMPRE atualizar localmente (modo P2P via Nostr)
+      // IMPORTANTE: Publicar no Nostr PRIMEIRO e só atualizar localmente se der certo
+      final privateKey = _nostrService.privateKey;
+      bool nostrSuccess = false;
+      
+      if (privateKey != null) {
+        debugPrint('📤 Publicando atualização de status no Nostr...');
+        debugPrint('   orderId: $orderId');
+        debugPrint('   newStatus: $status');
+        debugPrint('   providerId (tag #p): ${providerId ?? "NENHUM - Bro não receberá!"}');
+        
+        nostrSuccess = await _nostrOrderService.updateOrderStatus(
+          privateKey: privateKey,
+          orderId: orderId,
+          newStatus: status,
+          providerId: providerId,
+        );
+        
+        if (nostrSuccess) {
+          debugPrint('✅ Status "$status" publicado no Nostr com tag #p=${providerId ?? "nenhuma"}');
+        } else {
+          debugPrint('❌ FALHA ao publicar status no Nostr - NÃO atualizando localmente');
+          _error = 'Falha ao publicar no Nostr';
+          _isLoading = false;
+          notifyListeners();
+          return false; // CRÍTICO: Retornar false se Nostr falhar
+        }
+      } else {
+        debugPrint('⚠️ Sem chave privada - não publicando no Nostr');
+        _error = 'Chave privada não disponível';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+      
+      // Só atualizar localmente APÓS sucesso no Nostr
       final index = _orders.indexWhere((o) => o.id == orderId);
       if (index != -1) {
         // Preservar metadata existente se não for passado novo
@@ -1175,32 +1228,9 @@ class OrderProvider with ChangeNotifier {
         final ordersJson = json.encode(_orders.map((o) => o.toJson()).toList());
         await prefs.setString(_ordersKey, ordersJson);
         
-        debugPrint('💾 Ordem $orderId atualizada: status=$status, providerId=${providerId ?? "NULL"}');
-        
-        // IMPORTANTE: Publicar atualização no Nostr para sincronização P2P
-        final privateKey = _nostrService.privateKey;
-        if (privateKey != null) {
-          debugPrint('📤 Publicando atualização de status no Nostr...');
-          debugPrint('   orderId: $orderId');
-          debugPrint('   newStatus: $status');
-          debugPrint('   providerId (tag #p): ${providerId ?? "NENHUM - Bro não receberá!"}');
-          
-          final success = await _nostrOrderService.updateOrderStatus(
-            privateKey: privateKey,
-            orderId: orderId,
-            newStatus: status,
-            providerId: providerId,
-          );
-          if (success) {
-            debugPrint('✅ Status "$status" publicado no Nostr com tag #p=${providerId ?? "nenhuma"}');
-          } else {
-            debugPrint('⚠️ Falha ao publicar status no Nostr (ordem salva localmente)');
-          }
-        } else {
-          debugPrint('⚠️ Sem chave privada - não publicando no Nostr');
-        }
+        debugPrint('💾 Ordem $orderId atualizada localmente: status=$status');
       } else {
-        debugPrint('⚠️ Ordem $orderId não encontrada para atualizar');
+        debugPrint('⚠️ Ordem $orderId não encontrada localmente (mas já publicada no Nostr)');
       }
       
       _isLoading = false;
@@ -1208,10 +1238,10 @@ class OrderProvider with ChangeNotifier {
       return true;
     } catch (e) {
       _error = e.toString();
-      return false;
-    } finally {
+      debugPrint('❌ Erro ao atualizar ordem: $e');
       _isLoading = false;
       notifyListeners();
+      return false;
     }
   }
 

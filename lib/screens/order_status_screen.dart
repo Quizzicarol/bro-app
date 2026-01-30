@@ -2387,7 +2387,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   Widget _buildTalkToBroButton() {
     final providerId = _orderDetails?['provider_id'] ?? '';
-    final broName = providerId.isNotEmpty ? providerId.substring(0, 8) : 'Bro';
+    final broName = providerId.isNotEmpty && providerId.length >= 8 ? providerId.substring(0, 8) : (providerId.isNotEmpty ? providerId : 'Bro');
     
     return SizedBox(
       width: double.infinity,

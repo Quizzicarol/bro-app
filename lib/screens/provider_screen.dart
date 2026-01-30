@@ -68,7 +68,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
     
     if (pubkey != null) {
       _providerId = pubkey;
-      debugPrint('👤 Provider ID (Nostr pubkey): ${_providerId.substring(0, 16)}...');
+      debugPrint('👤 Provider ID (Nostr pubkey): ${_providerId.length >= 16 ? _providerId.substring(0, 16) : _providerId}...');
     } else {
       // Fallback: gera um ID local se não tiver Nostr configurado
       _providerId = await _storageService.getProviderId() ?? _generateProviderId();
@@ -124,11 +124,13 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
       );
       
       final requiredSats = currentTierDef.requiredCollateralSats;
-      debugPrint('🏷️ Tier ${currentTierDef.id}: requer $requiredSats sats, carteira tem $walletBalance sats');
+      // 🔥 Tolerância de 10% para oscilação do Bitcoin
+      final minRequiredWithTolerance = (requiredSats * 0.90).round();
+      debugPrint('🏷️ Tier ${currentTierDef.id}: requer $requiredSats sats (mínimo c/ tolerância: $minRequiredWithTolerance), carteira tem $walletBalance sats');
       
-      // O tier está em risco se o SALDO DA CARTEIRA for menor que o requerido
-      if (walletBalance < requiredSats) {
-        final deficit = requiredSats - walletBalance;
+      // O tier está em risco se o SALDO DA CARTEIRA for menor que o mínimo com tolerância
+      if (walletBalance < minRequiredWithTolerance) {
+        final deficit = minRequiredWithTolerance - walletBalance;
         setState(() {
           _tierWarning = true;
           _tierWarningMessage = 'Deposite mais $deficit sats para manter o ${_currentTier!.tierName}';

@@ -169,7 +169,10 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
       final committedSats = orderProvider.committedSats;
       final availableBalance = (totalBalance - committedSats).clamp(0, totalBalance);
       
-      if (availableBalance >= widget.tier.requiredCollateralSats) {
+      // 🔥 Tolerância de 10% para oscilação do Bitcoin
+      final minRequired = (widget.tier.requiredCollateralSats * 0.90).round();
+      
+      if (availableBalance >= minRequired) {
         // Pagamento recebido! Ativar tier
         await _onPaymentReceived();
       } else if (totalBalance > _currentBalance) {
@@ -213,7 +216,10 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
     
     debugPrint('💰 Pagamento detectado! Saldo total: $totalBalance, disponível: $availableBalance');
     
-    if (availableBalance >= widget.tier.requiredCollateralSats) {
+    // 🔥 Tolerância de 10% para oscilação do Bitcoin
+    final minRequired = (widget.tier.requiredCollateralSats * 0.90).round();
+    
+    if (availableBalance >= minRequired) {
       // Ativar o tier
       await _activateTier(availableBalance);
     } else {
@@ -229,20 +235,25 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
   Future<void> _activateTier(int balance) async {
     debugPrint('🎯 Ativando tier ${widget.tier.name} com saldo disponível: $balance sats');
     
-    // Usar LocalCollateralService instance
+    // ✅ IMPORTANTE: Obter pubkey ANTES de salvar o tier
+    final nostrService = NostrService();
+    final pubkey = nostrService.publicKey;
+    debugPrint('🔑 Salvando tier para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
+    
+    // Usar LocalCollateralService instance COM pubkey
     final localCollateralService = LocalCollateralService();
+    localCollateralService.setCurrentUser(pubkey); // CRÍTICO: Setar usuário antes de salvar
     await localCollateralService.setCollateral(
       tierId: widget.tier.id,
       tierName: widget.tier.name,
       requiredSats: widget.tier.requiredCollateralSats,
       maxOrderBrl: widget.tier.maxOrderValueBrl,
+      userPubkey: pubkey, // CRÍTICO: Passar pubkey
     );
     
-    debugPrint('✅ Tier salvo localmente');
+    debugPrint('✅ Tier salvo localmente para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
 
     // ✅ IMPORTANTE: Marcar como modo provedor para persistir entre sessões COM PUBKEY
-    final nostrService = NostrService();
-    final pubkey = nostrService.publicKey;
     await SecureStorageService.setProviderMode(true, userPubkey: pubkey);
     debugPrint('✅ Provider mode ativado e persistido para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
 

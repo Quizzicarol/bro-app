@@ -298,48 +298,76 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
 
         // Tier atual (se houver)
         if (_currentCollateral != null) ...[
-          // Aviso se saldo insuficiente para manter tier
-          if (_walletBalance < _currentCollateral!.lockedSats)
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.red.withOpacity(0.5)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.warning_amber, color: Colors.red, size: 24),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          '⚠️ SALDO INSUFICIENTE!',
-                          style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 14),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Seu tier requer ${_currentCollateral!.lockedSats} sats, mas você só tem $_walletBalance sats.\n'
-                          'O tier será desativado automaticamente se você não depositar mais saldo.',
-                          style: const TextStyle(color: Colors.white70, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          if (_walletBalance < _currentCollateral!.lockedSats)
-            const SizedBox(height: 12),
-          
-          // Status do tier atual - considerar saldo zero como INATIVO
+          // 🔥 RECALCULAR valor do tier com preço ATUAL do Bitcoin
+          // Isso evita que oscilações de preço desativem o tier indevidamente
           Builder(
             builder: (context) {
-              final isTierActive = _walletBalance > 0 && _walletBalance >= _currentCollateral!.lockedSats;
-              final isTierAtRisk = _walletBalance > 0 && _walletBalance < _currentCollateral!.lockedSats;
+              // Buscar o tier atual na lista atualizada (com preço atual do BTC)
+              final currentTierDef = _tiers?.firstWhere(
+                (t) => t.id == _currentCollateral!.tierId,
+                orElse: () => _tiers!.first,
+              );
+              
+              // Usar o valor ATUALIZADO do tier, não o valor salvo
+              final requiredSatsNow = currentTierDef?.requiredCollateralSats ?? _currentCollateral!.lockedSats;
+              final minRequiredWithTolerance = (requiredSatsNow * 0.90).round(); // 10% tolerância
+              final showWarning = _walletBalance < minRequiredWithTolerance;
+              
+              debugPrint('📊 Tier ${_currentCollateral!.tierName}: salvo=${_currentCollateral!.lockedSats}, atualizado=$requiredSatsNow, mínimo=$minRequiredWithTolerance, saldo=$_walletBalance');
+              
+              if (!showWarning) return const SizedBox.shrink();
+              
+              return Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.red.withOpacity(0.5)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.warning_amber, color: Colors.red, size: 24),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '⚠️ SALDO INSUFICIENTE!',
+                            style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 14),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Seu tier requer $requiredSatsNow sats (mínimo com tolerância: $minRequiredWithTolerance sats), mas você só tem $_walletBalance sats.\n'
+                            'O tier será desativado automaticamente se você não depositar mais saldo.',
+                            style: const TextStyle(color: Colors.white70, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          
+          // Status do tier atual - considerar saldo zero como INATIVO
+          // 🔥 Com tolerância de 10% + preço ATUALIZADO do Bitcoin
+          Builder(
+            builder: (context) {
+              // Buscar o tier atual na lista atualizada (com preço atual do BTC)
+              final currentTierDef = _tiers?.firstWhere(
+                (t) => t.id == _currentCollateral!.tierId,
+                orElse: () => _tiers!.first,
+              );
+              
+              // Usar o valor ATUALIZADO do tier, não o valor salvo
+              final requiredSatsNow = currentTierDef?.requiredCollateralSats ?? _currentCollateral!.lockedSats;
+              final minRequired = (requiredSatsNow * 0.90).round(); // 10% tolerância
+              final isTierActive = _walletBalance > 0 && _walletBalance >= minRequired;
+              final isTierAtRisk = _walletBalance > 0 && _walletBalance < minRequired;
               final isTierInactive = _walletBalance == 0;
               
               return Container(
@@ -443,7 +471,9 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
             itemBuilder: (context, index) {
               final tier = _tiers![index];
               final isCurrentTier = _currentCollateral?.tierId == tier.id;
-              final hasEnoughBalance = _walletBalance >= tier.requiredCollateralSats;
+              // 🔥 Tolerância de 10% para oscilação do Bitcoin
+              final minRequired = (tier.requiredCollateralSats * 0.90).round();
+              final hasEnoughBalance = _walletBalance >= minRequired;
               
               return _buildTierCard(tier, isCurrentTier, hasEnoughBalance);
             },

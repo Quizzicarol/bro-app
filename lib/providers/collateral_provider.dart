@@ -73,13 +73,47 @@ class CollateralProvider with ChangeNotifier {
       // Isso garante que sempre temos os dados mais recentes ao entrar no modo Bro
       LocalCollateralService.clearCache();
       
+      // 🔑 CRÍTICO: Obter pubkey do Nostr e setar no service ANTES de carregar
+      final nostrService = NostrService();
+      final pubkey = nostrService.publicKey;
+      debugPrint('🔑 CollateralProvider: carregando tier para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
+      _localCollateralService.setCurrentUser(pubkey);
+      
       // SISTEMA LOCAL: Carregar garantia local (fundos ficam na carteira do provedor)
-      _localCollateral = await _localCollateralService.getCollateral();
+      _localCollateral = await _localCollateralService.getCollateral(userPubkey: pubkey);
       
       // Se não tem garantia local, tentar buscar do Nostr
       if (_localCollateral == null) {
         debugPrint('📭 Garantia local não encontrada, buscando no Nostr...');
         await _tryRestoreFromNostr();
+      }
+      
+      // 🔥 AUTO-ATIVAÇÃO: Se ainda não tem tier mas tem saldo suficiente, auto-ativar Trial
+      if (_localCollateral == null && _walletBalanceSats > 0 && _availableTiers != null) {
+        debugPrint('🔄 Tentando auto-ativar tier Trial...');
+        // Encontrar o tier Trial
+        final trialTier = _availableTiers!.firstWhere(
+          (t) => t.id == 'trial',
+          orElse: () => _availableTiers!.first,
+        );
+        
+        // Se tem saldo suficiente (com 10% tolerância), auto-ativar
+        final minRequired = (trialTier.requiredCollateralSats * 0.90).round();
+        if (_walletBalanceSats >= minRequired) {
+          debugPrint('✅ Saldo suficiente para tier ${trialTier.name}! Auto-ativando...');
+          _localCollateralService.setCurrentUser(pubkey);
+          await _localCollateralService.setCollateral(
+            tierId: trialTier.id,
+            tierName: trialTier.name,
+            requiredSats: trialTier.requiredCollateralSats,
+            maxOrderBrl: trialTier.maxOrderValueBrl,
+            userPubkey: pubkey,
+          );
+          _localCollateral = await _localCollateralService.getCollateral(userPubkey: pubkey);
+          debugPrint('✅ Tier ${trialTier.name} auto-ativado!');
+        } else {
+          debugPrint('⚠️ Saldo insuficiente para auto-ativar: $_walletBalanceSats < $minRequired sats');
+        }
       }
       
       if (_localCollateral != null) {
@@ -150,7 +184,63 @@ class CollateralProvider with ChangeNotifier {
   void updateWalletBalance(int balanceSats) {
     _walletBalanceSats = balanceSats;
     debugPrint('💳 Saldo atualizado: $_walletBalanceSats sats');
+    
+    // 🔥 AUTO-ATIVAÇÃO: Se ainda não tem tier mas tem saldo suficiente, tentar auto-ativar
+    if (_localCollateral == null && _walletBalanceSats > 0 && _availableTiers != null) {
+      _tryAutoActivateTier();
+    }
+    
     notifyListeners();
+  }
+  
+  /// Tenta auto-ativar o tier Trial se há saldo suficiente
+  Future<void> _tryAutoActivateTier() async {
+    if (_localCollateral != null || _availableTiers == null || _walletBalanceSats <= 0) {
+      return;
+    }
+    
+    debugPrint('🔄 [AUTO-ATIV] Tentando auto-ativar tier Trial...');
+    
+    // Encontrar o tier Trial
+    final trialTier = _availableTiers!.firstWhere(
+      (t) => t.id == 'trial',
+      orElse: () => _availableTiers!.first,
+    );
+    
+    // Se tem saldo suficiente (com 10% tolerância), auto-ativar
+    final minRequired = (trialTier.requiredCollateralSats * 0.90).round();
+    debugPrint('🔄 [AUTO-ATIV] Saldo: $_walletBalanceSats sats, mínimo necessário: $minRequired sats');
+    
+    if (_walletBalanceSats >= minRequired) {
+      debugPrint('✅ [AUTO-ATIV] Saldo suficiente para tier ${trialTier.name}! Auto-ativando...');
+      
+      // Obter pubkey
+      final nostrService = NostrService();
+      final pubkey = nostrService.publicKey;
+      
+      _localCollateralService.setCurrentUser(pubkey);
+      await _localCollateralService.setCollateral(
+        tierId: trialTier.id,
+        tierName: trialTier.name,
+        requiredSats: trialTier.requiredCollateralSats,
+        maxOrderBrl: trialTier.maxOrderValueBrl,
+        userPubkey: pubkey,
+      );
+      _localCollateral = await _localCollateralService.getCollateral(userPubkey: pubkey);
+      
+      // Atualizar collateral legado
+      if (_localCollateral != null) {
+        _collateral = {
+          'current_tier_id': _localCollateral!.tierId,
+          'total_collateral': _localCollateral!.lockedSats,
+          'locked_amount': _localCollateral!.lockedSats,
+          'available_amount': _localCollateralService.getAvailableBalance(_localCollateral!, effectiveBalanceSats),
+        };
+        debugPrint('✅ [AUTO-ATIV] Tier ${trialTier.name} auto-ativado com sucesso!');
+      }
+    } else {
+      debugPrint('⚠️ [AUTO-ATIV] Saldo insuficiente: $_walletBalanceSats < $minRequired sats');
+    }
   }
 
   /// Depositar garantia (SISTEMA LOCAL: trava fundos na carteira do provedor)

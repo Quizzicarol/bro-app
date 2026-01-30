@@ -15,6 +15,13 @@ import '../models/collateral_tier.dart';
 import '../config.dart';
 import 'provider_order_detail_screen.dart';
 
+/// Helper para substring seguro - evita RangeError em strings curtas
+String _safeSubstring(String? s, int start, int end) {
+  if (s == null) return 'null';
+  if (s.length <= start) return s;
+  return s.substring(start, s.length < end ? s.length : end);
+}
+
 /// Tela de ordens do provedor com abas: Disponíveis, Minhas Ordens, Estatísticas
 class ProviderOrdersScreen extends StatefulWidget {
   final String providerId;
@@ -62,7 +69,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     
     // Salvar modo provedor com pubkey do usuário
     SecureStorageService.setProviderMode(true, userPubkey: widget.providerId);
-    debugPrint('✅ Modo provedor salvo como ativo para pubkey: ${widget.providerId.substring(0, 8)}');
+    debugPrint('✅ Modo provedor salvo como ativo para pubkey: ${_safeSubstring(widget.providerId, 0, 8)}');
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadOrders();
@@ -177,7 +184,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       // Pegar pubkey do provedor
       final nostrService = NostrService();
       _currentPubkey = nostrService.publicKey;
-      debugPrint('👤 Pubkey do provedor: ${_currentPubkey?.substring(0, 8) ?? "null"}...');
+      debugPrint('👤 Pubkey do provedor: ${_safeSubstring(_currentPubkey, 0, 8)}...');
       
       // Separar ordens disponíveis e minhas ordens
       final allOrders = orderProvider.orders;
@@ -186,7 +193,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       List<Map<String, dynamic>> myOrders = [];
       
       for (final order in allOrders) {
-        debugPrint('   📋 Ordem ${order.id.substring(0, 8)}: status=${order.status}, providerId=${order.providerId?.substring(0, 8) ?? "null"}, userPubkey=${order.userPubkey?.substring(0, 8) ?? "null"}');
+        debugPrint('   📋 Ordem ${_safeSubstring(order.id, 0, 8)}: status=${order.status}, providerId=${_safeSubstring(order.providerId, 0, 8)}, userPubkey=${_safeSubstring(order.userPubkey, 0, 8)}');
         final orderMap = order.toJson();
         orderMap['amount'] = order.amount;
         orderMap['payment_type'] = order.billType;
@@ -530,7 +537,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                     const Spacer(),
                     const Icon(Icons.tag, color: Colors.white54, size: 14),
                     const SizedBox(width: 4),
-                    Text('${orderId.substring(0, 8)}', style: const TextStyle(color: Colors.white54, fontSize: 11, fontFamily: 'monospace')),
+                    Text('${_safeSubstring(orderId, 0, 8)}', style: const TextStyle(color: Colors.white54, fontSize: 11, fontFamily: 'monospace')),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -719,7 +726,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                     const Icon(Icons.tag, color: Colors.white38, size: 12),
                     const SizedBox(width: 4),
                     Text(
-                      orderId.length > 8 ? orderId.substring(0, 8) : orderId,
+                      _safeSubstring(orderId, 0, 8),
                       style: const TextStyle(color: Colors.white38, fontSize: 11, fontFamily: 'monospace'),
                     ),
                   ],

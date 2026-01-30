@@ -170,10 +170,25 @@ class LocalCollateralService {
       
       // SEMPRE tentar ler do storage para garantir dados mais recentes
       final key = _getKeyForUser(effectivePubkey);
-      final dataStr = await _storage.read(key: key);
+      var dataStr = await _storage.read(key: key);
       
       debugPrint('🔍 getCollateral: key=$key');
       debugPrint('🔍 getCollateral: dataStr=${dataStr?.substring(0, (dataStr?.length ?? 0).clamp(0, 100)) ?? "null"}...');
+      
+      // 🔄 MIGRAÇÃO: Se não encontrou na key nova, tentar key legada e migrar
+      if (dataStr == null && effectivePubkey != null && effectivePubkey.isNotEmpty) {
+        debugPrint('🔄 getCollateral: Tentando migrar da key legada...');
+        final legacyData = await _storage.read(key: _legacyCollateralKey);
+        if (legacyData != null) {
+          debugPrint('🔄 getCollateral: Dados encontrados na key legada! Migrando...');
+          // Salvar na key nova
+          await _storage.write(key: key, value: legacyData);
+          // Deletar key antiga para evitar confusão
+          await _storage.delete(key: _legacyCollateralKey);
+          dataStr = legacyData;
+          debugPrint('✅ getCollateral: Migração concluída para key=$key');
+        }
+      }
       
       if (dataStr == null) {
         debugPrint('📭 getCollateral: Nenhuma garantia salva para usuário ${effectivePubkey?.substring(0, 8) ?? "null"}');

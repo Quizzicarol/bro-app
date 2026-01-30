@@ -5,6 +5,13 @@ import '../services/nostr_service.dart';
 import '../models/order.dart';
 import 'provider_order_detail_screen.dart';
 
+/// Helper para substring seguro - evita RangeError em strings curtas
+String _safeSubstring(String? s, int start, int end) {
+  if (s == null) return 'null';
+  if (s.length <= start) return s;
+  return s.substring(start, s.length < end ? s.length : end);
+}
+
 /// Tela de ordens aceitas pelo provedor
 /// Mostra ordens com status 'accepted' e 'awaiting_confirmation'
 class ProviderMyOrdersScreen extends StatefulWidget {
@@ -49,7 +56,7 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
       final isActiveStatus = order.status == 'accepted' || 
                             order.status == 'awaiting_confirmation';
       
-      debugPrint('🔍 Ordem ${order.id.substring(0, 8)}: providerId=${order.providerId}, myId=${widget.providerId}, nostrPubkey=${nostrPubkey?.substring(0, 8)}, isMyOrder=$isMyOrder, isActive=$isActiveStatus');
+      debugPrint('🔍 Ordem ${_safeSubstring(order.id, 0, 8)}: providerId=${order.providerId}, myId=${widget.providerId}, nostrPubkey=${_safeSubstring(nostrPubkey, 0, 8)}, isMyOrder=$isMyOrder, isActive=$isActiveStatus');
       
       return isMyOrder && isActiveStatus;
     }).toList();

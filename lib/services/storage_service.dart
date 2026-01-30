@@ -350,12 +350,29 @@ class StorageService {
     }
     
     // IMPORTANTE: Se foi especificado um pubkey específico (forPubkey), 
-    // NÃO usar MASTER_SEED como fallback!
-    // O MASTER_SEED pode ter uma seed de outro usuário/derivação anterior.
-    // Neste caso, retornar NULL para que o login_screen derive a seed correta.
+    // AINDA ASSIM buscar no MASTER_SEED como fallback!
+    // Isso é necessário para usuários que já tinham saldo antes da migração.
     if (forPubkey != null) {
-      debugPrint('📭 Nenhuma seed encontrada para pubkey específico.');
-      debugPrint('   (MASTER_SEED ignorado - pode ser de outro usuário)');
+      debugPrint('📭 Nenhuma seed específica encontrada, buscando no MASTER_SEED...');
+      
+      // Tentar MASTER SEED BACKUP
+      mnemonic = await _secureStorage.read(key: _masterSeedKey);
+      if (mnemonic != null && mnemonic.split(' ').length == 12) {
+        debugPrint('✅ FALLBACK: Seed encontrada no MASTER_SEED_BACKUP!');
+        // Salvar para o usuário atual
+        await _secureStorage.write(key: _getSeedKeyForUser(forPubkey), value: mnemonic);
+        return mnemonic;
+      }
+      
+      // Tentar breez_mnemonic legado
+      mnemonic = await _secureStorage.read(key: 'breez_mnemonic');
+      if (mnemonic != null && mnemonic.split(' ').length == 12) {
+        debugPrint('✅ FALLBACK: Seed encontrada em breez_mnemonic legado!');
+        await _secureStorage.write(key: _getSeedKeyForUser(forPubkey), value: mnemonic);
+        return mnemonic;
+      }
+      
+      debugPrint('❌ Nenhuma seed encontrada nem no fallback.');
       debugPrint('═══════════════════════════════════════════════════════════');
       return null;
     }

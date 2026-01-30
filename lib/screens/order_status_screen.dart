@@ -3423,12 +3423,28 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       );
       
       if (!updateSuccess) {
-        debugPrint('⚠️ Falha ao atualizar status para completed');
-      } else {
-        debugPrint('✅ Status atualizado para completed e publicado no Nostr');
+        debugPrint('❌ FALHA ao publicar confirmação no Nostr');
+        if (mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('❌ Falha ao publicar confirmação. Tente novamente.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 5),
+            ),
+          );
+          setState(() {
+            _isConfirming = false;
+            _currentStatus = 'awaiting_confirmation'; // Manter status anterior
+          });
+        }
+        return; // CRÍTICO: Não continuar se Nostr falhou
       }
+      
+      debugPrint('✅ Status atualizado para completed e publicado no Nostr');
 
       // Adicionar ganho ao saldo do provedor E taxa da plataforma
+      // Só executar APÓS confirmação bem sucedida no Nostr
       if (orderDetails != null) {
         final providerBalanceProvider = context.read<ProviderBalanceProvider>();
         final platformBalanceProvider = context.read<PlatformBalanceProvider>();

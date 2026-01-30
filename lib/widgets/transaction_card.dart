@@ -123,8 +123,10 @@ class TransactionCard extends StatelessWidget {
       case 'completed':
       case 'paid':
         return const Color(0x334CAF50); // rgba(76, 175, 80, 0.2)
+      case 'awaiting_confirmation':
+      case 'payment_submitted':
       case 'processing':
-        return const Color(0x332196F3); // rgba(33, 150, 243, 0.2)
+        return const Color(0x33FF9800); // Orange para confirmar pagamento
       case 'cancelled':
       case 'failed':
         return const Color(0x33F44336); // rgba(244, 67, 54, 0.2)
@@ -140,8 +142,10 @@ class TransactionCard extends StatelessWidget {
       case 'completed':
       case 'paid':
         return const Color(0xFF4CAF50);
+      case 'awaiting_confirmation':
+      case 'payment_submitted':
       case 'processing':
-        return const Color(0xFF2196F3);
+        return const Color(0xFFFF9800); // Orange para confirmar pagamento
       case 'cancelled':
       case 'failed':
         return const Color(0xFFF44336);

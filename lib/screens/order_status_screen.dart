@@ -8,6 +8,7 @@ import '../services/order_service.dart';
 import '../services/dispute_service.dart';
 import '../services/lnaddress_service.dart';
 import '../services/withdrawal_service.dart';
+import '../services/nostr_order_service.dart';
 import '../models/withdrawal.dart';
 import '../providers/breez_provider_export.dart';
 import '../providers/order_provider.dart';
@@ -3376,11 +3377,24 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         providerId = order?.providerId;
       }
       
-      // Fallback final: buscar do metadata da ordem
+      // Fallback: buscar do metadata da ordem
       if (providerId == null || providerId.isEmpty) {
         final order = orderProvider.getOrderById(widget.orderId);
         providerId = order?.metadata?['providerId'] as String?;
         providerId ??= order?.metadata?['provider_id'] as String?;
+      }
+      
+      // FALLBACK CRÍTICO: Se ainda não temos providerId, buscar diretamente do Nostr
+      // Isso acontece quando o provedor aceitou mas o sync local não atualizou
+      if (providerId == null || providerId.isEmpty) {
+        debugPrint('🔍 providerId ainda é null, buscando diretamente do Nostr...');
+        final nostrService = NostrOrderService();
+        final nostrOrder = await nostrService.fetchOrderFromNostr(widget.orderId);
+        if (nostrOrder != null) {
+          providerId = nostrOrder['providerId'] as String?;
+          providerId ??= nostrOrder['provider_id'] as String?;
+          debugPrint('   Nostr retornou providerId: ${providerId?.substring(0, 16) ?? "NULL"}');
+        }
       }
       
       debugPrint('📤 Confirmando ordem ${widget.orderId.substring(0, 8)}');
@@ -3388,7 +3402,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       
       if (providerId == null || providerId.isEmpty) {
         debugPrint('⚠️ AVISO: providerId é null - o Bro pode não receber a notificação!');
-        // Mesmo sem providerId, continuar para pelo menos atualizar localmente
+        // NOVO: Mostrar aviso ao usuário mas continuar
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('⚠️ Aviso: Bro pode não receber a notificação automaticamente'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
       }
 
       // Atualizar status para 'completed' - SEMPRE usar OrderProvider que publica no Nostr

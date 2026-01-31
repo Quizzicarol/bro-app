@@ -352,14 +352,21 @@ class NostrOrderService {
       final uri = Uri.parse(relayUrl);
       channel = WebSocketChannel.connect(uri);
       
-      // Aguardar conexão estar pronta (importante para iOS)
-      await channel.ready.timeout(
-        const Duration(seconds: 5),
-        onTimeout: () {
-          debugPrint('   ⏰ Timeout aguardando conexão com $relayUrl');
-          throw TimeoutException('Connection timeout');
-        },
-      );
+      // Aguardar conexão estar pronta
+      // NOTA: Em iOS, channel.ready pode não funcionar bem, então usamos try/catch
+      try {
+        await channel.ready.timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            debugPrint('   ⏰ Timeout aguardando conexão com $relayUrl');
+            throw TimeoutException('Connection timeout');
+          },
+        );
+      } catch (e) {
+        // Se channel.ready falhar, dar um pequeno delay e tentar assim mesmo
+        debugPrint('   ⚠️ channel.ready falhou ($e), tentando mesmo assim...');
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
       
       debugPrint('   ✅ Conectado a $relayUrl');
       

@@ -1030,10 +1030,11 @@ class OrderProvider with ChangeNotifier {
               continue;
             }
             
-            // PROTEÇÃO CRÍTICA: Se status local é protegido, NÃO atualizar
-            const protectedStatuses = ['cancelled', 'completed', 'liquidated', 'awaiting_confirmation', 'accepted', 'disputed'];
+            // CORREÇÃO: Apenas status FINAIS devem ser protegidos
+            // accepted e awaiting_confirmation podem evoluir para completed
+            const protectedStatuses = ['cancelled', 'completed', 'liquidated', 'disputed'];
             if (protectedStatuses.contains(existing.status)) {
-              debugPrint('   🛡️ Ordem ${existing.id.substring(0, 8)} tem status protegido local (${existing.status}), preservando');
+              debugPrint('   🛡️ Ordem ${existing.id.substring(0, 8)} tem status final (${existing.status}), preservando');
               continue;
             }
             
@@ -1111,16 +1112,18 @@ class OrderProvider with ChangeNotifier {
           addedFromProviderHistory++;
           print('   ➕ Recuperada ordem ${provOrder.id.substring(0, 8)}: status=${provOrder.status}, R\$ ${provOrder.amount.toStringAsFixed(2)}');
         } else if (existingIndex != -1) {
-          // Ordem já existe - NUNCA regredir status protegido
+          // Ordem já existe - atualizar se status do Nostr é mais avançado
           final existing = _orders[existingIndex];
           
-          // PROTEÇÃO CRÍTICA: Se status local é protegido, NÃO atualizar
-          const protectedStatuses = ['cancelled', 'completed', 'liquidated', 'awaiting_confirmation', 'accepted', 'disputed'];
+          // CORREÇÃO: Status "accepted" NÃO deve ser protegido pois pode evoluir para completed
+          // Apenas status finais devem ser protegidos
+          const protectedStatuses = ['cancelled', 'completed', 'liquidated', 'disputed'];
           if (protectedStatuses.contains(existing.status)) {
-            print('   🛡️ Ordem ${existing.id.substring(0, 8)} tem status protegido local (${existing.status}), preservando');
+            print('   🛡️ Ordem ${existing.id.substring(0, 8)} tem status final (${existing.status}), preservando');
             continue;
           }
           
+          // Atualizar se o status do Nostr é mais avançado
           if (_isStatusMoreRecent(provOrder.status, existing.status)) {
             _orders[existingIndex] = existing.copyWith(
               status: provOrder.status,
@@ -2138,11 +2141,11 @@ class OrderProvider with ChangeNotifier {
           // Ordem já existe, mesclar dados preservando os locais que não são 0
           final existing = _orders[existingIndex];
           
-          // REGRA CRÍTICA: NUNCA reverter status avançados!
-          // Estes status são "finais" ou "avançados" e não podem voltar para pending
-          final protectedStatuses = ['cancelled', 'completed', 'liquidated', 'awaiting_confirmation', 'accepted', 'disputed'];
+          // REGRA CRÍTICA: Apenas status FINAIS não podem reverter
+          // accepted e awaiting_confirmation podem evoluir para completed
+          final protectedStatuses = ['cancelled', 'completed', 'liquidated', 'disputed'];
           if (protectedStatuses.contains(existing.status)) {
-            debugPrint('🛡️ Ordem ${existing.id.substring(0, 8)} tem status protegido local (${existing.status}), preservando');
+            debugPrint('🛡️ Ordem ${existing.id.substring(0, 8)} tem status final (${existing.status}), preservando');
             continue;
           }
           
@@ -2247,14 +2250,12 @@ class OrderProvider with ChangeNotifier {
 
   /// Verificar se um status é mais recente que outro
   bool _isStatusMoreRecent(String newStatus, String currentStatus) {
-    // REGRA ESPECIAL: Status protegidos NÃO podem regredir
-    const protectedStatuses = ['cancelled', 'completed', 'liquidated', 'awaiting_confirmation', 'accepted', 'disputed'];
-    if (protectedStatuses.contains(currentStatus)) {
-      // Só permite avançar para status ainda mais final
-      if (currentStatus == 'awaiting_confirmation' && (newStatus == 'completed' || newStatus == 'liquidated' || newStatus == 'disputed')) {
-        return true;
-      }
-      if (currentStatus == 'accepted' && protectedStatuses.indexOf(newStatus) > protectedStatuses.indexOf(currentStatus)) {
+    // CORREÇÃO: Apenas status FINAIS não podem regredir
+    // accepted e awaiting_confirmation PODEM evoluir para completed/liquidated
+    const finalStatuses = ['cancelled', 'completed', 'liquidated', 'disputed'];
+    if (finalStatuses.contains(currentStatus)) {
+      // Status final - só pode virar disputed
+      if (currentStatus != 'disputed' && newStatus == 'disputed') {
         return true;
       }
       return false;

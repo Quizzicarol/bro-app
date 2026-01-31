@@ -192,8 +192,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           _currentStatus = status;
         });
 
-        // Se ordem foi aceita ou completada, parar polling
-        if (status == 'accepted' || status == 'completed' || status == 'cancelled') {
+        // CORREÇÃO: Só parar polling em estados FINAIS (completed, cancelled)
+        // NÃO parar em 'accepted' porque ainda precisamos receber o comprovante!
+        // Fluxo: pending -> payment_received -> accepted -> awaiting_confirmation -> completed
+        if (status == 'completed' || status == 'cancelled') {
           timer.cancel();
         }
       }

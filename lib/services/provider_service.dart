@@ -14,28 +14,24 @@ class ProviderService {
 
   /// Busca ordens disponíveis para aceitar (status=pending)
   /// SEGURANÇA: Retorna APENAS ordens de OUTROS usuários que estão disponíveis
+  /// CORREÇÃO: SEMPRE usa Nostr, não mais condicional ao testMode
   Future<List<Map<String, dynamic>>> fetchAvailableOrders() async {
     try {
-      // Em modo teste, buscar do Nostr
-      if (AppConfig.testMode) {
-        debugPrint('🧪 TEST MODE: Buscando ordens disponíveis do Nostr...');
-        final orders = await _nostrOrderService.fetchPendingOrders();
-        
-        // SEGURANÇA: Filtrar apenas ordens pendentes (sem providerId ainda)
-        final availableOrders = orders.where((order) {
-          // Ordem pendente = disponível para aceitar
-          if (order.status != 'pending') return false;
-          // Ordem já aceita por alguém = não disponível
-          if (order.providerId != null && order.providerId!.isNotEmpty) return false;
-          return true;
-        }).toList();
-        
-        debugPrint('📋 ${availableOrders.length} ordens disponíveis para aceitar');
-        return availableOrders.map((order) => order.toJson()).toList();
-      }
+      // CORREÇÃO: SEMPRE buscar do Nostr - API REST não funciona para P2P
+      debugPrint('🔍 Buscando ordens disponíveis do Nostr...');
+      final orders = await _nostrOrderService.fetchPendingOrders();
       
-      final orders = await _apiService.listOrders(status: 'pending', limit: 50);
-      return orders.map((order) => Map<String, dynamic>.from(order)).toList();
+      // SEGURANÇA: Filtrar apenas ordens pendentes (sem providerId ainda)
+      final availableOrders = orders.where((order) {
+        // Ordem pendente = disponível para aceitar
+        if (order.status != 'pending' && order.status != 'payment_received') return false;
+        // Ordem já aceita por alguém = não disponível
+        if (order.providerId != null && order.providerId!.isNotEmpty) return false;
+        return true;
+      }).toList();
+      
+      debugPrint('📋 ${availableOrders.length} ordens disponíveis para aceitar');
+      return availableOrders.map((order) => order.toJson()).toList();
     } catch (e) {
       debugPrint('❌ Erro ao buscar ordens disponíveis: $e');
       return [];

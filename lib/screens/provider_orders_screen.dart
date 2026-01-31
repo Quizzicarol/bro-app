@@ -208,7 +208,14 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       }
       
       // Processar ordens disponíveis para aceitar (de outros usuários)
+      // FILTRO CRÍTICO: Só mostrar ordens realmente pendentes
       for (final order in availableFromProvider) {
+        // SEGURANÇA: Só adicionar ordens que ainda estão pending
+        if (order.status != 'pending') {
+          debugPrint('   ⚠️ Ordem ${_safeSubstring(order.id, 0, 8)} com status "${order.status}" - não mostrar como disponível');
+          continue;
+        }
+        
         debugPrint('   🟢 Ordem disponível ${_safeSubstring(order.id, 0, 8)}: status=${order.status}, amount=${order.amount}');
         final orderMap = order.toJson();
         orderMap['amount'] = order.amount;

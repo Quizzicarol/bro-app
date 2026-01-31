@@ -1039,6 +1039,23 @@ class OrderProvider with ChangeNotifier {
         } else {
           // Ordem de OUTRO usuário: adicionar apenas à lista de disponíveis
           // NUNCA adicionar à lista principal _orders!
+          
+          // CORREÇÃO CRÍTICA: Verificar se essa ordem já existe em _orders com status avançado
+          // (significa que EU já aceitei essa ordem, mas o evento Nostr ainda está como pending)
+          final existingInOrders = _orders.cast<Order?>().firstWhere(
+            (o) => o?.id == pendingOrder.id,
+            orElse: () => null,
+          );
+          
+          if (existingInOrders != null) {
+            // Ordem já existe - NÃO adicionar à lista de disponíveis
+            const protectedStatuses = ['accepted', 'awaiting_confirmation', 'completed', 'liquidated', 'cancelled', 'disputed'];
+            if (protectedStatuses.contains(existingInOrders.status)) {
+              debugPrint('   🛡️ Ordem ${pendingOrder.id.substring(0, 8)} já aceita/processada (status=${existingInOrders.status}), não mostrar como disponível');
+              continue;
+            }
+          }
+          
           _availableOrdersForProvider.add(pendingOrder);
           addedToAvailable++;
         }
@@ -2092,9 +2109,11 @@ class OrderProvider with ChangeNotifier {
           // Ordem já existe, mesclar dados preservando os locais que não são 0
           final existing = _orders[existingIndex];
           
-          // REGRA CRÍTICA: NUNCA reverter status 'cancelled' ou 'completed'!
-          if (existing.status == 'cancelled' || existing.status == 'completed') {
-            debugPrint('🛡️ Ordem ${existing.id.substring(0, 8)} tem status final local (${existing.status}), preservando');
+          // REGRA CRÍTICA: NUNCA reverter status avançados!
+          // Estes status são "finais" ou "avançados" e não podem voltar para pending
+          final protectedStatuses = ['cancelled', 'completed', 'liquidated', 'awaiting_confirmation', 'accepted', 'disputed'];
+          if (protectedStatuses.contains(existing.status)) {
+            debugPrint('🛡️ Ordem ${existing.id.substring(0, 8)} tem status protegido local (${existing.status}), preservando');
             continue;
           }
           
@@ -2186,14 +2205,21 @@ class OrderProvider with ChangeNotifier {
 
   /// Verificar se um status é mais recente que outro
   bool _isStatusMoreRecent(String newStatus, String currentStatus) {
-    // REGRA ESPECIAL: Uma vez cancelada, a ordem NÃO pode voltar a outro status
-    if (currentStatus == 'cancelled') return false;
-    
-    // REGRA ESPECIAL: Uma vez completada, a ordem NÃO pode voltar a outro status
-    if (currentStatus == 'completed') return false;
+    // REGRA ESPECIAL: Status protegidos NÃO podem regredir
+    const protectedStatuses = ['cancelled', 'completed', 'liquidated', 'awaiting_confirmation', 'accepted', 'disputed'];
+    if (protectedStatuses.contains(currentStatus)) {
+      // Só permite avançar para status ainda mais final
+      if (currentStatus == 'awaiting_confirmation' && (newStatus == 'completed' || newStatus == 'liquidated' || newStatus == 'disputed')) {
+        return true;
+      }
+      if (currentStatus == 'accepted' && protectedStatuses.indexOf(newStatus) > protectedStatuses.indexOf(currentStatus)) {
+        return true;
+      }
+      return false;
+    }
     
     // Ordem de progressão de status:
-    // draft -> pending -> payment_received -> accepted -> processing -> awaiting_confirmation -> completed
+    // draft -> pending -> payment_received -> accepted -> processing -> awaiting_confirmation -> completed/liquidated
     const statusOrder = [
       'draft',
       'pending', 
@@ -2202,6 +2228,7 @@ class OrderProvider with ChangeNotifier {
       'processing',
       'awaiting_confirmation',  // Bro enviou comprovante, aguardando validação do usuário
       'completed',
+      'liquidated',  // Auto-liquidação após 24h
     ];
     final newIndex = statusOrder.indexOf(newStatus);
     final currentIndex = statusOrder.indexOf(currentStatus);

@@ -742,17 +742,14 @@ class NostrOrderService {
       return null;
     }
     
-    // CRÍTICO: Buscar o status mais recente dos eventos de UPDATE (kind 30080)
-    final latestStatus = await _fetchLatestOrderStatus(orderId);
-    if (latestStatus != null) {
-      print('   🔄 fetchOrderFromNostr: Status atualizado de ${orderData['status']} para $latestStatus');
-      orderData['status'] = latestStatus;
-    }
+    // NOTA: O status local é gerenciado pelo order_provider.dart
+    // Não fazer busca extra aqui para evitar timeout
     
     return orderData;
   }
   
   /// Busca o status mais recente de uma ordem dos eventos de UPDATE (kind 30080) e COMPLETE (kind 30081)
+  /// NOTA: Esta função é lenta e deve ser usada apenas quando necessário, não em batch
   Future<String?> _fetchLatestOrderStatus(String orderId) async {
     String? latestStatus;
     int latestTimestamp = 0;

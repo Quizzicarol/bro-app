@@ -116,6 +116,12 @@ class OrderProvider with ChangeNotifier {
       }
     }
     
+    // DEBUG: Listar todas as ordens e seus providerIds
+    debugPrint('🔍 DEBUG myAcceptedOrders - procurando providerId == ${_currentUserPubkey!.substring(0, 8)}');
+    for (final o in _orders) {
+      debugPrint('   📋 ${o.id.substring(0, 8)}: providerId=${o.providerId?.substring(0, 8) ?? "null"}, userPubkey=${o.userPubkey?.substring(0, 8) ?? "null"}, status=${o.status}');
+    }
+    
     final result = _orders.where((o) {
       // Apenas ordens que EU aceitei como provedor (não ordens que criei)
       return o.providerId == _currentUserPubkey;
@@ -469,26 +475,23 @@ class OrderProvider with ChangeNotifier {
           await _saveOnlyUserOrders();
         }
         
-        // Migrar ordens antigas: corrigir providerId se ordem está aceita mas sem providerId correto
+        // CORREÇÃO: Migrar ordens com providerId errado (provider_test_001) para a pubkey correta
         bool needsMigration = false;
         for (int i = 0; i < _orders.length; i++) {
           final order = _orders[i];
           debugPrint('   - ${order.id.substring(0, 8)}: R\$ ${order.amount.toStringAsFixed(2)} (${order.status}, providerId=${order.providerId ?? "null"})');
           
-          // Se ordem está aceita/awaiting/completed mas sem providerId fixo, migrar
-          if ((order.status == 'accepted' || 
-               order.status == 'awaiting_confirmation' || 
-               order.status == 'completed') && 
-              order.providerId != 'provider_test_001') {
-            debugPrint('   ⚠️ Migrando ordem ${order.id.substring(0, 8)} para provider_test_001');
-            _orders[i] = order.copyWith(providerId: 'provider_test_001');
+          // Se ordem tem o providerId de teste antigo, corrigir para a pubkey atual
+          if (order.providerId == 'provider_test_001' && _currentUserPubkey != null) {
+            debugPrint('   🔧 Corrigindo ordem ${order.id.substring(0, 8)} de provider_test_001 para ${_currentUserPubkey!.substring(0, 8)}');
+            _orders[i] = order.copyWith(providerId: _currentUserPubkey);
             needsMigration = true;
           }
         }
         
         // Se houve migração, salvar
         if (needsMigration) {
-          debugPrint('🔄 Salvando ordens migradas...');
+          debugPrint('🔄 Salvando ordens corrigidas...');
           await _saveOrders();
         }
       } else {
@@ -1024,6 +1027,13 @@ class OrderProvider with ChangeNotifier {
               continue;
             }
             
+            // PROTEÇÃO CRÍTICA: Se status local é protegido, NÃO atualizar
+            const protectedStatuses = ['cancelled', 'completed', 'liquidated', 'awaiting_confirmation', 'accepted', 'disputed'];
+            if (protectedStatuses.contains(existing.status)) {
+              debugPrint('   🛡️ Ordem ${existing.id.substring(0, 8)} tem status protegido local (${existing.status}), preservando');
+              continue;
+            }
+            
             // CORREÇÃO: Sempre atualizar se status do Nostr é mais recente
             // Mesmo para ordens completed (para que provedor veja completed)
             if (_isStatusMoreRecent(pendingOrder.status, existing.status)) {
@@ -1086,12 +1096,26 @@ class OrderProvider with ChangeNotifier {
         final existingIndex = _orders.indexWhere((o) => o.id == provOrder.id);
         if (existingIndex == -1 && provOrder.amount > 0) {
           // Nova ordem do histórico - adicionar
+          // CORREÇÃO: NÃO adicionar se status for "pending" - isso significa que não temos a ordem completa
+          // Ordens do provedor devem ter sido aceitas (status >= accepted)
+          if (provOrder.status == 'pending') {
+            print('   ⚠️ Ordem ${provOrder.id.substring(0, 8)} tem status pending do Nostr, ignorando (pode ser evento antigo)');
+            continue;
+          }
           _orders.add(provOrder);
           addedFromProviderHistory++;
           print('   ➕ Recuperada ordem ${provOrder.id.substring(0, 8)}: status=${provOrder.status}, R\$ ${provOrder.amount.toStringAsFixed(2)}');
         } else if (existingIndex != -1) {
-          // Ordem já existe - atualizar se necessário
+          // Ordem já existe - NUNCA regredir status protegido
           final existing = _orders[existingIndex];
+          
+          // PROTEÇÃO CRÍTICA: Se status local é protegido, NÃO atualizar
+          const protectedStatuses = ['cancelled', 'completed', 'liquidated', 'awaiting_confirmation', 'accepted', 'disputed'];
+          if (protectedStatuses.contains(existing.status)) {
+            print('   🛡️ Ordem ${existing.id.substring(0, 8)} tem status protegido local (${existing.status}), preservando');
+            continue;
+          }
+          
           if (_isStatusMoreRecent(provOrder.status, existing.status)) {
             _orders[existingIndex] = existing.copyWith(
               status: provOrder.status,

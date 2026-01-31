@@ -201,6 +201,34 @@ class NotificationService {
     );
   }
 
+  /// Notifica que o prazo de auto-liquidação está chegando (para o provedor)
+  Future<void> notifyAutoLiquidationPending({
+    required String orderId,
+    required double amountBrl,
+  }) async {
+    await _showNotification(
+      id: orderId.hashCode + 20,
+      title: '⏰ Prazo de Liquidação Chegou!',
+      body: 'A ordem de R\$ ${amountBrl.toStringAsFixed(2)} está pronta para auto-liquidação. Abra o app para receber seus ganhos.',
+      payload: 'auto_liquidation:$orderId',
+      importance: Importance.max,
+    );
+  }
+
+  /// Notifica que a ordem foi auto-liquidada (para o usuário)
+  Future<void> notifyOrderAutoLiquidated({
+    required String orderId,
+    required double amountBrl,
+  }) async {
+    await _showNotification(
+      id: orderId.hashCode + 21,
+      title: '⚡ Ordem Liquidada Automaticamente',
+      body: 'A ordem de R\$ ${amountBrl.toStringAsFixed(2)} foi liquidada. Você não confirmou em 24h, então os valores foram liberados para o Bro.',
+      payload: 'order_liquidated:$orderId',
+      importance: Importance.high,
+    );
+  }
+
   /// Notifica que o tier foi perdido
   Future<void> notifyTierLost({
     required String tierName,

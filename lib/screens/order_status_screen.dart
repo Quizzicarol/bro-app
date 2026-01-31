@@ -147,6 +147,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           amount: widget.amountBrl,
         );
         break;
+      case 'liquidated':
+        _notificationService.notifyOrderAutoLiquidated(
+          orderId: widget.orderId,
+          amountBrl: widget.amountBrl,
+        );
+        break;
       case 'disputed':
         _notificationService.notifyDisputeOpened(orderId: widget.orderId);
         break;
@@ -1398,6 +1404,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           'title': 'Concluída!',
           'subtitle': 'Sua conta foi paga com sucesso',
           'color': Colors.green,
+        };
+      case 'liquidated':
+        return {
+          'icon': Icons.auto_fix_high,
+          'title': 'Liquidada Automaticamente',
+          'subtitle': 'Você não confirmou em 24h. Valores liberados para o Bro que comprovou o pagamento. Se houver discrepância, abra disputa.',
+          'color': Colors.purple,
         };
       case 'cancelled':
         return {

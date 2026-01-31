@@ -8,6 +8,7 @@ import '../providers/order_provider.dart';
 import '../providers/collateral_provider.dart';
 import '../services/escrow_service.dart';
 import '../services/dispute_service.dart';
+import '../services/notification_service.dart';
 import '../config.dart';
 
 /// Tela de detalhes da ordem para o provedor
@@ -1316,12 +1317,20 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       // Usar o proof existente ou um placeholder para auto-liquidação
       final metadata = _orderDetails?['metadata'] as Map<String, dynamic>?;
       final existingProof = metadata?['paymentProof'] as String? ?? 'AUTO_LIQUIDATED';
+      final amount = (_orderDetails?['amount'] as num?)?.toDouble() ?? 0.0;
       
-      // Completar ordem como provedor (isso já marca como awaiting_confirmation -> completed)
-      final success = await orderProvider.completeOrderAsProvider(widget.orderId, existingProof);
+      // Atualizar status para 'liquidated' (auto-liquidação) em vez de 'completed'
+      final success = await orderProvider.autoLiquidateOrder(widget.orderId, existingProof);
       
       if (mounted) {
         if (success) {
+          // Notificar o usuário sobre a auto-liquidação
+          final notificationService = NotificationService();
+          await notificationService.notifyOrderAutoLiquidated(
+            orderId: widget.orderId,
+            amountBrl: amount,
+          );
+          
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('✅ Auto-liquidação concluída! Seus ganhos foram liberados.'),
@@ -1750,7 +1759,31 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               ],
             ),
           ] else ...[
-            const Text(
+            // AVISO DE PRIVACIDADE
+          Container(
+            padding: const EdgeInsets.all(12),
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: Colors.orange.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange.withOpacity(0.3)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Icon(Icons.privacy_tip, color: Colors.orange, size: 20),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '⚠️ ATENÇÃO: Oculte dados sensíveis (CPF, nome completo) na imagem do comprovante. Esta imagem é apenas para comprovar o pagamento ao usuário. Criptografia NIP-17 em breve.',
+                    style: TextStyle(color: Colors.orange, fontSize: 12, height: 1.4),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          const Text(
               'Anexar Comprovante:',
               style: TextStyle(color: Colors.white70, fontSize: 12),
             ),

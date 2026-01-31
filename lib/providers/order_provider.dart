@@ -1558,6 +1558,79 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
+  /// Auto-liquidação quando usuário não confirma em 24h
+  /// Marca a ordem como 'liquidated' e notifica o usuário
+  Future<bool> autoLiquidateOrder(String orderId, String proof) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      debugPrint('⚡ Executando auto-liquidação para ordem $orderId');
+      
+      // Buscar a ordem localmente primeiro
+      Order? order = getOrderById(orderId);
+      
+      if (order == null) {
+        debugPrint('⚠️ Ordem $orderId não encontrada');
+        _error = 'Ordem não encontrada';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+
+      // Publicar no Nostr com status 'liquidated'
+      final privateKey = _nostrService.privateKey;
+      if (privateKey == null) {
+        _error = 'Chave privada não disponível';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+
+      // Usar a função existente de updateOrderStatus com status 'liquidated'
+      final success = await _nostrOrderService.updateOrderStatus(
+        privateKey: privateKey,
+        orderId: orderId,
+        newStatus: 'liquidated',
+        providerId: _currentUserPubkey,
+      );
+
+      if (!success) {
+        _error = 'Falha ao publicar auto-liquidação no Nostr';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+
+      // Atualizar localmente
+      final index = _orders.indexWhere((o) => o.id == orderId);
+      if (index != -1) {
+        _orders[index] = _orders[index].copyWith(
+          status: 'liquidated',
+          metadata: {
+            ...(_orders[index].metadata ?? {}),
+            'autoLiquidated': true,
+            'liquidatedAt': DateTime.now().toIso8601String(),
+            'reason': 'Usuário não confirmou em 24h',
+          },
+        );
+        
+        await _saveOrders();
+        debugPrint('✅ Ordem $orderId auto-liquidada com sucesso');
+      }
+
+      return true;
+    } catch (e) {
+      _error = e.toString();
+      debugPrint('❌ Erro na auto-liquidação: $e');
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
   // Validar boleto
   Future<Map<String, dynamic>?> validateBoleto(String code) async {
     _isLoading = true;

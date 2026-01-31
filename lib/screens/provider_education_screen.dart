@@ -577,8 +577,8 @@ class ProviderEducationScreen extends StatelessWidget {
                   await SecureStorageService.setProviderMode(true, userPubkey: pubkey);
                   debugPrint('✅ Modo provedor salvo como ativo para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
                   
-                  // Usar providerId fixo para modo teste (mesmo do balance)
-                  const providerId = 'provider_test_001';
+                  // Usar pubkey real do NostrService
+                  final providerId = pubkey ?? 'unknown';
                   debugPrint('🧪 Navegando para /provider-orders com providerId: $providerId');
                   Navigator.pushNamed(context, '/provider-orders', arguments: {
                     'providerId': providerId,

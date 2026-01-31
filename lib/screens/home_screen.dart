@@ -517,7 +517,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   
                   if (isProvider) {
                     // Já é provedor, ir direto para tela de ordens
-                    const providerId = 'provider_test_001';
+                    final providerId = pubkey ?? 'unknown';
                     Navigator.pushNamed(context, '/provider-orders', arguments: {
                       'providerId': providerId,
                     });
@@ -1138,7 +1138,7 @@ class _HomeScreenState extends State<HomeScreen> {
         
         if (isProvider) {
           // Já é provedor, ir direto para tela de ordens
-          const providerId = 'provider_test_001';
+          final providerId = pubkey ?? 'unknown';
           Navigator.pushNamed(context, '/provider-orders', arguments: {
             'providerId': providerId,
           });

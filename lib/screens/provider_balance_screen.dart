@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/provider_balance_provider.dart';
 import '../providers/breez_provider_export.dart';
 import '../models/provider_balance.dart';
+import '../services/nostr_service.dart';
 
 /// Tela para visualizar saldo e histórico do provedor
 class ProviderBalanceScreen extends StatefulWidget {
@@ -21,8 +22,10 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // TODO: Usar ID real do provedor logado
-      context.read<ProviderBalanceProvider>().initialize('provider_test_001');
+      // Usar pubkey real do NostrService
+      final nostrService = NostrService();
+      final providerId = nostrService.publicKey ?? 'unknown';
+      context.read<ProviderBalanceProvider>().initialize(providerId);
       _loadBreezBalance();
     });
   }
@@ -67,7 +70,9 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
 
           return RefreshIndicator(
             onRefresh: () async {
-              await balanceProvider.initialize('provider_test_001');
+              final nostrService = NostrService();
+              final providerId = nostrService.publicKey ?? 'unknown';
+              await balanceProvider.initialize(providerId);
               await _loadBreezBalance();
             },
             child: SingleChildScrollView(

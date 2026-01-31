@@ -7,6 +7,7 @@ import '../providers/breez_provider_export.dart';
 import '../providers/provider_balance_provider.dart';
 import '../providers/order_provider.dart';
 import '../services/storage_service.dart';
+import '../services/nostr_service.dart';
 import '../services/lnaddress_service.dart';
 import '../services/local_collateral_service.dart';
 
@@ -53,7 +54,9 @@ class _WalletScreenState extends State<WalletScreen> {
       
       // Carregar transações de ganhos como Bro
       final providerBalanceProvider = context.read<ProviderBalanceProvider>();
-      await providerBalanceProvider.initialize('provider_test_001');
+      final nostrService = NostrService();
+      final providerId = nostrService.publicKey ?? 'unknown';
+      await providerBalanceProvider.initialize(providerId);
       
       // Mesclar transações do Bro com pagamentos Lightning
       List<Map<String, dynamic>> allPayments = [...payments];

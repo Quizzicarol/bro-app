@@ -74,22 +74,50 @@ class OrderProvider with ChangeNotifier {
   /// Retorna APENAS ordens onde userPubkey == currentUserPubkey
   /// Usado na tela "Minhas Trocas" do modo usuário
   List<Order> get myCreatedOrders {
-    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return [];
-    return _orders.where((o) {
+    // Se não temos pubkey, tentar buscar do NostrService
+    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) {
+      final fallbackPubkey = _nostrService.publicKey;
+      if (fallbackPubkey != null && fallbackPubkey.isNotEmpty) {
+        _currentUserPubkey = fallbackPubkey;
+        debugPrint('🔧 myCreatedOrders: Recuperou pubkey do NostrService: ${_currentUserPubkey!.substring(0, 8)}');
+      } else {
+        debugPrint('⚠️ myCreatedOrders: Sem pubkey! Retornando lista vazia');
+        return [];
+      }
+    }
+    
+    final result = _orders.where((o) {
       // Apenas ordens que EU criei (não ordens aceitas como provedor)
       return o.userPubkey == _currentUserPubkey && o.status != 'draft';
     }).toList();
+    
+    debugPrint('📊 myCreatedOrders: ${result.length}/${_orders.length} ordens criadas por ${_currentUserPubkey!.substring(0, 8)}');
+    return result;
   }
   
   /// SEGURANÇA: Getter para ordens que EU ACEITEI como Bro (modo provedor)
   /// Retorna APENAS ordens onde providerId == currentUserPubkey
   /// Usado na tela "Minhas Ordens" do modo provedor
   List<Order> get myAcceptedOrders {
-    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return [];
-    return _orders.where((o) {
+    // Se não temos pubkey, tentar buscar do NostrService
+    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) {
+      final fallbackPubkey = _nostrService.publicKey;
+      if (fallbackPubkey != null && fallbackPubkey.isNotEmpty) {
+        _currentUserPubkey = fallbackPubkey;
+        debugPrint('🔧 myAcceptedOrders: Recuperou pubkey do NostrService: ${_currentUserPubkey!.substring(0, 8)}');
+      } else {
+        debugPrint('⚠️ myAcceptedOrders: Sem pubkey! Retornando lista vazia');
+        return [];
+      }
+    }
+    
+    final result = _orders.where((o) {
       // Apenas ordens que EU aceitei como provedor (não ordens que criei)
       return o.providerId == _currentUserPubkey;
     }).toList();
+    
+    debugPrint('📊 myAcceptedOrders: ${result.length}/${_orders.length} ordens aceitas por ${_currentUserPubkey!.substring(0, 8)}');
+    return result;
   }
 
   /// CRÍTICO: Método para sair do modo provedor e limpar ordens de outros

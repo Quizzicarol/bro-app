@@ -1099,11 +1099,13 @@ class OrderProvider with ChangeNotifier {
         final existingIndex = _orders.indexWhere((o) => o.id == provOrder.id);
         if (existingIndex == -1 && provOrder.amount > 0) {
           // Nova ordem do histórico - adicionar
-          // CORREÇÃO: NÃO adicionar se status for "pending" - isso significa que não temos a ordem completa
-          // Ordens do provedor devem ter sido aceitas (status >= accepted)
+          // CORREÇÃO: Ordens do provedor devem ser adicionadas SEMPRE
+          // Mesmo com status "pending" do Nostr, se veio via fetchProviderOrders é porque
+          // este provedor tem um evento de aceitação (kindBroAccept) para esta ordem
+          // Atualizar status para 'accepted' se vier como pending
           if (provOrder.status == 'pending') {
-            print('   ⚠️ Ordem ${provOrder.id.substring(0, 8)} tem status pending do Nostr, ignorando (pode ser evento antigo)');
-            continue;
+            print('   ⚠️ Ordem ${provOrder.id.substring(0, 8)} tem status pending do Nostr, corrigindo para accepted');
+            provOrder = provOrder.copyWith(status: 'accepted');
           }
           _orders.add(provOrder);
           addedFromProviderHistory++;

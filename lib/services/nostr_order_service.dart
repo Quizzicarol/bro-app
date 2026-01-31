@@ -57,10 +57,12 @@ class NostrOrderService {
       
       // Conteúdo da ordem - inclui billCode para que o provedor possa pagar
       // NOTA: eventos kind 30078 são específicos do Bro app e não aparecem em clientes Nostr normais
+      // CRÍTICO: userPubkey DEVE estar no content para identificar o dono original da ordem!
       final content = jsonEncode({
         'type': 'bro_order',
         'version': '1.0',
         'orderId': orderId,
+        'userPubkey': keychain.public, // CRÍTICO: Identifica o dono original da ordem
         'billType': billType,
         'billCode': billCode, // Código PIX/Boleto para o provedor pagar
         'amount': amount,
@@ -597,10 +599,16 @@ class NostrOrderService {
         return null;
       }
       
+      // CRÍTICO: Usar userPubkey do CONTENT (dono original) com fallback para event.pubkey
+      // Isso garante que mesmo se o evento for republicado por outro usuário,
+      // a ordem sempre pertencerá ao dono original
+      final originalUserPubkey = content['userPubkey'] as String? ?? event['pubkey'] as String?;
+      debugPrint('🔑 Order ${orderId.substring(0,8)}: userPubkey from content=${content['userPubkey'] != null}, event.pubkey=${event['pubkey']?.toString().substring(0,16)}');
+      
       return Order(
         id: orderId,
         eventId: event['id'],
-        userPubkey: event['pubkey'],
+        userPubkey: originalUserPubkey,
         billType: content['billType'] ?? 'pix',
         billCode: content['billCode'] ?? '', // Pode estar vazio por privacidade
         amount: finalAmount,

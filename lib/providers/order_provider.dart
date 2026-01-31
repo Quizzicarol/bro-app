@@ -40,7 +40,8 @@ class OrderProvider with ChangeNotifier {
     final filtered = _orders.where((o) {
       // REGRA 1: Ordens SEM userPubkey são rejeitadas (dados corrompidos/antigos)
       if (o.userPubkey == null || o.userPubkey!.isEmpty) {
-        return false; // Silenciosamente rejeitar - não logar para não poluir
+        debugPrint('🚫 Ordem ${o.id.substring(0, 8)} rejeitada: userPubkey NULL');
+        return false;
       }
       
       // REGRA 2: Ordem criada por este usuário
@@ -49,11 +50,15 @@ class OrderProvider with ChangeNotifier {
       // REGRA 3: Ordem que este usuário aceitou como Bro (providerId)
       final isMyProviderOrder = o.providerId == _currentUserPubkey;
       
+      if (!isOwner && !isMyProviderOrder) {
+        debugPrint('🚫 BLOQUEADO: ${o.id.substring(0, 8)} (userPub=${o.userPubkey?.substring(0, 8)}) != atual ${_currentUserPubkey!.substring(0, 8)}');
+      }
+      
       return isOwner || isMyProviderOrder;
     }).toList();
     
-    // Log apenas se houver discrepância significativa (evita spam)
-    if (_orders.length > filtered.length && _orders.length - filtered.length > 0) {
+    // Log apenas quando há filtros aplicados
+    if (_orders.length != filtered.length) {
       debugPrint('🔒 [FILTRO] ${filtered.length}/${_orders.length} ordens do usuário ${_currentUserPubkey!.substring(0, 8)}');
     }
     return filtered;

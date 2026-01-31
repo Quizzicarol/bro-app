@@ -154,6 +154,28 @@ class _PaymentScreenState extends State<PaymentScreen> {
         final dynamic valueData = result['value'];
         final double amount = (valueData is num) ? valueData.toDouble() : 0.0;
         
+        // VALIDAÇÃO: Limites de valor para ordens
+        const double minOrderBrl = 0.01;  // Mínimo R$ 0.01 para testes
+        const double maxOrderBrl = 5000.0; // Máximo R$ 5.000 para segurança
+        
+        if (amount < minOrderBrl) {
+          if (!mounted) return;
+          _showError('Valor muito baixo. Mínimo: R\$ ${minOrderBrl.toStringAsFixed(2)}');
+          setState(() {
+            _isProcessing = false;
+          });
+          return;
+        }
+        
+        if (amount > maxOrderBrl) {
+          if (!mounted) return;
+          _showError('Valor muito alto. Máximo: R\$ ${maxOrderBrl.toStringAsFixed(2)}');
+          setState(() {
+            _isProcessing = false;
+          });
+          return;
+        }
+        
         debugPrint('💰 Chamando convertPrice com amount: $amount');
         final conversion = await orderProvider.convertPrice(amount);
         debugPrint('📊 Resposta do convertPrice: $conversion');

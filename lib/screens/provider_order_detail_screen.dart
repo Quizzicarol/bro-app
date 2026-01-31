@@ -87,10 +87,15 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           
           // Calcular tempo restante se comprovante foi enviado
           final metadata = order?['metadata'] as Map<String, dynamic>?;
-          if (metadata != null && metadata['receipt_submitted_at'] != null) {
-            _receiptSubmittedAt = DateTime.parse(metadata['receipt_submitted_at']);
-            final deadline = _receiptSubmittedAt!.add(const Duration(hours: 24));
-            _timeRemaining = deadline.difference(DateTime.now());
+          // CORREÇÃO: Verificar ambos os campos (receipt_submitted_at e proofReceivedAt)
+          final submittedAtStr = metadata?['receipt_submitted_at'] as String? ?? 
+                                 metadata?['proofReceivedAt'] as String?;
+          if (submittedAtStr != null) {
+            _receiptSubmittedAt = DateTime.tryParse(submittedAtStr);
+            if (_receiptSubmittedAt != null) {
+              final deadline = _receiptSubmittedAt!.add(const Duration(hours: 24));
+              _timeRemaining = deadline.difference(DateTime.now());
+            }
           }
           
           debugPrint('🔍 Ordem ${widget.orderId.substring(0, 8)}: status=$orderStatus, providerId=$orderProviderId, _orderAccepted=$_orderAccepted');
@@ -111,6 +116,48 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     if (!mounted) return;
     
     final orderAmount = (_orderDetails!['amount'] as num).toDouble();
+    
+    // VALIDAÇÃO: Verificar se ordem não é muito antiga (PIX pode ter expirado)
+    final createdAtStr = _orderDetails!['createdAt'] as String?;
+    if (createdAtStr != null) {
+      final createdAt = DateTime.tryParse(createdAtStr);
+      if (createdAt != null) {
+        final orderAge = DateTime.now().difference(createdAt);
+        if (orderAge.inHours >= 12) {
+          // Mostrar aviso mas permitir aceitar
+          final shouldContinue = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              backgroundColor: const Color(0xFF1A1A1A),
+              title: Row(
+                children: const [
+                  Icon(Icons.warning_amber, color: Colors.orange),
+                  SizedBox(width: 8),
+                  Text('Ordem Antiga', style: TextStyle(color: Colors.white)),
+                ],
+              ),
+              content: Text(
+                'Esta ordem foi criada há ${orderAge.inHours} horas. O código PIX pode ter expirado.\n\nDeseja continuar mesmo assim?',
+                style: const TextStyle(color: Colors.white70),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancelar'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                  child: const Text('Aceitar Mesmo Assim'),
+                ),
+              ],
+            ),
+          );
+          
+          if (shouldContinue != true) return;
+        }
+      }
+    }
 
     // Em modo teste, pular verificação de garantia
     if (!AppConfig.providerTestMode) {

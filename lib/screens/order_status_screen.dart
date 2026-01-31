@@ -3285,11 +3285,17 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
-        onPressed: _handleConfirmPayment,
-        icon: const Icon(Icons.check_circle),
-        label: const Text('Confirmar Pagamento Recebido'),
+        onPressed: _isConfirming ? null : _handleConfirmPayment,
+        icon: _isConfirming 
+            ? const SizedBox(
+                width: 20, 
+                height: 20, 
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)
+              )
+            : const Icon(Icons.check_circle),
+        label: Text(_isConfirming ? 'Processando...' : 'Confirmar Pagamento Recebido'),
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.green,
+          backgroundColor: _isConfirming ? Colors.grey : Colors.green,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 16),
         ),

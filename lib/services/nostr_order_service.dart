@@ -1097,6 +1097,7 @@ class NostrOrderService {
       }
       if (completedAt != null) {
         updatedMetadata['proofReceivedAt'] = completedAt;
+        updatedMetadata['receipt_submitted_at'] = completedAt; // Compatibilidade com auto-liquidação
       }
       
       return Order(

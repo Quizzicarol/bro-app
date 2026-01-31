@@ -135,9 +135,9 @@ class NostrOrderService {
 
       // CORREÇÃO: Usar d-tag única por usuário+ordem para evitar conflitos
       // Isso permite que tanto Bro quanto Usuário publiquem updates independentes
+      // NOTA: Removida tag 'e' pois orderId é UUID, não event ID hex de 64 chars
       final tags = [
         ['d', '${orderId}_${userPubkey.substring(0, 8)}_update'], // Tag única por usuário
-        ['e', orderId], // Referência ao orderId
         ['t', broTag],
         ['t', 'bro-update'],
         ['t', 'status-$newStatus'], // Tag pesquisável por status
@@ -751,16 +751,22 @@ class NostrOrderService {
         'acceptedAt': DateTime.now().toIso8601String(),
       });
 
+      // Construir tags - só incluir 'e' se tivermos eventId válido (64 chars hex)
+      final tags = [
+        ['d', '${order.id}_accept'],
+        ['p', order.userPubkey ?? ''], // Tag do usuário que criou a ordem
+        ['t', broTag],
+        ['t', 'bro-accept'],
+        ['orderId', order.id],
+      ];
+      // Só adicionar tag 'e' se eventId for válido (64 chars hex)
+      if (order.eventId != null && order.eventId!.length == 64) {
+        tags.insert(1, ['e', order.eventId!]);
+      }
+
       final event = Event.from(
         kind: kindBroAccept,
-        tags: [
-          ['d', '${order.id}_accept'],
-          ['e', order.eventId ?? order.id], // Referência ao evento original
-          ['p', order.userPubkey ?? ''], // Tag do usuário que criou a ordem
-          ['t', broTag],
-          ['t', 'bro-accept'],
-          ['orderId', order.id],
-        ],
+        tags: tags,
         content: content,
         privkey: keychain.private,
       );
@@ -809,16 +815,22 @@ class NostrOrderService {
         'completedAt': DateTime.now().toIso8601String(),
       });
 
+      // Construir tags - só incluir 'e' se tivermos eventId válido (64 chars hex)
+      final tags = [
+        ['d', '${order.id}_complete'],
+        ['p', order.userPubkey ?? ''], // Tag do usuário que criou a ordem
+        ['t', broTag],
+        ['t', 'bro-complete'],
+        ['orderId', order.id],
+      ];
+      // Só adicionar tag 'e' se eventId for válido (64 chars hex)
+      if (order.eventId != null && order.eventId!.length == 64) {
+        tags.insert(1, ['e', order.eventId!]);
+      }
+
       final event = Event.from(
         kind: kindBroComplete,
-        tags: [
-          ['d', '${order.id}_complete'],
-          ['e', order.eventId ?? order.id], // Referência ao evento original
-          ['p', order.userPubkey ?? ''], // Tag do usuário que criou a ordem
-          ['t', broTag],
-          ['t', 'bro-complete'],
-          ['orderId', order.id],
-        ],
+        tags: tags,
         content: content,
         privkey: keychain.private,
       );

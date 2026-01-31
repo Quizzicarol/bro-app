@@ -653,6 +653,8 @@ class NostrOrderService {
   Future<Map<String, dynamic>?> fetchOrderFromNostr(String orderId) async {
     print('🔍 fetchOrderFromNostr: Buscando $orderId...');
     
+    Map<String, dynamic>? orderData;
+    
     for (final relay in _relays.take(3)) {
       try {
         // Estratégia 1: Buscar pelo d-tag (orderId)
@@ -682,7 +684,7 @@ class NostrOrderService {
             if (eventOrderId == orderId) {
               print('   ✅ fetchOrderFromNostr: Encontrada em $relay');
               
-              return {
+              orderData = {
                 'id': orderId,
                 'eventId': event['id'],
                 'userPubkey': event['pubkey'],
@@ -698,9 +700,12 @@ class NostrOrderService {
                 'providerId': content['providerId'],
                 'createdAt': content['createdAt'],
               };
+              break;
             }
           } catch (_) {}
         }
+        
+        if (orderData != null) break;
         
         // Se encontrou eventos mas nenhum com orderId match, usar o primeiro
         if (events.isNotEmpty) {
@@ -709,7 +714,7 @@ class NostrOrderService {
           
           print('   ✅ fetchOrderFromNostr: Usando primeiro evento de $relay');
           
-          return {
+          orderData = {
             'id': content['orderId'] ?? orderId,
             'eventId': event['id'],
             'userPubkey': event['pubkey'],
@@ -725,14 +730,76 @@ class NostrOrderService {
             'providerId': content['providerId'],
             'createdAt': content['createdAt'],
           };
+          break;
         }
       } catch (e) {
         print('   ⚠️ fetchOrderFromNostr: Falha em $relay: $e');
       }
     }
     
-    print('   ❌ fetchOrderFromNostr: $orderId não encontrada em nenhum relay');
-    return null;
+    if (orderData == null) {
+      print('   ❌ fetchOrderFromNostr: $orderId não encontrada em nenhum relay');
+      return null;
+    }
+    
+    // CRÍTICO: Buscar o status mais recente dos eventos de UPDATE (kind 30080)
+    final latestStatus = await _fetchLatestOrderStatus(orderId);
+    if (latestStatus != null) {
+      print('   🔄 fetchOrderFromNostr: Status atualizado de ${orderData['status']} para $latestStatus');
+      orderData['status'] = latestStatus;
+    }
+    
+    return orderData;
+  }
+  
+  /// Busca o status mais recente de uma ordem dos eventos de UPDATE (kind 30080) e COMPLETE (kind 30081)
+  Future<String?> _fetchLatestOrderStatus(String orderId) async {
+    String? latestStatus;
+    int latestTimestamp = 0;
+    
+    for (final relay in _relays.take(3)) {
+      try {
+        // Buscar eventos de PaymentProof e Complete para esta ordem
+        final updateEvents = await _fetchFromRelay(
+          relay,
+          kinds: [kindBroPaymentProof, kindBroComplete],
+          tags: {'#orderId': [orderId]},
+          limit: 20,
+        );
+        
+        // Também tentar buscar por #t tag
+        final updateEventsT = await _fetchFromRelay(
+          relay,
+          kinds: [kindBroPaymentProof, kindBroComplete],
+          tags: {'#t': [orderId]},
+          limit: 20,
+        );
+        
+        final allEvents = [...updateEvents, ...updateEventsT];
+        
+        for (final event in allEvents) {
+          try {
+            final content = event['parsedContent'] ?? jsonDecode(event['content']);
+            final eventOrderId = content['orderId'] as String?;
+            
+            if (eventOrderId == orderId) {
+              final eventTimestamp = event['created_at'] as int? ?? 0;
+              final eventStatus = content['status'] as String?;
+              
+              if (eventStatus != null && eventTimestamp > latestTimestamp) {
+                latestTimestamp = eventTimestamp;
+                latestStatus = eventStatus;
+                print('   📋 Encontrado status "$eventStatus" (timestamp: $eventTimestamp)');
+              }
+            }
+          } catch (_) {}
+        }
+      } catch (e) {
+        print('   ⚠️ _fetchLatestOrderStatus: Falha em $relay: $e');
+      }
+    }
+    
+    return latestStatus;
   }
 
   /// Publica uma ordem usando objeto Order

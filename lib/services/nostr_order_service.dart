@@ -419,7 +419,6 @@ class NostrOrderService {
         await channel?.sink.close();
       } catch (_) {}
     }
-    }
   }
 
   /// Busca eventos de um relay

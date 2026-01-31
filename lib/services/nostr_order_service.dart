@@ -339,6 +339,7 @@ class NostrOrderService {
   }
 
   /// Publica evento em um relay específico
+  /// Tenta WebSocket primeiro, com timeout maior para iOS
   Future<bool> _publishToRelay(String relayUrl, Event event) async {
     final completer = Completer<bool>();
     WebSocketChannel? channel;
@@ -346,12 +347,26 @@ class NostrOrderService {
 
     try {
       debugPrint('   🔌 Conectando a $relayUrl...');
-      channel = WebSocketChannel.connect(Uri.parse(relayUrl));
       
-      // Timeout de 8 segundos (aumentado de 5)
-      timeout = Timer(const Duration(seconds: 8), () {
+      // Criar conexão WebSocket
+      final uri = Uri.parse(relayUrl);
+      channel = WebSocketChannel.connect(uri);
+      
+      // Aguardar conexão estar pronta (importante para iOS)
+      await channel.ready.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          debugPrint('   ⏰ Timeout aguardando conexão com $relayUrl');
+          throw TimeoutException('Connection timeout');
+        },
+      );
+      
+      debugPrint('   ✅ Conectado a $relayUrl');
+      
+      // Timeout de 10 segundos para resposta
+      timeout = Timer(const Duration(seconds: 10), () {
         if (!completer.isCompleted) {
-          debugPrint('   ⏰ Timeout em $relayUrl');
+          debugPrint('   ⏰ Timeout aguardando resposta de $relayUrl');
           completer.complete(false);
           channel?.sink.close();
         }
@@ -392,12 +407,18 @@ class NostrOrderService {
       debugPrint('   📤 Evento enviado para $relayUrl');
 
       return await completer.future;
+    } on TimeoutException catch (e) {
+      debugPrint('   ⏰ TimeoutException em $relayUrl: $e');
+      return false;
     } catch (e) {
       debugPrint('   ❌ Exceção ao publicar em $relayUrl: $e');
       return false;
     } finally {
       timeout?.cancel();
-      channel?.sink.close();
+      try {
+        await channel?.sink.close();
+      } catch (_) {}
+    }
     }
   }
 

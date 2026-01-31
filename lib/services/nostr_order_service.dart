@@ -599,11 +599,22 @@ class NostrOrderService {
         return null;
       }
       
-      // CRÍTICO: Usar userPubkey do CONTENT (dono original) com fallback para event.pubkey
-      // Isso garante que mesmo se o evento for republicado por outro usuário,
-      // a ordem sempre pertencerá ao dono original
-      final originalUserPubkey = content['userPubkey'] as String? ?? event['pubkey'] as String?;
-      debugPrint('🔑 Order ${orderId.substring(0,8)}: userPubkey from content=${content['userPubkey'] != null}, event.pubkey=${event['pubkey']?.toString().substring(0,16)}');
+      // CRÍTICO: Determinar o userPubkey correto - APENAS do CONTENT!
+      // SEGURANÇA: Não usar event.pubkey como fallback pois pode ser de quem republicou!
+      final contentUserPubkey = content['userPubkey'] as String?;
+      
+      String? originalUserPubkey;
+      if (contentUserPubkey != null && contentUserPubkey.isNotEmpty) {
+        // Ordem nova com userPubkey no content - CONFIÁVEL
+        originalUserPubkey = contentUserPubkey;
+        debugPrint('🔑 Order ${orderId.substring(0,8)}: userPubkey do CONTENT = ${contentUserPubkey.substring(0,16)}');
+      } else {
+        // SEGURANÇA CRÍTICA: Ordem legada sem userPubkey no content
+        // NÃO usar event.pubkey como fallback - pode ser de quem republicou!
+        // Isso pode ter causado ordens aparecerem no dispositivo errado
+        debugPrint('🚫 REJEITANDO ordem ${orderId.substring(0,8)}: SEM userPubkey no content (ordem legada/republicada)');
+        return null; // REJEITAR - não temos como saber quem é o dono real
+      }
       
       return Order(
         id: orderId,

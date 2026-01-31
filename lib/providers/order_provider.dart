@@ -2133,6 +2133,7 @@ class OrderProvider with ChangeNotifier {
 
   /// Republicar ordens locais que não têm eventId no Nostr
   /// Útil para migrar ordens criadas antes da integração Nostr
+  /// SEGURANÇA: Só republica ordens que PERTENCEM ao usuário atual!
   Future<int> republishLocalOrdersToNostr() async {
     final privateKey = _nostrService.privateKey;
     if (privateKey == null) {
@@ -2140,9 +2141,21 @@ class OrderProvider with ChangeNotifier {
       return 0;
     }
     
+    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) {
+      debugPrint('⚠️ Sem pubkey atual para verificar propriedade das ordens');
+      return 0;
+    }
+    
     int republished = 0;
     
     for (var order in _orders) {
+      // SEGURANÇA CRÍTICA: Só republicar ordens que PERTENCEM ao usuário atual!
+      // Nunca republicar ordens de outros usuários (isso causaria duplicação com pubkey errado)
+      if (order.userPubkey != _currentUserPubkey) {
+        debugPrint('🚫 Pulando ordem ${order.id.substring(0, 8)} - pertence a outro usuário (${order.userPubkey?.substring(0, 8)})');
+        continue;
+      }
+      
       // Só republicar ordens que não têm eventId
       if (order.eventId == null || order.eventId!.isEmpty) {
         try {

@@ -905,13 +905,23 @@ class NostrOrderService {
     final statusUpdates = await _fetchAllOrderStatusUpdates();
     debugPrint('📦 statusUpdates encontrados: ${statusUpdates.length}');
     
-    // Converter para Orders
-    final allOrders = rawOrders
-        .map((e) => eventToOrder(e))
-        .whereType<Order>()
-        .toList();
+    // Converter para Orders COM DEDUPLICAÇÃO por orderId
+    final seenOrderIds = <String>{};
+    final allOrders = <Order>[];
+    for (final e in rawOrders) {
+      final order = eventToOrder(e);
+      if (order == null) continue;
+      
+      // DEDUPLICAÇÃO: Só adicionar se ainda não vimos este orderId
+      if (seenOrderIds.contains(order.id)) {
+        debugPrint('   ⚠️ Duplicata ignorada: ${order.id.substring(0, 8)}');
+        continue;
+      }
+      seenOrderIds.add(order.id);
+      allOrders.add(order);
+    }
     
-    debugPrint('📦 Total de ordens válidas após conversão: ${allOrders.length}');
+    debugPrint('📦 Total de ordens ÚNICAS após conversão: ${allOrders.length}');
     
     // LOG DETALHADO de cada ordem
     for (var order in allOrders) {

@@ -976,12 +976,20 @@ class OrderProvider with ChangeNotifier {
       // 2. Ordens de outros (disponíveis para aceitar) -> _availableOrdersForProvider
       
       _availableOrdersForProvider = []; // Limpar lista anterior
+      final seenAvailableIds = <String>{}; // Para evitar duplicatas
       int addedToAvailable = 0;
       int updated = 0;
       
       for (var pendingOrder in allPendingOrders) {
         // Ignorar ordens com amount=0
         if (pendingOrder.amount <= 0) continue;
+        
+        // DEDUPLICAÇÃO: Ignorar se já vimos esta ordem
+        if (seenAvailableIds.contains(pendingOrder.id)) {
+          debugPrint('   ⚠️ Duplicata ignorada: ${pendingOrder.id.substring(0, 8)}');
+          continue;
+        }
+        seenAvailableIds.add(pendingOrder.id);
         
         // Verificar se é ordem do usuário atual OU ordem que ele aceitou como provedor
         final isMyOrder = pendingOrder.userPubkey == _currentUserPubkey;

@@ -475,16 +475,19 @@ class OrderProvider with ChangeNotifier {
           await _saveOnlyUserOrders();
         }
         
-        // CORREÇÃO: Migrar ordens com providerId errado (provider_test_001) para a pubkey correta
+        // CORREÇÃO: Remover providerId falso (provider_test_001) de ordens
+        // Este valor foi setado erroneamente por migração antiga
+        // O providerId correto será recuperado do Nostr durante o sync
         bool needsMigration = false;
         for (int i = 0; i < _orders.length; i++) {
           final order = _orders[i];
           debugPrint('   - ${order.id.substring(0, 8)}: R\$ ${order.amount.toStringAsFixed(2)} (${order.status}, providerId=${order.providerId ?? "null"})');
           
-          // Se ordem tem o providerId de teste antigo, corrigir para a pubkey atual
-          if (order.providerId == 'provider_test_001' && _currentUserPubkey != null) {
-            debugPrint('   🔧 Corrigindo ordem ${order.id.substring(0, 8)} de provider_test_001 para ${_currentUserPubkey!.substring(0, 8)}');
-            _orders[i] = order.copyWith(providerId: _currentUserPubkey);
+          // Se ordem tem o providerId de teste antigo, REMOVER (será corrigido pelo Nostr)
+          if (order.providerId == 'provider_test_001') {
+            debugPrint('   🔧 Removendo providerId falso de ${order.id.substring(0, 8)}');
+            // Setar providerId como null para que seja recuperado do Nostr
+            _orders[i] = order.copyWith(providerId: null);
             needsMigration = true;
           }
         }
@@ -2189,12 +2192,25 @@ class OrderProvider with ChangeNotifier {
         if (existingIndex != -1) {
           final existing = _orders[existingIndex];
           final newStatus = update['status'] as String;
+          final newProviderId = update['providerId'] as String?;
+          
+          // SEMPRE atualizar providerId se vier do Nostr e for diferente
+          // Isso corrige ordens com providerId errado ou null
+          bool needsUpdate = false;
+          if (newProviderId != null && newProviderId != existing.providerId) {
+            debugPrint('📥 ProviderId atualizado: ${orderId.substring(0, 8)} -> ${newProviderId.substring(0, 8)}');
+            needsUpdate = true;
+          }
           
           // Verificar se o novo status é mais avançado
           if (_isStatusMoreRecent(newStatus, existing.status)) {
+            needsUpdate = true;
+          }
+          
+          if (needsUpdate) {
             _orders[existingIndex] = existing.copyWith(
-              status: newStatus,
-              providerId: update['providerId'] as String?,
+              status: _isStatusMoreRecent(newStatus, existing.status) ? newStatus : existing.status,
+              providerId: newProviderId ?? existing.providerId,
               // Se for comprovante, salvar no metadata
               metadata: update['proofImage'] != null ? {
                 ...?existing.metadata,
@@ -2203,7 +2219,7 @@ class OrderProvider with ChangeNotifier {
               } : existing.metadata,
             );
             statusUpdated++;
-            debugPrint('📥 Status atualizado: ${orderId.substring(0, 8)} -> $newStatus');
+            debugPrint('📥 Ordem atualizada: ${orderId.substring(0, 8)} -> status=$newStatus, providerId=${newProviderId?.substring(0, 8) ?? "null"}');
           }
         }
       }

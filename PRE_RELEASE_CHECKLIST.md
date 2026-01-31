@@ -59,6 +59,7 @@
 1. **Ordens antigas sem userPubkey** são rejeitadas - isso é intencional
 2. **Timeout de 24h** para auto-liquidação só funciona se o provedor enviou comprovante
 3. **Comprovantes** são armazenados em texto claro no Nostr (limitação temporária)
+4. **Auto-liquidação** só executa quando o provedor está com o app aberto na tela da ordem
 
 ### Problemas Conhecidos (não críticos):
 1. Relay `nostr.wine` pode retornar HTTP 429 (rate limiting) - app tenta outros relays

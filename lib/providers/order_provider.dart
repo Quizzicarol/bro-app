@@ -992,10 +992,25 @@ class OrderProvider with ChangeNotifier {
           // Ordem do usuário OU ordem aceita como provedor: atualizar na lista _orders
           final existingIndex = _orders.indexWhere((o) => o.id == pendingOrder.id);
           if (existingIndex == -1) {
-            _orders.add(pendingOrder);
-            debugPrint('   ➕ Adicionada ordem ${pendingOrder.id.substring(0, 8)} (myOrder=$isMyOrder, myProvider=$isMyProviderOrder)');
+            // SEGURANÇA CRÍTICA: Só adicionar se realmente é minha ordem ou aceitei como provedor
+            // NUNCA adicionar ordem de outro usuário aqui!
+            if (isMyOrder || (isMyProviderOrder && pendingOrder.providerId == _currentUserPubkey)) {
+              _orders.add(pendingOrder);
+              debugPrint('   ➕ Adicionada ordem ${pendingOrder.id.substring(0, 8)} (myOrder=$isMyOrder, myProvider=$isMyProviderOrder)');
+            } else {
+              debugPrint('   🛡️ BLOQUEADA ordem ${pendingOrder.id.substring(0, 8)} - não pertence ao usuário atual');
+            }
           } else {
             final existing = _orders[existingIndex];
+            // SEGURANÇA: Verificar que ordem pertence ao usuário atual antes de atualizar
+            final isOwnerExisting = existing.userPubkey == _currentUserPubkey;
+            final isProviderExisting = existing.providerId == _currentUserPubkey;
+            
+            if (!isOwnerExisting && !isProviderExisting) {
+              debugPrint('   🛡️ BLOQUEADA atualização ordem ${pendingOrder.id.substring(0, 8)} - não pertence ao usuário');
+              continue;
+            }
+            
             // CORREÇÃO: Sempre atualizar se status do Nostr é mais recente
             // Mesmo para ordens completed (para que provedor veja completed)
             if (_isStatusMoreRecent(pendingOrder.status, existing.status)) {
@@ -1968,11 +1983,13 @@ class OrderProvider with ChangeNotifier {
           continue;
         }
         
-        // SEGURANÇA: Verificar se a ordem realmente pertence ao usuário atual
-        if (nostrOrder.userPubkey != null && 
-            nostrOrder.userPubkey!.isNotEmpty &&
-            nostrOrder.userPubkey != _currentUserPubkey) {
-          debugPrint('🚫 SEGURANÇA: Ordem ${nostrOrder.id.substring(0, 8)} é de outro usuário - ignorando');
+        // SEGURANÇA CRÍTICA: Verificar se a ordem realmente pertence ao usuário atual
+        // Ordem pertence se: userPubkey == atual OU providerId == atual (aceitou como Bro)
+        final isMyOrder = nostrOrder.userPubkey == _currentUserPubkey;
+        final isMyProviderOrder = nostrOrder.providerId == _currentUserPubkey;
+        
+        if (!isMyOrder && !isMyProviderOrder) {
+          debugPrint('🚫 SEGURANÇA: Ordem ${nostrOrder.id.substring(0, 8)} é de outro usuário (userPubkey=${nostrOrder.userPubkey?.substring(0, 8)}, providerId=${nostrOrder.providerId?.substring(0, 8) ?? "null"}) - ignorando');
           skipped++;
           continue;
         }

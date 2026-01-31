@@ -3371,14 +3371,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       providerId ??= orderDetails?['provider_id'] as String?;
       providerId ??= order?.providerId;
       
-      // Só fazer sync se NÃO temos providerId (sync com timeout de 5s)
+      // Só fazer sync se NÃO temos providerId (sync com timeout de 10s para iOS)
       if (providerId == null || providerId.isEmpty) {
         debugPrint('🔄 Sincronizando ordem antes de confirmar (providerId não encontrado localmente)...');
         try {
           await orderProvider.syncOrdersFromNostr().timeout(
-            const Duration(seconds: 5),
+            const Duration(seconds: 10),  // iOS precisa de mais tempo
             onTimeout: () {
-              debugPrint('⏱️ Timeout no sync - continuando com dados locais');
+              debugPrint('⏱️ Timeout no sync (10s) - continuando com dados locais');
             },
           );
           // Recarregar ordem após sync

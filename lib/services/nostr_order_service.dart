@@ -187,14 +187,20 @@ class NostrOrderService {
   }
 
   /// Busca ordens aceitas por um provedor (raw)
+  /// Busca em múltiplas fontes:
+  /// 1. Ordens (kindBroOrder) onde tag #p = provedor
+  /// 2. Eventos de aceitação (kindBroAccept) publicados pelo provedor
+  /// 3. Eventos de comprovante (kindBroComplete) publicados pelo provedor
   Future<List<Map<String, dynamic>>> _fetchProviderOrdersRaw(String providerPubkey) async {
     final orders = <Map<String, dynamic>>[];
     final seenIds = <String>{};
+    final orderIdsFromAccepts = <String>{};
 
-    debugPrint('🔍 Buscando ordens do provedor ${providerPubkey.substring(0, 16)}...');
+    print('🚨🚨🚨 _fetchProviderOrdersRaw CHAMADO para ${providerPubkey.substring(0, 16)} 🚨🚨🚨');
 
     for (final relay in _relays.take(3)) {
       try {
+        // 1. Buscar ordens com tag #p do provedor
         final relayOrders = await _fetchFromRelay(
           relay,
           kinds: [kindBroOrder],
@@ -202,7 +208,7 @@ class NostrOrderService {
           limit: 100,
         );
         
-        debugPrint('   $relay retornou ${relayOrders.length} ordens do provedor');
+        debugPrint('   $relay: ${relayOrders.length} ordens via #p');
         
         for (final order in relayOrders) {
           final id = order['id'];
@@ -211,9 +217,56 @@ class NostrOrderService {
             orders.add(order);
           }
         }
+        
+        // 2. Buscar eventos de aceitação publicados por este provedor
+        final acceptEvents = await _fetchFromRelay(
+          relay,
+          kinds: [kindBroAccept, kindBroComplete],
+          authors: [providerPubkey],
+          limit: 100,
+        );
+        
+        debugPrint('   $relay: ${acceptEvents.length} eventos de aceite/comprovante');
+        
+        // Extrair orderIds dos eventos de aceitação
+        for (final event in acceptEvents) {
+          try {
+            final content = event['parsedContent'] ?? jsonDecode(event['content']);
+            final orderId = content['orderId'] as String?;
+            if (orderId != null && !orderIdsFromAccepts.contains(orderId)) {
+              orderIdsFromAccepts.add(orderId);
+            }
+          } catch (_) {}
+        }
       } catch (e) {
         debugPrint('⚠️ Falha ao buscar de $relay: $e');
       }
+    }
+    
+    // 3. Buscar as ordens originais pelos IDs encontrados nos eventos de aceitação
+    if (orderIdsFromAccepts.isNotEmpty) {
+      print('🔍 Buscando ${orderIdsFromAccepts.length} ordens por ID: ${orderIdsFromAccepts.take(5).join(", ")}...');
+      
+      for (final orderId in orderIdsFromAccepts.take(20)) {
+        if (seenIds.contains(orderId)) {
+          print('   ⏭️ Ordem $orderId já vista, pulando');
+          continue;
+        }
+        
+        print('   🔍 Buscando ordem original: $orderId');
+        final orderData = await fetchOrderFromNostr(orderId);
+        if (orderData != null) {
+          seenIds.add(orderId);
+          // Adicionar providerId ao orderData
+          orderData['providerId'] = providerPubkey;
+          orders.add(orderData);
+          print('   ✅ Ordem $orderId recuperada com amount=${orderData['amount']}');
+        } else {
+          print('   ❌ Ordem $orderId NÃO encontrada no Nostr');
+        }
+      }
+    } else {
+      print('⚠️ Nenhum orderId encontrado nos eventos de aceitação');
     }
 
     debugPrint('✅ Encontradas ${orders.length} ordens do provedor');
@@ -223,10 +276,53 @@ class NostrOrderService {
   /// Busca ordens aceitas por um provedor e retorna como List<Order>
   Future<List<Order>> fetchProviderOrders(String providerPubkey) async {
     final rawOrders = await _fetchProviderOrdersRaw(providerPubkey);
-    return rawOrders
-        .map((e) => eventToOrder(e))
-        .whereType<Order>()
-        .toList();
+    print('🔍 fetchProviderOrders: ${rawOrders.length} raw orders recebidas');
+    
+    final orders = <Order>[];
+    for (final raw in rawOrders) {
+      final rawId = raw['id']?.toString() ?? '';
+      print('   📋 Convertendo ordem: id=${rawId.length > 8 ? rawId.substring(0, 8) : rawId}');
+      
+      // Verificar se já é um Map com campos diretos (vindo de fetchOrderFromNostr)
+      // ou se é um evento Nostr que precisa ser parseado
+      if (raw['amount'] != null && raw['amount'] != 0) {
+        // É um Map já processado de fetchOrderFromNostr
+        try {
+          final order = Order(
+            id: raw['id']?.toString() ?? '',
+            eventId: raw['eventId']?.toString(),
+            userPubkey: raw['userPubkey']?.toString() ?? '',
+            billType: raw['billType']?.toString() ?? 'pix',
+            billCode: raw['billCode']?.toString() ?? '',
+            amount: (raw['amount'] as num?)?.toDouble() ?? 0,
+            btcAmount: (raw['btcAmount'] as num?)?.toDouble() ?? 0,
+            btcPrice: (raw['btcPrice'] as num?)?.toDouble() ?? 0,
+            providerFee: (raw['providerFee'] as num?)?.toDouble() ?? 0,
+            platformFee: (raw['platformFee'] as num?)?.toDouble() ?? 0,
+            total: (raw['total'] as num?)?.toDouble() ?? 0,
+            status: raw['status']?.toString() ?? 'pending',
+            providerId: raw['providerId']?.toString() ?? providerPubkey,
+            createdAt: DateTime.tryParse(raw['createdAt']?.toString() ?? '') ?? DateTime.now(),
+          );
+          print('   ✅ Ordem convertida (direto): ${order.id.substring(0, 8)}, amount=${order.amount}');
+          orders.add(order);
+        } catch (e) {
+          print('   ❌ Erro ao criar Order direto: $e');
+        }
+      } else {
+        // É um evento Nostr, usar eventToOrder
+        final order = eventToOrder(raw);
+        if (order != null) {
+          print('   ✅ Ordem convertida (evento): ${order.id.substring(0, 8)}, amount=${order.amount}');
+          orders.add(order);
+        } else {
+          print('   ❌ Ordem descartada (null)');
+        }
+      }
+    }
+    
+    print('🔍 fetchProviderOrders: ${orders.length} ordens válidas após conversão');
+    return orders;
   }
 
   /// Publica evento em um relay específico
@@ -236,11 +332,13 @@ class NostrOrderService {
     Timer? timeout;
 
     try {
+      debugPrint('   🔌 Conectando a $relayUrl...');
       channel = WebSocketChannel.connect(Uri.parse(relayUrl));
       
-      // Timeout de 5 segundos
-      timeout = Timer(const Duration(seconds: 5), () {
+      // Timeout de 8 segundos (aumentado de 5)
+      timeout = Timer(const Duration(seconds: 8), () {
         if (!completer.isCompleted) {
+          debugPrint('   ⏰ Timeout em $relayUrl');
           completer.complete(false);
           channel?.sink.close();
         }
@@ -251,17 +349,26 @@ class NostrOrderService {
         (message) {
           try {
             final response = jsonDecode(message);
+            debugPrint('   📩 Resposta de $relayUrl: $response');
             if (response[0] == 'OK' && response[1] == event.id) {
+              final success = response[2] == true;
               if (!completer.isCompleted) {
-                completer.complete(response[2] == true);
+                completer.complete(success);
+              }
+              if (!success) {
+                debugPrint('   ❌ Relay rejeitou: ${response.length > 3 ? response[3] : "sem motivo"}');
               }
             }
-          } catch (_) {}
+          } catch (e) {
+            debugPrint('   ⚠️ Erro ao parsear resposta: $e');
+          }
         },
-        onError: (_) {
+        onError: (e) {
+          debugPrint('   ❌ Erro no stream de $relayUrl: $e');
           if (!completer.isCompleted) completer.complete(false);
         },
         onDone: () {
+          debugPrint('   🔚 Conexão fechada com $relayUrl');
           if (!completer.isCompleted) completer.complete(false);
         },
       );
@@ -269,9 +376,11 @@ class NostrOrderService {
       // Enviar evento
       final eventJson = ['EVENT', event.toJson()];
       channel.sink.add(jsonEncode(eventJson));
+      debugPrint('   📤 Evento enviado para $relayUrl');
 
       return await completer.future;
     } catch (e) {
+      debugPrint('   ❌ Exceção ao publicar em $relayUrl: $e');
       return false;
     } finally {
       timeout?.cancel();
@@ -315,46 +424,59 @@ class NostrOrderService {
     final subscriptionId = const Uuid().v4().substring(0, 8);
 
     try {
-      channel = WebSocketChannel.connect(Uri.parse(relayUrl));
+      // CRÍTICO: Envolver connect em try-catch para capturar erros 429/HTTP
+      try {
+        channel = WebSocketChannel.connect(Uri.parse(relayUrl));
+      } catch (e) {
+        debugPrint('⚠️ Falha ao conectar em $relayUrl: $e');
+        return events; // Retorna lista vazia em vez de propagar exceção
+      }
       
       // Timeout de 8 segundos
       timeout = Timer(const Duration(seconds: 8), () {
         if (!completer.isCompleted) {
           completer.complete(events);
-          channel?.sink.close();
+          try { channel?.sink.close(); } catch (_) {}
         }
       });
 
-      // Escutar eventos
-      channel.stream.listen(
-        (message) {
-          try {
-            final response = jsonDecode(message);
-            if (response[0] == 'EVENT' && response[1] == subscriptionId) {
-              final eventData = response[2] as Map<String, dynamic>;
-              
-              // Parsear conteúdo JSON se possível
-              try {
-                final content = jsonDecode(eventData['content']);
-                eventData['parsedContent'] = content;
-              } catch (_) {}
-              
-              events.add(eventData);
-            } else if (response[0] == 'EOSE') {
-              // End of stored events
-              if (!completer.isCompleted) {
-                completer.complete(events);
+      // Escutar eventos - envolver em try-catch para capturar erros de conexão
+      try {
+        channel.stream.listen(
+          (message) {
+            try {
+              final response = jsonDecode(message);
+              if (response[0] == 'EVENT' && response[1] == subscriptionId) {
+                final eventData = response[2] as Map<String, dynamic>;
+                
+                // Parsear conteúdo JSON se possível
+                try {
+                  final content = jsonDecode(eventData['content']);
+                  eventData['parsedContent'] = content;
+                } catch (_) {}
+                
+                events.add(eventData);
+              } else if (response[0] == 'EOSE') {
+                // End of stored events
+                if (!completer.isCompleted) {
+                  completer.complete(events);
+                }
               }
-            }
-          } catch (_) {}
-        },
-        onError: (_) {
-          if (!completer.isCompleted) completer.complete(events);
-        },
-        onDone: () {
-          if (!completer.isCompleted) completer.complete(events);
-        },
-      );
+            } catch (_) {}
+          },
+          onError: (e) {
+            debugPrint('⚠️ Erro no stream de $relayUrl: $e');
+            if (!completer.isCompleted) completer.complete(events);
+          },
+          onDone: () {
+            if (!completer.isCompleted) completer.complete(events);
+          },
+        );
+      } catch (e) {
+        debugPrint('⚠️ Falha ao escutar stream de $relayUrl: $e');
+        if (!completer.isCompleted) completer.complete(events);
+        return events;
+      }
 
       // Montar filtro
       final filter = <String, dynamic>{
@@ -470,25 +592,66 @@ class NostrOrderService {
 
   /// Busca uma ordem específica do Nostr pelo ID
   Future<Map<String, dynamic>?> fetchOrderFromNostr(String orderId) async {
-    debugPrint('🔍 Buscando ordem $orderId no Nostr...');
+    print('🔍 fetchOrderFromNostr: Buscando $orderId...');
     
-    for (final relay in _relays) {
+    for (final relay in _relays.take(3)) {
       try {
-        final events = await _fetchFromRelay(
+        // Estratégia 1: Buscar pelo d-tag (orderId)
+        var events = await _fetchFromRelay(
           relay,
           kinds: [kindBroOrder],
-          tags: {'#d': [orderId]}, // Buscar pelo d-tag (orderId)
-          limit: 1,
+          tags: {'#d': [orderId]},
+          limit: 5,
         );
         
+        // Estratégia 2: Se não encontrou, buscar pelo #t tag com orderId
+        if (events.isEmpty) {
+          events = await _fetchFromRelay(
+            relay,
+            kinds: [kindBroOrder],
+            tags: {'#t': [orderId]},
+            limit: 5,
+          );
+        }
+        
+        // Verificar se algum evento tem o orderId no content
+        for (final event in events) {
+          try {
+            final content = event['parsedContent'] ?? jsonDecode(event['content']);
+            final eventOrderId = content['orderId'] as String?;
+            
+            if (eventOrderId == orderId) {
+              print('   ✅ fetchOrderFromNostr: Encontrada em $relay');
+              
+              return {
+                'id': orderId,
+                'eventId': event['id'],
+                'userPubkey': event['pubkey'],
+                'billType': content['billType'] ?? 'pix',
+                'billCode': content['billCode'] ?? '',
+                'amount': (content['amount'] as num?)?.toDouble() ?? 0,
+                'btcAmount': (content['btcAmount'] as num?)?.toDouble() ?? 0,
+                'btcPrice': (content['btcPrice'] as num?)?.toDouble() ?? 0,
+                'providerFee': (content['providerFee'] as num?)?.toDouble() ?? 0,
+                'platformFee': (content['platformFee'] as num?)?.toDouble() ?? 0,
+                'total': (content['total'] as num?)?.toDouble() ?? 0,
+                'status': content['status'] ?? 'pending',
+                'providerId': content['providerId'],
+                'createdAt': content['createdAt'],
+              };
+            }
+          } catch (_) {}
+        }
+        
+        // Se encontrou eventos mas nenhum com orderId match, usar o primeiro
         if (events.isNotEmpty) {
           final event = events.first;
           final content = event['parsedContent'] ?? jsonDecode(event['content']);
           
-          debugPrint('✅ Ordem $orderId encontrada no relay $relay');
+          print('   ✅ fetchOrderFromNostr: Usando primeiro evento de $relay');
           
           return {
-            'id': orderId,
+            'id': content['orderId'] ?? orderId,
             'eventId': event['id'],
             'userPubkey': event['pubkey'],
             'billType': content['billType'] ?? 'pix',
@@ -500,15 +663,16 @@ class NostrOrderService {
             'platformFee': (content['platformFee'] as num?)?.toDouble() ?? 0,
             'total': (content['total'] as num?)?.toDouble() ?? 0,
             'status': content['status'] ?? 'pending',
+            'providerId': content['providerId'],
             'createdAt': content['createdAt'],
           };
         }
       } catch (e) {
-        debugPrint('⚠️ Falha ao buscar ordem de $relay: $e');
+        print('   ⚠️ fetchOrderFromNostr: Falha em $relay: $e');
       }
     }
     
-    debugPrint('❌ Ordem $orderId não encontrada no Nostr');
+    print('   ❌ fetchOrderFromNostr: $orderId não encontrada em nenhum relay');
     return null;
   }
 

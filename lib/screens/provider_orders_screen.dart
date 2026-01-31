@@ -1096,6 +1096,13 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           'color': Colors.orange,
           'description': 'Aguardando confirmação do usuário',
         };
+      case 'pending':
+        return {
+          'label': 'PENDENTE',
+          'icon': Icons.schedule,
+          'color': Colors.amber,
+          'description': 'Aguardando aceitação de um Bro',
+        };
       case 'accepted':
         return {
           'label': 'ACEITA',

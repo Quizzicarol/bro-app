@@ -10,6 +10,7 @@ import '../services/notification_service.dart';
 import '../services/nostr_service.dart';
 import '../providers/collateral_provider.dart';
 import '../providers/breez_provider_export.dart';
+import '../providers/order_provider.dart';
 import '../models/collateral_tier.dart';
 import '../widgets/order_card.dart';
 import '../config.dart';
@@ -277,7 +278,9 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
     if (confirmed == true) {
       _showLoadingDialog('Aceitando ordem...');
       
-      final success = await _providerService.acceptOrder(orderId, _providerId);
+      // Usar OrderProvider que publica no Nostr
+      final orderProvider = context.read<OrderProvider>();
+      final success = await orderProvider.acceptOrderAsProvider(orderId);
       
       Navigator.pop(context); // Fecha o loading dialog
       

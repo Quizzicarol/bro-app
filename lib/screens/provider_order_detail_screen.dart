@@ -116,6 +116,43 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   Future<void> _acceptOrder() async {
     if (!mounted) return;
     
+    // PROTEÇÃO CRÍTICA: Verificar se ordem já foi aceita
+    final currentStatus = _orderDetails?['status'] ?? 'pending';
+    final currentProviderId = _orderDetails?['providerId'] ?? _orderDetails?['provider_id'];
+    
+    if (currentStatus != 'pending' && currentStatus != 'payment_received') {
+      debugPrint('🚫 BLOQUEIO DE SEGURANÇA: Tentativa de aceitar ordem com status=$currentStatus');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Esta ordem já está em status "$currentStatus" e não pode ser aceita novamente'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    
+    if (_orderAccepted) {
+      debugPrint('🚫 BLOQUEIO DE SEGURANÇA: Ordem já marcada como aceita localmente');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('❌ Esta ordem já foi aceita'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    
+    if (currentProviderId != null && currentProviderId.isNotEmpty) {
+      debugPrint('🚫 BLOQUEIO DE SEGURANÇA: Ordem já tem providerId=$currentProviderId');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('❌ Esta ordem já foi aceita por outro provedor'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    
     final orderAmount = (_orderDetails!['amount'] as num).toDouble();
     
     // VALIDAÇÃO: Verificar se ordem não é muito antiga (PIX pode ter expirado)
@@ -1069,6 +1106,31 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   }
 
   Widget _buildAcceptButton() {
+    // PROTEÇÃO CRÍTICA: Não mostrar botão se ordem já foi aceita
+    if (_orderAccepted) {
+      debugPrint('🚫 _buildAcceptButton: Botão oculto porque _orderAccepted=true');
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.orange.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.orange.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: const [
+            Icon(Icons.check_circle, color: Colors.orange),
+            SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Esta ordem já foi aceita',
+                style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(

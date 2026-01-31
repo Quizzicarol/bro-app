@@ -1233,7 +1233,11 @@ class OrderProvider with ChangeNotifier {
       final privateKey = _nostrService.privateKey;
       bool nostrSuccess = false;
       
-      if (privateKey != null) {
+      debugPrint('🔑 Verificando chave privada para publicação...');
+      debugPrint('   privateKey disponível: ${privateKey != null}');
+      debugPrint('   privateKey length: ${privateKey?.length ?? 0}');
+      
+      if (privateKey != null && privateKey.isNotEmpty) {
         debugPrint('📤 Publicando atualização de status no Nostr...');
         debugPrint('   orderId: $orderId');
         debugPrint('   newStatus: $status');
@@ -1257,6 +1261,7 @@ class OrderProvider with ChangeNotifier {
         }
       } else {
         debugPrint('⚠️ Sem chave privada - não publicando no Nostr');
+        debugPrint('   _nostrService.privateKey = ${_nostrService.privateKey}');
         _error = 'Chave privada não disponível';
         _isLoading = false;
         notifyListeners();

@@ -69,6 +69,28 @@ class OrderProvider with ChangeNotifier {
   Order? get currentOrder => _currentOrder;
   bool get isLoading => _isLoading;
   String? get error => _error;
+  
+  /// SEGURANÇA: Getter para ordens que EU CRIEI (modo usuário)
+  /// Retorna APENAS ordens onde userPubkey == currentUserPubkey
+  /// Usado na tela "Minhas Trocas" do modo usuário
+  List<Order> get myCreatedOrders {
+    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return [];
+    return _orders.where((o) {
+      // Apenas ordens que EU criei (não ordens aceitas como provedor)
+      return o.userPubkey == _currentUserPubkey && o.status != 'draft';
+    }).toList();
+  }
+  
+  /// SEGURANÇA: Getter para ordens que EU ACEITEI como Bro (modo provedor)
+  /// Retorna APENAS ordens onde providerId == currentUserPubkey
+  /// Usado na tela "Minhas Ordens" do modo provedor
+  List<Order> get myAcceptedOrders {
+    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return [];
+    return _orders.where((o) {
+      // Apenas ordens que EU aceitei como provedor (não ordens que criei)
+      return o.providerId == _currentUserPubkey;
+    }).toList();
+  }
 
   /// CRÍTICO: Método para sair do modo provedor e limpar ordens de outros
   /// Deve ser chamado quando o usuário sai da tela de modo Bro

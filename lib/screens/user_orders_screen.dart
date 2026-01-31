@@ -118,27 +118,14 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
       
       debugPrint('📱 OrderProvider tem ${orderProvider.orders.length} ordens no total');
       
-      // SEGURANÇA: Filtrar APENAS ordens do usuário atual!
-      // NUNCA mostrar ordens de outros usuários
+      // SEGURANÇA: Usar getter específico para ordens que EU CRIEI
+      // Isso evita vazamento de ordens aceitas como provedor
       final currentUserPubkey = widget.userId;
-      debugPrint('🔐 Filtrando ordens para usuário: ${_safeSubstring(currentUserPubkey, 8)}...');
+      debugPrint('🔐 Carregando ordens CRIADAS pelo usuário: ${_safeSubstring(currentUserPubkey, 8)}...');
       
-      // Mostrar APENAS ordens onde userPubkey == currentUserPubkey
-      // NÃO incluir ordens sem userPubkey (podem ser de outros usuários)
-      final localOrders = orderProvider.orders
-        .where((order) {
-          // SEGURANÇA: Ordens sem userPubkey NÃO são do usuário atual
-          // (provavelmente vieram do Nostr de outros usuários)
-          if (order.userPubkey == null || order.userPubkey!.isEmpty) {
-            debugPrint('🚫 REJEITANDO ordem ${_safeSubstring(order.id, 8)} sem userPubkey (segurança)');
-            return false; // NÃO incluir ordens sem dono identificado
-          }
-          final isOwner = order.userPubkey == currentUserPubkey;
-          if (!isOwner) {
-            debugPrint('🚫 Ordem ${_safeSubstring(order.id, 8)} é de outro usuário (${_safeSubstring(order.userPubkey, 8)})');
-          }
-          return isOwner;
-        })
+      // CORREÇÃO VAZAMENTO: Usar myCreatedOrders em vez de orders
+      // orders inclui ordens aceitas como provedor, myCreatedOrders não!
+      final localOrders = orderProvider.myCreatedOrders
         .map((order) => {
           'id': order.id,
           'status': order.status,

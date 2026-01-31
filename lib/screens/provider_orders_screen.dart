@@ -186,31 +186,25 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       _currentPubkey = nostrService.publicKey;
       debugPrint('👤 Pubkey do provedor: ${_safeSubstring(_currentPubkey, 0, 8)}...');
       
-      // Separar ordens disponíveis e minhas ordens
-      // IMPORTANTE: Ordens disponíveis vêm de availableOrdersForProvider, não de orders!
-      final allOrders = orderProvider.orders;
+      // CORREÇÃO VAZAMENTO: Separar ordens corretamente!
+      // - myAcceptedOrders: Ordens que EU ACEITEI como Bro (providerId == minha pubkey)
+      // - availableOrdersForProvider: Ordens de OUTROS disponíveis para aceitar
+      // NUNCA usar 'orders' que inclui ordens criadas pelo usuário!
+      final myOrdersFromProvider = orderProvider.myAcceptedOrders;
       final availableFromProvider = orderProvider.availableOrdersForProvider;
-      debugPrint('🔵 [PROVIDER_ORDERS] Processando ${allOrders.length} ordens do usuário e ${availableFromProvider.length} disponíveis...');
+      debugPrint('🔵 [PROVIDER_ORDERS] ${myOrdersFromProvider.length} ordens ACEITAS por mim, ${availableFromProvider.length} disponíveis...');
       List<Map<String, dynamic>> available = [];
       List<Map<String, dynamic>> myOrders = [];
       
-      // Processar ordens do usuário (minhas ordens aceitas)
-      for (final order in allOrders) {
-        debugPrint('   📋 Ordem ${_safeSubstring(order.id, 0, 8)}: status=${order.status}, providerId=${_safeSubstring(order.providerId, 0, 8)}, userPubkey=${_safeSubstring(order.userPubkey, 0, 8)}');
+      // Processar ordens que EU ACEITEI como provedor
+      for (final order in myOrdersFromProvider) {
+        debugPrint('   📋 Minha ordem aceita ${_safeSubstring(order.id, 0, 8)}: status=${order.status}, providerId=${_safeSubstring(order.providerId, 0, 8)}, userPubkey=${_safeSubstring(order.userPubkey, 0, 8)}');
         final orderMap = order.toJson();
         orderMap['amount'] = order.amount;
         orderMap['payment_type'] = order.billType;
         orderMap['created_at'] = order.createdAt.toIso8601String();
         orderMap['user_name'] = 'Usuário ${order.userPubkey?.substring(0, 6) ?? "anon"}';
-        
-        // Verificar se é ordem deste provedor
-        final isMyOrder = order.providerId == _currentPubkey || 
-                          order.providerId == widget.providerId;
-        
-        if (isMyOrder) {
-          // Minhas ordens (aceitas por mim)
-          myOrders.add(orderMap);
-        }
+        myOrders.add(orderMap);
       }
       
       // Processar ordens disponíveis para aceitar (de outros usuários)

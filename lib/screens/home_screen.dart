@@ -670,9 +670,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildMetricsRow(OrderProvider orderProvider) {
-    final totalBills = orderProvider.orders.length;
-    final pendingBills = orderProvider.orders.where((o) => o.status == 'pending').length;
-    final completedOrders = orderProvider.orders
+    // CORREÇÃO VAZAMENTO: Usar myCreatedOrders para evitar contar ordens aceitas como provedor
+    final myOrders = orderProvider.myCreatedOrders;
+    final totalBills = myOrders.length;
+    final pendingBills = myOrders.where((o) => o.status == 'pending').length;
+    final completedOrders = myOrders
         .where((o) => o.status == 'completed')
         .length;
 
@@ -768,9 +770,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildStatsRow(BreezProvider breezProvider, OrderProvider orderProvider) {
-    final totalBills = orderProvider.orders.length;
-    final pendingBills = orderProvider.orders.where((o) => o.status == 'pending').length;
-    final completedToday = orderProvider.orders
+    // CORREÇÃO VAZAMENTO: Usar myCreatedOrders para evitar contar ordens aceitas como provedor
+    final myOrders = orderProvider.myCreatedOrders;
+    final totalBills = myOrders.length;
+    final pendingBills = myOrders.where((o) => o.status == 'pending').length;
+    final completedToday = myOrders
         .where((o) =>
           o.status == 'completed' &&
           o.createdAt != null &&
@@ -876,23 +880,11 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
 
-          // Body - SEGURANÇA EXTRA: Filtrar apenas ordens deste usuário
+          // Body - CORREÇÃO VAZAMENTO: Usar myCreatedOrders ao invés de filtrar manualmente
           Builder(
             builder: (context) {
-              // FILTRO EXTRA DE SEGURANÇA na UI
-              // Mesmo que o provider retorne ordens erradas, filtramos aqui
-              final myOrders = orderProvider.orders.where((order) {
-                // Só mostrar ordens onde ESTE usuário é o DONO (criador)
-                // NÃO mostrar ordens onde ele é apenas o providerId
-                if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) {
-                  return false; // Sem pubkey = não mostrar nada
-                }
-                final isOwner = order.userPubkey == _currentUserPubkey;
-                if (!isOwner) {
-                  debugPrint('🚫 [HOME UI] Bloqueando ordem ${order.id.substring(0, 8)} - não é dono (userPubkey=${order.userPubkey?.substring(0, 8) ?? "null"})');
-                }
-                return isOwner;
-              }).toList();
+              // myCreatedOrders já retorna apenas ordens onde userPubkey == currentUser
+              final myOrders = orderProvider.myCreatedOrders;
               
               return Container(
                 padding: const EdgeInsets.all(20),

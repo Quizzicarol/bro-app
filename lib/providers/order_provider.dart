@@ -881,12 +881,40 @@ class OrderProvider with ChangeNotifier {
   /// SEGURANÇA: Ordens de outros usuários vão para _availableOrdersForProvider
   /// e NUNCA são adicionadas à lista principal _orders!
   Future<void> syncAllPendingOrdersFromNostr() async {
+    print('🚨🚨🚨 syncAllPendingOrdersFromNostr CHAMADO! 🚨🚨🚨');
     try {
-      debugPrint('🔄 [PROVEDOR] Buscando TODAS as ordens pendentes do Nostr...');
+      print('🔄🔄🔄 [PROVEDOR] Iniciando busca PARALELA de ordens... 🔄🔄🔄');
       
-      // Buscar todas as ordens pendentes (de qualquer usuário)
-      final allPendingOrders = await _nostrOrderService.fetchPendingOrders();
-      debugPrint('📦 Recebidas ${allPendingOrders.length} ordens pendentes do Nostr');
+      // Helper para busca segura (captura exceções e retorna lista vazia)
+      Future<List<Order>> safeFetch(Future<List<Order>> Function() fetcher, String name) async {
+        try {
+          return await fetcher().timeout(const Duration(seconds: 10), onTimeout: () {
+            print('⏰ Timeout em $name');
+            return <Order>[];
+          });
+        } catch (e) {
+          print('❌ Erro em $name: $e');
+          return <Order>[];
+        }
+      }
+      
+      // Executar buscas EM PARALELO com tratamento de erro individual
+      print('🔄 Aguardando buscas em paralelo...');
+      final results = await Future.wait([
+        safeFetch(() => _nostrOrderService.fetchPendingOrders(), 'fetchPendingOrders'),
+        safeFetch(() => _currentUserPubkey != null 
+            ? _nostrOrderService.fetchUserOrders(_currentUserPubkey!)
+            : Future.value(<Order>[]), 'fetchUserOrders'),
+        safeFetch(() => _currentUserPubkey != null
+            ? _nostrOrderService.fetchProviderOrders(_currentUserPubkey!)
+            : Future.value(<Order>[]), 'fetchProviderOrders'),
+      ]);
+      
+      final allPendingOrders = results[0];
+      final userOrders = results[1];
+      final providerOrders = results[2];
+      
+      print('📦 Resultados: ${allPendingOrders.length} pendentes, ${userOrders.length} do usuário, ${providerOrders.length} do provedor');
       
       // SEGURANÇA: Separar ordens em duas listas:
       // 1. Ordens do usuário atual -> _orders
@@ -938,24 +966,52 @@ class OrderProvider with ChangeNotifier {
         }
       }
       
-      debugPrint('📊 [PROVEDOR] Separação de ordens:');
+      debugPrint('📊 [PROVEDOR] Separação de ordens pendentes:');
       debugPrint('   - Minhas ordens atualizadas: $updated');
       debugPrint('   - Ordens disponíveis para aceitar: $addedToAvailable');
       
-      // Também buscar ordens do próprio usuário
+      // Processar ordens do próprio usuário (já buscadas em paralelo)
       int addedFromUser = 0;
-      if (_currentUserPubkey != null && _currentUserPubkey!.isNotEmpty) {
-        final userOrders = await _nostrOrderService.fetchUserOrders(_currentUserPubkey!);
-        for (var order in userOrders) {
-          final existingIndex = _orders.indexWhere((o) => o.id == order.id);
-          if (existingIndex == -1 && order.amount > 0) {
-            _orders.add(order);
-            addedFromUser++;
+      int addedFromProviderHistory = 0;
+      
+      // 1. Processar ordens criadas pelo usuário
+      for (var order in userOrders) {
+        final existingIndex = _orders.indexWhere((o) => o.id == order.id);
+        if (existingIndex == -1 && order.amount > 0) {
+          _orders.add(order);
+          addedFromUser++;
+        }
+      }
+      
+      // 2. CRÍTICO: Processar ordens onde este usuário é o PROVEDOR (histórico de ordens aceitas)
+      // Estas ordens foram buscadas em paralelo acima
+      print('🚨🚨🚨 Processando ${providerOrders.length} ordens do provedor 🚨🚨🚨');
+      
+      for (var provOrder in providerOrders) {
+        final existingIndex = _orders.indexWhere((o) => o.id == provOrder.id);
+        if (existingIndex == -1 && provOrder.amount > 0) {
+          // Nova ordem do histórico - adicionar
+          _orders.add(provOrder);
+          addedFromProviderHistory++;
+          print('   ➕ Recuperada ordem ${provOrder.id.substring(0, 8)}: status=${provOrder.status}, R\$ ${provOrder.amount.toStringAsFixed(2)}');
+        } else if (existingIndex != -1) {
+          // Ordem já existe - atualizar se necessário
+          final existing = _orders[existingIndex];
+          if (_isStatusMoreRecent(provOrder.status, existing.status)) {
+            _orders[existingIndex] = existing.copyWith(
+              status: provOrder.status,
+              completedAt: provOrder.status == 'completed' ? DateTime.now() : existing.completedAt,
+            );
+            print('   🔄 Atualizada ordem ${provOrder.id.substring(0, 8)}: ${existing.status} -> ${provOrder.status}');
           }
         }
-        
-        // CRÍTICO: Buscar updates de status para ordens que este provedor aceitou
-        // Isso permite que o Bro veja quando o usuário confirmou (status=completed)
+      }
+      
+      print('📊 [PROVEDOR] Histórico recuperado: $addedFromProviderHistory ordens');
+      
+      // 3. CRÍTICO: Buscar updates de status para ordens que este provedor aceitou
+      // Isso permite que o Bro veja quando o usuário confirmou (status=completed)
+      if (_currentUserPubkey != null && _currentUserPubkey!.isNotEmpty) {
         debugPrint('🔍 [DEBUG] _currentUserPubkey: ${_currentUserPubkey!.substring(0, 16)}');
         debugPrint('🔍 [DEBUG] Total de ordens em memória: ${_orders.length}');
         

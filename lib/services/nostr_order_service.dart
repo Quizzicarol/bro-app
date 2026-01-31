@@ -291,9 +291,15 @@ class NostrOrderService {
   }
 
   /// Busca ordens aceitas por um provedor e retorna como List<Order>
+  /// CORREÇÃO: Agora também busca eventos de UPDATE para obter status correto
   Future<List<Order>> fetchProviderOrders(String providerPubkey) async {
     final rawOrders = await _fetchProviderOrdersRaw(providerPubkey);
     print('🔍 fetchProviderOrders: ${rawOrders.length} raw orders recebidas');
+    
+    // CORREÇÃO CRÍTICA: Buscar eventos de UPDATE para obter status correto
+    // Sem isso, ordens completed apareciam como "pending" ou "accepted"
+    final statusUpdates = await _fetchAllOrderStatusUpdates();
+    print('🔍 fetchProviderOrders: ${statusUpdates.length} updates de status encontrados');
     
     final orders = <Order>[];
     for (final raw in rawOrders) {
@@ -302,10 +308,11 @@ class NostrOrderService {
       
       // Verificar se já é um Map com campos diretos (vindo de fetchOrderFromNostr)
       // ou se é um evento Nostr que precisa ser parseado
+      Order? order;
       if (raw['amount'] != null && raw['amount'] != 0) {
         // É um Map já processado de fetchOrderFromNostr
         try {
-          final order = Order(
+          order = Order(
             id: raw['id']?.toString() ?? '',
             eventId: raw['eventId']?.toString(),
             userPubkey: raw['userPubkey']?.toString() ?? '',
@@ -322,25 +329,32 @@ class NostrOrderService {
             createdAt: DateTime.tryParse(raw['createdAt']?.toString() ?? '') ?? DateTime.now(),
           );
           print('   ✅ Ordem convertida (direto): ${order.id.substring(0, 8)}, amount=${order.amount}');
-          orders.add(order);
         } catch (e) {
           print('   ❌ Erro ao criar Order direto: $e');
         }
       } else {
         // É um evento Nostr, usar eventToOrder
-        var order = eventToOrder(raw);
+        order = eventToOrder(raw);
         if (order != null) {
-          // CORREÇÃO CRÍTICA: Garantir que providerId seja setado para ordens do provedor
-          // Isso é necessário para que as ordens sejam salvas corretamente no histórico
-          if (order.providerId == null || order.providerId!.isEmpty) {
-            order = order.copyWith(providerId: providerPubkey);
-            print('   🔧 ProviderId setado para ordem ${order.id.substring(0, 8)}');
-          }
-          print('   ✅ Ordem convertida (evento): ${order.id.substring(0, 8)}, amount=${order.amount}, providerId=${order.providerId?.substring(0, 8) ?? "null"}');
-          orders.add(order);
+          print('   ✅ Ordem convertida (evento): ${order.id.substring(0, 8)}, amount=${order.amount}');
         } else {
           print('   ❌ Ordem descartada (null)');
         }
+      }
+      
+      if (order != null) {
+        // CORREÇÃO CRÍTICA: Garantir que providerId seja setado para ordens do provedor
+        if (order.providerId == null || order.providerId!.isEmpty) {
+          order = order.copyWith(providerId: providerPubkey);
+          print('   🔧 ProviderId setado para ordem ${order.id.substring(0, 8)}');
+        }
+        
+        // CORREÇÃO CRÍTICA: Aplicar status atualizado dos eventos de UPDATE
+        // Isso garante que ordens completed/awaiting_confirmation apareçam com status correto
+        order = _applyStatusUpdate(order, statusUpdates);
+        print('   📋 Status final: ${order.id.substring(0, 8)} -> ${order.status}');
+        
+        orders.add(order);
       }
     }
     
@@ -1115,6 +1129,19 @@ class NostrOrderService {
                 status = 'accepted';
               } else if (eventType == 'bro_complete' || eventKind == kindBroComplete) {
                 status = 'awaiting_confirmation'; // Bro pagou, aguardando confirmação do usuário
+              }
+              
+              // PROTEÇÃO: Não regredir status mais avançado
+              // Ordem de progressão: pending -> accepted -> awaiting_confirmation -> completed
+              final existingStatus = existingUpdate?['status'] as String?;
+              if (existingStatus != null) {
+                const statusOrder = ['pending', 'accepted', 'awaiting_confirmation', 'completed', 'liquidated'];
+                final existingIdx = statusOrder.indexOf(existingStatus);
+                final newIdx = statusOrder.indexOf(status ?? 'pending');
+                if (existingIdx >= 0 && newIdx >= 0 && newIdx < existingIdx) {
+                  debugPrint('   ⚠️ Ignorando update $orderId: $existingStatus -> $status (regressão)');
+                  continue;
+                }
               }
               
               // IMPORTANTE: Incluir proofImage do comprovante para o usuário ver

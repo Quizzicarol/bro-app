@@ -741,7 +741,12 @@ class NostrOrderService {
     required String providerPrivateKey,
   }) async {
     try {
+      debugPrint('🔑 acceptOrderOnNostr: Iniciando...');
+      debugPrint('   orderId: ${order.id}');
+      debugPrint('   privateKey length: ${providerPrivateKey.length}');
+      
       final keychain = Keychain(providerPrivateKey);
+      debugPrint('   providerPubkey: ${keychain.public.substring(0, 16)}...');
       
       final content = jsonEncode({
         'type': 'bro_accept',
@@ -763,6 +768,9 @@ class NostrOrderService {
       if (order.eventId != null && order.eventId!.length == 64) {
         tags.insert(1, ['e', order.eventId!]);
       }
+      
+      debugPrint('   userPubkey (tag p): ${order.userPubkey?.substring(0, 16) ?? "NENHUM"}');
+      debugPrint('   tags count: ${tags.length}');
 
       final event = Event.from(
         kind: kindBroAccept,
@@ -772,21 +780,30 @@ class NostrOrderService {
       );
 
       debugPrint('📤 Publicando aceite da ordem ${order.id}...');
+      debugPrint('   Event ID: ${event.id}');
+      debugPrint('   Event Kind: ${event.kind}');
       
       int successCount = 0;
       for (final relay in _relays) {
         try {
+          debugPrint('   Tentando $relay...');
           final success = await _publishToRelay(relay, event);
-          if (success) successCount++;
+          if (success) {
+            successCount++;
+            debugPrint('   ✅ SUCESSO em $relay');
+          } else {
+            debugPrint('   ❌ FALHOU em $relay');
+          }
         } catch (e) {
-          debugPrint('⚠️ Falha ao publicar aceite em $relay: $e');
+          debugPrint('⚠️ Exceção ao publicar aceite em $relay: $e');
         }
       }
 
       debugPrint('✅ Aceite publicado em $successCount/${_relays.length} relays');
       return successCount > 0;
-    } catch (e) {
+    } catch (e, stack) {
       debugPrint('❌ Erro ao publicar aceite: $e');
+      debugPrint('   Stack: $stack');
       return false;
     }
   }

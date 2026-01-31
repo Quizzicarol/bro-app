@@ -1413,6 +1413,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           'subtitle': 'Aguardando mediação',
           'color': Colors.orange,
         };
+      case 'completing':
+        return {
+          'icon': Icons.hourglass_top,
+          'title': 'Processando...',
+          'subtitle': 'Finalizando confirmação',
+          'color': Colors.orange,
+        };
       default:
         return {
           'icon': Icons.help_outline,
@@ -3498,7 +3505,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         });
       }
     } catch (e) {
+      debugPrint('❌ ERRO na confirmação: $e');
       if (mounted) {
+        // CRÍTICO: Reverter status visual para não travar a UI
+        setState(() {
+          _isConfirming = false;
+          _currentStatus = 'awaiting_confirmation';
+        });
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

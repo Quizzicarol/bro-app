@@ -165,19 +165,32 @@ class NostrOrderService {
       debugPrint('   status: $newStatus');
       debugPrint('   providerId: ${providerId ?? "NENHUM"}');
 
-      int successCount = 0;
-      for (final relay in _relays) {
-        try {
-          final success = await _publishToRelay(relay, event);
-          if (success) {
-            successCount++;
-            debugPrint('   ✅ Publicado em $relay');
+      // Publicar em PARALELO para ser mais rápido
+      final results = await Future.wait(
+        _relays.map((relay) async {
+          try {
+            // Tentar até 2 vezes
+            for (int attempt = 1; attempt <= 2; attempt++) {
+              final success = await _publishToRelay(relay, event);
+              if (success) {
+                debugPrint('   ✅ Publicado em $relay (tentativa $attempt)');
+                return true;
+              }
+              if (attempt < 2) {
+                debugPrint('   🔄 Retry em $relay...');
+                await Future.delayed(const Duration(milliseconds: 500));
+              }
+            }
+            debugPrint('   ❌ Falhou em $relay após 2 tentativas');
+            return false;
+          } catch (e) {
+            debugPrint('   ⚠️ Exceção em $relay: $e');
+            return false;
           }
-        } catch (e) {
-          debugPrint('   ⚠️ Falha em $relay: $e');
-        }
-      }
+        }),
+      );
 
+      final successCount = results.where((r) => r).length;
       debugPrint('📤 Evento publicado em $successCount/${_relays.length} relays');
       return successCount > 0;
     } catch (e) {

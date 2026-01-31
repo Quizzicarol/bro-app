@@ -81,10 +81,21 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           final orderProviderId = order?['providerId'] ?? order?['provider_id'];
           final orderStatus = order?['status'] ?? 'pending';
           
-          // Ordem foi aceita se status é accepted/awaiting_confirmation e tem providerId
-          // Não importa se é exatamente widget.providerId porque em modo teste usamos pubkey Nostr
-          _orderAccepted = (orderStatus == 'accepted' || orderStatus == 'awaiting_confirmation' || orderStatus == 'completed') && 
-                          (orderProviderId != null && orderProviderId.isNotEmpty);
+          // CORREÇÃO CRÍTICA: Ordem foi aceita se:
+          // 1. Status indica aceitação (accepted/awaiting_confirmation/completed/liquidated)
+          // 2. OU tem providerId definido (mesmo se status vier errado do Nostr)
+          final hasValidProviderId = orderProviderId != null && 
+                                     orderProviderId.isNotEmpty && 
+                                     orderProviderId != 'provider_test_001';
+          final hasAdvancedStatus = orderStatus == 'accepted' || 
+                                    orderStatus == 'awaiting_confirmation' || 
+                                    orderStatus == 'completed' ||
+                                    orderStatus == 'liquidated';
+          
+          // Se tem providerId válido, a ordem FOI aceita - independente do status
+          _orderAccepted = hasAdvancedStatus || hasValidProviderId;
+          
+          debugPrint('🔍 _orderAccepted calc: hasAdvancedStatus=$hasAdvancedStatus, hasValidProviderId=$hasValidProviderId, result=$_orderAccepted');
           
           // Calcular tempo restante se comprovante foi enviado
           final metadata = order?['metadata'] as Map<String, dynamic>?;

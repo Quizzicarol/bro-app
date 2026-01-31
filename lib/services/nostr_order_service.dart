@@ -234,11 +234,12 @@ class NostrOrderService {
         }
         
         // 2. Buscar eventos de aceitação publicados por este provedor
+        // CORREÇÃO: Aumentado para 200 para preservar histórico completo
         final acceptEvents = await _fetchFromRelay(
           relay,
           kinds: [kindBroAccept, kindBroComplete],
           authors: [providerPubkey],
-          limit: 100,
+          limit: 200,
         );
         
         debugPrint('   $relay: ${acceptEvents.length} eventos de aceite/comprovante');
@@ -262,7 +263,8 @@ class NostrOrderService {
     if (orderIdsFromAccepts.isNotEmpty) {
       print('🔍 Buscando ${orderIdsFromAccepts.length} ordens por ID: ${orderIdsFromAccepts.take(5).join(", ")}...');
       
-      for (final orderId in orderIdsFromAccepts.take(20)) {
+      // CORREÇÃO: Aumentado de 20 para 100 para preservar histórico completo do provedor
+      for (final orderId in orderIdsFromAccepts.take(100)) {
         if (seenIds.contains(orderId)) {
           print('   ⏭️ Ordem $orderId já vista, pulando');
           continue;
@@ -326,9 +328,15 @@ class NostrOrderService {
         }
       } else {
         // É um evento Nostr, usar eventToOrder
-        final order = eventToOrder(raw);
+        var order = eventToOrder(raw);
         if (order != null) {
-          print('   ✅ Ordem convertida (evento): ${order.id.substring(0, 8)}, amount=${order.amount}');
+          // CORREÇÃO CRÍTICA: Garantir que providerId seja setado para ordens do provedor
+          // Isso é necessário para que as ordens sejam salvas corretamente no histórico
+          if (order.providerId == null || order.providerId!.isEmpty) {
+            order = order.copyWith(providerId: providerPubkey);
+            print('   🔧 ProviderId setado para ordem ${order.id.substring(0, 8)}');
+          }
+          print('   ✅ Ordem convertida (evento): ${order.id.substring(0, 8)}, amount=${order.amount}, providerId=${order.providerId?.substring(0, 8) ?? "null"}');
           orders.add(order);
         } else {
           print('   ❌ Ordem descartada (null)');
@@ -1493,7 +1501,8 @@ class NostrOrderService {
         
         // ESTRATÉGIA 2: Buscar diretamente por cada orderId específico
         // Fallback para quando a tag #p não foi indexada
-        for (final orderId in orderIds.take(20)) { // Aumentado de 5 para 20
+        // CORREÇÃO: Aumentado de 20 para 100 para preservar histórico completo
+        for (final orderId in orderIds.take(100)) {
           try {
             // Buscar por tag #e (referência ao orderId)
             final eTagEvents = await _fetchFromRelay(

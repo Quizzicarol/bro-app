@@ -3357,38 +3357,48 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     try {
       final orderProvider = context.read<OrderProvider>();
       
-      // NOVO: Sincronizar do Nostr para garantir que temos o providerId atualizado
-      debugPrint('🔄 Sincronizando ordem antes de confirmar...');
-      await orderProvider.syncOrdersFromNostr();
-      
-      // Buscar informações completas da ordem
+      // Buscar informações completas da ordem PRIMEIRO
       Map<String, dynamic>? orderDetails = _orderDetails;
       
-      // Tentar obter do OrderProvider (já atualizado após sync)
-      final order = orderProvider.getOrderById(widget.orderId);
+      // Tentar obter do OrderProvider local primeiro
+      var order = orderProvider.getOrderById(widget.orderId);
       if (order != null) {
         orderDetails = order.toJson();
-        debugPrint('📋 Ordem carregada do provider: providerId=${order.providerId?.substring(0, 16) ?? "NULL"}');
       }
       
-      // Pegar o providerId da ordem para notificar o Bro via Nostr
-      // IMPORTANTE: Tentar múltiplas fontes para garantir que temos o providerId
+      // Verificar se já temos providerId localmente
       String? providerId = orderDetails?['providerId'] as String?;
+      providerId ??= orderDetails?['provider_id'] as String?;
+      providerId ??= order?.providerId;
       
-      // Fallback: verificar provider_id com underscore (algumas fontes usam esse formato)
+      // Só fazer sync se NÃO temos providerId (sync com timeout de 5s)
+      if (providerId == null || providerId.isEmpty) {
+        debugPrint('🔄 Sincronizando ordem antes de confirmar (providerId não encontrado localmente)...');
+        try {
+          await orderProvider.syncOrdersFromNostr().timeout(
+            const Duration(seconds: 5),
+            onTimeout: () {
+              debugPrint('⏱️ Timeout no sync - continuando com dados locais');
+            },
+          );
+          // Recarregar ordem após sync
+          order = orderProvider.getOrderById(widget.orderId);
+          if (order != null) {
+            orderDetails = order.toJson();
+            providerId = order.providerId;
+          }
+        } catch (e) {
+          debugPrint('⚠️ Erro no sync: $e - continuando com dados locais');
+        }
+      } else {
+        debugPrint('✅ providerId já disponível localmente: ${providerId.substring(0, 16)}');
+      }
+      
+      // Atualizar providerId de múltiplas fontes se ainda não temos
       if (providerId == null || providerId.isEmpty) {
         providerId = orderDetails?['provider_id'] as String?;
       }
-      
-      // Fallback: buscar diretamente da ordem no provider
       if (providerId == null || providerId.isEmpty) {
-        final order = orderProvider.getOrderById(widget.orderId);
-        providerId = order?.providerId;
-      }
-      
-      // Fallback: buscar do metadata da ordem
-      if (providerId == null || providerId.isEmpty) {
-        final order = orderProvider.getOrderById(widget.orderId);
         providerId = order?.metadata?['providerId'] as String?;
         providerId ??= order?.metadata?['provider_id'] as String?;
       }

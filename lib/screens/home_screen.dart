@@ -8,6 +8,7 @@ import '../providers/order_provider.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import '../services/secure_storage_service.dart';
+import '../services/local_collateral_service.dart';
 import '../widgets/stat_card.dart';
 import '../widgets/gradient_button.dart';
 import '../widgets/transaction_card.dart';
@@ -509,20 +510,21 @@ class _HomeScreenState extends State<HomeScreen> {
                 label: 'Modo Bro',
                 gradient: const [Color(0xFF3DE98C), Color(0xFF00CC7A)],
                 onTap: () async {
-                  // Obter pubkey do usuário atual para verificar modo provedor PER-USER
+                  // Obter pubkey do usuário atual
                   final pubkey = await StorageService().getNostrPublicKey();
-                  // Verificar se já está em modo provedor
-                  final isProvider = await SecureStorageService.isProviderMode(userPubkey: pubkey);
-                  debugPrint('🔍 isProviderMode: $isProvider (pubkey: ${pubkey?.substring(0, 8) ?? "null"})');
+                  // Verificar se já tem tier ativado (collateral)
+                  final collateralService = LocalCollateralService();
+                  final hasActiveTier = await collateralService.hasCollateral(userPubkey: pubkey);
+                  debugPrint('🔍 hasActiveTier: $hasActiveTier (pubkey: ${pubkey?.substring(0, 8) ?? "null"})');
                   
-                  if (isProvider) {
-                    // Já é provedor, ir direto para tela de ordens
+                  if (hasActiveTier) {
+                    // Já tem tier, ir direto para tela de ordens
                     final providerId = pubkey ?? 'unknown';
                     Navigator.pushNamed(context, '/provider-orders', arguments: {
                       'providerId': providerId,
                     });
                   } else {
-                    // Não é provedor, mostrar educação primeiro
+                    // Não tem tier, mostrar educação primeiro
                     Navigator.pushNamed(context, '/provider-education');
                   }
                 },
@@ -1130,20 +1132,21 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildProviderModeButton() {
     return GestureDetector(
       onTap: () async {
-        // Obter pubkey do usuário atual para verificar modo provedor PER-USER
+        // Obter pubkey do usuário atual
         final pubkey = await StorageService().getNostrPublicKey();
-        // Verificar se já está em modo provedor
-        final isProvider = await SecureStorageService.isProviderMode(userPubkey: pubkey);
-        debugPrint('🔍 isProviderMode (button): $isProvider (pubkey: ${pubkey?.substring(0, 8) ?? "null"})');
+        // Verificar se já tem tier ativado (collateral)
+        final collateralService = LocalCollateralService();
+        final hasActiveTier = await collateralService.hasCollateral(userPubkey: pubkey);
+        debugPrint('🔍 hasActiveTier (button): $hasActiveTier (pubkey: ${pubkey?.substring(0, 8) ?? "null"})');
         
-        if (isProvider) {
-          // Já é provedor, ir direto para tela de ordens
+        if (hasActiveTier) {
+          // Já tem tier, ir direto para tela de ordens
           final providerId = pubkey ?? 'unknown';
           Navigator.pushNamed(context, '/provider-orders', arguments: {
             'providerId': providerId,
           });
         } else {
-          // Não é provedor, mostrar educação primeiro
+          // Não tem tier, mostrar educação primeiro
           Navigator.pushNamed(context, '/provider-education');
         }
       },

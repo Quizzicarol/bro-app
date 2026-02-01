@@ -399,7 +399,11 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                 ? _buildErrorView()
                 : _orderDetails == null
                     ? const Center(child: Text('Ordem não encontrada', style: TextStyle(color: Colors.white70)))
-                    : _buildContent(),
+                    : RefreshIndicator(
+                        onRefresh: _loadOrderDetails,
+                        color: Colors.orange,
+                        child: _buildContent(),
+                      ),
       ),
     );
   }
@@ -472,6 +476,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     final isPending = status == 'pending' || status == 'payment_received';
 
     return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -789,6 +794,12 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   }
 
   Widget _buildAmountCard(double amount, double fee) {
+    // Obter btcAmount da ordem para mostrar em sats
+    final btcAmount = (_orderDetails?['btcAmount'] as num?)?.toDouble() ?? 0;
+    final satsAmount = (btcAmount * 100000000).toInt();
+    // Calcular sats que o provedor vai receber (proporcional à taxa)
+    final satsToReceive = ((amount + fee) / amount * satsAmount).round();
+    
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -832,6 +843,18 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               fontWeight: FontWeight.bold,
             ),
           ),
+          // Mostrar valor em sats
+          if (satsAmount > 0) ...[
+            const SizedBox(height: 4),
+            Text(
+              '≈ $satsAmount sats',
+              style: TextStyle(
+                color: Colors.orange.withOpacity(0.8),
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           const Divider(color: Colors.white12),
           const SizedBox(height: 16),
@@ -860,18 +883,28 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   const Text(
-                    'Total a Receber',
+                    'Você Recebe',
                     style: TextStyle(color: Colors.white54, fontSize: 12),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    'R\$ ${(amount + fee).toStringAsFixed(2)}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+                  if (satsToReceive > 0)
+                    Text(
+                      '$satsToReceive sats',
+                      style: const TextStyle(
+                        color: Colors.orange,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    )
+                  else
+                    Text(
+                      'R\$ ${(amount + fee).toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
                 ],
               ),
             ],

@@ -77,7 +77,11 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
           ? const Center(child: CircularProgressIndicator(color: Colors.blue))
           : _order == null
               ? _buildNotFound()
-              : _buildContent(),
+              : RefreshIndicator(
+                  onRefresh: _loadOrder,
+                  color: Colors.blue,
+                  child: _buildContent(),
+                ),
     );
   }
 
@@ -114,6 +118,7 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
     }
     
     return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -32,6 +32,7 @@ import 'services/storage_service.dart';
 import 'services/notification_service.dart';
 import 'services/api_service.dart';
 import 'services/cache_service.dart';
+import 'services/platform_fee_service.dart';
 import 'providers/theme_provider.dart';
 import 'widgets/alfa_banner.dart';
 
@@ -45,6 +46,9 @@ void main() async {
 
   // Inicializar cache
   await CacheService().init();
+  
+  // Inicializar PlatformFeeService (carrega ordens já pagas do storage)
+  await PlatformFeeService.initialize();
 
   // Verificar se ja esta logado
   final storage = StorageService();

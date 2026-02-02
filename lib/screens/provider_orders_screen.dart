@@ -303,8 +303,26 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
             ],
           ),
           actions: [
+            // Botão para voltar ao Dashboard principal
             IconButton(
-              icon: const Icon(Icons.account_balance_wallet),
+              icon: const Icon(Icons.home, color: Colors.white),
+              onPressed: () {
+                // Sair do modo Bro e voltar ao dashboard
+                debugPrint('🏠 Voltando ao Dashboard');
+                SecureStorageService.setProviderMode(false, userPubkey: widget.providerId);
+                try {
+                  final orderProvider = context.read<OrderProvider>();
+                  orderProvider.exitProviderMode();
+                } catch (e) {
+                  debugPrint('⚠️ Erro ao limpar modo provedor: $e');
+                }
+                Navigator.pop(context);
+              },
+              tooltip: 'Voltar ao Dashboard',
+            ),
+            // Botão da Carteira Lightning
+            IconButton(
+              icon: const Icon(Icons.account_balance_wallet, color: Colors.orange),
               onPressed: () => Navigator.pushNamed(context, '/wallet'),
               tooltip: 'Minha Carteira',
             ),

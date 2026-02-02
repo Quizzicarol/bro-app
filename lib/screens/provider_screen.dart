@@ -431,7 +431,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
         actions: [
           // Botão para voltar ao Dashboard principal
           IconButton(
-            icon: const Icon(Icons.home_outlined),
+            icon: const Icon(Icons.home, color: Colors.white),
             onPressed: () {
               // Sair do modo Bro e voltar ao dashboard
               final orderProvider = context.read<OrderProvider>();
@@ -440,9 +440,9 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
             },
             tooltip: 'Voltar ao Dashboard',
           ),
-          // Botão da Carteira Lightning
+          // Botão da Carteira Lightning (ícone preenchido como antes)
           IconButton(
-            icon: const Icon(Icons.account_balance_wallet_outlined),
+            icon: const Icon(Icons.account_balance_wallet, color: Colors.orange),
             onPressed: () {
               Navigator.pushNamed(context, '/wallet');
             },

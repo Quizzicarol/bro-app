@@ -316,7 +316,8 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                 } catch (e) {
                   debugPrint('⚠️ Erro ao limpar modo provedor: $e');
                 }
-                Navigator.pop(context);
+                // Navegar para o dashboard limpando toda a pilha de navegação
+                Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
               },
               tooltip: 'Voltar ao Dashboard',
             ),

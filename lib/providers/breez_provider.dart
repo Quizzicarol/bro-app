@@ -1227,10 +1227,16 @@ class BreezProvider with ChangeNotifier {
       
       for (final p in resp.payments) {
         debugPrint('   💳 Payment: ${p.id.substring(0, 16)}... amount=${p.amount} status=${p.status}');
+        // Log dos detalhes para descobrir campos disponíveis
+        if (p.details is spark.PaymentDetails_Lightning) {
+          final details = p.details as spark.PaymentDetails_Lightning;
+          debugPrint('      ⚡ Lightning: hash=${details.paymentHash?.substring(0, 16) ?? "null"}... description=${details.description ?? "null"}');
+        }
       }
 
       return resp.payments.map((payment) {
         String? paymentHash;
+        String? description;
         DateTime? timestamp;
         
         // Extrair timestamp do pagamento (se disponível)
@@ -1249,6 +1255,7 @@ class BreezProvider with ChangeNotifier {
         if (payment.details is spark.PaymentDetails_Lightning) {
           final details = payment.details as spark.PaymentDetails_Lightning;
           paymentHash = details.paymentHash;
+          description = details.description;
         }
         
         // Determinar direção (recebido ou enviado)
@@ -1267,6 +1274,7 @@ class BreezProvider with ChangeNotifier {
           'amount': amountSats,
           'amountSats': amountSats,
           'paymentHash': paymentHash,
+          'description': description ?? '',  // NOVO: Incluir descrição
           'timestamp': timestamp,
           'createdAt': timestamp,
         };

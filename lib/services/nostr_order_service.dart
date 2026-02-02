@@ -1197,9 +1197,10 @@ class NostrOrderService {
     final providerId = update['providerId'] as String?;
     final proofImage = update['proofImage'] as String?;
     final completedAt = update['completedAt'] as String?;
+    final providerInvoice = update['providerInvoice'] as String?; // CRÍTICO: Invoice do provedor
     
     if (newStatus != null && newStatus != order.status) {
-      debugPrint('   🔄 Aplicando status: ${order.id.substring(0, 8)} ${order.status} -> $newStatus (hasProof=${proofImage != null})');
+      debugPrint('   🔄 Aplicando status: ${order.id.substring(0, 8)} ${order.status} -> $newStatus (hasProof=${proofImage != null}, hasInvoice=${providerInvoice != null})');
       
       // Mesclar metadata existente com novos dados do comprovante
       final updatedMetadata = Map<String, dynamic>.from(order.metadata ?? {});
@@ -1210,6 +1211,11 @@ class NostrOrderService {
       if (completedAt != null) {
         updatedMetadata['proofReceivedAt'] = completedAt;
         updatedMetadata['receipt_submitted_at'] = completedAt; // Compatibilidade com auto-liquidação
+      }
+      // CRÍTICO: Incluir providerInvoice para pagamento automático
+      if (providerInvoice != null && providerInvoice.isNotEmpty) {
+        updatedMetadata['providerInvoice'] = providerInvoice;
+        debugPrint('   ⚡ Invoice do provedor adicionado ao metadata: ${providerInvoice.substring(0, 30)}...');
       }
       
       return Order(

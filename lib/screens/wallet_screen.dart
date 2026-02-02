@@ -2065,12 +2065,19 @@ class _WalletScreenState extends State<WalletScreen> {
     final date = payment['createdAt'] ?? payment['timestamp'];
     final description = payment['description']?.toString() ?? '';
     
+    // Verificar se é um ganho de ordem Bro (APENAS ordens completadas)
+    // "Bro Payment" = pagamento de ordem completada
+    // Excluir: "Garantia Bro" (depósito de garantia, não é ganho)
+    final isBroOrderPayment = isReceived && 
+      description.contains('Bro Payment') && 
+      !description.contains('Garantia');
+    
     // Determinar o label e cor baseado no tipo
     String label;
     Color iconColor;
     IconData icon;
     
-    if (isBroEarning) {
+    if (isBroEarning || isBroOrderPayment) {
       label = '💪 Ganho como Bro';
       iconColor = Colors.green;
       icon = Icons.volunteer_activism;
@@ -2088,6 +2095,9 @@ class _WalletScreenState extends State<WalletScreen> {
       iconColor = Colors.red;
       icon = Icons.arrow_upward;
     }
+    
+    // Usar estilo destacado para ganhos Bro (tanto do provider quanto do Lightning)
+    final showBroStyle = isBroEarning || isBroOrderPayment;
 
     return GestureDetector(
       onTap: () => _showTransactionDetails(payment),
@@ -2095,9 +2105,9 @@ class _WalletScreenState extends State<WalletScreen> {
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: isBroEarning ? const Color(0xFF1A2A1A) : const Color(0xFF1A1A1A),
+          color: showBroStyle ? const Color(0xFF1A2A1A) : const Color(0xFF1A1A1A),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: isBroEarning ? Colors.green.withOpacity(0.3) : const Color(0xFF333333)),
+          border: Border.all(color: showBroStyle ? Colors.green.withOpacity(0.3) : const Color(0xFF333333)),
         ),
         child: Row(
           children: [

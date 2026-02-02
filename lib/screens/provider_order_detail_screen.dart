@@ -6,6 +6,7 @@ import 'dart:io';
 import 'dart:convert';
 import '../providers/order_provider.dart';
 import '../providers/collateral_provider.dart';
+import '../providers/breez_provider_export.dart';
 import '../services/escrow_service.dart';
 import '../services/dispute_service.dart';
 import '../services/notification_service.dart';
@@ -337,11 +338,45 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         proofImageBase64 = base64Encode(bytes);
       }
 
-      // Publicar comprovante no Nostr E atualizar localmente
+      // ========== GERAR INVOICE AUTOMATICAMENTE ==========
+      // Calcular taxa do provedor (3% da ordem em sats)
+      final amount = (_orderDetails!['amount'] as num).toDouble();
+      final btcAmount = (_orderDetails!['btcAmount'] as num?)?.toDouble() ?? 0;
+      
+      // Converter btcAmount para sats (btcAmount está em BTC, * 100_000_000 = sats)
+      final totalSats = (btcAmount * 100000000).round();
+      final providerFeeSats = (totalSats * EscrowService.providerFeePercent / 100).round();
+      
+      debugPrint('💰 Ordem: R\$ ${amount.toStringAsFixed(2)} = $totalSats sats, taxa Bro: $providerFeeSats sats (${EscrowService.providerFeePercent}%)');
+      
+      String? generatedInvoice;
+      
+      // Gerar invoice Lightning para receber o pagamento
+      final breezProvider = context.read<BreezProvider>();
+      if (breezProvider.isInitialized) {
+        debugPrint('⚡ Gerando invoice de $providerFeeSats sats para o Bro...');
+        
+        final result = await breezProvider.createInvoice(
+          amountSats: providerFeeSats,
+          description: 'Bro - Ordem ${widget.orderId.substring(0, 8)}',
+        );
+        
+        if (result != null && result['bolt11'] != null) {
+          generatedInvoice = result['bolt11'] as String;
+          debugPrint('✅ Invoice gerado: ${generatedInvoice.substring(0, 30)}...');
+        } else {
+          debugPrint('⚠️ Falha ao gerar invoice, continuando sem invoice');
+        }
+      } else {
+        debugPrint('⚠️ Carteira não conectada, continuando sem invoice');
+      }
+
+      // Publicar comprovante + invoice no Nostr E atualizar localmente
       final orderProvider = context.read<OrderProvider>();
       final success = await orderProvider.completeOrderAsProvider(
         widget.orderId, 
         proofImageBase64.isNotEmpty ? proofImageBase64 : confirmationCode,
+        providerInvoice: generatedInvoice, // Invoice gerado automaticamente
       );
       
       if (!success) {
@@ -357,10 +392,14 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       });
 
       if (mounted) {
+        final msg = generatedInvoice != null 
+            ? '✅ Comprovante enviado! Você receberá $providerFeeSats sats quando o usuário confirmar.'
+            : '✅ Comprovante enviado! Aguardando confirmação do usuário.';
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Comprovante enviado! Aguardando confirmação do usuário.'),
+          SnackBar(
+            content: Text(msg),
             backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
           ),
         );
         Navigator.pop(context);

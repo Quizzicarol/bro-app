@@ -83,11 +83,18 @@ class AppConfig {
   // TAXAS E LIMITES
   // ============================================
   
-  /// Taxa do provedor (5%)
-  static const double providerFeePercent = 0.05;
+  /// Taxa do provedor Bro (3% - vai para a carteira Lightning do Bro)
+  static const double providerFeePercent = 0.03;
   
-  /// Taxa da plataforma (2%)
+  /// Taxa da plataforma (2% - vai para manutenção da plataforma)
   static const double platformFeePercent = 0.02;
+  
+  /// Taxa total cobrada do usuário (5%)
+  static const double totalFeePercent = providerFeePercent + platformFeePercent;
+  
+  /// Endereço Lightning da plataforma para receber taxas (2%)
+  /// Lightning Address para receber as taxas de manutenção da plataforma
+  static const String platformLightningAddress = 'tutoriais@coinos.io';
   
   /// Limite minimo em sats
   static const int minPaymentSats = 1000;

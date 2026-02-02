@@ -920,6 +920,7 @@ class NostrOrderService {
     required Order order,
     required String providerPrivateKey,
     required String proofImageBase64,
+    String? providerInvoice, // Invoice Lightning para o provedor receber pagamento
   }) async {
     try {
       final keychain = Keychain(providerPrivateKey);
@@ -927,7 +928,7 @@ class NostrOrderService {
       // NOTA: O comprovante é enviado em texto claro por enquanto
       // Para privacidade total, implementar NIP-17 ou enviar via canal separado
       // O evento é tagged com a pubkey do usuário para que ele possa encontrar
-      final content = jsonEncode({
+      final contentMap = {
         'type': 'bro_complete',
         'orderId': order.id,
         'orderEventId': order.eventId,
@@ -935,7 +936,15 @@ class NostrOrderService {
         'proofImage': proofImageBase64, // Base64 do comprovante
         'recipientPubkey': order.userPubkey, // Para quem é destinado
         'completedAt': DateTime.now().toIso8601String(),
-      });
+      };
+      
+      // Incluir invoice do provedor se fornecido
+      if (providerInvoice != null && providerInvoice.isNotEmpty) {
+        contentMap['providerInvoice'] = providerInvoice;
+        debugPrint('⚡ Invoice do provedor incluído no evento');
+      }
+      
+      final content = jsonEncode(contentMap);
 
       // Construir tags - só incluir 'e' se tivermos eventId válido (64 chars hex)
       final tags = [
@@ -1147,6 +1156,9 @@ class NostrOrderService {
               // IMPORTANTE: Incluir proofImage do comprovante para o usuário ver
               final proofImage = content['proofImage'] as String?;
               
+              // NOVO: Incluir providerInvoice para pagamento automático
+              final providerInvoice = content['providerInvoice'] as String?;
+              
               // providerId pode vir do content ou do pubkey do evento (para accepts)
               final providerId = content['providerId'] as String? ?? event['pubkey'] as String?;
               
@@ -1155,10 +1167,11 @@ class NostrOrderService {
                 'status': status,
                 'providerId': providerId,
                 'proofImage': proofImage, // Comprovante enviado pelo Bro
+                'providerInvoice': providerInvoice, // Invoice para pagar o Bro
                 'completedAt': content['completedAt'],
                 'created_at': createdAt,
               };
-              debugPrint('   📥 Update: $orderId -> status=$status, providerId=${providerId?.substring(0, 8) ?? "null"} (type=$eventType)');
+              debugPrint('   📥 Update: $orderId -> status=$status, providerId=${providerId?.substring(0, 8) ?? "null"}, hasInvoice=${providerInvoice != null} (type=$eventType)');
             }
           } catch (e) {
             // Ignorar eventos mal formatados

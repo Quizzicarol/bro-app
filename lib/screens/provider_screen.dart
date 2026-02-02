@@ -429,6 +429,25 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
         ),
         elevation: 0,
         actions: [
+          // Botão para voltar ao Dashboard principal
+          IconButton(
+            icon: const Icon(Icons.home_outlined),
+            onPressed: () {
+              // Sair do modo Bro e voltar ao dashboard
+              final orderProvider = context.read<OrderProvider>();
+              orderProvider.exitProviderMode();
+              Navigator.pop(context);
+            },
+            tooltip: 'Voltar ao Dashboard',
+          ),
+          // Botão da Carteira Lightning
+          IconButton(
+            icon: const Icon(Icons.account_balance_wallet_outlined),
+            onPressed: () {
+              Navigator.pushNamed(context, '/wallet');
+            },
+            tooltip: 'Carteira',
+          ),
           if (_tierWarning)
             IconButton(
               icon: const Icon(Icons.warning_amber, color: Colors.orange),

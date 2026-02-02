@@ -1520,7 +1520,7 @@ class OrderProvider with ChangeNotifier {
   }
 
   /// Provedor completa uma ordem - publica comprovante no Nostr e atualiza localmente
-  Future<bool> completeOrderAsProvider(String orderId, String proof) async {
+  Future<bool> completeOrderAsProvider(String orderId, String proof, {String? providerInvoice}) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -1567,6 +1567,7 @@ class OrderProvider with ChangeNotifier {
         order: order,
         providerPrivateKey: privateKey,
         proofImageBase64: proof,
+        providerInvoice: providerInvoice, // Invoice para receber pagamento
       );
 
       if (!success) {
@@ -1587,6 +1588,7 @@ class OrderProvider with ChangeNotifier {
             // CORRIGIDO: Salvar imagem completa em base64, não truncar!
             'paymentProof': proof,
             'proofSentAt': DateTime.now().toIso8601String(),
+            if (providerInvoice != null) 'providerInvoice': providerInvoice,
           },
         );
         
@@ -2216,15 +2218,16 @@ class OrderProvider with ChangeNotifier {
             _orders[existingIndex] = existing.copyWith(
               status: _isStatusMoreRecent(newStatus, existing.status) ? newStatus : existing.status,
               providerId: newProviderId ?? existing.providerId,
-              // Se for comprovante, salvar no metadata
-              metadata: update['proofImage'] != null ? {
+              // Se for comprovante, salvar no metadata (incluindo providerInvoice)
+              metadata: (update['proofImage'] != null || update['providerInvoice'] != null) ? {
                 ...?existing.metadata,
-                'proofImage': update['proofImage'],
+                if (update['proofImage'] != null) 'proofImage': update['proofImage'],
+                if (update['providerInvoice'] != null) 'providerInvoice': update['providerInvoice'],
                 'proofReceivedAt': DateTime.now().toIso8601String(),
               } : existing.metadata,
             );
             statusUpdated++;
-            debugPrint('📥 Ordem atualizada: ${orderId.substring(0, 8)} -> status=$newStatus, providerId=${newProviderId?.substring(0, 8) ?? "null"}');
+            debugPrint('📥 Ordem atualizada: ${orderId.substring(0, 8)} -> status=$newStatus, providerId=${newProviderId?.substring(0, 8) ?? "null"}, hasInvoice=${update["providerInvoice"] != null}');
           }
         }
       }

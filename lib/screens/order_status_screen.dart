@@ -3517,13 +3517,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         debugPrint('⚡ Pagando invoice do provedor: ${providerInvoice.substring(0, 30)}...');
         
         try {
-          final breezProvider = context.read<BreezProvider>();
+          // USAR LightningProvider para ter fallback Liquid quando Spark falhar
+          final lightningProvider = context.read<LightningProvider>();
           
-          if (breezProvider.isInitialized) {
-            final payResult = await breezProvider.payInvoice(providerInvoice);
+          if (lightningProvider.isInitialized) {
+            final payResult = await lightningProvider.payInvoice(providerInvoice);
             
             if (payResult != null && payResult['success'] == true) {
-              debugPrint('✅ Invoice do provedor pago com sucesso!');
+              debugPrint('✅ Invoice do provedor pago com sucesso via ${lightningProvider.currentBackend}!');
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -3575,41 +3576,64 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
         // ========== PAGAR TAXA DA PLATAFORMA VIA LIGHTNING ==========
         if (AppConfig.platformLightningAddress.isNotEmpty && platformFeeSats > 0) {
-          debugPrint('💼 Enviando taxa da plataforma: $platformFeeSats sats para ${AppConfig.platformLightningAddress.substring(0, 30)}...');
+          debugPrint('💼 ========================================');
+          debugPrint('💼 ENVIANDO TAXA DA PLATAFORMA');
+          debugPrint('💼 Valor: $platformFeeSats sats');
+          debugPrint('💼 Destino: ${AppConfig.platformLightningAddress}');
+          debugPrint('💼 ========================================');
           try {
-            final breezProvider = context.read<BreezProvider>();
+            // USAR LightningProvider para ter fallback Liquid quando Spark falhar
+            final lightningProvider = context.read<LightningProvider>();
             final platformAddress = AppConfig.platformLightningAddress;
             
-            if (breezProvider.isInitialized) {
+            if (lightningProvider.isInitialized) {
+              debugPrint('💼 Lightning Provider inicializado: ${lightningProvider.currentBackend}');
+              
               // Detectar tipo de endereço Lightning
               if (platformAddress.contains('@')) {
                 // Lightning Address (user@domain.com)
+                debugPrint('💼 Resolvendo Lightning Address: $platformAddress');
                 final lnAddressService = LnAddressService();
                 final result = await lnAddressService.getInvoice(
                   lnAddress: platformAddress,
                   amountSats: platformFeeSats,
                   comment: 'Bro Platform Fee - ${widget.orderId.substring(0, 8)}',
                 );
+                debugPrint('💼 Resultado LNURL: success=${result['success']}, invoice=${result['invoice'] != null}');
+                
                 if (result['success'] == true && result['invoice'] != null) {
-                  await breezProvider.payInvoice(result['invoice'] as String);
-                  debugPrint('✅ Taxa da plataforma paga via LN Address');
+                  debugPrint('💼 Invoice obtido, pagando...');
+                  final payResult = await lightningProvider.payInvoice(result['invoice'] as String);
+                  if (payResult != null && payResult['success'] == true) {
+                    debugPrint('✅ TAXA DA PLATAFORMA PAGA COM SUCESSO via ${lightningProvider.currentBackend}!');
+                  } else {
+                    debugPrint('❌ Falha no pagamento: $payResult');
+                  }
+                } else {
+                  debugPrint('❌ Falha ao obter invoice do LN Address: ${result['error'] ?? 'unknown'}');
                 }
               } else if (platformAddress.toLowerCase().startsWith('lno1')) {
-                // BOLT12 Offer - ainda não suportado diretamente pelo Breez SDK Spark
-                // Registrar para pagamento futuro quando houver suporte
+                // BOLT12 Offer - ainda não suportado diretamente
                 debugPrint('⚠️ BOLT12 Offer detectado - registrando taxa pendente');
-                debugPrint('   Quando Breez SDK suportar BOLT12, será pago automaticamente');
-                // TODO: Implementar pagamento BOLT12 quando SDK suportar
-                // Por enquanto, a taxa fica registrada no platformBalanceProvider
               } else if (platformAddress.toLowerCase().startsWith('ln')) {
                 // Invoice BOLT11
-                await breezProvider.payInvoice(platformAddress);
-                debugPrint('✅ Taxa da plataforma paga via invoice BOLT11');
+                debugPrint('💼 Pagando invoice BOLT11 direto...');
+                final payResult = await lightningProvider.payInvoice(platformAddress);
+                if (payResult != null && payResult['success'] == true) {
+                  debugPrint('✅ TAXA DA PLATAFORMA PAGA COM SUCESSO via ${lightningProvider.currentBackend}!');
+                } else {
+                  debugPrint('❌ Falha no pagamento: $payResult');
+                }
               }
+            } else {
+              debugPrint('❌ Lightning Provider NÃO inicializado - taxa não enviada!');
             }
-          } catch (e) {
-            debugPrint('⚠️ Falha ao pagar taxa da plataforma: $e (registrando para cobrança posterior)');
+          } catch (e, stack) {
+            debugPrint('❌ ERRO ao pagar taxa da plataforma: $e');
+            debugPrint('   Stack: $stack');
           }
+        } else {
+          debugPrint('⚠️ Taxa da plataforma não enviada: address=${AppConfig.platformLightningAddress.isNotEmpty}, sats=$platformFeeSats');
         }
 
         // Registrar taxa da plataforma (para tracking)

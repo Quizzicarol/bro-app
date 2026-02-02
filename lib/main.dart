@@ -22,6 +22,8 @@ import 'screens/privacy_settings_screen.dart';
 import 'screens/wallet_screen.dart';
 import 'screens/marketplace_screen.dart';
 import 'providers/breez_provider_export.dart';
+import 'providers/breez_liquid_provider.dart';
+import 'providers/lightning_provider.dart';
 import 'providers/order_provider.dart';
 import 'providers/collateral_provider.dart';
 import 'providers/provider_balance_provider.dart';
@@ -145,6 +147,13 @@ class BroApp extends StatelessWidget {
         Provider(create: (_) => ApiService()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => BreezProvider()),
+        ChangeNotifierProvider(create: (_) => BreezLiquidProvider()),
+        // LightningProvider - abstração que unifica Spark e Liquid com fallback
+        ChangeNotifierProxyProvider2<BreezProvider, BreezLiquidProvider, LightningProvider>(
+          create: (_) => LightningProvider(BreezProvider(), BreezLiquidProvider()),
+          update: (_, spark, liquid, previous) => 
+            previous ?? LightningProvider(spark, liquid),
+        ),
         ChangeNotifierProvider(
           create: (_) {
             final provider = OrderProvider();

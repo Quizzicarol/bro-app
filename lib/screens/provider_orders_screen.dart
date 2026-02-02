@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -41,6 +42,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   final LocalCollateralService _collateralService = LocalCollateralService();
   
   late TabController _tabController;
+  Timer? _ordersUpdateTimer; // Timer para atualizar ordens automaticamente
   
   List<Map<String, dynamic>> _availableOrders = [];
   List<Map<String, dynamic>> _myOrders = []; // Ordens aceitas por este provedor
@@ -73,6 +75,37 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadOrders();
+      _startOrdersPolling(); // Iniciar polling de ordens
+    });
+  }
+  
+  void _startOrdersPolling() {
+    // Atualizar ordens a cada 10 segundos para status em tempo real
+    _ordersUpdateTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+      if (mounted && !_isLoading) {
+        final orderProvider = context.read<OrderProvider>();
+        try {
+          await orderProvider.syncOrdersFromNostr();
+          // Recarregar lista local
+          _loadOrdersFromProvider();
+        } catch (e) {
+          debugPrint('⚠️ Erro no polling de ordens Bro: $e');
+        }
+      }
+    });
+  }
+  
+  void _loadOrdersFromProvider() {
+    if (!mounted) return;
+    final orderProvider = context.read<OrderProvider>();
+    
+    setState(() {
+      _availableOrders = orderProvider.availableOrdersForProvider
+          .map((o) => o.toJson())
+          .toList();
+      _myOrders = orderProvider.myAcceptedOrders
+          .map((o) => o.toJson())
+          .toList();
     });
   }
   
@@ -94,6 +127,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   void dispose() {
     _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
+    _ordersUpdateTimer?.cancel(); // Cancelar timer de atualização
     
     // CRÍTICO: Limpar modo provedor E ordens de outros usuários
     // Isso é ESSENCIAL para evitar vazamento de dados!
@@ -1029,7 +1063,13 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           providerId: widget.providerId,
         ),
       ),
-    ).then((_) => _loadOrders());
+    ).then((result) {
+      _loadOrders();
+      // Se enviou comprovante, ir para aba "Minhas Ordens"
+      if (result is Map && result['goToMyOrders'] == true) {
+        _tabController.animateTo(1); // Aba 1 = Minhas Ordens
+      }
+    });
   }
 
   void _openMyOrderDetail(Map<String, dynamic> order) {
@@ -1042,7 +1082,13 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           providerId: widget.providerId,
         ),
       ),
-    ).then((_) => _loadOrders());
+    ).then((result) {
+      _loadOrders();
+      // Se enviou comprovante, garantir que está na aba "Minhas Ordens"
+      if (result is Map && result['goToMyOrders'] == true) {
+        _tabController.animateTo(1); // Aba 1 = Minhas Ordens
+      }
+    });
   }
 
   Widget _buildNoCollateralView() {

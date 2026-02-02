@@ -202,9 +202,12 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
         ),
       );
 
+      debugPrint('🔄 Aguardando 2 segundos para navegar... orderId=$orderId');
+      
       // Aguardar 2 segundos e navegar para Detalhes da Ordem
       await Future.delayed(const Duration(seconds: 2));
-      if (mounted) {
+      if (mounted && orderId.isNotEmpty) {
+        debugPrint('🚀 Navegando para /order-status com orderId=$orderId');
         Navigator.of(context).pushNamedAndRemoveUntil(
           '/order-status',
           (route) => route.isFirst,
@@ -214,6 +217,10 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
             'amountSats': widget.amountSats,
           },
         );
+      } else if (mounted) {
+        // Fallback: voltar para o dashboard
+        debugPrint('⚠️ orderId vazio, voltando para dashboard');
+        Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
       }
     }
   }

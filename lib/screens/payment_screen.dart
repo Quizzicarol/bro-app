@@ -9,6 +9,7 @@ import 'package:breez_sdk_spark_flutter/breez_sdk_spark.dart' as spark;
 import 'package:intl/intl.dart';
 import '../providers/order_provider.dart';
 import '../providers/breez_provider_export.dart';
+import '../providers/lightning_provider.dart';
 import '../widgets/fee_breakdown_card.dart';
 import 'onchain_payment_screen.dart';
 import 'lightning_payment_screen.dart';
@@ -554,11 +555,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
         
         // 🔥 NOVO FLUXO: Criar invoice ANTES da ordem!
         // Isso evita criar ordem "fantasma" se usuário sair da tela
-        final invoiceData = await breezProvider.createInvoice(
+        // Usa LightningProvider com fallback Spark -> Liquid
+        final lightningProvider = context.read<LightningProvider>();
+        final invoiceData = await lightningProvider.createInvoice(
           amountSats: amountSats,
           description: 'Bro Payment',
         ).timeout(
-          const Duration(seconds: 30),
+          const Duration(seconds: 45), // Timeout maior para fallback
           onTimeout: () {
             debugPrint('⏰ Timeout ao criar invoice Lightning');
             return {'success': false, 'error': 'Timeout ao criar invoice'};
@@ -566,6 +569,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
         );
 
         debugPrint('📨 Invoice data: $invoiceData');
+        
+        // Log se usou Liquid
+        if (invoiceData?['isLiquid'] == true) {
+          debugPrint('💧 Invoice criada via LIQUID (fallback)');
+        }
 
         if (invoiceData == null || invoiceData['success'] != true) {
           // Fechar popup de loading

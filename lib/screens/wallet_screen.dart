@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../providers/breez_provider_export.dart';
+import '../providers/lightning_provider.dart';
 import '../providers/provider_balance_provider.dart';
 import '../providers/order_provider.dart';
 import '../services/storage_service.dart';
@@ -1882,13 +1883,19 @@ class _WalletScreenState extends State<WalletScreen> {
                         debugPrint('🎯 Gerando invoice de $amount sats...');
                         
                         try {
-                          final breezProvider = context.read<BreezProvider>();
-                          final result = await breezProvider.createInvoice(
+                          // Usar LightningProvider com fallback Spark -> Liquid
+                          final lightningProvider = context.read<LightningProvider>();
+                          final result = await lightningProvider.createInvoice(
                             amountSats: amount,
                             description: 'Receber $amount sats - Bro App',
                           );
                           
                           debugPrint('📦 Resultado createInvoice: $result');
+                          
+                          // Log se usou Liquid
+                          if (result?['isLiquid'] == true) {
+                            debugPrint('💧 Invoice criada via LIQUID (fallback)');
+                          }
                           
                           if (result != null && result['bolt11'] != null) {
                             final bolt11 = result['bolt11'] as String;

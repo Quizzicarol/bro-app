@@ -9,6 +9,7 @@ import '../services/dispute_service.dart';
 import '../services/lnaddress_service.dart';
 import '../services/withdrawal_service.dart';
 import '../services/nostr_order_service.dart';
+import '../services/platform_fee_service.dart';
 import '../models/withdrawal.dart';
 import '../providers/breez_provider_export.dart';
 import '../providers/lightning_provider.dart';
@@ -3575,62 +3576,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         );
 
         // ========== PAGAR TAXA DA PLATAFORMA VIA LIGHTNING ==========
+        // Usar serviço centralizado que já tem fallback Spark/Liquid
         if (AppConfig.platformLightningAddress.isNotEmpty && platformFeeSats > 0) {
-          debugPrint('💼 ========================================');
-          debugPrint('💼 ENVIANDO TAXA DA PLATAFORMA');
-          debugPrint('💼 Valor: $platformFeeSats sats');
-          debugPrint('💼 Destino: ${AppConfig.platformLightningAddress}');
-          debugPrint('💼 ========================================');
-          try {
-            // USAR LightningProvider para ter fallback Liquid quando Spark falhar
-            final lightningProvider = context.read<LightningProvider>();
-            final platformAddress = AppConfig.platformLightningAddress;
-            
-            if (lightningProvider.isInitialized) {
-              debugPrint('💼 Lightning Provider inicializado: ${lightningProvider.currentBackend}');
-              
-              // Detectar tipo de endereço Lightning
-              if (platformAddress.contains('@')) {
-                // Lightning Address (user@domain.com)
-                debugPrint('💼 Resolvendo Lightning Address: $platformAddress');
-                final lnAddressService = LnAddressService();
-                final result = await lnAddressService.getInvoice(
-                  lnAddress: platformAddress,
-                  amountSats: platformFeeSats,
-                  comment: 'Bro Platform Fee - ${widget.orderId.substring(0, 8)}',
-                );
-                debugPrint('💼 Resultado LNURL: success=${result['success']}, invoice=${result['invoice'] != null}');
-                
-                if (result['success'] == true && result['invoice'] != null) {
-                  debugPrint('💼 Invoice obtido, pagando...');
-                  final payResult = await lightningProvider.payInvoice(result['invoice'] as String);
-                  if (payResult != null && payResult['success'] == true) {
-                    debugPrint('✅ TAXA DA PLATAFORMA PAGA COM SUCESSO via ${lightningProvider.currentBackend}!');
-                  } else {
-                    debugPrint('❌ Falha no pagamento: $payResult');
-                  }
-                } else {
-                  debugPrint('❌ Falha ao obter invoice do LN Address: ${result['error'] ?? 'unknown'}');
-                }
-              } else if (platformAddress.toLowerCase().startsWith('lno1')) {
-                // BOLT12 Offer - ainda não suportado diretamente
-                debugPrint('⚠️ BOLT12 Offer detectado - registrando taxa pendente');
-              } else if (platformAddress.toLowerCase().startsWith('ln')) {
-                // Invoice BOLT11
-                debugPrint('💼 Pagando invoice BOLT11 direto...');
-                final payResult = await lightningProvider.payInvoice(platformAddress);
-                if (payResult != null && payResult['success'] == true) {
-                  debugPrint('✅ TAXA DA PLATAFORMA PAGA COM SUCESSO via ${lightningProvider.currentBackend}!');
-                } else {
-                  debugPrint('❌ Falha no pagamento: $payResult');
-                }
-              }
-            } else {
-              debugPrint('❌ Lightning Provider NÃO inicializado - taxa não enviada!');
-            }
-          } catch (e, stack) {
-            debugPrint('❌ ERRO ao pagar taxa da plataforma: $e');
-            debugPrint('   Stack: $stack');
+          debugPrint('💼 Enviando taxa da plataforma via PlatformFeeService...');
+          final feeSuccess = await PlatformFeeService.sendPlatformFee(
+            orderId: widget.orderId,
+            totalSats: widget.amountSats,
+          );
+          if (!feeSuccess) {
+            debugPrint('⚠️ Falha ao enviar taxa da plataforma');
           }
         } else {
           debugPrint('⚠️ Taxa da plataforma não enviada: address=${AppConfig.platformLightningAddress.isNotEmpty}, sats=$platformFeeSats');

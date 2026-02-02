@@ -1,5 +1,8 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../config.dart';
+import 'lnaddress_service.dart';
 
 /// Serviço para rastrear taxas da plataforma
 /// 
@@ -185,5 +188,135 @@ class PlatformFeeService {
       'totals': totals,
       'records': records,
     });
+  }
+
+  // ========== ENVIO REAL DA TAXA ==========
+  
+  // Callback para efetuar o pagamento (será injetado pelo LightningProvider)
+  static Future<Map<String, dynamic>?> Function(String invoice)? _payInvoiceCallback;
+  static String _currentBackend = 'unknown';
+
+  /// Configura o callback de pagamento (chamar na inicialização do app)
+  static void setPaymentCallback(
+    Future<Map<String, dynamic>?> Function(String invoice) callback,
+    String backend,
+  ) {
+    _payInvoiceCallback = callback;
+    _currentBackend = backend;
+    debugPrint('💼 PlatformFeeService configurado com backend: $backend');
+  }
+
+  /// Envia a taxa da plataforma para o Lightning Address configurado
+  /// Retorna true se o pagamento foi bem sucedido
+  static Future<bool> sendPlatformFee({
+    required String orderId,
+    required int totalSats,
+  }) async {
+    // Calcular taxa da plataforma: 2% do valor total
+    final platformFeeSats = (totalSats * AppConfig.platformFeePercent).round();
+    
+    if (platformFeeSats <= 0) {
+      debugPrint('💼 Taxa da plataforma = 0 sats, ignorando...');
+      return true;
+    }
+
+    if (AppConfig.platformLightningAddress.isEmpty) {
+      debugPrint('⚠️ platformLightningAddress não configurado!');
+      return false;
+    }
+
+    debugPrint('');
+    debugPrint('💼 ════════════════════════════════════════════════');
+    debugPrint('💼 ENVIANDO TAXA DA PLATAFORMA');
+    debugPrint('💼 Ordem: ${orderId.length > 8 ? orderId.substring(0, 8) : orderId}...');
+    debugPrint('💼 Valor total: $totalSats sats');
+    debugPrint('💼 Taxa (${(AppConfig.platformFeePercent * 100).toStringAsFixed(0)}%): $platformFeeSats sats');
+    debugPrint('💼 Destino: ${AppConfig.platformLightningAddress}');
+    debugPrint('💼 Backend: $_currentBackend');
+    debugPrint('💼 ════════════════════════════════════════════════');
+    debugPrint('');
+
+    if (_payInvoiceCallback == null) {
+      debugPrint('❌ ERRO: Callback de pagamento não configurado!');
+      debugPrint('   Certifique-se de chamar PlatformFeeService.setPaymentCallback() na inicialização');
+      return false;
+    }
+
+    try {
+      final platformAddress = AppConfig.platformLightningAddress;
+
+      // Detectar tipo de endereço Lightning
+      if (platformAddress.contains('@')) {
+        // Lightning Address (user@domain.com)
+        debugPrint('💼 Resolvendo Lightning Address: $platformAddress');
+        
+        final lnAddressService = LnAddressService();
+        final result = await lnAddressService.getInvoice(
+          lnAddress: platformAddress,
+          amountSats: platformFeeSats,
+          comment: 'Bro Platform Fee - ${orderId.length > 8 ? orderId.substring(0, 8) : orderId}',
+        );
+
+        debugPrint('💼 Resultado LNURL: success=${result['success']}, hasInvoice=${result['invoice'] != null}');
+
+        if (result['success'] != true || result['invoice'] == null) {
+          debugPrint('❌ Falha ao obter invoice do LN Address: ${result['error'] ?? 'unknown'}');
+          return false;
+        }
+
+        final invoice = result['invoice'] as String;
+        debugPrint('💼 Invoice obtido: ${invoice.substring(0, 50)}...');
+        debugPrint('💼 Pagando via $_currentBackend...');
+
+        final payResult = await _payInvoiceCallback!(invoice);
+        
+        if (payResult != null && payResult['success'] == true) {
+          debugPrint('');
+          debugPrint('✅ ════════════════════════════════════════════════');
+          debugPrint('✅ TAXA DA PLATAFORMA PAGA COM SUCESSO!');
+          debugPrint('✅ Valor: $platformFeeSats sats');
+          debugPrint('✅ Destino: $platformAddress');
+          debugPrint('✅ Backend: $_currentBackend');
+          debugPrint('✅ ════════════════════════════════════════════════');
+          debugPrint('');
+          
+          // Marcar como coletada no tracking
+          await markAsCollected([orderId]);
+          
+          return true;
+        } else {
+          debugPrint('❌ Falha no pagamento: $payResult');
+          return false;
+        }
+
+      } else if (platformAddress.toLowerCase().startsWith('lno1')) {
+        // BOLT12 Offer - ainda não suportado
+        debugPrint('⚠️ BOLT12 Offer detectado - não suportado ainda');
+        return false;
+
+      } else if (platformAddress.toLowerCase().startsWith('ln')) {
+        // Invoice BOLT11 direto
+        debugPrint('💼 Pagando invoice BOLT11 direto...');
+        
+        final payResult = await _payInvoiceCallback!(platformAddress);
+        
+        if (payResult != null && payResult['success'] == true) {
+          debugPrint('✅ TAXA DA PLATAFORMA PAGA COM SUCESSO via $_currentBackend!');
+          await markAsCollected([orderId]);
+          return true;
+        } else {
+          debugPrint('❌ Falha no pagamento: $payResult');
+          return false;
+        }
+      }
+
+      debugPrint('⚠️ Tipo de endereço não reconhecido: $platformAddress');
+      return false;
+
+    } catch (e, stack) {
+      debugPrint('❌ ERRO ao pagar taxa da plataforma: $e');
+      debugPrint('   Stack: $stack');
+      return false;
+    }
   }
 }

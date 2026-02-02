@@ -6,6 +6,7 @@ import '../services/api_service.dart';
 import '../services/nostr_service.dart';
 import '../services/nostr_order_service.dart';
 import '../services/local_collateral_service.dart';
+import '../services/platform_fee_service.dart';
 import '../models/order.dart';
 import '../config.dart';
 
@@ -2454,6 +2455,17 @@ class OrderProvider with ChangeNotifier {
           debugPrint('   ✅ MATCH por valor! $paymentAmount sats ≈ $expectedSats sats (diff=$diff)');
           debugPrint('      Status da ordem: ${order.status} → completed');
           
+          // IMPORTANTE: Enviar taxa da plataforma (2%) ANTES de marcar como completed
+          final orderSats = (order.btcAmount * 100000000).toInt();
+          debugPrint('💼 Enviando taxa da plataforma para ordem ${order.id.substring(0, 8)} (auto-reconcile)...');
+          final feeSuccess = await PlatformFeeService.sendPlatformFee(
+            orderId: order.id,
+            totalSats: orderSats,
+          );
+          if (!feeSuccess) {
+            debugPrint('⚠️ Falha ao enviar taxa da plataforma (continuando com reconciliação)');
+          }
+          
           await updateOrderStatus(
             orderId: order.id,
             status: 'completed',
@@ -2463,6 +2475,7 @@ class OrderProvider with ChangeNotifier {
               'reconciledFrom': 'auto_reconcile_sent',
               'paymentAmount': paymentAmount,
               'paymentId': payment['id'],
+              'platformFeeSent': feeSuccess,
             },
           );
           completedReconciled++;
@@ -2524,6 +2537,16 @@ class OrderProvider with ChangeNotifier {
         debugPrint('✅ Ordem ${order.id.substring(0, 8)} corresponde ao pagamento!');
         debugPrint('   Valor esperado: $expectedSats sats, Valor enviado: $amountSats sats');
         
+        // IMPORTANTE: Enviar taxa da plataforma (2%) ANTES de marcar como completed
+        debugPrint('💼 Enviando taxa da plataforma para ordem ${order.id.substring(0, 8)} (payment_sent)...');
+        final feeSuccess = await PlatformFeeService.sendPlatformFee(
+          orderId: order.id,
+          totalSats: expectedSats,
+        );
+        if (!feeSuccess) {
+          debugPrint('⚠️ Falha ao enviar taxa da plataforma (continuando)');
+        }
+        
         await updateOrderStatus(
           orderId: order.id,
           status: 'completed',
@@ -2534,6 +2557,7 @@ class OrderProvider with ChangeNotifier {
             'paymentAmount': amountSats,
             'paymentId': paymentId,
             'paymentHash': paymentHash,
+            'platformFeeSent': feeSuccess,
           },
         );
         
@@ -2673,6 +2697,19 @@ class OrderProvider with ChangeNotifier {
           // Marcar pagamento como usado
           usedPaymentIds.add(paymentId);
           
+          // IMPORTANTE: Se vai marcar como 'completed', enviar taxa da plataforma primeiro
+          bool feeSuccess = true;
+          if (newStatus == 'completed') {
+            debugPrint('💼 Enviando taxa da plataforma para ordem ${orderId} (force_reconcile)...');
+            feeSuccess = await PlatformFeeService.sendPlatformFee(
+              orderId: order.id,
+              totalSats: expectedSats,
+            );
+            if (!feeSuccess) {
+              debugPrint('⚠️ Falha ao enviar taxa da plataforma (continuando)');
+            }
+          }
+          
           // Atualizar ordem
           await updateOrderStatus(
             orderId: order.id,
@@ -2683,6 +2720,7 @@ class OrderProvider with ChangeNotifier {
               'reconciledFrom': 'force_reconcile',
               'paymentAmount': paymentAmount,
               'paymentId': paymentId,
+              'platformFeeSent': feeSuccess,
             },
           );
           
@@ -2692,6 +2730,7 @@ class OrderProvider with ChangeNotifier {
             'newStatus': newStatus,
             'paymentAmount': paymentAmount,
             'expectedAmount': expectedSats,
+            'platformFeeSent': feeSuccess,
           });
           
           updated++;
@@ -2736,6 +2775,17 @@ class OrderProvider with ChangeNotifier {
     debugPrint('🔧 Forçando conclusão da ordem ${order.id.substring(0, 8)}');
     debugPrint('   Status atual: ${order.status}');
     
+    // IMPORTANTE: Enviar taxa da plataforma primeiro
+    final expectedSats = (order.btcAmount * 100000000).toInt();
+    debugPrint('💼 Enviando taxa da plataforma para ordem ${order.id.substring(0, 8)} (force_complete)...');
+    final feeSuccess = await PlatformFeeService.sendPlatformFee(
+      orderId: order.id,
+      totalSats: expectedSats,
+    );
+    if (!feeSuccess) {
+      debugPrint('⚠️ Falha ao enviar taxa da plataforma (continuando)');
+    }
+    
     _orders[index] = order.copyWith(
       status: 'completed',
       completedAt: DateTime.now(),
@@ -2743,6 +2793,7 @@ class OrderProvider with ChangeNotifier {
         ...?order.metadata,
         'forcedCompleteAt': DateTime.now().toIso8601String(),
         'forcedBy': 'user_manual',
+        'platformFeeSent': feeSuccess,
       },
     );
     

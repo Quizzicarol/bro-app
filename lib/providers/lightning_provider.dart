@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../config.dart';
+import '../services/platform_fee_service.dart';
 import 'breez_provider.dart';
 import 'breez_liquid_provider.dart';
 
@@ -154,10 +155,23 @@ class LightningProvider with ChangeNotifier {
     
     if (!_isInitialized) {
       _setError('Nenhum backend Lightning disponível');
+    } else {
+      // IMPORTANTE: Configurar callback do PlatformFeeService para envio de taxas
+      _configurePlatformFeeCallback();
     }
     
     _setLoading(false);
     return _isInitialized;
+  }
+  
+  /// Configura o callback do PlatformFeeService com o método payInvoice deste provider
+  void _configurePlatformFeeCallback() {
+    final backend = _currentBackend == LightningBackend.spark ? 'Spark' : 'Liquid';
+    PlatformFeeService.setPaymentCallback(
+      (String invoice) => payInvoice(invoice),
+      backend,
+    );
+    debugPrint('💼 PlatformFeeService configurado para usar $backend');
   }
 
   /// Obter saldo total (Spark + Liquid)

@@ -153,10 +153,19 @@ class BroApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => BreezProvider()),
         ChangeNotifierProvider(create: (_) => BreezLiquidProvider()),
         // LightningProvider - abstração que unifica Spark e Liquid com fallback
+        // IMPORTANTE: Usar as mesmas instâncias de Spark e Liquid, não criar novas!
         ChangeNotifierProxyProvider2<BreezProvider, BreezLiquidProvider, LightningProvider>(
-          create: (_) => LightningProvider(BreezProvider(), BreezLiquidProvider()),
-          update: (_, spark, liquid, previous) => 
-            previous ?? LightningProvider(spark, liquid),
+          create: (context) {
+            // Na criação inicial, pegar as instâncias do context
+            final spark = context.read<BreezProvider>();
+            final liquid = context.read<BreezLiquidProvider>();
+            return LightningProvider(spark, liquid);
+          },
+          update: (_, spark, liquid, previous) {
+            // Se já existe, retornar o mesmo (não criar novo)
+            if (previous != null) return previous;
+            return LightningProvider(spark, liquid);
+          },
         ),
         ChangeNotifierProvider(
           create: (_) {

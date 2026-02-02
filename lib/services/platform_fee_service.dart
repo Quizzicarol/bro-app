@@ -19,10 +19,26 @@ class PlatformFeeService {
   static const String _feeRecordsKey = 'platform_fee_records';
   static const String _totalCollectedKey = 'platform_total_collected';
   static const String _autoCollectionKey = 'platform_auto_collection_enabled';
+  static const String _paidOrderIdsKey = 'platform_fee_paid_order_ids';
   
   /// Taxa da plataforma (2%)
   /// Atualmente apenas registrada, não cobrada
   static const double platformFeePercent = 0.02;
+  
+  /// Inicializa o serviço carregando ordens já pagas do storage
+  static Future<void> initialize() async {
+    final prefs = await SharedPreferences.getInstance();
+    final paidIds = prefs.getStringList(_paidOrderIdsKey) ?? [];
+    _paidOrderIds.clear();
+    _paidOrderIds.addAll(paidIds);
+    debugPrint('💼 PlatformFeeService inicializado com ${_paidOrderIds.length} ordens já pagas');
+  }
+  
+  /// Salva o registro de ordens pagas no storage
+  static Future<void> _savePaidOrderIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_paidOrderIdsKey, _paidOrderIds.toList());
+  }
   
   /// Verifica se a coleta automática está habilitada
   /// DESABILITADO até termos infraestrutura própria
@@ -195,6 +211,9 @@ class PlatformFeeService {
   // Callback para efetuar o pagamento (será injetado pelo LightningProvider)
   static Future<Map<String, dynamic>?> Function(String invoice)? _payInvoiceCallback;
   static String _currentBackend = 'unknown';
+  
+  // IMPORTANTE: Registro de ordens que já tiveram a taxa paga para evitar duplicação
+  static final Set<String> _paidOrderIds = {};
 
   /// Configura o callback de pagamento (chamar na inicialização do app)
   static void setPaymentCallback(
@@ -205,13 +224,37 @@ class PlatformFeeService {
     _currentBackend = backend;
     debugPrint('💼 PlatformFeeService configurado com backend: $backend');
   }
+  
+  /// Verifica se a taxa já foi paga para uma ordem específica
+  static bool isFeePaid(String orderId) {
+    return _paidOrderIds.contains(orderId);
+  }
+  
+  /// Limpa o registro de ordens pagas (usar apenas em casos especiais)
+  static Future<void> clearPaidOrders() async {
+    _paidOrderIds.clear();
+    await _savePaidOrderIds();
+    debugPrint('💼 Registro de taxas pagas limpo');
+  }
+  
+  /// Registra uma ordem como tendo taxa paga (e persiste no storage)
+  static Future<void> _markOrderAsPaid(String orderId) async {
+    _paidOrderIds.add(orderId);
+    await _savePaidOrderIds();
+  }
 
   /// Envia a taxa da plataforma para o Lightning Address configurado
-  /// Retorna true se o pagamento foi bem sucedido
+  /// Retorna true se o pagamento foi bem sucedido OU se já foi pago anteriormente
   static Future<bool> sendPlatformFee({
     required String orderId,
     required int totalSats,
   }) async {
+    // VERIFICAÇÃO CRÍTICA: Evitar pagamento duplicado
+    if (_paidOrderIds.contains(orderId)) {
+      debugPrint('💼 Taxa já foi paga para ordem ${orderId.length > 8 ? orderId.substring(0, 8) : orderId} - ignorando');
+      return true; // Retorna true pois já foi pago
+    }
+    
     // Calcular taxa da plataforma: 2% do valor total
     final platformFeeSats = (totalSats * AppConfig.platformFeePercent).round();
     
@@ -271,6 +314,9 @@ class PlatformFeeService {
         final payResult = await _payInvoiceCallback!(invoice);
         
         if (payResult != null && payResult['success'] == true) {
+          // CRÍTICO: Registrar que esta ordem já teve taxa paga (persistido)
+          await _markOrderAsPaid(orderId);
+          
           debugPrint('');
           debugPrint('✅ ════════════════════════════════════════════════');
           debugPrint('✅ TAXA DA PLATAFORMA PAGA COM SUCESSO!');
@@ -301,6 +347,9 @@ class PlatformFeeService {
         final payResult = await _payInvoiceCallback!(platformAddress);
         
         if (payResult != null && payResult['success'] == true) {
+          // CRÍTICO: Registrar que esta ordem já teve taxa paga (persistido)
+          await _markOrderAsPaid(orderId);
+          
           debugPrint('✅ TAXA DA PLATAFORMA PAGA COM SUCESSO via $_currentBackend!');
           await markAsCollected([orderId]);
           return true;

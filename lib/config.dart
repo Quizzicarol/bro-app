@@ -96,6 +96,28 @@ class AppConfig {
   /// Lightning Address para receber as taxas de manutenção da plataforma
   static const String platformLightningAddress = 'tutoriais@coinos.io';
   
+  // ============================================
+  // TAXAS LIQUID (Boltz Swap) - Embutidas no spread
+  // ============================================
+  
+  /// Taxa percentual do Boltz para swaps Lightning <-> Liquid
+  static const double liquidSwapFeePercent = 0.0025; // 0.25%
+  
+  /// Taxa fixa base do Boltz em sats (claim + lockup)
+  static const int liquidSwapFeeBaseSats = 200; // ~200 sats fixo
+  
+  /// Taxa da rede Liquid para transações
+  static const int liquidNetworkFeeSats = 50; // ~50 sats
+  
+  /// Taxa total fixa do Liquid em sats
+  static const int liquidTotalFixedFeeSats = liquidSwapFeeBaseSats + liquidNetworkFeeSats;
+  
+  /// Valor mínimo para usar Liquid (abaixo disso a taxa é muito alta proporcionalmente)
+  static const int liquidMinAmountSats = 1000;
+  
+  /// Indica se deve usar Liquid como fallback quando Spark falha
+  static const bool enableLiquidFallback = true;
+  
   /// Limite minimo em sats
   static const int minPaymentSats = 1000;
   

@@ -28,6 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _currencyFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
   double _btcPrice = 0.0;
   Timer? _priceUpdateTimer;
+  Timer? _ordersUpdateTimer; // Timer para atualizar ordens automaticamente
   String? _currentUserPubkey; // Para filtro extra de segurança
 
   @override
@@ -39,6 +40,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _loadData();
       _fetchBitcoinPrice();
       _startPricePolling();
+      _startOrdersPolling(); // Iniciar polling de ordens
       _checkSeedRecoveryStatus();
       _checkAndShowBackupReminder();
     });
@@ -273,6 +275,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _priceUpdateTimer?.cancel();
+    _ordersUpdateTimer?.cancel();
     super.dispose();
   }
 
@@ -280,6 +283,20 @@ class _HomeScreenState extends State<HomeScreen> {
     _priceUpdateTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) {
         _fetchBitcoinPrice();
+      }
+    });
+  }
+  
+  void _startOrdersPolling() {
+    // Atualizar ordens a cada 10 segundos para status em tempo real
+    _ordersUpdateTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+      if (mounted) {
+        final orderProvider = context.read<OrderProvider>();
+        try {
+          await orderProvider.syncOrdersFromNostr();
+        } catch (e) {
+          debugPrint('⚠️ Erro no polling de ordens: $e');
+        }
       }
     });
   }

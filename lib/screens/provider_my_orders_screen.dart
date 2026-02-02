@@ -184,7 +184,10 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
                   providerId: widget.providerId,
                 ),
               ),
-            ).then((_) => _refreshOrders());
+            ).then((result) {
+              _refreshOrders();
+              // Resultado é tratado aqui, mas já estamos na tela de "Minhas"
+            });
           },
           borderRadius: BorderRadius.circular(12),
           child: Padding(

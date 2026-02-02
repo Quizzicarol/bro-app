@@ -1106,17 +1106,25 @@ class BreezProvider with ChangeNotifier {
       );
 
       debugPrint('📤 Preparando pagamento...');
-      final prepareResp = await _sdk!.prepareSendPayment(request: prepareReq);
+      final prepareResp = await _sdk!.prepareSendPayment(request: prepareReq)
+          .timeout(
+            const Duration(seconds: 30),
+            onTimeout: () => throw TimeoutException('Timeout ao preparar pagamento (30s)'),
+          );
       debugPrint('✅ Pagamento preparado');
 
-      // Step 2: Send payment
+      // Step 2: Send payment (com timeout de 60s para dar tempo ao roteamento)
       final sendReq = spark.SendPaymentRequest(
         prepareResponse: prepareResp,
         options: null,
       );
 
-      debugPrint('📤 Enviando pagamento...');
-      final resp = await _sdk!.sendPayment(request: sendReq);
+      debugPrint('📤 Enviando pagamento... (aguarde até 60s para roteamento)');
+      final resp = await _sdk!.sendPayment(request: sendReq)
+          .timeout(
+            const Duration(seconds: 60),
+            onTimeout: () => throw TimeoutException('Timeout ao enviar pagamento (60s). A transação pode ainda estar em processamento.'),
+          );
 
       debugPrint('✅ Pagamento enviado!');
       debugPrint('   Payment ID: ${resp.payment.id}');
@@ -1150,10 +1158,10 @@ class BreezProvider with ChangeNotifier {
       if (errMsg.contains('insufficient') || errMsg.contains('Insufficient') || 
           errMsg.contains('balance') || errMsg.contains('Balance')) {
         errMsg = 'Saldo insuficiente para este pagamento';
-      } else if (errMsg.contains('timeout') || errMsg.contains('Timeout')) {
-        errMsg = 'Tempo esgotado. Tente novamente.';
-      } else if (errMsg.contains('route') || errMsg.contains('Route')) {
-        errMsg = 'Não foi possível encontrar rota para pagamento';
+      } else if (errMsg.contains('TimeoutException') || errMsg.contains('timeout') || errMsg.contains('Timeout')) {
+        errMsg = 'O pagamento está demorando mais do que o esperado. Verifique se você tem saldo suficiente e se a carteira de destino está online. A transação pode ainda completar em alguns minutos.';
+      } else if (errMsg.contains('route') || errMsg.contains('Route') || errMsg.contains('path') || errMsg.contains('Path')) {
+        errMsg = 'Não foi possível encontrar rota para pagamento. Isso pode acontecer se o destino está offline ou sem liquidez.';
       } else if (errMsg.contains('expired') || errMsg.contains('Expired')) {
         errMsg = 'Invoice expirada. Solicite uma nova.';
       } else if (errMsg.contains('unsupported') || errMsg.contains('Unsupported') ||

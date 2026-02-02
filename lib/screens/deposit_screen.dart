@@ -5,6 +5,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'dart:async';
 import '../config.dart';
 import '../providers/breez_provider_export.dart';
+import '../providers/lightning_provider.dart';
 import '../widgets/fee_breakdown_card.dart';
 
 class DepositScreen extends StatefulWidget {
@@ -91,10 +92,11 @@ class _DepositScreenState extends State<DepositScreen> {
     });
     
     try {
-      final breezProvider = context.read<BreezProvider>();
+      // Usar LightningProvider com fallback automático Spark -> Liquid
+      final lightningProvider = context.read<LightningProvider>();
       
-      // Call backend API to create invoice
-      final response = await breezProvider.createInvoice(
+      // Create invoice via LightningProvider (tenta Spark, depois Liquid)
+      final response = await lightningProvider.createInvoice(
         amountSats: _totalSats,
         description: 'Depósito Bro - R\$ ${_totalBrl.toStringAsFixed(2)}',
       );
@@ -107,9 +109,14 @@ class _DepositScreenState extends State<DepositScreen> {
         return;
       }
 
-      if (response['invoice'] is String && response['paymentHash'] is String) {
+      // Log se usou Liquid
+      if (response['isLiquid'] == true) {
+        debugPrint('💧 Invoice de depósito criada via LIQUID (fallback)');
+      }
+
+      if (response['invoice'] is String) {
         final invoice = response['invoice'] as String;
-        final paymentHash = response['paymentHash'] as String;
+        final paymentHash = response['paymentHash'] as String? ?? '';
 
         setState(() {
           _lightningInvoice = invoice;
@@ -117,8 +124,10 @@ class _DepositScreenState extends State<DepositScreen> {
           _isGeneratingLightning = false;
         });
 
-        // Start polling for payment (paymentHash is guaranteed to be a String here)
-        _startLightningPolling(paymentHash);
+        // Start polling for payment
+        if (paymentHash.isNotEmpty) {
+          _startLightningPolling(paymentHash);
+        }
       }
       
     } catch (e) {

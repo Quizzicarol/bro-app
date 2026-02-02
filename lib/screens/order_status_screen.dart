@@ -11,6 +11,7 @@ import '../services/withdrawal_service.dart';
 import '../services/nostr_order_service.dart';
 import '../models/withdrawal.dart';
 import '../providers/breez_provider_export.dart';
+import '../providers/lightning_provider.dart';
 import '../providers/order_provider.dart';
 import '../providers/provider_balance_provider.dart';
 import '../providers/platform_balance_provider.dart';
@@ -160,8 +161,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   void _startStatusPolling() {
-    // Verificar status a cada 10 segundos (usando OrderProvider em vez de API)
-    _statusCheckTimer = Timer.periodic(const Duration(seconds: 10), (timer) async {
+    // Verificar status a cada 5 segundos para ser mais responsivo
+    _statusCheckTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
       // CORREÇÃO: Verificar se a tela ainda está montada antes de fazer qualquer coisa
       if (!mounted) {
         timer.cancel();
@@ -2633,15 +2634,19 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       ),
     );
 
+    // Usar LightningProvider com fallback automático Spark -> Liquid
+    final lightningProvider = context.read<LightningProvider>();
     final breezProvider = context.read<BreezProvider>();
     
     try {
-      debugPrint('🔵 Criando Lightning invoice para ${widget.amountSats} sats...');
-      final invoiceData = await breezProvider.createInvoice(
+      debugPrint('🔵 Criando Lightning invoice para ${widget.amountSats} sats (com fallback)...');
+      
+      // LightningProvider tenta Spark primeiro, depois Liquid se Spark falhar
+      final invoiceData = await lightningProvider.createInvoice(
         amountSats: widget.amountSats,
         description: 'Bro ${widget.orderId}',
       ).timeout(
-        const Duration(seconds: 30),
+        const Duration(seconds: 45), // Timeout maior para fallback
         onTimeout: () {
           debugPrint('⏰ Timeout ao criar invoice Lightning');
           return {'success': false, 'error': 'Timeout ao criar invoice'};
@@ -2653,13 +2658,20 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
       debugPrint('🔵 Invoice data recebido: $invoiceData');
       
+      // Verificar se usou Liquid (para log)
+      final isLiquid = invoiceData?['isLiquid'] == true;
+      if (isLiquid) {
+        final fees = invoiceData?['fees'] ?? 0;
+        debugPrint('💧 Invoice criada via LIQUID (fallback). Taxas: $fees sats');
+      }
+      
       if (invoiceData != null && invoiceData['success'] == true) {
         final invoice = invoiceData['invoice'] as String;
         final paymentHash = invoiceData['paymentHash'] as String? ?? '';
         debugPrint('🔵 Invoice criada: ${invoice.substring(0, 50)}...');
         
         if (mounted) {
-          _showLightningPaymentDialog(invoice, paymentHash);
+          _showLightningPaymentDialog(invoice, paymentHash, isLiquid: isLiquid);
         }
       } else {
         debugPrint('❌ Falha ao criar invoice: ${invoiceData?['error']}');
@@ -2679,7 +2691,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   void _showPaymentOptions(String invoice, String paymentHash) {
     // Método legado - redireciona para o novo fluxo
-    _showLightningPaymentDialog(invoice, paymentHash);
+    _showLightningPaymentDialog(invoice, paymentHash, isLiquid: false);
   }
 
   void _showError(String message) {
@@ -2691,13 +2703,22 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     );
   }
 
-  void _showLightningPaymentDialog(String invoice, String paymentHash) {
+  void _showLightningPaymentDialog(String invoice, String paymentHash, {bool isLiquid = false}) {
     // Registrar callback para pagamento recebido
     final breezProvider = context.read<BreezProvider>();
     breezProvider.onPaymentReceived = (paymentId, amountSats, pHash) {
       debugPrint('🎉 Callback de pagamento recebido! ID: $paymentId, Amount: $amountSats, Hash: $pHash');
       _onPaymentReceived();
     };
+    
+    // Se usando Liquid, registrar callback no LiquidProvider também
+    if (isLiquid) {
+      final lightningProvider = context.read<LightningProvider>();
+      lightningProvider.liquidProvider.onPaymentReceived = (paymentId, amountSats, pHash) {
+        debugPrint('🎉 Callback de pagamento Liquid recebido! ID: $paymentId, Amount: $amountSats');
+        _onPaymentReceived();
+      };
+    }
     
     // Iniciar monitoramento de pagamento (backup via polling)
     _startPaymentMonitoring(paymentHash);

@@ -7,6 +7,7 @@ import 'dart:convert';
 import '../providers/order_provider.dart';
 import '../providers/collateral_provider.dart';
 import '../providers/breez_provider_export.dart';
+import '../providers/lightning_provider.dart';
 import '../services/escrow_service.dart';
 import '../services/dispute_service.dart';
 import '../services/notification_service.dart';
@@ -352,14 +353,20 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       String? generatedInvoice;
       
       // Gerar invoice Lightning para receber o pagamento
-      final breezProvider = context.read<BreezProvider>();
-      if (breezProvider.isInitialized) {
+      // Usar LightningProvider com fallback Spark -> Liquid
+      final lightningProvider = context.read<LightningProvider>();
+      if (lightningProvider.sparkProvider.isInitialized || lightningProvider.liquidProvider.isInitialized) {
         debugPrint('⚡ Gerando invoice de $providerFeeSats sats para o Bro...');
         
-        final result = await breezProvider.createInvoice(
+        final result = await lightningProvider.createInvoice(
           amountSats: providerFeeSats,
           description: 'Bro - Ordem ${widget.orderId.substring(0, 8)}',
         );
+        
+        // Log se usou Liquid
+        if (result?['isLiquid'] == true) {
+          debugPrint('💧 Invoice criada via LIQUID (fallback)');
+        }
         
         if (result != null && result['bolt11'] != null) {
           generatedInvoice = result['bolt11'] as String;
@@ -402,7 +409,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             duration: const Duration(seconds: 4),
           ),
         );
-        Navigator.pop(context);
+        // Voltar para a tela de ordens com resultado indicando para ir para aba "Minhas"
+        Navigator.pop(context, {'goToMyOrders': true});
       }
     } catch (e) {
       setState(() {

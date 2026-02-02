@@ -3481,39 +3481,125 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       
       debugPrint('✅ Status atualizado para completed e publicado no Nostr');
 
+      // ========== PAGAR INVOICE DO PROVEDOR ==========
+      // Buscar providerInvoice da ordem (enviado junto com o comprovante)
+      String? providerInvoice;
+      if (orderDetails != null) {
+        providerInvoice = orderDetails['metadata']?['providerInvoice'] as String?;
+        providerInvoice ??= orderDetails['providerInvoice'] as String?;
+      }
+      if (providerInvoice == null && order != null) {
+        providerInvoice = order.metadata?['providerInvoice'] as String?;
+      }
+      
+      if (providerInvoice != null && providerInvoice.isNotEmpty) {
+        debugPrint('⚡ Pagando invoice do provedor: ${providerInvoice.substring(0, 30)}...');
+        
+        try {
+          final breezProvider = context.read<BreezProvider>();
+          
+          if (breezProvider.isInitialized) {
+            final payResult = await breezProvider.payInvoice(providerInvoice);
+            
+            if (payResult != null && payResult['success'] == true) {
+              debugPrint('✅ Invoice do provedor pago com sucesso!');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('⚡ Pagamento enviado para o Bro!'),
+                    backgroundColor: Colors.green,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+            } else {
+              debugPrint('⚠️ Falha ao pagar invoice do provedor: $payResult');
+              // Não falhar a confirmação por isso - o provedor pode cobrar depois
+            }
+          } else {
+            debugPrint('⚠️ Carteira não conectada para pagar invoice do provedor');
+          }
+        } catch (e) {
+          debugPrint('⚠️ Erro ao pagar invoice do provedor: $e');
+          // Não falhar a confirmação por isso
+        }
+      } else {
+        debugPrint('ℹ️ Nenhum providerInvoice encontrado - provedor receberá via saldo');
+      }
+
       // Adicionar ganho ao saldo do provedor E taxa da plataforma
       // Só executar APÓS confirmação bem sucedida no Nostr
       if (orderDetails != null) {
         final providerBalanceProvider = context.read<ProviderBalanceProvider>();
         final platformBalanceProvider = context.read<PlatformBalanceProvider>();
         
-        // Calcular taxas baseado no valor total em sats
+        // Calcular taxas usando constantes centralizadas do AppConfig
         final totalSats = widget.amountSats.toDouble();
         
-        // Taxa do provedor: 5% do valor total
-        final providerFee = totalSats * 0.05;
+        // Taxa do provedor: 3% do valor total (vai para a carteira do Bro via invoice)
+        final providerFee = totalSats * AppConfig.providerFeePercent;
         
-        // Taxa da plataforma: 2% do valor total
-        final platformFee = totalSats * 0.02;
+        // Taxa da plataforma: 2% do valor total (manutenção da plataforma)
+        final platformFee = totalSats * AppConfig.platformFeePercent;
+        final platformFeeSats = platformFee.round();
         
         final orderDescription = 'Ordem ${widget.orderId.substring(0, 8)} - R\$ ${widget.amountBrl.toStringAsFixed(2)}';
         
-        // Adicionar ganho do provedor
+        // Registrar ganho do provedor (já foi pago via invoice Lightning acima)
         await providerBalanceProvider.addEarning(
           orderId: widget.orderId,
           amountSats: providerFee,
           orderDescription: orderDescription,
         );
 
-        // Adicionar taxa da plataforma
+        // ========== PAGAR TAXA DA PLATAFORMA VIA LIGHTNING ==========
+        if (AppConfig.platformLightningAddress.isNotEmpty && platformFeeSats > 0) {
+          debugPrint('💼 Enviando taxa da plataforma: $platformFeeSats sats para ${AppConfig.platformLightningAddress.substring(0, 30)}...');
+          try {
+            final breezProvider = context.read<BreezProvider>();
+            final platformAddress = AppConfig.platformLightningAddress;
+            
+            if (breezProvider.isInitialized) {
+              // Detectar tipo de endereço Lightning
+              if (platformAddress.contains('@')) {
+                // Lightning Address (user@domain.com)
+                final lnAddressService = LnAddressService();
+                final result = await lnAddressService.getInvoice(
+                  lnAddress: platformAddress,
+                  amountSats: platformFeeSats,
+                  comment: 'Bro Platform Fee - ${widget.orderId.substring(0, 8)}',
+                );
+                if (result['success'] == true && result['invoice'] != null) {
+                  await breezProvider.payInvoice(result['invoice'] as String);
+                  debugPrint('✅ Taxa da plataforma paga via LN Address');
+                }
+              } else if (platformAddress.toLowerCase().startsWith('lno1')) {
+                // BOLT12 Offer - ainda não suportado diretamente pelo Breez SDK Spark
+                // Registrar para pagamento futuro quando houver suporte
+                debugPrint('⚠️ BOLT12 Offer detectado - registrando taxa pendente');
+                debugPrint('   Quando Breez SDK suportar BOLT12, será pago automaticamente');
+                // TODO: Implementar pagamento BOLT12 quando SDK suportar
+                // Por enquanto, a taxa fica registrada no platformBalanceProvider
+              } else if (platformAddress.toLowerCase().startsWith('ln')) {
+                // Invoice BOLT11
+                await breezProvider.payInvoice(platformAddress);
+                debugPrint('✅ Taxa da plataforma paga via invoice BOLT11');
+              }
+            }
+          } catch (e) {
+            debugPrint('⚠️ Falha ao pagar taxa da plataforma: $e (registrando para cobrança posterior)');
+          }
+        }
+
+        // Registrar taxa da plataforma (para tracking)
         await platformBalanceProvider.addPlatformFee(
           orderId: widget.orderId,
           amountSats: platformFee,
           orderDescription: orderDescription,
         );
 
-        debugPrint('💰 Ganho de $providerFee sats adicionado ao saldo do provedor');
-        debugPrint('💼 Taxa de $platformFee sats adicionada ao saldo da plataforma');
+        debugPrint('💰 Ganho de $providerFee sats registrado para o provedor');
+        debugPrint('💼 Taxa de $platformFee sats registrada para a plataforma');
       }
 
       if (mounted) {

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'dart:async';
+import '../config.dart';
 import '../providers/breez_provider_export.dart';
 import '../widgets/fee_breakdown_card.dart';
 
@@ -22,9 +23,12 @@ class _DepositScreenState extends State<DepositScreen> {
   Timer? _lightningPollingTimer;
   bool _isGeneratingLightning = false;
   
-  // Fees
-  final double _providerFeePercent = 7.0;
-  final double _platformFeePercent = 2.0;
+  // Fees - centralizados no AppConfig
+  // Taxa Bro: 3% (vai para o provedor)
+  // Taxa Plataforma: 2% (manutenção)
+  // Total: 5%
+  final double _providerFeePercent = AppConfig.providerFeePercent * 100; // 3%
+  final double _platformFeePercent = AppConfig.platformFeePercent * 100; // 2%
   
   // BRL to Sats conversion rate (mock - should come from API)
   double _brlToSatsRate = 100.0; // 1 BRL = 100 sats (example)

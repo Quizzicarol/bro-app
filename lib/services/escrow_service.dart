@@ -6,7 +6,9 @@ import '../config.dart';
 
 class EscrowService {
   static String get baseUrl => AppConfig.defaultBackendUrl;
-  static const double providerFeePercent = 3.0;
+  
+  /// Taxa do provedor Bro (3%) - usa o valor centralizado do AppConfig
+  static double get providerFeePercent => AppConfig.providerFeePercent * 100;
 
   Future<Map<String, dynamic>> depositCollateral({required String tierId, required int amountSats}) async {
     // Em modo teste, simular depósito de garantia

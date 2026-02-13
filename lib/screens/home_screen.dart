@@ -532,7 +532,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   // Verificar se já tem tier ativado (collateral)
                   final collateralService = LocalCollateralService();
                   final hasActiveTier = await collateralService.hasCollateral(userPubkey: pubkey);
-                  debugPrint('🔍 hasActiveTier: $hasActiveTier (pubkey: ${pubkey?.substring(0, 8) ?? "null"})');
                   
                   if (hasActiveTier) {
                     // Já tem tier, ir direto para tela de ordens

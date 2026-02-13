@@ -110,17 +110,18 @@ class OrderProvider with ChangeNotifier {
       final fallbackPubkey = _nostrService.publicKey;
       if (fallbackPubkey != null && fallbackPubkey.isNotEmpty) {
         _currentUserPubkey = fallbackPubkey;
-        debugPrint('🔧 myAcceptedOrders: Recuperou pubkey do NostrService: ${_currentUserPubkey!.substring(0, 8)}');
+        print('🚨 myAcceptedOrders: Recuperou pubkey do NostrService: ${_currentUserPubkey!.substring(0, 8)}');
       } else {
-        debugPrint('⚠️ myAcceptedOrders: Sem pubkey! Retornando lista vazia');
+        print('🚨 myAcceptedOrders: Sem pubkey! Retornando lista vazia');
         return [];
       }
     }
     
-    // DEBUG: Listar todas as ordens e seus providerIds
-    debugPrint('🔍 DEBUG myAcceptedOrders - procurando providerId == ${_currentUserPubkey!.substring(0, 8)}');
+    // DEBUG CRÍTICO: Listar todas as ordens e seus providerIds
+    print('🚨🚨🚨 myAcceptedOrders CHAMADO - procurando providerId == ${_currentUserPubkey!.substring(0, 8)} 🚨🚨🚨');
+    print('🚨 Total de ordens em _orders: ${_orders.length}');
     for (final o in _orders) {
-      debugPrint('   📋 ${o.id.substring(0, 8)}: providerId=${o.providerId?.substring(0, 8) ?? "null"}, userPubkey=${o.userPubkey?.substring(0, 8) ?? "null"}, status=${o.status}');
+      print('   📋 ${o.id.substring(0, 8)}: providerId=${o.providerId?.substring(0, 8) ?? "NULL"}, userPubkey=${o.userPubkey?.substring(0, 8) ?? "NULL"}, status=${o.status}');
     }
     
     final result = _orders.where((o) {
@@ -128,7 +129,7 @@ class OrderProvider with ChangeNotifier {
       return o.providerId == _currentUserPubkey;
     }).toList();
     
-    debugPrint('📊 myAcceptedOrders: ${result.length}/${_orders.length} ordens aceitas por ${_currentUserPubkey!.substring(0, 8)}');
+    print('🚨 RESULTADO myAcceptedOrders: ${result.length}/${_orders.length} ordens aceitas por ${_currentUserPubkey!.substring(0, 8)}');
     return result;
   }
 
@@ -172,7 +173,9 @@ class OrderProvider with ChangeNotifier {
   
   /// Getter para ordens disponíveis para Bros (usadas na tela de provedor)
   /// Esta lista NUNCA é salva localmente!
-  List<Order> get availableOrdersForProvider => _availableOrdersForProvider;
+  /// IMPORTANTE: Retorna uma CÓPIA para evitar ConcurrentModificationException
+  /// quando o timer de polling modifica a lista durante iteração na UI
+  List<Order> get availableOrdersForProvider => List<Order>.from(_availableOrdersForProvider);
 
   /// Calcula o total de sats comprometidos com ordens pendentes/ativas (modo cliente)
   /// Este valor deve ser SUBTRAÍDO do saldo total para calcular saldo disponível para garantia
@@ -913,12 +916,15 @@ class OrderProvider with ChangeNotifier {
     notifyListeners();
     
     try {
+      print('🚨🚨🚨 fetchOrders: forProvider=$forProvider 🚨🚨🚨');
       if (forProvider) {
         // MODO PROVEDOR: Buscar TODAS as ordens pendentes de TODOS os usuários
+        print('🚨🚨🚨 Chamando syncAllPendingOrdersFromNostr... 🚨🚨🚨');
+        // CRÍTICO: Timeout de 45s porque fetchProviderOrders faz muitas buscas sequenciais
         await syncAllPendingOrdersFromNostr().timeout(
-          const Duration(seconds: 15),
+          const Duration(seconds: 45),
           onTimeout: () {
-            debugPrint('⏰ Timeout na sincronização Nostr (modo provedor), usando ordens locais');
+            print('⏰ Timeout na sincronização Nostr (modo provedor), usando ordens locais');
           },
         );
       } else {
@@ -948,9 +954,10 @@ class OrderProvider with ChangeNotifier {
       print('🔄🔄🔄 [PROVEDOR] Iniciando busca PARALELA de ordens... 🔄🔄🔄');
       
       // Helper para busca segura (captura exceções e retorna lista vazia)
+      // Timeout de 30s para fetchProviderOrders que faz muitas buscas sequenciais
       Future<List<Order>> safeFetch(Future<List<Order>> Function() fetcher, String name) async {
         try {
-          return await fetcher().timeout(const Duration(seconds: 10), onTimeout: () {
+          return await fetcher().timeout(const Duration(seconds: 30), onTimeout: () {
             print('⏰ Timeout em $name');
             return <Order>[];
           });
@@ -2134,11 +2141,13 @@ class OrderProvider with ChangeNotifier {
         
         final existingIndex = _orders.indexWhere((o) => o.id == nostrOrder.id);
         if (existingIndex == -1) {
-          // Ordem não existe localmente, adicionar (somente se não for status final)
-          if (nostrOrder.status != 'cancelled' && nostrOrder.status != 'completed') {
+          // Ordem não existe localmente, adicionar
+          // CORREÇÃO: Adicionar TODAS as ordens do usuário incluindo completed para histórico!
+          // Só ignoramos cancelled pois são ordens canceladas pelo usuário
+          if (nostrOrder.status != 'cancelled') {
             _orders.add(nostrOrder);
             added++;
-            debugPrint('➕ Ordem ${nostrOrder.id.substring(0, 8)} recuperada do Nostr (R\$ ${nostrOrder.amount.toStringAsFixed(2)})');
+            debugPrint('➕ Ordem ${nostrOrder.id.substring(0, 8)} recuperada do Nostr (R\$ ${nostrOrder.amount.toStringAsFixed(2)}, status=${nostrOrder.status})');
           }
         } else {
           // Ordem já existe, mesclar dados preservando os locais que não são 0

@@ -34,6 +34,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
   bool _isLoading = true;
   String? _error;
   int _currentBalance = 0;
+  int _initialBalance = 0; // CRÍTICO: Saldo inicial ao entrar na tela
   int _committedSats = 0; // Sats comprometidos com ordens pendentes
   bool _depositCompleted = false;
   int _amountNeededSats = 0; // Valor líquido necessário (colateral)
@@ -73,6 +74,11 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
       
       // Em modo Bro: só considera depósito completo se tiver saldo ALÉM do comprometido
       final availableForCollateral = (totalBalance - committedSats).clamp(0, totalBalance);
+      
+      // CRÍTICO: Salvar saldo inicial para detectar NOVOS depósitos
+      _initialBalance = totalBalance;
+      _currentBalance = totalBalance;
+      debugPrint('💰 Saldo INICIAL salvo: $_initialBalance sats');
       
       if (availableForCollateral >= widget.tier.requiredCollateralSats) {
         // ✅ IMPORTANTE: Ativar o tier antes de marcar como completo!
@@ -169,11 +175,19 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
       final committedSats = orderProvider.committedSats;
       final availableBalance = (totalBalance - committedSats).clamp(0, totalBalance);
       
-      // 🔥 Tolerância de 10% para oscilação do Bitcoin
+      // 🔥 CRÍTICO: Verificar se houve AUMENTO REAL de saldo desde entrada na tela
+      // Isso evita ativação falsa por flutuações ou estado inicial
+      final balanceIncrease = totalBalance - _initialBalance;
       final minRequired = (widget.tier.requiredCollateralSats * 0.90).round();
       
-      if (availableBalance >= minRequired) {
+      debugPrint('🔍 Polling: saldo=$totalBalance, inicial=$_initialBalance, aumento=$balanceIncrease, necessário=$_amountNeededSats');
+      
+      // CONDIÇÃO CORRIGIDA: Só ativa se:
+      // 1. O saldo disponível é suficiente para o tier E
+      // 2. Houve um aumento real de saldo (depósito ocorreu)
+      if (availableBalance >= minRequired && balanceIncrease >= (_amountNeededSats * 0.90).round()) {
         // Pagamento recebido! Ativar tier
+        debugPrint('✅ Depósito detectado! Aumento de $balanceIncrease sats');
         await _onPaymentReceived();
       } else if (totalBalance > _currentBalance) {
         // Recebeu algo mas ainda não é suficiente - mostrar progresso
@@ -214,15 +228,21 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
     final committedSats = orderProvider.committedSats;
     final availableBalance = (totalBalance - committedSats).clamp(0, totalBalance);
     
-    debugPrint('💰 Pagamento detectado! Saldo total: $totalBalance, disponível: $availableBalance');
+    // CRÍTICO: Verificar aumento real de saldo
+    final balanceIncrease = totalBalance - _initialBalance;
+    debugPrint('💰 Pagamento detectado! Saldo total: $totalBalance, disponível: $availableBalance, aumento: $balanceIncrease');
     
     // 🔥 Tolerância de 10% para oscilação do Bitcoin
     final minRequired = (widget.tier.requiredCollateralSats * 0.90).round();
+    final minDeposit = (_amountNeededSats * 0.90).round();
     
-    if (availableBalance >= minRequired) {
+    // CONDIÇÃO CORRIGIDA: Verificar saldo suficiente E aumento real
+    if (availableBalance >= minRequired && balanceIncrease >= minDeposit) {
       // Ativar o tier
+      debugPrint('✅ Condições atendidas: disponível=$availableBalance >= $minRequired, aumento=$balanceIncrease >= $minDeposit');
       await _activateTier(availableBalance);
     } else {
+      debugPrint('⚠️ Ainda não atende: disponível=$availableBalance, minRequired=$minRequired, aumento=$balanceIncrease, minDeposit=$minDeposit');
       // Atualizar UI e continuar esperando
       if (mounted) {
         setState(() {

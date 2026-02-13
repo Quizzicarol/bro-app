@@ -19,12 +19,12 @@ class NostrOrderService {
   NostrOrderService._internal();
 
   // Relays para publicar ordens
-  // NOTA: relay.snort.social movido para o final pois tem histórico de timeouts
+  // NOTA: nostr.wine REMOVIDO - causa rate limit 429 constante e timeouts
   final List<String> _relays = [
     'wss://relay.damus.io',
     'wss://nos.lol',
-    'wss://nostr.wine',
     'wss://relay.primal.net',
+    // 'wss://nostr.wine', // DESABILITADO: Rate limit 429 constante
     // 'wss://relay.snort.social', // DESABILITADO: Causando timeouts frequentes
   ];
 
@@ -233,27 +233,33 @@ class NostrOrderService {
           }
         }
         
-        // 2. Buscar eventos de aceitação publicados por este provedor
-        // CORREÇÃO: Aumentado para 200 para preservar histórico completo
+        // 2. Buscar eventos de aceitação E updates publicados por este provedor
+        // CORREÇÃO: Adicionar kindBroPaymentProof (30080) que contém providerId nos updates
         final acceptEvents = await _fetchFromRelay(
           relay,
-          kinds: [kindBroAccept, kindBroComplete],
+          kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete], // 30079, 30080 e 30081
           authors: [providerPubkey],
           limit: 200,
         );
         
-        debugPrint('   $relay: ${acceptEvents.length} eventos de aceite/comprovante');
+        debugPrint('   $relay: ${acceptEvents.length} eventos de aceite/update/comprovante');
         
-        // Extrair orderIds dos eventos de aceitação
+        // Extrair orderIds dos eventos de aceitação/update
         for (final event in acceptEvents) {
           try {
             final content = event['parsedContent'] ?? jsonDecode(event['content']);
             final orderId = content['orderId'] as String?;
             if (orderId != null && !orderIdsFromAccepts.contains(orderId)) {
               orderIdsFromAccepts.add(orderId);
+              debugPrint('   📋 Encontrado orderId $orderId de evento kind=${event['kind']}');
             }
           } catch (_) {}
         }
+        
+        // 3. Buscar eventos de UPDATE globais com providerId no conteúdo
+        // OTIMIZAÇÃO: Usar mesmo relay, mas filtrar por providerId no content
+        // Isso é mais lento mas necessário para histórico completo
+        // REMOVIDO: Causava timeout. Vamos buscar apenas por author (provedor que publicou)
       } catch (e) {
         debugPrint('⚠️ Falha ao buscar de $relay: $e');
       }
@@ -1095,11 +1101,12 @@ class NostrOrderService {
     // Buscar de TODOS os relays (sequencialmente para evitar sobrecarga)
     for (final relay in _relays) {
       try {
-        // Buscar TODOS os tipos de update: 30079 (accept), 30080 (update), 30081 (complete)
-        // CRÍTICO: Não usar filtro de tag - buscar por kind apenas
-        final events = await _fetchFromRelay(
+        // ESTRATÉGIA: Buscar com tag bro-order primeiro (mais preciso)
+        // Se falhar ou retornar poucos resultados, fallback para busca por kind
+        var events = await _fetchFromRelay(
           relay,
           kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete], // 30079, 30080 e 30081
+          tags: {'#t': [broTag]}, // Filtra apenas eventos do app BRO
           limit: 300,
         ).timeout(
           const Duration(seconds: 10),
@@ -1109,7 +1116,29 @@ class NostrOrderService {
           },
         );
         
-        debugPrint('   📥 $relay retornou ${events.length} eventos de update');
+        debugPrint('   📥 $relay retornou ${events.length} eventos de update (com tag bro-order)');
+        
+        // Fallback: se retornou poucos eventos, tentar sem tag
+        // (para compatibilidade com eventos antigos publicados sem tag)
+        if (events.length < 10) {
+          final fallbackEvents = await _fetchFromRelay(
+            relay,
+            kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete],
+            limit: 300,
+          ).timeout(
+            const Duration(seconds: 8),
+            onTimeout: () => <Map<String, dynamic>>[],
+          );
+          debugPrint('   📥 $relay fallback: ${fallbackEvents.length} eventos (sem tag)');
+          
+          // Mesclar eventos únicos do fallback
+          final seenIds = events.map((e) => e['id']).toSet();
+          for (final e in fallbackEvents) {
+            if (!seenIds.contains(e['id'])) {
+              events.add(e);
+            }
+          }
+        }
         
         for (final event in events) {
           try {
@@ -1254,11 +1283,12 @@ class NostrOrderService {
       debugPrint('      - $r');
     }
     
-    // IMPORTANTE: Buscar ordens dos últimos 14 dias (aumentado de 7)
-    // Isso melhora a sincronização entre dispositivos
-    final fourteenDaysAgo = DateTime.now().subtract(const Duration(days: 14));
-    final sinceTimestamp = (fourteenDaysAgo.millisecondsSinceEpoch / 1000).floor();
-    debugPrint('   Since: ${fourteenDaysAgo.toIso8601String()} (timestamp: $sinceTimestamp)');
+    // IMPORTANTE: Buscar ordens dos últimos 45 dias (aumentado de 14)
+    // Isso garante que ordens mais antigas ainda disponíveis sejam encontradas
+    // Ordens de PIX/Boleto podem demorar para serem aceitas em períodos de baixa atividade
+    final fortyFiveDaysAgo = DateTime.now().subtract(const Duration(days: 45));
+    final sinceTimestamp = (fortyFiveDaysAgo.millisecondsSinceEpoch / 1000).floor();
+    debugPrint('   Since: ${fortyFiveDaysAgo.toIso8601String()} (timestamp: $sinceTimestamp)');
 
     // ESTRATÉGIA: Buscar por KIND diretamente (mais confiável que tags)
     // Buscar de TODOS os relays em paralelo para maior velocidade
@@ -1294,14 +1324,19 @@ class NostrOrderService {
   
   /// Helper: Busca ordens pendentes de um relay específico
   /// ROBUSTO: Retorna lista vazia em caso de QUALQUER erro (timeout, conexão, etc)
+  /// CRÍTICO: Usa tag #t: ['bro-order'] para filtrar apenas eventos do app BRO
+  /// (kind 30078 é usado por muitos apps, sem a tag retorna eventos irrelevantes)
   Future<List<Map<String, dynamic>>> _fetchPendingFromRelay(String relay, int sinceTimestamp) async {
     final orders = <Map<String, dynamic>>[];
     
     try {
-      // Buscar por KIND 30078 diretamente (mais confiável)
+      // CRÍTICO: Buscar por KIND 30078 COM tag 'bro-order' para filtrar apenas ordens BRO
+      // Sem esta tag, o relay retorna eventos de outros apps (double-ratchet, drss, etc)
+      // e as ordens BRO ficam "enterradas" no limit de 200
       final relayOrders = await _fetchFromRelayWithSince(
         relay,
         kinds: [kindBroOrder],
+        tags: {'#t': [broTag]}, // CRÍTICO: Filtra apenas ordens do app BRO
         since: sinceTimestamp,
         limit: 200, // Aumentado para pegar mais ordens
       ).timeout(
@@ -1311,6 +1346,8 @@ class NostrOrderService {
           return <Map<String, dynamic>>[];
         },
       );
+      
+      debugPrint('   📥 $relay: ${relayOrders.length} eventos kind 30078 com tag bro-order');
       
       for (final order in relayOrders) {
         // Verificar se é ordem do Bro app (verificando content)

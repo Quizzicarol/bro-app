@@ -66,14 +66,15 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     // Adicionar listener para ressincronizar ao mudar de aba
     _tabController.addListener(_onTabChanged);
     
-    debugPrint('🟢 ProviderOrdersScreen initState iniciado');
-    debugPrint('   providerId: ${widget.providerId}');
+    print('🚨🚨🚨 [INIT_STATE] ProviderOrdersScreen INICIADO! 🚨🚨🚨');
+    print('🚨🚨🚨 [INIT_STATE] providerId: ${widget.providerId} 🚨🚨🚨');
     
     // Salvar modo provedor com pubkey do usuário
     SecureStorageService.setProviderMode(true, userPubkey: widget.providerId);
-    debugPrint('✅ Modo provedor salvo como ativo para pubkey: ${_safeSubstring(widget.providerId, 0, 8)}');
+    print('🚨🚨🚨 [INIT_STATE] Modo provedor salvo! 🚨🚨🚨');
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      print('🚨🚨🚨 [POST_FRAME] Chamando _loadOrders()... 🚨🚨🚨');
       _loadOrders();
       _startOrdersPolling(); // Iniciar polling de ordens
     });
@@ -85,7 +86,8 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       if (mounted && !_isLoading) {
         final orderProvider = context.read<OrderProvider>();
         try {
-          await orderProvider.syncOrdersFromNostr();
+          // CORREÇÃO: Usar fetchOrders(forProvider: true) para buscar ordens do provedor
+          await orderProvider.fetchOrders(forProvider: true);
           // Recarregar lista local
           _loadOrdersFromProvider();
         } catch (e) {
@@ -166,8 +168,11 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   Future<void> _loadOrders() async {
-    debugPrint('🔵 _loadOrders iniciado');
-    if (!mounted) return;
+    print('🚨🚨🚨 [LOAD_ORDERS] INICIADO! 🚨🚨🚨');
+    if (!mounted) {
+      print('🚨🚨🚨 [LOAD_ORDERS] Widget não montado, retornando 🚨🚨🚨');
+      return;
+    }
     
     setState(() {
       _isLoading = true;
@@ -204,10 +209,10 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       
       // Buscar ordens do Nostr
       final orderProvider = context.read<OrderProvider>();
-      debugPrint('🔵 [PROVIDER_ORDERS] Antes de fetchOrders - isProviderMode: ${orderProvider.isProviderMode}');
+      print('🚨🚨🚨 [PROVIDER_ORDERS] Antes de fetchOrders - isProviderMode: ${orderProvider.isProviderMode}');
       await orderProvider.fetchOrders(forProvider: true);
-      debugPrint('🔵 [PROVIDER_ORDERS] Após fetchOrders - isProviderMode: ${orderProvider.isProviderMode}');
-      debugPrint('🔵 [PROVIDER_ORDERS] Total de ordens no provider: ${orderProvider.orders.length}');
+      print('🚨🚨🚨 [PROVIDER_ORDERS] Após fetchOrders - isProviderMode: ${orderProvider.isProviderMode}');
+      print('🚨🚨🚨 [PROVIDER_ORDERS] Total de ordens no provider: ${orderProvider.orders.length}');
       
       if (mounted) {
         setState(() {

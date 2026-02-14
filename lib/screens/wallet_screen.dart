@@ -11,8 +11,6 @@ import '../services/storage_service.dart';
 import '../services/nostr_service.dart';
 import '../services/lnaddress_service.dart';
 import '../services/local_collateral_service.dart';
-import '../services/platform_fee_service.dart';
-import '../config.dart';
 
 /// Tela de Carteira Lightning - Apenas BOLT11 (invoice)
 /// Funções: Ver saldo, Enviar pagamento, Receber (gerar invoice)
@@ -322,8 +320,6 @@ class _WalletScreenState extends State<WalletScreen> {
             _buildActionButtons(),
             const SizedBox(height: 24),
             _buildPaymentsHistory(),
-            const SizedBox(height: 24),
-            _buildPlatformFeesSection(),
             const SizedBox(height: 40), // Extra padding at bottom
           ],
         ),
@@ -2451,177 +2447,6 @@ class _WalletScreenState extends State<WalletScreen> {
       }
     } catch (e) {
       return date.toString();
-    }
-  }
-
-  // ============================================
-  // SEÇÃO DE TAXAS DA PLATAFORMA (2%)
-  // ============================================
-  
-  Widget _buildPlatformFeesSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Row(
-          children: [
-            Icon(Icons.attach_money, color: Colors.purple, size: 20),
-            SizedBox(width: 8),
-            Text(
-              'Taxas da Plataforma (2%)',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E1E1E),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.purple.withOpacity(0.3)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Destino das taxas
-              Row(
-                children: [
-                  const Icon(Icons.bolt, color: Colors.amber, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      AppConfig.platformLightningAddress,
-                      style: const TextStyle(color: Colors.amber, fontFamily: 'monospace', fontSize: 13),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.copy, color: Colors.white54, size: 16),
-                    onPressed: () {
-                      Clipboard.setData(ClipboardData(text: AppConfig.platformLightningAddress));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('LN Address copiado!'), backgroundColor: Colors.green),
-                      );
-                    },
-                    tooltip: 'Copiar',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              
-              // Estatísticas de taxas
-              FutureBuilder<Map<String, dynamic>>(
-                future: PlatformFeeService.getHistoricalTotals(),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purple),
-                      ),
-                    );
-                  }
-                  
-                  final totals = snapshot.data!;
-                  final totalSats = totals['totalSats'] as int? ?? 0;
-                  final collectedSats = totals['collectedSats'] as int? ?? 0;
-                  final pendingSats = totals['pendingSats'] as int? ?? 0;
-                  final totalTx = totals['totalTransactions'] as int? ?? 0;
-                  
-                  return Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: [
-                          _buildFeeStatItem('Total', '$totalSats', Colors.white),
-                          _buildFeeStatItem('Enviado', '$collectedSats', Colors.green),
-                          _buildFeeStatItem('Pendente', '$pendingSats', Colors.orange),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '$totalTx transações registradas',
-                        style: const TextStyle(color: Colors.white54, fontSize: 11),
-                      ),
-                    ],
-                  );
-                },
-              ),
-              
-              const SizedBox(height: 16),
-              
-              // Botão de teste
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _testPlatformFee,
-                  icon: const Icon(Icons.send, size: 16),
-                  label: const Text('Testar Envio (1 sat)'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.purple,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-  
-  Widget _buildFeeStatItem(String label, String value, Color color) {
-    return Column(
-      children: [
-        Text(
-          '$value sats',
-          style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 14),
-        ),
-        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 10)),
-      ],
-    );
-  }
-  
-  Future<void> _testPlatformFee() async {
-    setState(() => _isLoading = true);
-    
-    try {
-      debugPrint('🧪 Testando envio de taxa da plataforma...');
-      
-      final result = await PlatformFeeService.sendPlatformFee(
-        orderId: 'test_${DateTime.now().millisecondsSinceEpoch}',
-        totalSats: 50, // 2% de 50 = 1 sat
-      );
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result ? '✅ Taxa enviada com sucesso!' : '❌ Falha - verifique logs'),
-            backgroundColor: result ? Colors.green : Colors.red,
-          ),
-        );
-        
-        // Recarregar para mostrar novos dados
-        await _loadWalletInfo();
-      }
-    } catch (e) {
-      debugPrint('❌ Erro no teste: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ Erro: $e'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
     }
   }
 }

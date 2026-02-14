@@ -273,25 +273,25 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: Colors.blue.withOpacity(0.2),
+              color: Colors.green.withOpacity(0.2),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.blue.withOpacity(0.5)),
+              border: Border.all(color: Colors.green.withOpacity(0.5)),
             ),
             child: const Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.info_outline, color: Colors.blue, size: 16),
+                Icon(Icons.check_circle, color: Colors.green, size: 16),
                 SizedBox(width: 6),
                 Text(
-                  'MODO: TRACKING ONLY',
-                  style: TextStyle(color: Colors.blue, fontSize: 11, fontWeight: FontWeight.bold),
+                  'COLETA AUTOMÁTICA ATIVA',
+                  style: TextStyle(color: Colors.green, fontSize: 11, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 8),
           const Text(
-            'Taxas vão 100% para provedores\nAqui apenas registramos para análise',
+            '2% de cada transação é enviado automaticamente\npara ${AppConfig.platformLightningAddress}',
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.white38, fontSize: 10),
           ),
@@ -439,29 +439,6 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          
-          // Instrução
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.blue.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Row(
-              children: [
-                Icon(Icons.info_outline, color: Colors.blue, size: 16),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Os provedores devem enviar 2% de cada transação para este endereço. '
-                    'Configure cobranças automáticas ou colete manualmente.',
-                    style: TextStyle(color: Colors.blue, fontSize: 11),
-                  ),
-                ),
-              ],
             ),
           ),
         ],

@@ -3552,7 +3552,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
       // Adicionar ganho ao saldo do provedor E taxa da plataforma
       // Só executar APÓS confirmação bem sucedida no Nostr
-      if (orderDetails != null) {
+      // IMPORTANTE: Executar mesmo se orderDetails for null, usando widget.amountSats
+      {
         final providerBalanceProvider = context.read<ProviderBalanceProvider>();
         final platformBalanceProvider = context.read<PlatformBalanceProvider>();
         

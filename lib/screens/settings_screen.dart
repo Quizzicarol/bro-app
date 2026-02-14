@@ -802,6 +802,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             horizontal: 20,
                             vertical: 8,
                           ),
+                          onTap: _onTitleTap,
                         ),
                         Divider(height: 1, color: Colors.white12),
                         ListTile(

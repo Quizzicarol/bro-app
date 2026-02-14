@@ -20,10 +20,12 @@ class NostrOrderService {
 
   // Relays para publicar ordens
   // NOTA: nostr.wine REMOVIDO - causa rate limit 429 constante e timeouts
+  // Ordem importa - relays mais confiáveis primeiro
   final List<String> _relays = [
     'wss://relay.damus.io',
     'wss://nos.lol',
     'wss://relay.primal.net',
+    'wss://relay.nostr.band',  // Backup relay mais estável
     // 'wss://nostr.wine', // DESABILITADO: Rate limit 429 constante
     // 'wss://relay.snort.social', // DESABILITADO: Causando timeouts frequentes
   ];
@@ -401,7 +403,7 @@ class NostrOrderService {
       debugPrint('   ✅ Conectado a $relayUrl');
       
       // Timeout de 10 segundos para resposta
-      timeout = Timer(const Duration(seconds: 10), () {
+      timeout = Timer(const Duration(seconds: 5), () {
         if (!completer.isCompleted) {
           debugPrint('   ⏰ Timeout aguardando resposta de $relayUrl');
           completer.complete(false);
@@ -1109,7 +1111,7 @@ class NostrOrderService {
           tags: {'#t': [broTag]}, // Filtra apenas eventos do app BRO
           limit: 300,
         ).timeout(
-          const Duration(seconds: 10),
+          const Duration(seconds: 5),
           onTimeout: () {
             debugPrint('⏰ Timeout ao buscar updates de $relay');
             return <Map<String, dynamic>>[];
@@ -1340,7 +1342,7 @@ class NostrOrderService {
         since: sinceTimestamp,
         limit: 200, // Aumentado para pegar mais ordens
       ).timeout(
-        const Duration(seconds: 10),
+        const Duration(seconds: 5),
         onTimeout: () {
           debugPrint('⏰ Timeout ao buscar de $relay');
           return <Map<String, dynamic>>[];
@@ -1417,7 +1419,7 @@ class NostrOrderService {
         authors: [pubkey],
         limit: 100,
       ).timeout(
-        const Duration(seconds: 10),
+        const Duration(seconds: 5),
         onTimeout: () {
           debugPrint('⏰ Timeout ao buscar ordens do usuário de $relay');
           return <Map<String, dynamic>>[];

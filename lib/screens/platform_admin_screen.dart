@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/platform_fee_service.dart';
+import '../config.dart';
 
 /// Tela de administração MASTER - Taxas da Plataforma
 /// ACESSO RESTRITO - Apenas para o administrador da plataforma
@@ -22,10 +23,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
   Map<String, dynamic>? _totals;
   List<Map<String, dynamic>> _pendingRecords = [];
   bool _isLoading = true;
-  
-  // Sua Lightning Address para receber as taxas
-  // ALTERE PARA SUA LIGHTNING ADDRESS REAL
-  static const String platformLightningAddress = 'carol@areabitcoin.com.br';
+  bool _isTesting = false;
 
   @override
   void initState() {
@@ -125,6 +123,44 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
         ),
       );
       _loadData();
+    }
+  }
+
+  Future<void> _testPlatformFee() async {
+    setState(() => _isTesting = true);
+    
+    try {
+      debugPrint('🧪 Testando envio de taxa da plataforma...');
+      debugPrint('📍 Destino: ${AppConfig.platformLightningAddress}');
+      
+      final result = await PlatformFeeService.sendPlatformFee(
+        orderId: 'test_${DateTime.now().millisecondsSinceEpoch}',
+        totalSats: 50, // 2% de 50 = 1 sat
+      );
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result ? '✅ Taxa enviada com sucesso para ${AppConfig.platformLightningAddress}!' : '❌ Falha - verifique logs'),
+            backgroundColor: result ? Colors.green : Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+        
+        // Recarregar para mostrar novos dados
+        await _loadData();
+      }
+    } catch (e) {
+      debugPrint('❌ Erro no teste: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ Erro: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isTesting = false);
+      }
     }
   }
 
@@ -375,17 +411,35 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    platformLightningAddress.isNotEmpty ? platformLightningAddress : 'Não configurado',
+                    AppConfig.platformLightningAddress.isNotEmpty ? AppConfig.platformLightningAddress : 'Não configurado',
                     style: const TextStyle(color: Colors.white, fontFamily: 'monospace'),
                   ),
                 ),
               ),
-              if (platformLightningAddress.isNotEmpty)
+              if (AppConfig.platformLightningAddress.isNotEmpty)
                 IconButton(
                   icon: const Icon(Icons.copy, color: Colors.amber),
-                  onPressed: () => _copyToClipboard(platformLightningAddress, 'Lightning Address'),
+                  onPressed: () => _copyToClipboard(AppConfig.platformLightningAddress, 'Lightning Address'),
                 ),
             ],
+          ),
+          const SizedBox(height: 16),
+          
+          // Botão de teste
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _isTesting ? null : _testPlatformFee,
+              icon: _isTesting 
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.send, size: 16),
+              label: Text(_isTesting ? 'Enviando...' : 'Testar Envio (1 sat)'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.purple,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
           ),
           const SizedBox(height: 16),
           

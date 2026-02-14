@@ -9,6 +9,7 @@ import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import '../services/secure_storage_service.dart';
 import '../services/local_collateral_service.dart';
+import '../services/platform_fee_service.dart';
 import '../widgets/stat_card.dart';
 import '../widgets/gradient_button.dart';
 import '../widgets/transaction_card.dart';
@@ -248,6 +249,15 @@ class _HomeScreenState extends State<HomeScreen> {
             return false;
           },
         );
+
+        if (success) {
+          // CRÍTICO: Configurar callback do PlatformFeeService para envio de taxas
+          PlatformFeeService.setPaymentCallback(
+            (String invoice) => breezProvider.payInvoice(invoice),
+            'Spark',
+          );
+          debugPrint('💼 PlatformFeeService callback configurado com BreezProvider');
+        }
 
         if (!success && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

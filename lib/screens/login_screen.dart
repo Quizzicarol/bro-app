@@ -7,6 +7,7 @@ import '../services/nostr_service.dart';
 import '../services/nostr_profile_service.dart';
 import '../services/storage_service.dart';
 import '../services/nip06_service.dart';
+import '../services/platform_fee_service.dart';
 import '../providers/breez_provider_export.dart';
 import '../providers/order_provider.dart';
 import '../config.dart';
@@ -899,6 +900,12 @@ class _LoginScreenState extends State<LoginScreen> {
             
             if (success) {
               debugPrint('✅ Breez inicializado com seed existente!');
+              // CRÍTICO: Configurar callback do PlatformFeeService
+              PlatformFeeService.setPaymentCallback(
+                (String invoice) => breezProvider.payInvoice(invoice),
+                'Spark',
+              );
+              debugPrint('💼 PlatformFeeService callback configurado');
             }
           } else {
             // ATENÇÃO: Não temos seed - o BreezProvider vai criar uma nova!
@@ -909,6 +916,15 @@ class _LoginScreenState extends State<LoginScreen> {
               debugPrint('⏰ Timeout na inicialização do Breez');
               return false;
             });
+            
+            if (success) {
+              // CRÍTICO: Configurar callback do PlatformFeeService
+              PlatformFeeService.setPaymentCallback(
+                (String invoice) => breezProvider.payInvoice(invoice),
+                'Spark',
+              );
+              debugPrint('💼 PlatformFeeService callback configurado');
+            }
             
             if (!success && mounted) {
               ScaffoldMessenger.of(context).showSnackBar(

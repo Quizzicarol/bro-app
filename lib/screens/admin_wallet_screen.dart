@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../providers/breez_provider_export.dart';
 import '../services/storage_service.dart';
+import '../services/platform_fee_service.dart';
+import '../config.dart';
 
 /// Tela de administração da carteira Lightning
 /// Permite ver saldo, gerar endereços e gerenciar fundos
@@ -198,6 +200,11 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
                   // SUPORTE - RESTAURAR SEED
                   _buildSectionTitle('🛠️ Ferramentas de Suporte'),
                   _buildSupportToolsCard(),
+                  const SizedBox(height: 24),
+                  
+                  // TAXAS DA PLATAFORMA (2%)
+                  _buildSectionTitle('💼 Taxas da Plataforma (2%)'),
+                  _buildPlatformFeesCard(),
                   const SizedBox(height: 32),
                 ],
               ),
@@ -828,6 +835,156 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
         );
       }
     } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ Erro: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Widget _buildPlatformFeesCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A2E),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.purple.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.attach_money, color: Colors.purple, size: 24),
+              const SizedBox(width: 8),
+              const Text(
+                'Destino das Taxas',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.bolt, color: Colors.amber, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    AppConfig.platformLightningAddress,
+                    style: const TextStyle(color: Colors.amber, fontFamily: 'monospace', fontSize: 14),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.copy, color: Colors.white54, size: 18),
+                  onPressed: () => _copyToClipboard(AppConfig.platformLightningAddress, 'LN Address'),
+                  tooltip: 'Copiar',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          
+          // Botão para ver histórico de taxas
+          FutureBuilder<Map<String, dynamic>>(
+            future: PlatformFeeService.getHistoricalTotals(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+              }
+              
+              final totals = snapshot.data!;
+              final totalSats = totals['totalSats'] as int? ?? 0;
+              final collectedSats = totals['collectedSats'] as int? ?? 0;
+              final pendingSats = totals['pendingSats'] as int? ?? 0;
+              final totalTx = totals['totalTransactions'] as int? ?? 0;
+              
+              return Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildFeeStatItem('Total', '$totalSats sats', Colors.white),
+                      _buildFeeStatItem('Enviado', '$collectedSats sats', Colors.green),
+                      _buildFeeStatItem('Pendente', '$pendingSats sats', Colors.orange),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Total de transações: $totalTx',
+                    style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  ),
+                ],
+              );
+            },
+          ),
+          
+          const SizedBox(height: 16),
+          
+          // Botão de teste de envio
+          ElevatedButton.icon(
+            onPressed: () => _testPlatformFeePayment(),
+            icon: const Icon(Icons.send, size: 18),
+            label: const Text('Testar Envio de Taxa (1 sat)'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.purple,
+              minimumSize: const Size(double.infinity, 44),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildFeeStatItem(String label, String value, Color color) {
+    return Column(
+      children: [
+        Text(value, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16)),
+        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+      ],
+    );
+  }
+  
+  Future<void> _testPlatformFeePayment() async {
+    setState(() => _isLoading = true);
+    
+    try {
+      debugPrint('');
+      debugPrint('🧪 ════════════════════════════════════════════════');
+      debugPrint('🧪 TESTE DE ENVIO DE TAXA DA PLATAFORMA');
+      debugPrint('🧪 ════════════════════════════════════════════════');
+      debugPrint('');
+      
+      // Testar envio de 1 sat (mínimo)
+      final result = await PlatformFeeService.sendPlatformFee(
+        orderId: 'test_${DateTime.now().millisecondsSinceEpoch}',
+        totalSats: 50, // 2% de 50 = 1 sat
+      );
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result ? '✅ Teste bem-sucedido!' : '❌ Falha no teste - verifique logs'),
+            backgroundColor: result ? Colors.green : Colors.red,
+          ),
+        );
+        
+        // Recarregar para mostrar novos dados
+        setState(() {});
+      }
+    } catch (e) {
+      debugPrint('❌ Erro no teste: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('❌ Erro: $e'), backgroundColor: Colors.red),

@@ -922,7 +922,7 @@ class OrderProvider with ChangeNotifier {
         print('🚨🚨🚨 Chamando syncAllPendingOrdersFromNostr... 🚨🚨🚨');
         // CRÍTICO: Timeout de 45s porque fetchProviderOrders faz muitas buscas sequenciais
         await syncAllPendingOrdersFromNostr().timeout(
-          const Duration(seconds: 15),
+          const Duration(seconds: 25),
           onTimeout: () {
             print('⏰ Timeout na sincronização Nostr (modo provedor), usando ordens locais');
           },

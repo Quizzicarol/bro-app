@@ -157,15 +157,20 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           
           // Calcular tempo restante se comprovante foi enviado
           final metadata = order?['metadata'] as Map<String, dynamic>?;
-          // CORREÇÃO: Verificar ambos os campos (receipt_submitted_at e proofReceivedAt)
+          // CORREÇÃO: Verificar TODOS os campos possíveis de timestamp
           final submittedAtStr = metadata?['receipt_submitted_at'] as String? ?? 
-                                 metadata?['proofReceivedAt'] as String?;
+                                 metadata?['proofReceivedAt'] as String? ??
+                                 metadata?['proofSentAt'] as String? ??
+                                 metadata?['completedAt'] as String?;
           if (submittedAtStr != null) {
             _receiptSubmittedAt = DateTime.tryParse(submittedAtStr);
             if (_receiptSubmittedAt != null) {
               final deadline = _receiptSubmittedAt!.add(const Duration(hours: 24));
               _timeRemaining = deadline.difference(DateTime.now());
+              debugPrint('⏱️ Timer 24h: prazo=${deadline.toIso8601String()}, restante=${_timeRemaining?.inHours ?? 0}h ${(_timeRemaining?.inMinutes.abs() ?? 0) % 60}m');
             }
+          } else {
+            debugPrint('⚠️ Nenhum timestamp de comprovante encontrado');
           }
           
           debugPrint('🔍 Ordem ${widget.orderId.substring(0, 8)}: status=$orderStatus, providerId=$orderProviderId, _orderAccepted=$_orderAccepted');
@@ -616,11 +621,9 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             const SizedBox(height: 16),
             _buildStatusCard(),
             const SizedBox(height: 16),
-            // Mostrar código de pagamento para Bro ver antes de aceitar
-            if (paymentData != null && paymentData.isNotEmpty) ...[
-              _buildPaymentDataCard(billType, paymentData),
-              const SizedBox(height: 16),
-            ],
+            // SEGURANÇA: NÃO mostrar código PIX/boleto antes de aceitar
+            // Evita que dois Bros paguem a mesma conta simultaneamente
+            // O código só será revelado APÓS o Bro aceitar a ordem
             _buildAcceptButton(),
           ]
           // ========== OUTROS STATUS ==========

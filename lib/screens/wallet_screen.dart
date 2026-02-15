@@ -79,8 +79,21 @@ class _WalletScreenState extends State<WalletScreen> {
         }
       }
       
+      // FILTRAR transações internas da plataforma (taxas de 2%)
+      // Essas transações não devem aparecer no histórico do usuário
+      // A taxa já está embutida no spread da cotação
+      final filteredPayments = allPayments.where((payment) {
+        final description = (payment['description'] as String? ?? '').toLowerCase();
+        // Filtrar transações com "platform fee" ou "bro platform fee"
+        if (description.contains('platform fee')) {
+          debugPrint('🔇 Ocultando transação interna: $description');
+          return false;
+        }
+        return true;
+      }).toList();
+      
       // Ordenar por data (mais recente primeiro)
-      allPayments.sort((a, b) {
+      filteredPayments.sort((a, b) {
         final dateA = a['createdAt'] ?? a['timestamp'];
         final dateB = b['createdAt'] ?? b['timestamp'];
         if (dateA == null && dateB == null) return 0;
@@ -93,12 +106,12 @@ class _WalletScreenState extends State<WalletScreen> {
       });
       
       debugPrint('💰 Saldo: ${balance?['balance']} sats');
-      debugPrint('📜 Pagamentos: ${allPayments.length} (incluindo ganhos Bro)');
+      debugPrint('📜 Pagamentos: ${filteredPayments.length} visíveis (${allPayments.length - filteredPayments.length} ocultos)');
 
       if (mounted) {
         setState(() {
           _balance = balance;
-          _payments = allPayments;
+          _payments = filteredPayments;
         });
       }
     } catch (e) {

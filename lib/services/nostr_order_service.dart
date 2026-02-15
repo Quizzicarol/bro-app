@@ -20,12 +20,11 @@ class NostrOrderService {
 
   // Relays para publicar ordens
   // NOTA: nostr.wine REMOVIDO - causa rate limit 429 constante e timeouts
-  // Ordem importa - relays mais confiáveis primeiro
   final List<String> _relays = [
     'wss://relay.damus.io',
     'wss://nos.lol',
     'wss://relay.primal.net',
-    'wss://relay.nostr.band',  // Backup relay mais estável
+    // 'wss://relay.nostr.band', // DESABILITADO: Retorna 0 eventos e causa timeouts
     // 'wss://nostr.wine', // DESABILITADO: Rate limit 429 constante
     // 'wss://relay.snort.social', // DESABILITADO: Causando timeouts frequentes
   ];
@@ -388,7 +387,7 @@ class NostrOrderService {
       // NOTA: Em iOS, channel.ready pode não funcionar bem, então usamos try/catch
       try {
         await channel.ready.timeout(
-          const Duration(seconds: 8),
+          const Duration(seconds: 10),
           onTimeout: () {
             debugPrint('   ⏰ Timeout aguardando conexão com $relayUrl');
             throw TimeoutException('Connection timeout');
@@ -403,7 +402,7 @@ class NostrOrderService {
       debugPrint('   ✅ Conectado a $relayUrl');
       
       // Timeout de 8 segundos para resposta
-      timeout = Timer(const Duration(seconds: 8), () {
+      timeout = Timer(const Duration(seconds: 10), () {
         if (!completer.isCompleted) {
           debugPrint('   ⏰ Timeout aguardando resposta de $relayUrl');
           completer.complete(false);
@@ -505,7 +504,7 @@ class NostrOrderService {
       }
       
       // Timeout de 8 segundos
-      timeout = Timer(const Duration(seconds: 8), () {
+      timeout = Timer(const Duration(seconds: 10), () {
         if (!completer.isCompleted) {
           completer.complete(events);
           try { channel?.sink.close(); } catch (_) {}
@@ -1111,7 +1110,7 @@ class NostrOrderService {
           tags: {'#t': [broTag]}, // Filtra apenas eventos do app BRO
           limit: 300,
         ).timeout(
-          const Duration(seconds: 8),
+          const Duration(seconds: 10),
           onTimeout: () {
             debugPrint('⏰ Timeout ao buscar updates de $relay');
             return <Map<String, dynamic>>[];
@@ -1128,7 +1127,7 @@ class NostrOrderService {
             kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete],
             limit: 300,
           ).timeout(
-            const Duration(seconds: 8),
+            const Duration(seconds: 10),
             onTimeout: () => <Map<String, dynamic>>[],
           );
           debugPrint('   📥 $relay fallback: ${fallbackEvents.length} eventos (sem tag)');
@@ -1342,7 +1341,7 @@ class NostrOrderService {
         since: sinceTimestamp,
         limit: 200, // Aumentado para pegar mais ordens
       ).timeout(
-        const Duration(seconds: 8),
+        const Duration(seconds: 10),
         onTimeout: () {
           debugPrint('⏰ Timeout ao buscar de $relay');
           return <Map<String, dynamic>>[];
@@ -1419,7 +1418,7 @@ class NostrOrderService {
         authors: [pubkey],
         limit: 100,
       ).timeout(
-        const Duration(seconds: 8),
+        const Duration(seconds: 10),
         onTimeout: () {
           debugPrint('⏰ Timeout ao buscar ordens do usuário de $relay');
           return <Map<String, dynamic>>[];

@@ -3578,6 +3578,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
         // ========== PAGAR TAXA DA PLATAFORMA VIA LIGHTNING ==========
         // Usar serviço centralizado que já tem fallback Spark/Liquid
+        debugPrint('💼 Preparando envio de taxa da plataforma...');
+        debugPrint('   platformLightningAddress: "${AppConfig.platformLightningAddress}"');
+        debugPrint('   platformFeeSats: $platformFeeSats');
+        debugPrint('   widget.amountSats: ${widget.amountSats}');
+        
         if (AppConfig.platformLightningAddress.isNotEmpty && platformFeeSats > 0) {
           debugPrint('💼 Enviando taxa da plataforma via PlatformFeeService...');
           final feeSuccess = await PlatformFeeService.sendPlatformFee(
@@ -3586,6 +3591,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           );
           if (!feeSuccess) {
             debugPrint('⚠️ Falha ao enviar taxa da plataforma');
+          } else {
+            debugPrint('✅ Taxa da plataforma enviada com sucesso!');
           }
         } else {
           debugPrint('⚠️ Taxa da plataforma não enviada: address=${AppConfig.platformLightningAddress.isNotEmpty}, sats=$platformFeeSats');

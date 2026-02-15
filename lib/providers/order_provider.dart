@@ -922,7 +922,7 @@ class OrderProvider with ChangeNotifier {
         print('🚨🚨🚨 Chamando syncAllPendingOrdersFromNostr... 🚨🚨🚨');
         // CRÍTICO: Timeout de 45s porque fetchProviderOrders faz muitas buscas sequenciais
         await syncAllPendingOrdersFromNostr().timeout(
-          const Duration(seconds: 25),
+          const Duration(seconds: 45),
           onTimeout: () {
             print('⏰ Timeout na sincronização Nostr (modo provedor), usando ordens locais');
           },
@@ -930,7 +930,7 @@ class OrderProvider with ChangeNotifier {
       } else {
         // MODO USUÁRIO: Buscar apenas ordens do próprio usuário
         await syncOrdersFromNostr().timeout(
-          const Duration(seconds: 10),
+          const Duration(seconds: 15),
           onTimeout: () {
             debugPrint('⏰ Timeout na sincronização Nostr, usando ordens locais');
           },
@@ -957,7 +957,7 @@ class OrderProvider with ChangeNotifier {
       // Timeout de 30s para fetchProviderOrders que faz muitas buscas sequenciais
       Future<List<Order>> safeFetch(Future<List<Order>> Function() fetcher, String name) async {
         try {
-          return await fetcher().timeout(const Duration(seconds: 10), onTimeout: () {
+          return await fetcher().timeout(const Duration(seconds: 30), onTimeout: () {
             print('⏰ Timeout em $name');
             return <Order>[];
           });

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:convert';
+import 'dart:async';
 import '../providers/order_provider.dart';
 import '../providers/collateral_provider.dart';
 import '../providers/breez_provider_export.dart';
@@ -45,32 +46,87 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   // Timer de 24h para auto-liquidação
   Duration? _timeRemaining;
   DateTime? _receiptSubmittedAt;
+  
+  // Timer para polling automático de updates de status
+  Timer? _statusPollingTimer;
 
   @override
   void initState() {
     super.initState();
     // Aguardar o frame completo antes de acessar o Provider
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadOrderDetails();
+      _loadOrderDetails(forceSync: true);
+      _startStatusPolling();
     });
   }
 
   @override
   void dispose() {
+    _statusPollingTimer?.cancel();
     _confirmationCodeController.dispose();
     super.dispose();
   }
+  
+  /// Inicia polling automático para verificar updates de status
+  /// Isso permite que o Bro veja quando o usuário confirma o pagamento
+  void _startStatusPolling() {
+    // Polling a cada 10 segundos quando em awaiting_confirmation
+    _statusPollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) async {
+      final currentStatus = _orderDetails?['status'] ?? '';
+      
+      // Só fazer polling se estiver aguardando confirmação
+      if (currentStatus == 'awaiting_confirmation' && mounted) {
+        debugPrint('🔄 [POLLING] Verificando status da ordem ${widget.orderId.substring(0, 8)}...');
+        await _loadOrderDetails();
+        
+        // Se mudou para completed, parar o polling
+        final newStatus = _orderDetails?['status'] ?? '';
+        if (newStatus == 'completed') {
+          debugPrint('🎉 [POLLING] Ordem confirmada! Parando polling.');
+          timer.cancel();
+          
+          // Mostrar notificação ao Bro
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('🎉 Pagamento confirmado pelo usuário!'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 5),
+              ),
+            );
+          }
+        }
+      }
+    });
+  }
 
-  Future<void> _loadOrderDetails() async {
+  Future<void> _loadOrderDetails({bool forceSync = false}) async {
     if (!mounted) return;
     
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+    // Não mostrar loading se for polling (forceSync = false mantido do caller)
+    if (_orderDetails == null) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    }
 
     try {
       final orderProvider = context.read<OrderProvider>();
+      
+      // IMPORTANTE: Fazer sync com Nostr para buscar updates de status
+      // Isso permite que o Bro veja quando o usuário confirmou
+      final currentStatus = _orderDetails?['status'] ?? '';
+      if (currentStatus == 'awaiting_confirmation' || forceSync) {
+        debugPrint('🔄 [SYNC] Sincronizando com Nostr para buscar updates...');
+        await orderProvider.syncOrdersFromNostr().timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            debugPrint('⏱️ [SYNC] Timeout - continuando com dados locais');
+          },
+        );
+      }
+      
       final order = await orderProvider.getOrder(widget.orderId);
       
       debugPrint('🔍 _loadOrderDetails: ordem carregada = $order');

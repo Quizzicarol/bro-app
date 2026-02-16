@@ -273,6 +273,18 @@ class PlatformFeeService {
     required String orderId,
     required int totalSats,
   }) async {
+    debugPrint('');
+    debugPrint('💼 ==================== PLATFORM FEE DEBUG ====================');
+    debugPrint('💼 sendPlatformFee chamado!');
+    debugPrint('💼   orderId: $orderId');
+    debugPrint('💼   totalSats: $totalSats');
+    debugPrint('💼   _payInvoiceCallback: ${_payInvoiceCallback != null ? "CONFIGURADO" : "NULL!"}');
+    debugPrint('💼   _currentBackend: $_currentBackend');
+    debugPrint('💼   _paidOrderIds: $_paidOrderIds');
+    debugPrint('💼   Já pago? ${_paidOrderIds.contains(orderId)}');
+    debugPrint('💼 ==============================================================');
+    debugPrint('');
+    
     // VERIFICAÇÃO CRÍTICA: Evitar pagamento duplicado
     if (_paidOrderIds.contains(orderId)) {
       debugPrint('💼 Taxa já foi paga para ordem ${orderId.length > 8 ? orderId.substring(0, 8) : orderId} - ignorando');

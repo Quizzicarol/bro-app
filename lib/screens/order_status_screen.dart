@@ -3596,6 +3596,19 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         debugPrint('   platformFeeSats: $platformFeeSats');
         debugPrint('   widget.amountSats: ${widget.amountSats}');
         
+        // IMPORTANTE: Garantir que o callback está configurado antes de enviar
+        final lightningProvider = context.read<LightningProvider>();
+        if (lightningProvider.isInitialized) {
+          final backendName = lightningProvider.isUsingSpark ? 'Spark' : 'Liquid';
+          PlatformFeeService.setPaymentCallback(
+            (String invoice) => lightningProvider.payInvoice(invoice),
+            backendName,
+          );
+          debugPrint('💼 Callback reconfigurado com $backendName');
+        } else {
+          debugPrint('⚠️ LightningProvider não inicializado, tentando usar callback existente');
+        }
+        
         if (AppConfig.platformLightningAddress.isNotEmpty && platformFeeSats > 0) {
           debugPrint('💼 Enviando taxa da plataforma via PlatformFeeService...');
           final feeSuccess = await PlatformFeeService.sendPlatformFee(

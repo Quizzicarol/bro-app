@@ -9,6 +9,7 @@ import '../providers/order_provider.dart';
 import '../services/storage_service.dart';
 import '../services/lnaddress_service.dart';
 import '../services/local_collateral_service.dart';
+import '../services/platform_fee_service.dart';
 
 /// Tela de Carteira Lightning - Apenas BOLT11 (invoice)
 /// Funções: Ver saldo, Enviar pagamento, Receber (gerar invoice)
@@ -61,26 +62,20 @@ class _WalletScreenState extends State<WalletScreen> {
       // A taxa já está embutida no spread da cotação
       final filteredPayments = allPayments.where((payment) {
         final description = (payment['description'] as String? ?? '').toLowerCase();
-        final paymentType = payment['type'] as String? ?? '';
-        final amount = (payment['amountSats'] ?? payment['amount'] ?? 0) as num;
-        final isSent = paymentType == 'sent' || paymentType == 'Sent';
+        final paymentHash = payment['paymentHash'] as String? ?? 
+                           payment['payment_hash'] as String? ??
+                           payment['hash'] as String?;
         
-        // Filtrar transações com "platform fee" ou "bro platform fee"
+        // Filtrar transações com "platform fee" na descrição
         if (description.contains('platform fee')) {
-          debugPrint('🔇 Ocultando transação interna: $description');
+          debugPrint('🔇 Ocultando transação interna (descrição): $description');
           return false;
         }
         
-        // Filtrar transações pequenas de envio (taxas de plataforma são ~2% = valores pequenos)
-        // Transações de 1-10 sats que são envio provavelmente são taxas internas
-        if (isSent && amount > 0 && amount <= 10) {
-          debugPrint('🔇 Ocultando transação pequena de envio: $amount sats');
-          return false;
-        }
-        
-        // Filtrar transações para tutoriais@coinos.io (taxa da plataforma)
-        if (description.contains('tutoriais') || description.contains('coinos')) {
-          debugPrint('🔇 Ocultando transação para plataforma: $description');
+        // IMPORTANTE: Filtrar por paymentHash registrado como taxa de plataforma
+        // Isso é a forma correta de identificar essas transações
+        if (PlatformFeeService.isPlatformFeeTransaction(paymentHash)) {
+          debugPrint('🔇 Ocultando transação interna (paymentHash): ${paymentHash?.substring(0, 16)}...');
           return false;
         }
         

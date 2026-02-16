@@ -5,10 +5,8 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../providers/breez_provider_export.dart';
 import '../providers/lightning_provider.dart';
-import '../providers/provider_balance_provider.dart';
 import '../providers/order_provider.dart';
 import '../services/storage_service.dart';
-import '../services/nostr_service.dart';
 import '../services/lnaddress_service.dart';
 import '../services/local_collateral_service.dart';
 
@@ -53,31 +51,10 @@ class _WalletScreenState extends State<WalletScreen> {
       final balance = await breezProvider.getBalance();
       final payments = await breezProvider.listPayments();
       
-      // Carregar transações de ganhos como Bro
-      final providerBalanceProvider = context.read<ProviderBalanceProvider>();
-      final nostrService = NostrService();
-      final providerId = nostrService.publicKey ?? 'unknown';
-      await providerBalanceProvider.initialize(providerId);
-      
-      // Mesclar transações do Bro com pagamentos Lightning
+      // NOTA: Não mesclar transações do ProviderBalanceProvider aqui!
+      // O Bro recebe sats via Lightning invoice - essas já aparecem no histórico do Breez SDK
+      // Mesclar o ProviderBalanceProvider causava duplicação e transações aparecendo no dispositivo errado
       List<Map<String, dynamic>> allPayments = [...payments];
-      
-      if (providerBalanceProvider.balance != null) {
-        for (var tx in providerBalanceProvider.balance!.transactions) {
-          if (tx.type == 'earning') {
-            allPayments.add({
-              'type': 'received',
-              'amountSats': tx.amountSats.toInt(),
-              'amount': tx.amountSats.toInt(),
-              'createdAt': tx.createdAt,
-              'timestamp': tx.createdAt,
-              'description': tx.orderDescription ?? 'Ganho como Bro',
-              'isBroEarning': true,
-              'status': 'Complete',
-            });
-          }
-        }
-      }
       
       // FILTRAR transações internas da plataforma (taxas de 2%)
       // Essas transações não devem aparecer no histórico do usuário

@@ -828,6 +828,62 @@ class NostrOrderService {
     return latestStatus;
   }
 
+  /// Busca o evento COMPLETE de uma ordem para obter o providerInvoice
+  /// Retorna um Map com os dados do evento COMPLETE incluindo providerInvoice
+  Future<Map<String, dynamic>?> fetchOrderCompleteEvent(String orderId) async {
+    print('🔍 fetchOrderCompleteEvent: Buscando evento COMPLETE para $orderId...');
+    
+    for (final relay in _relays.take(3)) {
+      try {
+        // Buscar eventos de Complete para esta ordem por orderId tag
+        var completeEvents = await _fetchFromRelay(
+          relay,
+          kinds: [kindBroComplete],
+          tags: {'#orderId': [orderId]},
+          limit: 5,
+        );
+        
+        // Também tentar por #d tag (pattern: orderId_complete)
+        if (completeEvents.isEmpty) {
+          completeEvents = await _fetchFromRelay(
+            relay,
+            kinds: [kindBroComplete],
+            tags: {'#d': ['${orderId}_complete']},
+            limit: 5,
+          );
+        }
+        
+        for (final event in completeEvents) {
+          try {
+            final content = event['parsedContent'] ?? jsonDecode(event['content']);
+            final eventOrderId = content['orderId'] as String?;
+            
+            if (eventOrderId == orderId) {
+              final providerInvoice = content['providerInvoice'] as String?;
+              final providerId = content['providerId'] as String?;
+              
+              print('   ✅ Evento COMPLETE encontrado em $relay');
+              if (providerInvoice != null) {
+                print('   ⚡ Invoice: ${providerInvoice.substring(0, 30)}...');
+              }
+              
+              return {
+                'orderId': orderId,
+                'providerId': providerId,
+                'providerInvoice': providerInvoice,
+                'completedAt': content['completedAt'],
+              };
+            }
+          } catch (_) {}
+        }
+      } catch (e) {
+        print('   ⚠️ fetchOrderCompleteEvent: Falha em $relay: $e');
+      }
+    }
+    
+    print('   ❌ Evento COMPLETE não encontrado para $orderId');
+    return null;
+  }
   /// Publica uma ordem usando objeto Order
   Future<String?> publishOrder({
     required Order order,

@@ -3514,6 +3514,23 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         providerInvoice = order.metadata?['providerInvoice'] as String?;
       }
       
+      // FALLBACK: Se não encontrou invoice no cache local, buscar do evento COMPLETE no Nostr
+      if (providerInvoice == null || providerInvoice.isEmpty) {
+        debugPrint('🔍 providerInvoice não encontrado no cache, buscando evento COMPLETE no Nostr...');
+        try {
+          final nostrService = NostrOrderService();
+          final completeData = await nostrService.fetchOrderCompleteEvent(widget.orderId);
+          if (completeData != null) {
+            providerInvoice = completeData['providerInvoice'] as String?;
+            if (providerInvoice != null && providerInvoice.isNotEmpty) {
+              debugPrint('✅ Invoice encontrado no evento COMPLETE: ${providerInvoice.substring(0, 30)}...');
+            }
+          }
+        } catch (e) {
+          debugPrint('⚠️ Erro ao buscar invoice do Nostr: $e');
+        }
+      }
+      
       if (providerInvoice != null && providerInvoice.isNotEmpty) {
         debugPrint('⚡ Pagando invoice do provedor: ${providerInvoice.substring(0, 30)}...');
         

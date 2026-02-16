@@ -3412,27 +3412,25 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       providerId ??= orderDetails?['provider_id'] as String?;
       providerId ??= order?.providerId;
       
-      // Só fazer sync se NÃO temos providerId (sync com timeout de 10s para iOS)
-      if (providerId == null || providerId.isEmpty) {
-        debugPrint('🔄 Sincronizando ordem antes de confirmar (providerId não encontrado localmente)...');
-        try {
-          await orderProvider.syncOrdersFromNostr().timeout(
-            const Duration(seconds: 10),  // iOS precisa de mais tempo
-            onTimeout: () {
-              debugPrint('⏱️ Timeout no sync (10s) - continuando com dados locais');
-            },
-          );
-          // Recarregar ordem após sync
-          order = orderProvider.getOrderById(widget.orderId);
-          if (order != null) {
-            orderDetails = order.toJson();
-            providerId = order.providerId;
-          }
-        } catch (e) {
-          debugPrint('⚠️ Erro no sync: $e - continuando com dados locais');
+      // SEMPRE sincronizar para garantir que temos o providerInvoice mais recente
+      // O Bro envia o invoice junto com o comprovante e precisamos ter isso atualizado
+      debugPrint('🔄 Sincronizando ordem antes de confirmar...');
+      try {
+        await orderProvider.syncOrdersFromNostr().timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            debugPrint('⏱️ Timeout no sync (10s) - continuando com dados locais');
+          },
+        );
+        // Recarregar ordem após sync
+        order = orderProvider.getOrderById(widget.orderId);
+        if (order != null) {
+          orderDetails = order.toJson();
+          providerId ??= order.providerId;
+          debugPrint('✅ Ordem sincronizada: hasInvoice=${order.metadata?["providerInvoice"] != null}');
         }
-      } else {
-        debugPrint('✅ providerId já disponível localmente: ${providerId.substring(0, 16)}');
+      } catch (e) {
+        debugPrint('⚠️ Erro no sync: $e - continuando com dados locais');
       }
       
       // Atualizar providerId de múltiplas fontes se ainda não temos
@@ -3512,6 +3510,24 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       }
       if (providerInvoice == null && order != null) {
         providerInvoice = order.metadata?['providerInvoice'] as String?;
+      }
+      
+      // FALLBACK: Se não encontrou invoice no cache, buscar diretamente do Nostr
+      if (providerInvoice == null || providerInvoice.isEmpty) {
+        debugPrint('🔍 Invoice não encontrado no cache, buscando diretamente do Nostr...');
+        try {
+          final nostrService = NostrOrderService();
+          final nostrOrder = await nostrService.fetchOrderFromNostr(widget.orderId);
+          if (nostrOrder != null) {
+            providerInvoice = nostrOrder['metadata']?['providerInvoice'] as String?;
+            providerInvoice ??= nostrOrder['providerInvoice'] as String?;
+            if (providerInvoice != null) {
+              debugPrint('✅ Invoice encontrado via Nostr: ${providerInvoice.substring(0, 30)}...');
+            }
+          }
+        } catch (e) {
+          debugPrint('⚠️ Falha ao buscar invoice do Nostr: $e');
+        }
       }
       
       if (providerInvoice != null && providerInvoice.isNotEmpty) {

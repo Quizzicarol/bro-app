@@ -61,11 +61,29 @@ class _WalletScreenState extends State<WalletScreen> {
       // A taxa já está embutida no spread da cotação
       final filteredPayments = allPayments.where((payment) {
         final description = (payment['description'] as String? ?? '').toLowerCase();
+        final paymentType = payment['type'] as String? ?? '';
+        final amount = (payment['amountSats'] ?? payment['amount'] ?? 0) as num;
+        final isSent = paymentType == 'sent' || paymentType == 'Sent';
+        
         // Filtrar transações com "platform fee" ou "bro platform fee"
         if (description.contains('platform fee')) {
           debugPrint('🔇 Ocultando transação interna: $description');
           return false;
         }
+        
+        // Filtrar transações pequenas de envio (taxas de plataforma são ~2% = valores pequenos)
+        // Transações de 1-10 sats que são envio provavelmente são taxas internas
+        if (isSent && amount > 0 && amount <= 10) {
+          debugPrint('🔇 Ocultando transação pequena de envio: $amount sats');
+          return false;
+        }
+        
+        // Filtrar transações para tutoriais@coinos.io (taxa da plataforma)
+        if (description.contains('tutoriais') || description.contains('coinos')) {
+          debugPrint('🔇 Ocultando transação para plataforma: $description');
+          return false;
+        }
+        
         return true;
       }).toList();
       
@@ -2064,9 +2082,10 @@ class _WalletScreenState extends State<WalletScreen> {
     
     // Verificar se é um ganho de ordem Bro (APENAS ordens completadas)
     // "Bro Payment" = pagamento de ordem completada
+    // "Bro - Ordem" = invoice gerado pelo Bro ao aceitar ordem
     // Excluir: "Garantia Bro" (depósito de garantia, não é ganho)
     final isBroOrderPayment = isReceived && 
-      description.contains('Bro Payment') && 
+      (description.contains('Bro Payment') || description.contains('Bro - Ordem') || description.contains('Bro Ordem')) && 
       !description.contains('Garantia');
     
     // Determinar o label e cor baseado no tipo

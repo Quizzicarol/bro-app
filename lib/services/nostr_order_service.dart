@@ -771,67 +771,8 @@ class NostrOrderService {
       return null;
     }
     
-    // IMPORTANTE: Buscar também o evento de COMPLETE para obter o providerInvoice
-    // O invoice é enviado pelo Bro no evento kindBroComplete, não no evento original
-    print('🔍 fetchOrderFromNostr: Buscando evento COMPLETE para invoice...');
-    for (final relay in _relays.take(3)) {
-      try {
-        // Buscar eventos de Complete para esta ordem
-        var completeEvents = await _fetchFromRelay(
-          relay,
-          kinds: [kindBroComplete],
-          tags: {'#orderId': [orderId]},
-          limit: 5,
-        );
-        
-        // Também tentar por #d tag
-        if (completeEvents.isEmpty) {
-          completeEvents = await _fetchFromRelay(
-            relay,
-            kinds: [kindBroComplete],
-            tags: {'#d': ['${orderId}_complete']},
-            limit: 5,
-          );
-        }
-        
-        for (final event in completeEvents) {
-          try {
-            final content = event['parsedContent'] ?? jsonDecode(event['content']);
-            final eventOrderId = content['orderId'] as String?;
-            
-            if (eventOrderId == orderId) {
-              final providerInvoice = content['providerInvoice'] as String?;
-              final providerId = content['providerId'] as String?;
-              
-              if (providerInvoice != null && providerInvoice.isNotEmpty) {
-                print('   ✅ Invoice encontrado no evento COMPLETE: ${providerInvoice.substring(0, 30)}...');
-                orderData!['metadata'] = {
-                  'providerInvoice': providerInvoice,
-                };
-                orderData['providerInvoice'] = providerInvoice;
-              }
-              
-              if (providerId != null) {
-                orderData!['providerId'] = providerId;
-              }
-              
-              // Atualizar status se tiver
-              final status = content['status'] as String?;
-              if (status != null) {
-                orderData!['status'] = status;
-              }
-              
-              break;
-            }
-          } catch (_) {}
-        }
-        
-        // Se encontrou invoice, parar de buscar
-        if (orderData?['providerInvoice'] != null) break;
-      } catch (e) {
-        print('   ⚠️ fetchOrderFromNostr COMPLETE: Falha em $relay: $e');
-      }
-    }
+    // NOTA: O status local é gerenciado pelo order_provider.dart
+    // Não fazer busca extra aqui para evitar timeout
     
     return orderData;
   }

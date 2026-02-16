@@ -20,14 +20,10 @@ class PlatformFeeService {
   static const String _totalCollectedKey = 'platform_total_collected';
   static const String _autoCollectionKey = 'platform_auto_collection_enabled';
   static const String _paidOrderIdsKey = 'platform_fee_paid_order_ids';
-  static const String _feePaymentHashesKey = 'platform_fee_payment_hashes';
   
   /// Taxa da plataforma (2%)
   /// Atualmente apenas registrada, não cobrada
   static const double platformFeePercent = 0.02;
-  
-  /// Set de paymentHashes das transações de taxa (para filtrar no histórico)
-  static final Set<String> _feePaymentHashes = {};
   
   /// Inicializa o serviço carregando ordens já pagas do storage
   static Future<void> initialize() async {
@@ -35,27 +31,7 @@ class PlatformFeeService {
     final paidIds = prefs.getStringList(_paidOrderIdsKey) ?? [];
     _paidOrderIds.clear();
     _paidOrderIds.addAll(paidIds);
-    
-    // Carregar paymentHashes das taxas
-    final feeHashes = prefs.getStringList(_feePaymentHashesKey) ?? [];
-    _feePaymentHashes.clear();
-    _feePaymentHashes.addAll(feeHashes);
-    
-    debugPrint('💼 PlatformFeeService inicializado com ${_paidOrderIds.length} ordens pagas e ${_feePaymentHashes.length} hashes de taxas');
-  }
-  
-  /// Verifica se um paymentHash é de uma transação de taxa de plataforma
-  static bool isPlatformFeeTransaction(String? paymentHash) {
-    if (paymentHash == null || paymentHash.isEmpty) return false;
-    return _feePaymentHashes.contains(paymentHash);
-  }
-  
-  /// Registra um paymentHash como taxa de plataforma
-  static Future<void> _saveFeePaymentHash(String paymentHash) async {
-    _feePaymentHashes.add(paymentHash);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(_feePaymentHashesKey, _feePaymentHashes.toList());
-    debugPrint('💼 PaymentHash de taxa salvo: ${paymentHash.substring(0, 16)}...');
+    debugPrint('💼 PlatformFeeService inicializado com ${_paidOrderIds.length} ordens já pagas');
   }
   
   /// Salva o registro de ordens pagas no storage
@@ -273,18 +249,6 @@ class PlatformFeeService {
     required String orderId,
     required int totalSats,
   }) async {
-    debugPrint('');
-    debugPrint('💼 ==================== PLATFORM FEE DEBUG ====================');
-    debugPrint('💼 sendPlatformFee chamado!');
-    debugPrint('💼   orderId: $orderId');
-    debugPrint('💼   totalSats: $totalSats');
-    debugPrint('💼   _payInvoiceCallback: ${_payInvoiceCallback != null ? "CONFIGURADO" : "NULL!"}');
-    debugPrint('💼   _currentBackend: $_currentBackend');
-    debugPrint('💼   _paidOrderIds: $_paidOrderIds');
-    debugPrint('💼   Já pago? ${_paidOrderIds.contains(orderId)}');
-    debugPrint('💼 ==============================================================');
-    debugPrint('');
-    
     // VERIFICAÇÃO CRÍTICA: Evitar pagamento duplicado
     if (_paidOrderIds.contains(orderId)) {
       debugPrint('💼 Taxa já foi paga para ordem ${orderId.length > 8 ? orderId.substring(0, 8) : orderId} - ignorando');
@@ -353,21 +317,12 @@ class PlatformFeeService {
           // CRÍTICO: Registrar que esta ordem já teve taxa paga (persistido)
           await _markOrderAsPaid(orderId);
           
-          // IMPORTANTE: Salvar paymentHash para filtrar do histórico
-          final paymentHash = payResult['paymentHash'] as String? ?? 
-                             payResult['payment']?['paymentHash'] as String? ??
-                             payResult['hash'] as String?;
-          if (paymentHash != null && paymentHash.isNotEmpty) {
-            await _saveFeePaymentHash(paymentHash);
-          }
-          
           debugPrint('');
           debugPrint('✅ ════════════════════════════════════════════════');
           debugPrint('✅ TAXA DA PLATAFORMA PAGA COM SUCESSO!');
           debugPrint('✅ Valor: $platformFeeSats sats');
           debugPrint('✅ Destino: $platformAddress');
           debugPrint('✅ Backend: $_currentBackend');
-          debugPrint('✅ PaymentHash: ${paymentHash ?? "N/A"}');
           debugPrint('✅ ════════════════════════════════════════════════');
           debugPrint('');
           

@@ -5,11 +5,12 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../providers/breez_provider_export.dart';
 import '../providers/lightning_provider.dart';
+import '../providers/provider_balance_provider.dart';
 import '../providers/order_provider.dart';
 import '../services/storage_service.dart';
+import '../services/nostr_service.dart';
 import '../services/lnaddress_service.dart';
 import '../services/local_collateral_service.dart';
-import '../services/platform_fee_service.dart';
 
 /// Tela de Carteira Lightning - Apenas BOLT11 (invoice)
 /// Funções: Ver saldo, Enviar pagamento, Receber (gerar invoice)
@@ -52,38 +53,34 @@ class _WalletScreenState extends State<WalletScreen> {
       final balance = await breezProvider.getBalance();
       final payments = await breezProvider.listPayments();
       
-      // NOTA: Não mesclar transações do ProviderBalanceProvider aqui!
-      // O Bro recebe sats via Lightning invoice - essas já aparecem no histórico do Breez SDK
-      // Mesclar o ProviderBalanceProvider causava duplicação e transações aparecendo no dispositivo errado
+      // Carregar transações de ganhos como Bro
+      final providerBalanceProvider = context.read<ProviderBalanceProvider>();
+      final nostrService = NostrService();
+      final providerId = nostrService.publicKey ?? 'unknown';
+      await providerBalanceProvider.initialize(providerId);
+      
+      // Mesclar transações do Bro com pagamentos Lightning
       List<Map<String, dynamic>> allPayments = [...payments];
       
-      // FILTRAR transações internas da plataforma (taxas de 2%)
-      // Essas transações não devem aparecer no histórico do usuário
-      // A taxa já está embutida no spread da cotação
-      final filteredPayments = allPayments.where((payment) {
-        final description = (payment['description'] as String? ?? '').toLowerCase();
-        final paymentHash = payment['paymentHash'] as String? ?? 
-                           payment['payment_hash'] as String? ??
-                           payment['hash'] as String?;
-        
-        // Filtrar transações com "platform fee" na descrição
-        if (description.contains('platform fee')) {
-          debugPrint('🔇 Ocultando transação interna (descrição): $description');
-          return false;
+      if (providerBalanceProvider.balance != null) {
+        for (var tx in providerBalanceProvider.balance!.transactions) {
+          if (tx.type == 'earning') {
+            allPayments.add({
+              'type': 'received',
+              'amountSats': tx.amountSats.toInt(),
+              'amount': tx.amountSats.toInt(),
+              'createdAt': tx.createdAt,
+              'timestamp': tx.createdAt,
+              'description': tx.orderDescription ?? 'Ganho como Bro',
+              'isBroEarning': true,
+              'status': 'Complete',
+            });
+          }
         }
-        
-        // IMPORTANTE: Filtrar por paymentHash registrado como taxa de plataforma
-        // Isso é a forma correta de identificar essas transações
-        if (PlatformFeeService.isPlatformFeeTransaction(paymentHash)) {
-          debugPrint('🔇 Ocultando transação interna (paymentHash): ${paymentHash?.substring(0, 16)}...');
-          return false;
-        }
-        
-        return true;
-      }).toList();
+      }
       
       // Ordenar por data (mais recente primeiro)
-      filteredPayments.sort((a, b) {
+      allPayments.sort((a, b) {
         final dateA = a['createdAt'] ?? a['timestamp'];
         final dateB = b['createdAt'] ?? b['timestamp'];
         if (dateA == null && dateB == null) return 0;
@@ -96,12 +93,12 @@ class _WalletScreenState extends State<WalletScreen> {
       });
       
       debugPrint('💰 Saldo: ${balance?['balance']} sats');
-      debugPrint('📜 Pagamentos: ${filteredPayments.length} visíveis (${allPayments.length - filteredPayments.length} ocultos)');
+      debugPrint('📜 Pagamentos: ${allPayments.length} (incluindo ganhos Bro)');
 
       if (mounted) {
         setState(() {
           _balance = balance;
-          _payments = filteredPayments;
+          _payments = allPayments;
         });
       }
     } catch (e) {
@@ -2077,10 +2074,9 @@ class _WalletScreenState extends State<WalletScreen> {
     
     // Verificar se é um ganho de ordem Bro (APENAS ordens completadas)
     // "Bro Payment" = pagamento de ordem completada
-    // "Bro - Ordem" = invoice gerado pelo Bro ao aceitar ordem
     // Excluir: "Garantia Bro" (depósito de garantia, não é ganho)
     final isBroOrderPayment = isReceived && 
-      (description.contains('Bro Payment') || description.contains('Bro - Ordem') || description.contains('Bro Ordem')) && 
+      description.contains('Bro Payment') && 
       !description.contains('Garantia');
     
     // Determinar o label e cor baseado no tipo

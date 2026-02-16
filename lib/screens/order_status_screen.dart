@@ -3412,25 +3412,27 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       providerId ??= orderDetails?['provider_id'] as String?;
       providerId ??= order?.providerId;
       
-      // SEMPRE sincronizar para garantir que temos o providerInvoice mais recente
-      // O Bro envia o invoice junto com o comprovante e precisamos ter isso atualizado
-      debugPrint('🔄 Sincronizando ordem antes de confirmar...');
-      try {
-        await orderProvider.syncOrdersFromNostr().timeout(
-          const Duration(seconds: 10),
-          onTimeout: () {
-            debugPrint('⏱️ Timeout no sync (10s) - continuando com dados locais');
-          },
-        );
-        // Recarregar ordem após sync
-        order = orderProvider.getOrderById(widget.orderId);
-        if (order != null) {
-          orderDetails = order.toJson();
-          providerId ??= order.providerId;
-          debugPrint('✅ Ordem sincronizada: hasInvoice=${order.metadata?["providerInvoice"] != null}');
+      // Só fazer sync se NÃO temos providerId (sync com timeout de 10s para iOS)
+      if (providerId == null || providerId.isEmpty) {
+        debugPrint('🔄 Sincronizando ordem antes de confirmar (providerId não encontrado localmente)...');
+        try {
+          await orderProvider.syncOrdersFromNostr().timeout(
+            const Duration(seconds: 10),  // iOS precisa de mais tempo
+            onTimeout: () {
+              debugPrint('⏱️ Timeout no sync (10s) - continuando com dados locais');
+            },
+          );
+          // Recarregar ordem após sync
+          order = orderProvider.getOrderById(widget.orderId);
+          if (order != null) {
+            orderDetails = order.toJson();
+            providerId = order.providerId;
+          }
+        } catch (e) {
+          debugPrint('⚠️ Erro no sync: $e - continuando com dados locais');
         }
-      } catch (e) {
-        debugPrint('⚠️ Erro no sync: $e - continuando com dados locais');
+      } else {
+        debugPrint('✅ providerId já disponível localmente: ${providerId.substring(0, 16)}');
       }
       
       // Atualizar providerId de múltiplas fontes se ainda não temos
@@ -3512,24 +3514,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         providerInvoice = order.metadata?['providerInvoice'] as String?;
       }
       
-      // FALLBACK: Se não encontrou invoice no cache, buscar diretamente do Nostr
-      if (providerInvoice == null || providerInvoice.isEmpty) {
-        debugPrint('🔍 Invoice não encontrado no cache, buscando diretamente do Nostr...');
-        try {
-          final nostrService = NostrOrderService();
-          final nostrOrder = await nostrService.fetchOrderFromNostr(widget.orderId);
-          if (nostrOrder != null) {
-            providerInvoice = nostrOrder['metadata']?['providerInvoice'] as String?;
-            providerInvoice ??= nostrOrder['providerInvoice'] as String?;
-            if (providerInvoice != null) {
-              debugPrint('✅ Invoice encontrado via Nostr: ${providerInvoice.substring(0, 30)}...');
-            }
-          }
-        } catch (e) {
-          debugPrint('⚠️ Falha ao buscar invoice do Nostr: $e');
-        }
-      }
-      
       if (providerInvoice != null && providerInvoice.isNotEmpty) {
         debugPrint('⚡ Pagando invoice do provedor: ${providerInvoice.substring(0, 30)}...');
         
@@ -3566,16 +3550,17 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         debugPrint('ℹ️ Nenhum providerInvoice encontrado - provedor receberá via saldo');
       }
 
-      // Pagar taxa da plataforma
+      // Adicionar ganho ao saldo do provedor E taxa da plataforma
       // Só executar APÓS confirmação bem sucedida no Nostr
       // IMPORTANTE: Executar mesmo se orderDetails for null, usando widget.amountSats
       {
+        final providerBalanceProvider = context.read<ProviderBalanceProvider>();
         final platformBalanceProvider = context.read<PlatformBalanceProvider>();
         
         // Calcular taxas usando constantes centralizadas do AppConfig
         final totalSats = widget.amountSats.toDouble();
         
-        // Taxa do provedor: 3% do valor total (já foi pago via invoice Lightning acima)
+        // Taxa do provedor: 3% do valor total (vai para a carteira do Bro via invoice)
         final providerFee = totalSats * AppConfig.providerFeePercent;
         
         // Taxa da plataforma: 2% do valor total (manutenção da plataforma)
@@ -3584,10 +3569,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         
         final orderDescription = 'Ordem ${widget.orderId.substring(0, 8)} - R\$ ${widget.amountBrl.toStringAsFixed(2)}';
         
-        // NOTA: NÃO registrar ganho aqui - este é o dispositivo do USUÁRIO, não do Bro!
-        // O Bro recebe os sats via invoice Lightning (linha ~3517) que já aparece no histórico dele
-        // Chamar addEarning aqui fazia os ganhos aparecerem na carteira ERRADA
-        debugPrint('💡 Bro recebeu $providerFee sats via invoice Lightning');
+        // Registrar ganho do provedor (já foi pago via invoice Lightning acima)
+        await providerBalanceProvider.addEarning(
+          orderId: widget.orderId,
+          amountSats: providerFee,
+          orderDescription: orderDescription,
+        );
 
         // ========== PAGAR TAXA DA PLATAFORMA VIA LIGHTNING ==========
         // Usar serviço centralizado que já tem fallback Spark/Liquid
@@ -3595,19 +3582,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         debugPrint('   platformLightningAddress: "${AppConfig.platformLightningAddress}"');
         debugPrint('   platformFeeSats: $platformFeeSats');
         debugPrint('   widget.amountSats: ${widget.amountSats}');
-        
-        // IMPORTANTE: Garantir que o callback está configurado antes de enviar
-        final lightningProvider = context.read<LightningProvider>();
-        if (lightningProvider.isInitialized) {
-          final backendName = lightningProvider.isUsingSpark ? 'Spark' : 'Liquid';
-          PlatformFeeService.setPaymentCallback(
-            (String invoice) => lightningProvider.payInvoice(invoice),
-            backendName,
-          );
-          debugPrint('💼 Callback reconfigurado com $backendName');
-        } else {
-          debugPrint('⚠️ LightningProvider não inicializado, tentando usar callback existente');
-        }
         
         if (AppConfig.platformLightningAddress.isNotEmpty && platformFeeSats > 0) {
           debugPrint('💼 Enviando taxa da plataforma via PlatformFeeService...');

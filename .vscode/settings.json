@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^\\$env:LOCALAPPDATA \\+ \"\\\\Android\\\\Sdk\\\\platform-tools\\\\adb\\.exe\" \\| ForEach-Object \\{ & \\$_ logcat -d -t 200 \\| Select-String -Pattern \"flutter\" \\| Select-Object -Last 80 \\}$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

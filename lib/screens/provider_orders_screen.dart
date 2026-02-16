@@ -81,18 +81,32 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
   
   void _startOrdersPolling() {
-    // Atualizar ordens a cada 10 segundos para status em tempo real
-    _ordersUpdateTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
-      if (mounted && !_isLoading) {
+    // Atualizar ordens a cada 15 segundos para status em tempo real
+    // Intervalo aumentado para evitar sobrecarga e tela cinza
+    _ordersUpdateTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
+      // Verificar mounted ANTES de qualquer operação
+      if (!mounted) {
+        _ordersUpdateTimer?.cancel();
+        return;
+      }
+      
+      // Evitar polling durante loading ou sync
+      if (_isLoading || _isSyncingNostr) {
+        debugPrint('⏸️ Polling pulado - já carregando');
+        return;
+      }
+      
+      try {
         final orderProvider = context.read<OrderProvider>();
-        try {
-          // CORREÇÃO: Usar fetchOrders(forProvider: true) para buscar ordens do provedor
-          await orderProvider.fetchOrders(forProvider: true);
-          // Recarregar lista local
+        await orderProvider.fetchOrders(forProvider: true);
+        
+        // Verificar mounted novamente após operação async
+        if (mounted) {
           _loadOrdersFromProvider();
-        } catch (e) {
-          debugPrint('⚠️ Erro no polling de ordens Bro: $e');
         }
+      } catch (e) {
+        debugPrint('⚠️ Erro no polling de ordens Bro: $e');
+        // Não travar a UI - apenas logar o erro
       }
     });
   }

@@ -3550,17 +3550,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         debugPrint('ℹ️ Nenhum providerInvoice encontrado - provedor receberá via saldo');
       }
 
-      // Adicionar ganho ao saldo do provedor E taxa da plataforma
+      // Pagar taxa da plataforma
       // Só executar APÓS confirmação bem sucedida no Nostr
       // IMPORTANTE: Executar mesmo se orderDetails for null, usando widget.amountSats
       {
-        final providerBalanceProvider = context.read<ProviderBalanceProvider>();
         final platformBalanceProvider = context.read<PlatformBalanceProvider>();
         
         // Calcular taxas usando constantes centralizadas do AppConfig
         final totalSats = widget.amountSats.toDouble();
         
-        // Taxa do provedor: 3% do valor total (vai para a carteira do Bro via invoice)
+        // Taxa do provedor: 3% do valor total (já foi pago via invoice Lightning acima)
         final providerFee = totalSats * AppConfig.providerFeePercent;
         
         // Taxa da plataforma: 2% do valor total (manutenção da plataforma)
@@ -3569,12 +3568,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         
         final orderDescription = 'Ordem ${widget.orderId.substring(0, 8)} - R\$ ${widget.amountBrl.toStringAsFixed(2)}';
         
-        // Registrar ganho do provedor (já foi pago via invoice Lightning acima)
-        await providerBalanceProvider.addEarning(
-          orderId: widget.orderId,
-          amountSats: providerFee,
-          orderDescription: orderDescription,
-        );
+        // NOTA: NÃO registrar ganho aqui - este é o dispositivo do USUÁRIO, não do Bro!
+        // O Bro recebe os sats via invoice Lightning (linha ~3517) que já aparece no histórico dele
+        // Chamar addEarning aqui fazia os ganhos aparecerem na carteira ERRADA
+        debugPrint('💡 Bro recebeu $providerFee sats via invoice Lightning');
 
         // ========== PAGAR TAXA DA PLATAFORMA VIA LIGHTNING ==========
         // Usar serviço centralizado que já tem fallback Spark/Liquid

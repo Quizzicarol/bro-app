@@ -89,6 +89,7 @@ class ProviderBalanceProvider with ChangeNotifier {
   }
 
   /// Adicionar ganho (earning) ao saldo
+  /// Retorna false se já foi registrado para este orderId (evita duplicação)
   Future<bool> addEarning({
     required String orderId,
     required String orderDescription,
@@ -103,6 +104,16 @@ class ProviderBalanceProvider with ChangeNotifier {
     
     if (_balance == null) {
       debugPrint('❌ Falha ao inicializar ProviderBalanceProvider');
+      return false;
+    }
+    
+    // VERIFICAÇÃO DE DUPLICAÇÃO: Não registrar se já existe transação para este orderId
+    final existingTransaction = _balance!.transactions.where(
+      (t) => t.type == 'earning' && t.orderId == orderId
+    ).toList();
+    
+    if (existingTransaction.isNotEmpty) {
+      debugPrint('ℹ️ Ganho já registrado para ordem $orderId - ignorando');
       return false;
     }
 

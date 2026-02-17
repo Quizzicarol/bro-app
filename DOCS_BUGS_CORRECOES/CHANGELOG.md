@@ -1,5 +1,27 @@
 # 📋 Changelog - Bro App
 
+## [1.0.107] - 2026-02-17
+
+### 🐛 Bugs Críticos Corrigidos
+
+- **Reconciliação automática marcava ordens erradas como "completed"**
+  - Problema: Funções de auto-reconciliação (`autoReconcileWithBreezPayments`, `onPaymentSent`, `forceReconcileAllOrders`) não verificavam se a ordem foi criada pelo usuário atual
+  - Consequência: Ordens aceitas como PROVEDOR eram erroneamente marcadas como completed
+  - Resultado: Duplicidade de transações e confirmação automática antes do usuário confirmar
+  - Solução: Adicionar verificação `order.userPubkey == currentUserPubkey` antes de marcar como completed
+
+### ✅ Confirmado Funcionando
+- **Invoice do provedor sendo incluído no Nostr** - `hasInvoice=true` confirmado nos logs
+- **Taxa da plataforma** - Callback configurado corretamente via `PlatformFeeService`
+
+### Arquivos Modificados
+- `lib/providers/order_provider.dart`:
+  - `autoReconcileWithBreezPayments()` - Verificar userPubkey antes de marcar completed
+  - `onPaymentSent()` - Só processar ordens criadas pelo usuário atual
+  - `forceReconcileAllOrders()` - Pular ordens que não foram criadas pelo usuário
+
+---
+
 ## [1.0.43] - 2026-01-25
 
 ### 🐛 Bug CRÍTICO Corrigido

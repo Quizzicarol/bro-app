@@ -402,20 +402,25 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       }
 
       // ========== GERAR INVOICE AUTOMATICAMENTE ==========
-      // Calcular taxa do provedor (3% da ordem em sats)
+      // CORRIGIDO: O provedor recebe o VALOR TOTAL menos a taxa da plataforma
+      // Modelo: Usuário paga sats -> Provedor paga PIX -> Provedor recebe sats
       final amount = (_orderDetails!['amount'] as num).toDouble();
       final btcAmount = (_orderDetails!['btcAmount'] as num?)?.toDouble() ?? 0;
       
       // Converter btcAmount para sats (btcAmount está em BTC, * 100_000_000 = sats)
       final totalSats = (btcAmount * 100000000).round();
-      var providerFeeSats = (totalSats * EscrowService.providerFeePercent / 100).round();
+      
+      // CORRIGIDO: Provedor recebe valor total MENOS taxa da plataforma (2%)
+      // A taxa da plataforma é paga separadamente pelo usuário
+      var providerReceiveSats = totalSats;
       
       // Taxa mínima de 1 sat para ordens muito pequenas
-      if (providerFeeSats < 1 && totalSats > 0) {
-        providerFeeSats = 1;
+      if (providerReceiveSats < 1 && totalSats > 0) {
+        providerReceiveSats = 1;
       }
       
-      debugPrint('💰 Ordem: R\$ ${amount.toStringAsFixed(2)} = $totalSats sats, taxa Bro: $providerFeeSats sats (${EscrowService.providerFeePercent}%)');
+      debugPrint('💰 Ordem: R\$ ${amount.toStringAsFixed(2)} = $totalSats sats');
+      debugPrint('💰 Provedor vai receber: $providerReceiveSats sats (valor total da ordem)');
       
       String? generatedInvoice;
       
@@ -428,25 +433,14 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       debugPrint('🔍 DEBUG INVOICE GENERATION:');
       debugPrint('   breezProvider.isInitialized: ${breezProvider.isInitialized}');
       debugPrint('   liquidProvider.isInitialized: ${liquidProvider.isInitialized}');
-      debugPrint('   providerFeeSats: $providerFeeSats');
+      debugPrint('   providerReceiveSats: $providerReceiveSats');
       
-      // CORREÇÃO: Se nenhuma carteira está inicializada, tentar inicializar
-      if (!breezProvider.isInitialized && !liquidProvider.isInitialized && providerFeeSats > 0) {
-        debugPrint('⚠️ Nenhuma carteira inicializada! Tentando inicializar Breez...');
-        try {
-          final success = await breezProvider.initialize();
-          debugPrint('   Inicialização Breez: ${success ? "SUCCESS" : "FAILED"}');
-        } catch (e) {
-          debugPrint('   Erro ao inicializar Breez: $e');
-        }
-      }
-      
-      // Só gerar invoice se a taxa for maior que 0
-      if (providerFeeSats > 0 && breezProvider.isInitialized) {
-        debugPrint('⚡ Gerando invoice de $providerFeeSats sats via Breez Spark...');
+      // Só gerar invoice se o valor for maior que 0
+      if (providerReceiveSats > 0 && breezProvider.isInitialized) {
+        debugPrint('⚡ Gerando invoice de $providerReceiveSats sats via Breez Spark...');
         
         final result = await breezProvider.createInvoice(
-          amountSats: providerFeeSats,
+          amountSats: providerReceiveSats,
           description: 'Bro - Ordem ${widget.orderId.substring(0, 8)}',
         );
         
@@ -456,11 +450,11 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         } else {
           debugPrint('⚠️ Falha ao gerar invoice via Spark: $result');
         }
-      } else if (providerFeeSats > 0 && liquidProvider.isInitialized) {
-        debugPrint('⚡ Gerando invoice de $providerFeeSats sats via Liquid (fallback)...');
+      } else if (providerReceiveSats > 0 && liquidProvider.isInitialized) {
+        debugPrint('⚡ Gerando invoice de $providerReceiveSats sats via Liquid (fallback)...');
         
         final result = await liquidProvider.createInvoice(
-          amountSats: providerFeeSats,
+          amountSats: providerReceiveSats,
           description: 'Bro - Ordem ${widget.orderId.substring(0, 8)}',
         );
         
@@ -470,13 +464,13 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         } else {
           debugPrint('⚠️ Falha ao gerar invoice via Liquid: $result');
         }
-      } else if (providerFeeSats <= 0) {
-        debugPrint('ℹ️ providerFeeSats=$providerFeeSats (muito baixo), não gerando invoice');
+      } else if (providerReceiveSats <= 0) {
+        debugPrint('ℹ️ providerReceiveSats=$providerReceiveSats (muito baixo), não gerando invoice');
       } else {
         debugPrint('🚨 NENHUMA CARTEIRA INICIALIZADA! breez=${breezProvider.isInitialized}, liquid=${liquidProvider.isInitialized}');
       }
 
-      debugPrint('📋 Resumo: providerFeeSats=$providerFeeSats, hasInvoice=${generatedInvoice != null}');
+      debugPrint('📋 Resumo: providerReceiveSats=$providerReceiveSats, hasInvoice=${generatedInvoice != null}');
       if (generatedInvoice != null) {
         debugPrint('   Invoice: ${generatedInvoice.substring(0, 50)}...');
       }
@@ -505,7 +499,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         if (generatedInvoice != null) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('✅ Comprovante enviado! Você receberá $providerFeeSats sats quando o usuário confirmar.'),
+              content: Text('✅ Comprovante enviado! Você receberá $providerReceiveSats sats quando o usuário confirmar.'),
               backgroundColor: Colors.green,
               duration: const Duration(seconds: 4),
             ),

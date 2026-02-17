@@ -2431,11 +2431,15 @@ class OrderProvider with ChangeNotifier {
     
     // ========== RECONCILIAR PAGAMENTOS ENVIADOS ==========
     // (ordens awaiting_confirmation onde o usuário já pagou o Bro)
+    // CORREÇÃO CRÍTICA: Só reconciliar ordens que EU CRIEI (sou o userPubkey)
+    // Isso evita que provedor marque suas próprias ordens aceitas como completed
+    final currentUserPubkey = _nostrService.publicKey;
     final awaitingOrders = _orders.where((o) => 
-      o.status == 'awaiting_confirmation' || 
-      o.status == 'accepted'
+      (o.status == 'awaiting_confirmation' || o.status == 'accepted') &&
+      o.userPubkey == currentUserPubkey // IMPORTANTE: Só minhas ordens!
     ).toList();
-    debugPrint('\n🔍 Verificando ${awaitingOrders.length} ordens AGUARDANDO CONFIRMAÇÃO/ACEITAS...');
+    debugPrint('\n🔍 Verificando ${awaitingOrders.length} ordens MINHAS AGUARDANDO CONFIRMAÇÃO/ACEITAS...');
+    debugPrint('   (meu pubkey: ${currentUserPubkey?.substring(0, 8) ?? "null"}...)');
     
     for (final order in awaitingOrders) {
       final expectedSats = (order.btcAmount * 100000000).toInt();
@@ -2514,6 +2518,7 @@ class OrderProvider with ChangeNotifier {
 
   /// Callback chamado quando o Breez SDK detecta um pagamento ENVIADO
   /// Usado para marcar ordens como completed automaticamente
+  /// CORREÇÃO: Só marca ordens que EU CRIEI como próprio usuário
   Future<void> onPaymentSent({
     required String paymentId,
     required int amountSats,
@@ -2521,18 +2526,20 @@ class OrderProvider with ChangeNotifier {
   }) async {
     debugPrint('💸 OrderProvider.onPaymentSent: $amountSats sats (hash: ${paymentHash ?? "N/A"})');
     
-    // Buscar ordens aguardando confirmação que podem ter sido pagas
+    // CORREÇÃO CRÍTICA: Só buscar ordens que EU CRIEI
+    final currentUserPubkey = _nostrService.publicKey;
     final awaitingOrders = _orders.where((o) => 
-      o.status == 'awaiting_confirmation' || 
-      o.status == 'accepted'
+      (o.status == 'awaiting_confirmation' || o.status == 'accepted') &&
+      o.userPubkey == currentUserPubkey // IMPORTANTE: Só minhas ordens!
     ).toList();
     
     if (awaitingOrders.isEmpty) {
-      debugPrint('📭 Nenhuma ordem aguardando liberação de BTC');
+      debugPrint('📭 Nenhuma ordem MINHA aguardando liberação de BTC');
       return;
     }
     
-    debugPrint('🔍 Verificando ${awaitingOrders.length} ordens...');
+    debugPrint('🔍 Verificando ${awaitingOrders.length} ordens MINHAS...');
+    debugPrint('   (meu pubkey: ${currentUserPubkey?.substring(0, 8) ?? "null"}...)');
     
     // Procurar ordem com valor correspondente
     for (final order in awaitingOrders) {
@@ -2633,6 +2640,11 @@ class OrderProvider with ChangeNotifier {
     debugPrint('   📥 ${receivedPayments.length} pagamentos RECEBIDOS');
     debugPrint('   📤 ${sentPayments.length} pagamentos ENVIADOS');
     
+    // CORREÇÃO CRÍTICA: Para pagamentos ENVIADOS (que marcam como completed),
+    // só verificar ordens que EU CRIEI (sou o userPubkey)
+    final currentUserPubkey = _nostrService.publicKey;
+    debugPrint('   🔐 Meu pubkey: ${currentUserPubkey?.substring(0, 8) ?? "null"}...');
+    
     // Buscar TODAS as ordens não finalizadas
     final ordersToCheck = _orders.where((o) => 
       o.status != 'completed' && 
@@ -2642,7 +2654,8 @@ class OrderProvider with ChangeNotifier {
     debugPrint('\n📋 ORDENS PARA RECONCILIAR (${ordersToCheck.length}):');
     for (final order in ordersToCheck) {
       final sats = (order.btcAmount * 100000000).toInt();
-      debugPrint('   📦 ${order.id.substring(0, 8)}: ${order.status} - R\$ ${order.amount.toStringAsFixed(2)} ($sats sats)');
+      final isMine = order.userPubkey == currentUserPubkey;
+      debugPrint('   📦 ${order.id.substring(0, 8)}: ${order.status} - R\$ ${order.amount.toStringAsFixed(2)} ($sats sats) ${isMine ? "✓ MINHA" : "✗ não minha"}');
     }
     
     // ========== VERIFICAR CADA ORDEM ==========
@@ -2668,6 +2681,11 @@ class OrderProvider with ChangeNotifier {
         debugPrint('   🔍 Buscando em ${paymentsToCheck.length} pagamentos RECEBIDOS...');
       } else {
         // Para ordens accepted/awaiting - procurar em pagamentos ENVIADOS
+        // CORREÇÃO CRÍTICA: Só processar se esta ordem foi criada por MIM
+        if (order.userPubkey != currentUserPubkey) {
+          debugPrint('   ⏭️ Pulando - não sou o criador desta ordem (não posso marcar como completed)');
+          continue;
+        }
         paymentsToCheck = sentPayments;
         newStatus = 'completed';
         debugPrint('   🔍 Buscando em ${paymentsToCheck.length} pagamentos ENVIADOS...');

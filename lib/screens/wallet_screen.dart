@@ -57,8 +57,16 @@ class _WalletScreenState extends State<WalletScreen> {
       // e já aparecem em payments como transações recebidas.
       // NÃO misturar com ProviderBalanceProvider que é apenas TRACKING LOCAL.
       
-      // Usar apenas pagamentos Lightning reais
-      List<Map<String, dynamic>> allPayments = [...payments];
+      // Usar apenas pagamentos Lightning reais, FILTRANDO taxas internas da plataforma
+      List<Map<String, dynamic>> allPayments = payments.where((p) {
+        final description = p['description']?.toString() ?? '';
+        // OCULTAR: Taxas de plataforma (são internas, não devem aparecer para o usuário)
+        if (description.contains('Platform Fee') || description.contains('Bro Platform Fee')) {
+          debugPrint('🔇 Ocultando taxa da plataforma: $description');
+          return false;
+        }
+        return true;
+      }).toList();
       
       // REMOVIDO: Não mesclar com ProviderBalanceProvider (era tracking local, não saldo real)
       // Isso evita confusão entre saldo real (Breez) e tracking local
@@ -2056,12 +2064,14 @@ class _WalletScreenState extends State<WalletScreen> {
     final date = payment['createdAt'] ?? payment['timestamp'];
     final description = payment['description']?.toString() ?? '';
     
-    // Verificar se é um ganho de ordem Bro (APENAS ordens completadas)
-    // "Bro Payment" = pagamento de ordem completada
-    // Excluir: "Garantia Bro" (depósito de garantia, não é ganho)
+    // CORRIGIDO: Verificar se é um ganho de ordem Bro
+    // Só considerar como ganho Bro se a descrição contém 'Bro - Ordem' (formato do invoice do provedor)
+    // E é um pagamento RECEBIDO (não enviado)
+    // "Bro Payment" legacy também aceito
     final isBroOrderPayment = isReceived && 
-      description.contains('Bro Payment') && 
-      !description.contains('Garantia');
+      (description.contains('Bro - Ordem') || description.contains('Bro Payment')) && 
+      !description.contains('Garantia') &&
+      !description.contains('Platform Fee');
     
     // Determinar o label e cor baseado no tipo
     String label;

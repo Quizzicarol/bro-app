@@ -12,6 +12,7 @@ import '../services/nostr_order_service.dart';
 import '../services/platform_fee_service.dart';
 import '../models/withdrawal.dart';
 import '../providers/breez_provider_export.dart';
+import '../providers/breez_liquid_provider.dart';
 import '../providers/lightning_provider.dart';
 import '../providers/order_provider.dart';
 import '../providers/provider_balance_provider.dart';
@@ -3535,29 +3536,43 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         debugPrint('⚡ Pagando invoice do provedor: ${providerInvoice.substring(0, 30)}...');
         
         try {
-          // USAR LightningProvider para ter fallback Liquid quando Spark falhar
-          final lightningProvider = context.read<LightningProvider>();
+          // CORRIGIDO: Usar BreezProvider diretamente pois é o que está inicializado pelo login
+          final breezProvider = context.read<BreezProvider>();
+          final liquidProvider = context.read<BreezLiquidProvider>();
           
-          if (lightningProvider.isInitialized) {
-            final payResult = await lightningProvider.payInvoice(providerInvoice);
-            
-            if (payResult != null && payResult['success'] == true) {
-              debugPrint('✅ Invoice do provedor pago com sucesso via ${lightningProvider.currentBackend}!');
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('⚡ Pagamento enviado para o Bro!'),
-                    backgroundColor: Colors.green,
-                    duration: Duration(seconds: 2),
-                  ),
-                );
-              }
-            } else {
-              debugPrint('⚠️ Falha ao pagar invoice do provedor: $payResult');
-              // Não falhar a confirmação por isso - o provedor pode cobrar depois
-            }
+          debugPrint('🔍 DEBUG PAY INVOICE:');
+          debugPrint('   breezProvider.isInitialized: ${breezProvider.isInitialized}');
+          debugPrint('   liquidProvider.isInitialized: ${liquidProvider.isInitialized}');
+          
+          Map<String, dynamic>? payResult;
+          String usedBackend = 'none';
+          
+          if (breezProvider.isInitialized) {
+            debugPrint('⚡ Pagando via Breez Spark...');
+            payResult = await breezProvider.payInvoice(providerInvoice);
+            usedBackend = 'Spark';
+          } else if (liquidProvider.isInitialized) {
+            debugPrint('⚡ Pagando via Liquid (fallback)...');
+            payResult = await liquidProvider.payInvoice(providerInvoice);
+            usedBackend = 'Liquid';
           } else {
-            debugPrint('⚠️ Carteira não conectada para pagar invoice do provedor');
+            debugPrint('🚨 NENHUMA CARTEIRA INICIALIZADA!');
+          }
+          
+          if (payResult != null && payResult['success'] == true) {
+            debugPrint('✅ Invoice do provedor pago com sucesso via $usedBackend!');
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('⚡ Pagamento enviado para o Bro!'),
+                  backgroundColor: Colors.green,
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            }
+          } else if (payResult != null) {
+            debugPrint('⚠️ Falha ao pagar invoice do provedor: $payResult');
+            // Não falhar a confirmação por isso - o provedor pode cobrar depois
           }
         } catch (e) {
           debugPrint('⚠️ Erro ao pagar invoice do provedor: $e');
@@ -3567,31 +3582,20 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         debugPrint('ℹ️ Nenhum providerInvoice encontrado - provedor receberá via saldo');
       }
 
-      // Adicionar ganho ao saldo do provedor E taxa da plataforma
-      // Só executar APÓS confirmação bem sucedida no Nostr
-      // IMPORTANTE: Executar mesmo se orderDetails for null, usando widget.amountSats
+      // ========== PAGAR TAXA DA PLATAFORMA ==========
+      // NOTA: O ganho do provedor NÃO é registrado aqui - isso acontece no dispositivo do PROVEDOR
+      // quando o SDK Breez detecta o pagamento recebido via invoice Lightning
       {
-        final providerBalanceProvider = context.read<ProviderBalanceProvider>();
         final platformBalanceProvider = context.read<PlatformBalanceProvider>();
         
         // Calcular taxas usando constantes centralizadas do AppConfig
         final totalSats = widget.amountSats.toDouble();
-        
-        // Taxa do provedor: 3% do valor total (vai para a carteira do Bro via invoice)
-        final providerFee = totalSats * AppConfig.providerFeePercent;
         
         // Taxa da plataforma: 2% do valor total (manutenção da plataforma)
         final platformFee = totalSats * AppConfig.platformFeePercent;
         final platformFeeSats = platformFee.round();
         
         final orderDescription = 'Ordem ${widget.orderId.substring(0, 8)} - R\$ ${widget.amountBrl.toStringAsFixed(2)}';
-        
-        // Registrar ganho do provedor (já foi pago via invoice Lightning acima)
-        await providerBalanceProvider.addEarning(
-          orderId: widget.orderId,
-          amountSats: providerFee,
-          orderDescription: orderDescription,
-        );
 
         // ========== PAGAR TAXA DA PLATAFORMA VIA LIGHTNING ==========
         // Usar serviço centralizado que já tem fallback Spark/Liquid
@@ -3615,15 +3619,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           debugPrint('⚠️ Taxa da plataforma não enviada: address=${AppConfig.platformLightningAddress.isNotEmpty}, sats=$platformFeeSats');
         }
 
-        // Registrar taxa da plataforma (para tracking)
+        // Registrar taxa da plataforma (para tracking local)
         await platformBalanceProvider.addPlatformFee(
           orderId: widget.orderId,
           amountSats: platformFee,
           orderDescription: orderDescription,
         );
 
-        debugPrint('💰 Ganho de $providerFee sats registrado para o provedor');
         debugPrint('💼 Taxa de $platformFee sats registrada para a plataforma');
+        debugPrint('ℹ️ Ganho do provedor será registrado no dispositivo do provedor via SDK Breez');
       }
 
       if (mounted) {

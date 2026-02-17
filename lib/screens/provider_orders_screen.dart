@@ -81,9 +81,9 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
   
   void _startOrdersPolling() {
-    // Atualizar ordens a cada 15 segundos para status em tempo real
-    // Intervalo aumentado para evitar sobrecarga e tela cinza
-    _ordersUpdateTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
+    // CORREÇÃO: Intervalo aumentado para 45s para dar tempo da sincronização completa
+    // A busca de ordens do provedor pode demorar até 60s devido às múltiplas consultas Nostr
+    _ordersUpdateTimer = Timer.periodic(const Duration(seconds: 45), (_) async {
       // Verificar mounted ANTES de qualquer operação
       if (!mounted) {
         _ordersUpdateTimer?.cancel();
@@ -289,6 +289,34 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
               amount: (order['amount'] as num).toDouble(),
               paymentType: order['payment_type'] as String? ?? 'pix',
             );
+          }
+        }
+      }
+      
+      // ========== REGISTRAR GANHOS DE ORDENS COMPLETADAS ==========
+      // Verificar ordens completadas e registrar ganhos que ainda não foram registrados
+      final providerBalanceProvider = context.read<ProviderBalanceProvider>();
+      for (final order in myOrders) {
+        final status = order['status'] as String?;
+        if (status == 'completed') {
+          final orderId = order['id'] as String;
+          final amount = (order['amount'] as num?)?.toDouble() ?? 0;
+          final btcAmount = (order['btcAmount'] as num?)?.toDouble() ?? 0;
+          
+          // Calcular ganho: 3% do valor em sats
+          final totalSats = (btcAmount * 100000000).round();
+          var providerFeeSats = (totalSats * EscrowService.providerFeePercent / 100).round();
+          if (providerFeeSats < 1 && totalSats > 0) providerFeeSats = 1;
+          
+          // Tentar registrar ganho (método verifica se já foi registrado para evitar duplicação)
+          final registered = await providerBalanceProvider.addEarning(
+            orderId: orderId,
+            amountSats: providerFeeSats.toDouble(),
+            orderDescription: 'Ordem ${orderId.substring(0, 8)} - R\$ ${amount.toStringAsFixed(2)}',
+          );
+          
+          if (registered) {
+            debugPrint('💰 Ganho registrado: $providerFeeSats sats para ordem ${orderId.substring(0, 8)}');
           }
         }
       }

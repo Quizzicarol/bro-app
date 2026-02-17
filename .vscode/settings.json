@@ -27,6 +27,23 @@
         "/^& \\(\\$env:LOCALAPPDATA \\+ \"\\\\Android\\\\Sdk\\\\platform-tools\\\\adb\\.exe\"\\) logcat -d -t 3000 \\| Select-String -Pattern \"providerInvoice\\|Pagando invoice\\|Nenhum provider\\|taxa da plataforma\\|Platform\"$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^& \\(\\$env:LOCALAPPDATA \\+ \"\\\\Android\\\\Sdk\\\\platform-tools\\\\adb\\.exe\"\\) logcat -d -t 300 \\| Select-String -Pattern \"flutter\" \\| Select-String -Pattern \"provedor\\|provider\\|minhas\\|Salvando\\|orders\\|ordens\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^& \\(\\$env:LOCALAPPDATA \\+ \"\\\\Android\\\\Sdk\\\\platform-tools\\\\adb\\.exe\"\\) logcat -d -t 500 \\| Select-String -Pattern \"flutter\" \\| Select-String -Pattern \"COMPLETE\\|providerInvoice\\|Invoice\\|invoice\\|Pagando\\|taxa\\|Platform\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^& \\(\\$env:LOCALAPPDATA \\+ \"\\\\Android\\\\Sdk\\\\platform-tools\\\\adb\\.exe\"\\) logcat -d -t 1500 \\| Select-String -Pattern \"confirmando\\|confirmar\\|confirmaÔÇöo\\|Pagando invoice\\|Nenhum providerInvoice\\|buscar\\.\\*COMPLETE\\|fetchOrderComplete\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "&": true,
+        "/^& \"\\$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb\\.exe\" logcat -d -v time \\| Select-String -Pattern \"flutter\\|Bro\\|💼\\|Taxa\\|ganhos\\|provedor\\|carteira\\|wallet\\|fee\\|orderId\\|sats\" \\| Select-Object -Last 150$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }

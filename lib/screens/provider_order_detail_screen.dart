@@ -8,6 +8,7 @@ import 'dart:async';
 import '../providers/order_provider.dart';
 import '../providers/collateral_provider.dart';
 import '../providers/breez_provider_export.dart';
+import '../providers/breez_liquid_provider.dart';
 import '../providers/lightning_provider.dart';
 import '../services/escrow_service.dart';
 import '../services/dispute_service.dart';
@@ -407,36 +408,77 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       
       // Converter btcAmount para sats (btcAmount está em BTC, * 100_000_000 = sats)
       final totalSats = (btcAmount * 100000000).round();
-      final providerFeeSats = (totalSats * EscrowService.providerFeePercent / 100).round();
+      var providerFeeSats = (totalSats * EscrowService.providerFeePercent / 100).round();
+      
+      // Taxa mínima de 1 sat para ordens muito pequenas
+      if (providerFeeSats < 1 && totalSats > 0) {
+        providerFeeSats = 1;
+      }
       
       debugPrint('💰 Ordem: R\$ ${amount.toStringAsFixed(2)} = $totalSats sats, taxa Bro: $providerFeeSats sats (${EscrowService.providerFeePercent}%)');
       
       String? generatedInvoice;
       
-      // Gerar invoice Lightning para receber o pagamento
-      // Usar LightningProvider com fallback Spark -> Liquid
-      final lightningProvider = context.read<LightningProvider>();
-      if (lightningProvider.sparkProvider.isInitialized || lightningProvider.liquidProvider.isInitialized) {
-        debugPrint('⚡ Gerando invoice de $providerFeeSats sats para o Bro...');
+      // Gerar invoice Lightning para receber o pagamento (apenas se taxa > 0)
+      // IMPORTANTE: Usar BreezProvider direto pois é o que está inicializado pelo login
+      final breezProvider = context.read<BreezProvider>();
+      final liquidProvider = context.read<BreezLiquidProvider>();
+      
+      // DEBUG: Verificar estado das carteiras
+      debugPrint('🔍 DEBUG INVOICE GENERATION:');
+      debugPrint('   breezProvider.isInitialized: ${breezProvider.isInitialized}');
+      debugPrint('   liquidProvider.isInitialized: ${liquidProvider.isInitialized}');
+      debugPrint('   providerFeeSats: $providerFeeSats');
+      
+      // CORREÇÃO: Se nenhuma carteira está inicializada, tentar inicializar
+      if (!breezProvider.isInitialized && !liquidProvider.isInitialized && providerFeeSats > 0) {
+        debugPrint('⚠️ Nenhuma carteira inicializada! Tentando inicializar Breez...');
+        try {
+          final success = await breezProvider.initialize();
+          debugPrint('   Inicialização Breez: ${success ? "SUCCESS" : "FAILED"}');
+        } catch (e) {
+          debugPrint('   Erro ao inicializar Breez: $e');
+        }
+      }
+      
+      // Só gerar invoice se a taxa for maior que 0
+      if (providerFeeSats > 0 && breezProvider.isInitialized) {
+        debugPrint('⚡ Gerando invoice de $providerFeeSats sats via Breez Spark...');
         
-        final result = await lightningProvider.createInvoice(
+        final result = await breezProvider.createInvoice(
           amountSats: providerFeeSats,
           description: 'Bro - Ordem ${widget.orderId.substring(0, 8)}',
         );
         
-        // Log se usou Liquid
-        if (result?['isLiquid'] == true) {
-          debugPrint('💧 Invoice criada via LIQUID (fallback)');
+        if (result != null && result['bolt11'] != null) {
+          generatedInvoice = result['bolt11'] as String;
+          debugPrint('✅ Invoice gerado via Spark: ${generatedInvoice.substring(0, 30)}...');
+        } else {
+          debugPrint('⚠️ Falha ao gerar invoice via Spark: $result');
         }
+      } else if (providerFeeSats > 0 && liquidProvider.isInitialized) {
+        debugPrint('⚡ Gerando invoice de $providerFeeSats sats via Liquid (fallback)...');
+        
+        final result = await liquidProvider.createInvoice(
+          amountSats: providerFeeSats,
+          description: 'Bro - Ordem ${widget.orderId.substring(0, 8)}',
+        );
         
         if (result != null && result['bolt11'] != null) {
           generatedInvoice = result['bolt11'] as String;
-          debugPrint('✅ Invoice gerado: ${generatedInvoice.substring(0, 30)}...');
+          debugPrint('✅ Invoice gerado via Liquid: ${generatedInvoice.substring(0, 30)}...');
         } else {
-          debugPrint('⚠️ Falha ao gerar invoice, continuando sem invoice');
+          debugPrint('⚠️ Falha ao gerar invoice via Liquid: $result');
         }
+      } else if (providerFeeSats <= 0) {
+        debugPrint('ℹ️ providerFeeSats=$providerFeeSats (muito baixo), não gerando invoice');
       } else {
-        debugPrint('⚠️ Carteira não conectada, continuando sem invoice');
+        debugPrint('🚨 NENHUMA CARTEIRA INICIALIZADA! breez=${breezProvider.isInitialized}, liquid=${liquidProvider.isInitialized}');
+      }
+
+      debugPrint('📋 Resumo: providerFeeSats=$providerFeeSats, hasInvoice=${generatedInvoice != null}');
+      if (generatedInvoice != null) {
+        debugPrint('   Invoice: ${generatedInvoice.substring(0, 50)}...');
       }
 
       // Publicar comprovante + invoice no Nostr E atualizar localmente
@@ -460,16 +502,23 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       });
 
       if (mounted) {
-        final msg = generatedInvoice != null 
-            ? '✅ Comprovante enviado! Você receberá $providerFeeSats sats quando o usuário confirmar.'
-            : '✅ Comprovante enviado! Aguardando confirmação do usuário.';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(msg),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 4),
-          ),
-        );
+        if (generatedInvoice != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✅ Comprovante enviado! Você receberá $providerFeeSats sats quando o usuário confirmar.'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('⚠️ Comprovante enviado mas carteira não conectada! Configure sua carteira para receber sats automaticamente.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 6),
+            ),
+          );
+        }
         // Voltar para a tela de ordens com resultado indicando para ir para aba "Minhas"
         Navigator.pop(context, {'goToMyOrders': true});
       }

@@ -53,31 +53,15 @@ class _WalletScreenState extends State<WalletScreen> {
       final balance = await breezProvider.getBalance();
       final payments = await breezProvider.listPayments();
       
-      // Carregar transações de ganhos como Bro
-      final providerBalanceProvider = context.read<ProviderBalanceProvider>();
-      final nostrService = NostrService();
-      final providerId = nostrService.publicKey ?? 'unknown';
-      await providerBalanceProvider.initialize(providerId);
+      // NOTA: Ganhos como Bro são recebidos via Lightning (invoice pago pelo usuário)
+      // e já aparecem em payments como transações recebidas.
+      // NÃO misturar com ProviderBalanceProvider que é apenas TRACKING LOCAL.
       
-      // Mesclar transações do Bro com pagamentos Lightning
+      // Usar apenas pagamentos Lightning reais
       List<Map<String, dynamic>> allPayments = [...payments];
       
-      if (providerBalanceProvider.balance != null) {
-        for (var tx in providerBalanceProvider.balance!.transactions) {
-          if (tx.type == 'earning') {
-            allPayments.add({
-              'type': 'received',
-              'amountSats': tx.amountSats.toInt(),
-              'amount': tx.amountSats.toInt(),
-              'createdAt': tx.createdAt,
-              'timestamp': tx.createdAt,
-              'description': tx.orderDescription ?? 'Ganho como Bro',
-              'isBroEarning': true,
-              'status': 'Complete',
-            });
-          }
-        }
-      }
+      // REMOVIDO: Não mesclar com ProviderBalanceProvider (era tracking local, não saldo real)
+      // Isso evita confusão entre saldo real (Breez) e tracking local
       
       // Ordenar por data (mais recente primeiro)
       allPayments.sort((a, b) {

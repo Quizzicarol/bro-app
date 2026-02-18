@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -464,7 +464,7 @@ class StorageService {
 
   Future<String?> getUserId() async {
     if (_prefs == null) await init();
-    // Se nÃ£o houver user_id, usar public key do Nostr como ID
+    // Se não houver user_id, usar public key do Nostr como ID
     String? userId = _prefs?.getString('user_id');
     if (userId == null) {
       userId = await getNostrPublicKey();
@@ -658,7 +658,7 @@ class StorageService {
   // ===== NSEC (Nostr Private Key in bech32) =====
   
   Future<String?> getNsec() async {
-    // Retorna a private key hex (seria convertida para nsec em produÃ§Ã£o)
+    // Retorna a private key hex (seria convertida para nsec em produção)
     return await getNostrPrivateKey();
   }
 

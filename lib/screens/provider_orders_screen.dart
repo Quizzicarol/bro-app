@@ -280,7 +280,8 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       
       // Notificar sobre novas ordens disponíveis
       for (final order in available) {
-        final orderId = order['id'] as String;
+        final orderId = order['id'] as String? ?? '';
+        if (orderId.isEmpty) continue; // Pular ordens sem ID
         if (!_seenOrderIds.contains(orderId)) {
           _seenOrderIds.add(orderId);
           if (_lastOrderCount > 0) {
@@ -299,7 +300,8 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       for (final order in myOrders) {
         final status = order['status'] as String?;
         if (status == 'completed') {
-          final orderId = order['id'] as String;
+          final orderId = order['id'] as String? ?? '';
+          if (orderId.isEmpty) continue; // Pular ordens sem ID
           final amount = (order['amount'] as num?)?.toDouble() ?? 0;
           final btcAmount = (order['btcAmount'] as num?)?.toDouble() ?? 0;
           
@@ -547,10 +549,13 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   Widget _buildAvailableOrderCard(Map<String, dynamic> order, CollateralProvider collateralProvider) {
-    final orderId = order['id'] as String;
-    final amount = (order['amount'] as num).toDouble();
+    final orderId = order['id'] as String? ?? '';
+    if (orderId.isEmpty) return const SizedBox.shrink(); // Ordem inválida
+    
+    final amount = (order['amount'] as num?)?.toDouble() ?? 0;
     final paymentType = order['payment_type'] as String? ?? 'pix';
-    final createdAt = DateTime.parse(order['created_at'] as String);
+    final createdAtStr = order['created_at'] as String?;
+    final createdAt = createdAtStr != null ? DateTime.tryParse(createdAtStr) ?? DateTime.now() : DateTime.now();
     final timeAgo = _getTimeAgo(createdAt);
     final userName = order['user_name'] as String? ?? 'Usuário';
     
@@ -753,11 +758,14 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   Widget _buildMyOrderCard(Map<String, dynamic> order) {
-    final orderId = order['id'] as String;
-    final amount = (order['amount'] as num).toDouble();
+    final orderId = order['id'] as String? ?? '';
+    if (orderId.isEmpty) return const SizedBox.shrink(); // Ordem inválida
+    
+    final amount = (order['amount'] as num?)?.toDouble() ?? 0;
     final paymentType = order['payment_type'] ?? order['billType'] ?? 'pix';
     final status = order['status'] as String? ?? 'unknown';
-    final createdAt = DateTime.parse(order['created_at'] ?? order['createdAt'] ?? DateTime.now().toIso8601String());
+    final createdAtStr = order['created_at'] ?? order['createdAt'];
+    final createdAt = createdAtStr != null ? DateTime.tryParse(createdAtStr.toString()) ?? DateTime.now() : DateTime.now();
     
     final statusInfo = _getStatusInfo(status);
     final earning = amount * EscrowService.providerFeePercent / 100;
@@ -1120,7 +1128,9 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   void _openMyOrderDetail(Map<String, dynamic> order) {
-    final orderId = order['id'] as String;
+    final orderId = order['id'] as String? ?? '';
+    if (orderId.isEmpty) return; // Ordem inválida
+    
     Navigator.push(
       context,
       MaterialPageRoute(

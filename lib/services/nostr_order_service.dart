@@ -1127,6 +1127,7 @@ class NostrOrderService {
     // Converter para Orders e aplicar status atualizado
     // SEGURANÇA CRÍTICA: Filtrar novamente para garantir que só retorne ordens deste usuário
     // (alguns relays podem ignorar o filtro 'authors')
+    // IMPORTANTE: Passar pubkey para bloquear status "completed" vindo do Nostr
     final orders = rawOrders
         .map((e) => eventToOrder(e))
         .whereType<Order>()
@@ -1138,7 +1139,7 @@ class NostrOrderService {
           }
           return true;
         })
-        .map((order) => _applyStatusUpdate(order, statusUpdates))
+        .map((order) => _applyStatusUpdate(order, statusUpdates, currentUserPubkey: pubkey))
         .toList();
     
     debugPrint('✅ fetchUserOrders: ${orders.length} ordens VERIFICADAS para $pubkey');
@@ -1275,7 +1276,9 @@ class NostrOrderService {
   }
   
   /// Aplica o status mais recente de um update a uma ordem
-  Order _applyStatusUpdate(Order order, Map<String, Map<String, dynamic>> statusUpdates) {
+  /// [currentUserPubkey] - Se fornecido, bloqueia status "completed" para ordens do próprio usuário
+  /// Isso evita que o provedor marque como completed antes do usuário confirmar o recebimento
+  Order _applyStatusUpdate(Order order, Map<String, Map<String, dynamic>> statusUpdates, {String? currentUserPubkey}) {
     final update = statusUpdates[order.id];
     if (update == null) return order;
     
@@ -1284,6 +1287,31 @@ class NostrOrderService {
     final proofImage = update['proofImage'] as String?;
     final completedAt = update['completedAt'] as String?;
     final providerInvoice = update['providerInvoice'] as String?; // CRÍTICO: Invoice do provedor
+    
+    // CORREÇÃO CRÍTICA: Bloquear status "completed" via Nostr quando EU sou o CRIADOR da ordem
+    // O provedor pode marcar como "completed" mas o CLIENTE precisa confirmar localmente
+    // que recebeu o valor antes de liberar o pagamento ao provedor
+    if (newStatus == 'completed' && currentUserPubkey != null && order.userPubkey == currentUserPubkey) {
+      debugPrint('   🛡️ BLOQUEANDO status completed via Nostr para ordem ${order.id.substring(0, 8)} - sou o CRIADOR');
+      // NÃO aplicar completed, mas ainda aplicar metadata (proofImage, providerInvoice)
+      // para que o usuário possa ver o comprovante
+      if (proofImage != null || providerInvoice != null) {
+        final updatedMetadata = Map<String, dynamic>.from(order.metadata ?? {});
+        if (proofImage != null && proofImage.isNotEmpty) {
+          updatedMetadata['proofImage'] = proofImage;
+          updatedMetadata['paymentProof'] = proofImage;
+        }
+        if (providerInvoice != null && providerInvoice.isNotEmpty) {
+          updatedMetadata['providerInvoice'] = providerInvoice;
+        }
+        // Retornar ordem com metadata atualizado mas SEM mudar status
+        return order.copyWith(
+          providerId: providerId ?? order.providerId,
+          metadata: updatedMetadata,
+        );
+      }
+      return order; // Manter ordem inalterada
+    }
     
     if (newStatus != null && newStatus != order.status) {
       debugPrint('   🔄 Aplicando status: ${order.id.substring(0, 8)} ${order.status} -> $newStatus (hasProof=${proofImage != null}, hasInvoice=${providerInvoice != null})');

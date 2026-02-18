@@ -90,8 +90,6 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     debugPrint('🌱 Nova conta NIP-06 criada!');
-    debugPrint('   Seed: ${unifiedSeed.split(' ').take(2).join(' ')}...');
-    debugPrint('   Chave Nostr derivada: ${privateKey.substring(0, 16)}...');
 
     if (mounted) {
       // Mostrar diálogo com APENAS a seed (uma coisa só para guardar!)
@@ -469,7 +467,7 @@ class _LoginScreenState extends State<LoginScreen> {
     
     _detectInputType(mnemonic);
 
-    debugPrint('🌱 Nova seed gerada: ${mnemonic.split(' ').take(2).join(' ')}...');
+    debugPrint('🌱 Nova seed gerada');
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -646,9 +644,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   // Derivar chave pública Nostr
                   final publicKey = _nostrService.getPublicKey(nostrKey);
                   
-                  debugPrint('🔧 LOGIN AVANÇADO:');
-                  debugPrint('   Nostr Pubkey: ${publicKey.substring(0, 16)}...');
-                  debugPrint('   Seed (2 primeiras): ${seed.split(' ').take(2).join(' ')}...');
+                  debugPrint('🔧 LOGIN AVANÇADO: chaves configuradas');
 
                   // Salvar chaves Nostr
                   await _storage.saveNostrKeys(
@@ -659,7 +655,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   // LOGIN AVANÇADO: FORÇA a troca de seed (o usuário escolheu explicitamente)
                   await _storage.forceUpdateBreezMnemonic(seed, ownerPubkey: publicKey);
-                  debugPrint('💾 Seed FORÇADA para usuário: ${publicKey.substring(0, 16)}...');
+                  debugPrint('💾 Seed vinculada ao usuário');
 
                   // Salvar URL do backend
                   await _storage.saveBackendUrl(AppConfig.defaultBackendUrl);
@@ -757,7 +753,6 @@ class _LoginScreenState extends State<LoginScreen> {
       if (isSeed) {
         // LOGIN VIA NIP-06 (SEED)
         debugPrint('🌱 Login via NIP-06 (seed de ${words.length} palavras)');
-        debugPrint('🌱 Seed (primeiras 2 palavras): ${words[0]} ${words[1]}...');
         setState(() => _statusMessage = 'Derivando chaves da seed...');
         
         mnemonic = input.toLowerCase();
@@ -765,9 +760,7 @@ class _LoginScreenState extends State<LoginScreen> {
         privateKey = keys['privateKey']!;
         publicKey = keys['publicKey']!;
         
-        debugPrint('🔑 NIP-06 derivou:');
-        debugPrint('   Private Key: ${privateKey.substring(0, 16)}...');
-        debugPrint('   Public Key: ${publicKey.substring(0, 16)}...');
+        debugPrint('🔑 NIP-06: chaves derivadas com sucesso');
         
         // IMPORTANTE: NÃO salvar a seed aqui ainda!
         // Primeiro salvamos as chaves Nostr, depois a seed COM o pubkey
@@ -787,14 +780,11 @@ class _LoginScreenState extends State<LoginScreen> {
         privateKey = keychain.private; // Sempre retorna hex
         publicKey = keychain.public;
         
-        debugPrint('🔑 Chave normalizada para hex: ${privateKey.substring(0, 16)}...');
+        debugPrint('🔑 Chave normalizada para hex');
         
         // PRIORIDADE: Seed salva > Seed derivada
         // Isso permite que Login Avançado vincule uma seed específica
-        debugPrint('');
-        debugPrint('═══════════════════════════════════════════════════════════');
-        debugPrint('🔍 BUSCANDO SEED para pubkey: ${publicKey.substring(0, 16)}...');
-        debugPrint('═══════════════════════════════════════════════════════════');
+        debugPrint('🔍 Buscando seed para pubkey...');
         
         // PRIMEIRO: Verificar se existe seed salva (vinculada via Login Avançado)
         String? existingSeed = await _storage.getBreezMnemonic(forPubkey: publicKey);
@@ -802,15 +792,12 @@ class _LoginScreenState extends State<LoginScreen> {
         if (existingSeed != null) {
           mnemonic = existingSeed;
           debugPrint('✅ Seed SALVA encontrada (Login Avançado ou anterior)');
-          debugPrint('   Seed: ${existingSeed.split(' ').take(2).join(' ')}...');
         } else {
           // SEGUNDO: Derivar deterministicamente da chave Nostr
           debugPrint('📭 Nenhuma seed salva. Derivando da chave Nostr...');
           try {
             mnemonic = _nip06Service.deriveSeedFromNostrKey(privateKey);
             debugPrint('✅ Seed DERIVADA com sucesso!');
-            debugPrint('   Seed: ${mnemonic!.split(' ').take(2).join(' ')}...');
-            debugPrint('   (Use Login Avançado para vincular outra seed)');
           } catch (e) {
             debugPrint('❌ Erro ao derivar seed: $e');
           }

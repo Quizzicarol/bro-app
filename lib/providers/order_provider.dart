@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
@@ -15,58 +15,54 @@ class OrderProvider with ChangeNotifier {
   final NostrService _nostrService = NostrService();
   final NostrOrderService _nostrOrderService = NostrOrderService();
 
-  List<Order> _orders = [];  // APENAS ordens do usuário atual
-  List<Order> _availableOrdersForProvider = [];  // Ordens disponíveis para Bros (NUNCA salvas)
+  List<Order> _orders = [];  // APENAS ordens do usuÃ¡rio atual
+  List<Order> _availableOrdersForProvider = [];  // Ordens disponÃ­veis para Bros (NUNCA salvas)
   Order? _currentOrder;
   bool _isLoading = false;
   String? _error;
   bool _isInitialized = false;
   String? _currentUserPubkey;
-  bool _isProviderMode = false;  // Modo provedor ativo (para UI, não para filtro de ordens)
+  bool _isProviderMode = false;  // Modo provedor ativo (para UI, nÃ£o para filtro de ordens)
 
-  // Prefixo para salvar no SharedPreferences (será combinado com pubkey)
+  // Prefixo para salvar no SharedPreferences (serÃ¡ combinado com pubkey)
   static const String _ordersKeyPrefix = 'orders_';
 
-  // SEGURANÇA CRÍTICA: Filtrar ordens por usuário - NUNCA mostrar ordens de outros!
-  // Esta lista é usada por TODOS os getters (orders, pendingOrders, etc)
+  // SEGURANÃ‡A CRÃTICA: Filtrar ordens por usuÃ¡rio - NUNCA mostrar ordens de outros!
+  // Esta lista Ã© usada por TODOS os getters (orders, pendingOrders, etc)
   List<Order> get _filteredOrders {
-    // SEGURANÇA ABSOLUTA: Sem pubkey = sem ordens
+    // SEGURANÃ‡A ABSOLUTA: Sem pubkey = sem ordens
     if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) {
-      debugPrint('⚠️ [FILTRO] Sem pubkey definida! Retornando lista vazia para segurança');
       return [];
     }
     
-    // SEMPRE filtrar por usuário - mesmo no modo provedor!
-    // No modo provedor, mostramos ordens disponíveis em tela separada, não aqui
+    // SEMPRE filtrar por usuÃ¡rio - mesmo no modo provedor!
+    // No modo provedor, mostramos ordens disponÃ­veis em tela separada, nÃ£o aqui
     final filtered = _orders.where((o) {
-      // REGRA 1: Ordens SEM userPubkey são rejeitadas (dados corrompidos/antigos)
+      // REGRA 1: Ordens SEM userPubkey sÃ£o rejeitadas (dados corrompidos/antigos)
       if (o.userPubkey == null || o.userPubkey!.isEmpty) {
-        debugPrint('🚫 Ordem ${o.id.substring(0, 8)} rejeitada: userPubkey NULL');
         return false;
       }
       
-      // REGRA 2: Ordem criada por este usuário
+      // REGRA 2: Ordem criada por este usuÃ¡rio
       final isOwner = o.userPubkey == _currentUserPubkey;
       
-      // REGRA 3: Ordem que este usuário aceitou como Bro (providerId)
+      // REGRA 3: Ordem que este usuÃ¡rio aceitou como Bro (providerId)
       final isMyProviderOrder = o.providerId == _currentUserPubkey;
       
       if (!isOwner && !isMyProviderOrder) {
-        debugPrint('🚫 BLOQUEADO: ${o.id.substring(0, 8)} (userPub=${o.userPubkey?.substring(0, 8)}) != atual ${_currentUserPubkey!.substring(0, 8)}');
       }
       
       return isOwner || isMyProviderOrder;
     }).toList();
     
-    // Log apenas quando há filtros aplicados
+    // Log apenas quando hÃ¡ filtros aplicados
     if (_orders.length != filtered.length) {
-      debugPrint('🔒 [FILTRO] ${filtered.length}/${_orders.length} ordens do usuário ${_currentUserPubkey!.substring(0, 8)}');
     }
     return filtered;
   }
 
-  // Getters - USAM _filteredOrders para SEGURANÇA
-  // NOTA: orders NÃO inclui draft (ordens não pagas não aparecem na lista do usuário)
+  // Getters - USAM _filteredOrders para SEGURANÃ‡A
+  // NOTA: orders NÃƒO inclui draft (ordens nÃ£o pagas nÃ£o aparecem na lista do usuÃ¡rio)
   List<Order> get orders => _filteredOrders.where((o) => o.status != 'draft').toList();
   List<Order> get pendingOrders => _filteredOrders.where((o) => o.status == 'pending' || o.status == 'payment_received').toList();
   List<Order> get activeOrders => _filteredOrders.where((o) => ['payment_received', 'confirmed', 'accepted', 'processing'].contains(o.status)).toList();
@@ -76,87 +72,76 @@ class OrderProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   
-  /// Getter público para a pubkey do usuário atual (usado para verificações externas)
+  /// Getter pÃºblico para a pubkey do usuÃ¡rio atual (usado para verificaÃ§Ãµes externas)
   String? get currentUserPubkey => _currentUserPubkey;
   
-  /// SEGURANÇA: Getter para ordens que EU CRIEI (modo usuário)
+  /// SEGURANÃ‡A: Getter para ordens que EU CRIEI (modo usuÃ¡rio)
   /// Retorna APENAS ordens onde userPubkey == currentUserPubkey
-  /// Usado na tela "Minhas Trocas" do modo usuário
+  /// Usado na tela "Minhas Trocas" do modo usuÃ¡rio
   List<Order> get myCreatedOrders {
-    // Se não temos pubkey, tentar buscar do NostrService
+    // Se nÃ£o temos pubkey, tentar buscar do NostrService
     if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) {
       final fallbackPubkey = _nostrService.publicKey;
       if (fallbackPubkey != null && fallbackPubkey.isNotEmpty) {
         _currentUserPubkey = fallbackPubkey;
-        debugPrint('🔧 myCreatedOrders: Recuperou pubkey do NostrService: ${_currentUserPubkey!.substring(0, 8)}');
       } else {
-        debugPrint('⚠️ myCreatedOrders: Sem pubkey! Retornando lista vazia');
         return [];
       }
     }
     
     final result = _orders.where((o) {
-      // Apenas ordens que EU criei (não ordens aceitas como provedor)
+      // Apenas ordens que EU criei (nÃ£o ordens aceitas como provedor)
       return o.userPubkey == _currentUserPubkey && o.status != 'draft';
     }).toList();
     
-    debugPrint('📊 myCreatedOrders: ${result.length}/${_orders.length} ordens criadas por ${_currentUserPubkey!.substring(0, 8)}');
     return result;
   }
   
-  /// SEGURANÇA: Getter para ordens que EU ACEITEI como Bro (modo provedor)
+  /// SEGURANÃ‡A: Getter para ordens que EU ACEITEI como Bro (modo provedor)
   /// Retorna APENAS ordens onde providerId == currentUserPubkey
   /// Usado na tela "Minhas Ordens" do modo provedor
   List<Order> get myAcceptedOrders {
-    // Se não temos pubkey, tentar buscar do NostrService
+    // Se nÃ£o temos pubkey, tentar buscar do NostrService
     if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) {
       final fallbackPubkey = _nostrService.publicKey;
       if (fallbackPubkey != null && fallbackPubkey.isNotEmpty) {
         _currentUserPubkey = fallbackPubkey;
-        print('🚨 myAcceptedOrders: Recuperou pubkey do NostrService: ${_currentUserPubkey!.substring(0, 8)}');
       } else {
-        print('🚨 myAcceptedOrders: Sem pubkey! Retornando lista vazia');
         return [];
       }
     }
     
-    // DEBUG CRÍTICO: Listar todas as ordens e seus providerIds
-    print('🚨🚨🚨 myAcceptedOrders CHAMADO - procurando providerId == ${_currentUserPubkey!.substring(0, 8)} 🚨🚨🚨');
-    print('🚨 Total de ordens em _orders: ${_orders.length}');
+    // DEBUG CRÃTICO: Listar todas as ordens e seus providerIds
     for (final o in _orders) {
-      print('   📋 ${o.id.substring(0, 8)}: providerId=${o.providerId?.substring(0, 8) ?? "NULL"}, userPubkey=${o.userPubkey?.substring(0, 8) ?? "NULL"}, status=${o.status}');
     }
     
     final result = _orders.where((o) {
-      // Apenas ordens que EU aceitei como provedor (não ordens que criei)
+      // Apenas ordens que EU aceitei como provedor (nÃ£o ordens que criei)
       return o.providerId == _currentUserPubkey;
     }).toList();
     
-    print('🚨 RESULTADO myAcceptedOrders: ${result.length}/${_orders.length} ordens aceitas por ${_currentUserPubkey!.substring(0, 8)}');
     return result;
   }
 
-  /// CRÍTICO: Método para sair do modo provedor e limpar ordens de outros
-  /// Deve ser chamado quando o usuário sai da tela de modo Bro
+  /// CRÃTICO: MÃ©todo para sair do modo provedor e limpar ordens de outros
+  /// Deve ser chamado quando o usuÃ¡rio sai da tela de modo Bro
   void exitProviderMode() {
-    debugPrint('🚪 exitProviderMode chamado');
     _isProviderMode = false;
     
-    // Limpar lista de ordens disponíveis para provedor (NUNCA eram salvas)
+    // Limpar lista de ordens disponÃ­veis para provedor (NUNCA eram salvas)
     _availableOrdersForProvider = [];
     
-    // IMPORTANTE: NÃO remover ordens que este usuário aceitou como provedor!
+    // IMPORTANTE: NÃƒO remover ordens que este usuÃ¡rio aceitou como provedor!
     // Mesmo que userPubkey seja diferente, se providerId == _currentUserPubkey,
     // essa ordem deve ser mantida para aparecer em "Minhas Ordens" do provedor
     final before = _orders.length;
     _orders = _orders.where((o) {
-      // Sempre manter ordens que este usuário criou
+      // Sempre manter ordens que este usuÃ¡rio criou
       final isOwner = o.userPubkey == _currentUserPubkey;
-      // SEMPRE manter ordens que este usuário aceitou como provedor
+      // SEMPRE manter ordens que este usuÃ¡rio aceitou como provedor
       final isProvider = o.providerId == _currentUserPubkey;
       
       if (isProvider) {
-        debugPrint('   ✅ Mantendo ordem ${o.id.substring(0, 8)} - aceitei como provedor');
       }
       
       return isOwner || isProvider;
@@ -164,39 +149,37 @@ class OrderProvider with ChangeNotifier {
     
     final removed = before - _orders.length;
     if (removed > 0) {
-      debugPrint('🧹 Removidas $removed ordens de outros usuários');
     }
     
     // Salvar lista limpa
     _saveOnlyUserOrders();
     
     notifyListeners();
-    debugPrint('✅ exitProviderMode: ${_orders.length} ordens mantidas (próprias + aceitas como provedor)');
   }
   
-  /// Getter para ordens disponíveis para Bros (usadas na tela de provedor)
-  /// Esta lista NUNCA é salva localmente!
-  /// IMPORTANTE: Retorna uma CÓPIA para evitar ConcurrentModificationException
-  /// quando o timer de polling modifica a lista durante iteração na UI
+  /// Getter para ordens disponÃ­veis para Bros (usadas na tela de provedor)
+  /// Esta lista NUNCA Ã© salva localmente!
+  /// IMPORTANTE: Retorna uma CÃ“PIA para evitar ConcurrentModificationException
+  /// quando o timer de polling modifica a lista durante iteraÃ§Ã£o na UI
   List<Order> get availableOrdersForProvider => List<Order>.from(_availableOrdersForProvider);
 
   /// Calcula o total de sats comprometidos com ordens pendentes/ativas (modo cliente)
-  /// Este valor deve ser SUBTRAÍDO do saldo total para calcular saldo disponível para garantia
+  /// Este valor deve ser SUBTRAÃDO do saldo total para calcular saldo disponÃ­vel para garantia
   /// 
-  /// IMPORTANTE: Só conta ordens que ainda NÃO foram pagas via Lightning!
-  /// - 'draft': Invoice ainda não pago - COMPROMETIDO
-  /// - 'pending': Invoice pago, aguardando Bro aceitar - JÁ SAIU DA CARTEIRA
-  /// - 'payment_received': Invoice pago, aguardando Bro - JÁ SAIU DA CARTEIRA
-  /// - 'accepted', 'awaiting_confirmation', 'completed': JÁ PAGO
+  /// IMPORTANTE: SÃ³ conta ordens que ainda NÃƒO foram pagas via Lightning!
+  /// - 'draft': Invoice ainda nÃ£o pago - COMPROMETIDO
+  /// - 'pending': Invoice pago, aguardando Bro aceitar - JÃ SAIU DA CARTEIRA
+  /// - 'payment_received': Invoice pago, aguardando Bro - JÃ SAIU DA CARTEIRA
+  /// - 'accepted', 'awaiting_confirmation', 'completed': JÃ PAGO
   /// 
-  /// Na prática, APENAS ordens 'draft' deveriam ser contadas, mas removemos
-  /// esse status ao refatorar o fluxo (invoice é pago antes de criar ordem)
+  /// Na prÃ¡tica, APENAS ordens 'draft' deveriam ser contadas, mas removemos
+  /// esse status ao refatorar o fluxo (invoice Ã© pago antes de criar ordem)
   int get committedSats {
-    // CORRIGIDO: Não contar nenhuma ordem como "comprometida" porque:
-    // 1. 'draft' foi removido - invoice é pago ANTES de criar ordem
-    // 2. Todas as outras já tiveram a invoice paga (sats não estão na carteira)
+    // CORRIGIDO: NÃ£o contar nenhuma ordem como "comprometida" porque:
+    // 1. 'draft' foi removido - invoice Ã© pago ANTES de criar ordem
+    // 2. Todas as outras jÃ¡ tiveram a invoice paga (sats nÃ£o estÃ£o na carteira)
     //
-    // Se o usuário tem uma ordem 'pending', os sats JÁ FORAM para o escrow
+    // Se o usuÃ¡rio tem uma ordem 'pending', os sats JÃ FORAM para o escrow
     // quando ele pagou a invoice Lightning na tela de pagamento
     
     // Manter o log para debug, mas retornar 0
@@ -207,22 +190,19 @@ class OrderProvider with ChangeNotifier {
     ).toList();
     
     if (filteredForDebug.isNotEmpty) {
-      debugPrint('📋 Ordens do usuário aguardando Bro: ${filteredForDebug.length}');
       for (final o in filteredForDebug) {
-        debugPrint('   - ${o.id.substring(0, 8)}: ${o.status}, R\$ ${o.amount}, userPubkey=${o.userPubkey?.substring(0, 8) ?? "null"}');
       }
     }
     
-    // RETORNAR 0: Nenhum sat está "comprometido" na carteira
-    // Os sats já saíram quando o usuário pagou a invoice Lightning
-    debugPrint('💰 Sats comprometidos: 0 (ordens pagas já saíram da carteira)');
+    // RETORNAR 0: Nenhum sat estÃ¡ "comprometido" na carteira
+    // Os sats jÃ¡ saÃ­ram quando o usuÃ¡rio pagou a invoice Lightning
     return 0;
   }
 
-  // Chave única para salvar ordens deste usuário
+  // Chave Ãºnica para salvar ordens deste usuÃ¡rio
   String get _ordersKey => '${_ordersKeyPrefix}${_currentUserPubkey ?? 'anonymous'}';
 
-  // Inicializar com a pubkey do usuário
+  // Inicializar com a pubkey do usuÃ¡rio
   Future<void> initialize({String? userPubkey}) async {
     // Se passou uma pubkey, usar ela
     if (userPubkey != null && userPubkey.isNotEmpty) {
@@ -232,28 +212,26 @@ class OrderProvider with ChangeNotifier {
       _currentUserPubkey = _nostrService.publicKey;
     }
     
-    debugPrint('📦 OrderProvider inicializando para usuário: ${_currentUserPubkey?.substring(0, 8) ?? 'anonymous'}...');
     
-    // 🧹 SEGURANÇA: Limpar storage 'orders_anonymous' que pode conter ordens vazadas
+    // ðŸ§¹ SEGURANÃ‡A: Limpar storage 'orders_anonymous' que pode conter ordens vazadas
     await _cleanupAnonymousStorage();
     
-    // Resetar estado - CRÍTICO: Limpar AMBAS as listas de ordens!
+    // Resetar estado - CRÃTICO: Limpar AMBAS as listas de ordens!
     _orders = [];
     _availableOrdersForProvider = [];
     _isInitialized = false;
     
     // SEMPRE carregar ordens locais primeiro (para preservar status atualizados)
-    // Antes estava só em testMode, mas isso perdia status como payment_received
-    // NOTA: Só carrega se temos pubkey válida (prevenção de vazamento)
+    // Antes estava sÃ³ em testMode, mas isso perdia status como payment_received
+    // NOTA: SÃ³ carrega se temos pubkey vÃ¡lida (prevenÃ§Ã£o de vazamento)
     await _loadSavedOrders();
-    debugPrint('📦 ${_orders.length} ordens locais carregadas (para preservar status)');
     
-    // 🧹 LIMPEZA: Remover ordens DRAFT antigas (não pagas em 1 hora)
+    // ðŸ§¹ LIMPEZA: Remover ordens DRAFT antigas (nÃ£o pagas em 1 hora)
     await _cleanupOldDraftOrders();
     
-    // CORREÇÃO AUTOMÁTICA: Identificar ordens marcadas incorretamente como pagas
-    // Se temos múltiplas ordens "payment_received" com valores pequenos e criadas quase ao mesmo tempo,
-    // é provável que a reconciliação automática tenha marcado incorretamente.
+    // CORREÃ‡ÃƒO AUTOMÃTICA: Identificar ordens marcadas incorretamente como pagas
+    // Se temos mÃºltiplas ordens "payment_received" com valores pequenos e criadas quase ao mesmo tempo,
+    // Ã© provÃ¡vel que a reconciliaÃ§Ã£o automÃ¡tica tenha marcado incorretamente.
     // A ordem 4c805ae7 foi marcada incorretamente - ela foi criada DEPOIS da primeira ordem
     // e nunca recebeu pagamento real.
     await _fixIncorrectlyPaidOrders();
@@ -267,43 +245,38 @@ class OrderProvider with ChangeNotifier {
     notifyListeners();
   }
   
-  /// 🧹 SEGURANÇA: Limpar storage 'orders_anonymous' que pode conter ordens de usuários anteriores
-  /// Também limpa qualquer cache global que possa ter ordens vazadas
+  /// ðŸ§¹ SEGURANÃ‡A: Limpar storage 'orders_anonymous' que pode conter ordens de usuÃ¡rios anteriores
+  /// TambÃ©m limpa qualquer cache global que possa ter ordens vazadas
   Future<void> _cleanupAnonymousStorage() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       
-      // 1. Remover ordens do usuário 'anonymous'
+      // 1. Remover ordens do usuÃ¡rio 'anonymous'
       if (prefs.containsKey('orders_anonymous')) {
         await prefs.remove('orders_anonymous');
-        debugPrint('🧹 Removido storage orders_anonymous (ordens de usuário não logado)');
       }
       
-      // 2. Remover cache global de ordens (pode conter ordens de outros usuários)
+      // 2. Remover cache global de ordens (pode conter ordens de outros usuÃ¡rios)
       if (prefs.containsKey('cached_orders')) {
         await prefs.remove('cached_orders');
-        debugPrint('🧹 Removido cache global de ordens');
       }
       
       // 3. Remover chave legada 'saved_orders'
       if (prefs.containsKey('saved_orders')) {
         await prefs.remove('saved_orders');
-        debugPrint('🧹 Removido storage legado saved_orders');
       }
       
       // 4. Remover cache de ordens do cache_service
       if (prefs.containsKey('cache_orders')) {
         await prefs.remove('cache_orders');
-        debugPrint('🧹 Removido cache_orders do CacheService');
       }
       
     } catch (e) {
-      debugPrint('⚠️ Erro ao limpar storage anônimo: $e');
     }
   }
   
-  /// 🧹 Remove ordens draft que não foram pagas em 1 hora
-  /// Isso evita acúmulo de ordens "fantasma" que o usuário abandonou
+  /// ðŸ§¹ Remove ordens draft que nÃ£o foram pagas em 1 hora
+  /// Isso evita acÃºmulo de ordens "fantasma" que o usuÃ¡rio abandonou
   Future<void> _cleanupOldDraftOrders() async {
     final now = DateTime.now();
     final draftCutoff = now.subtract(const Duration(hours: 1));
@@ -316,33 +289,29 @@ class OrderProvider with ChangeNotifier {
     
     if (oldDrafts.isEmpty) return;
     
-    debugPrint('🧹 Removendo ${oldDrafts.length} ordens draft antigas (não pagas em 1h):');
     for (final draft in oldDrafts) {
-      debugPrint('   - ${draft.id.substring(0, 8)} criada em ${draft.createdAt}');
       _orders.remove(draft);
     }
     
     await _saveOrders();
-    debugPrint('✅ Ordens draft antigas removidas');
   }
 
-  // Recarregar ordens para novo usuário (após login)
+  // Recarregar ordens para novo usuÃ¡rio (apÃ³s login)
   Future<void> loadOrdersForUser(String userPubkey) async {
-    debugPrint('🔄 Carregando ordens para usuário: ${userPubkey.substring(0, 8)}...');
     
-    // 🔐 SEGURANÇA CRÍTICA: Limpar TUDO antes de carregar novo usuário
-    // Isso previne que ordens de usuário anterior vazem para o novo
+    // ðŸ” SEGURANÃ‡A CRÃTICA: Limpar TUDO antes de carregar novo usuÃ¡rio
+    // Isso previne que ordens de usuÃ¡rio anterior vazem para o novo
     await _cleanupAnonymousStorage();
     
-    // ⚠️ NÃO limpar cache de collateral aqui!
-    // O CollateralProvider gerencia isso próprio e verifica se usuário mudou
-    // Limpar aqui causa problema de tier "caindo" durante a sessão
+    // âš ï¸ NÃƒO limpar cache de collateral aqui!
+    // O CollateralProvider gerencia isso prÃ³prio e verifica se usuÃ¡rio mudou
+    // Limpar aqui causa problema de tier "caindo" durante a sessÃ£o
     
     _currentUserPubkey = userPubkey;
     _orders = [];
-    _availableOrdersForProvider = [];  // Limpar também lista de disponíveis
+    _availableOrdersForProvider = [];  // Limpar tambÃ©m lista de disponÃ­veis
     _isInitialized = false;
-    _isProviderMode = false;  // Reset modo provedor ao trocar de usuário
+    _isProviderMode = false;  // Reset modo provedor ao trocar de usuÃ¡rio
     
     // Notificar IMEDIATAMENTE que ordens foram limpas
     // Isso garante que committedSats retorne 0 antes de carregar novas ordens
@@ -351,42 +320,35 @@ class OrderProvider with ChangeNotifier {
     // Carregar ordens locais primeiro (SEMPRE, para preservar status atualizados)
     await _loadSavedOrders();
     
-    // SEGURANÇA: Filtrar ordens que não pertencem a este usuário
-    // (podem ter vazado de sincronizações anteriores)
-    // IMPORTANTE: Manter ordens que este usuário CRIOU ou ACEITOU como Bro!
+    // SEGURANÃ‡A: Filtrar ordens que nÃ£o pertencem a este usuÃ¡rio
+    // (podem ter vazado de sincronizaÃ§Ãµes anteriores)
+    // IMPORTANTE: Manter ordens que este usuÃ¡rio CRIOU ou ACEITOU como Bro!
     final originalCount = _orders.length;
     _orders = _orders.where((order) {
-      // Manter ordens deste usuário (criador)
+      // Manter ordens deste usuÃ¡rio (criador)
       if (order.userPubkey == userPubkey) return true;
-      // Manter ordens que este usuário aceitou como Bro
+      // Manter ordens que este usuÃ¡rio aceitou como Bro
       if (order.providerId == userPubkey) return true;
-      // Manter ordens sem pubkey definido (legado, mas marcar como deste usuário)
+      // Manter ordens sem pubkey definido (legado, mas marcar como deste usuÃ¡rio)
       if (order.userPubkey == null || order.userPubkey!.isEmpty) {
-        debugPrint('⚠️ Ordem ${order.id.substring(0, 8)} sem userPubkey - removendo por segurança');
         return false; // Remover ordens sem dono identificado
       }
-      // Remover ordens de outros usuários
-      debugPrint('🚫 Removendo ordem ${order.id.substring(0, 8)} de outro usuário');
+      // Remover ordens de outros usuÃ¡rios
       return false;
     }).toList();
     
     if (_orders.length < originalCount) {
-      debugPrint('🔐 Removidas ${originalCount - _orders.length} ordens de outros usuários');
       await _saveOrders(); // Salvar lista limpa
     }
     
-    debugPrint('📦 ${_orders.length} ordens locais carregadas (para preservar status)');
     
     _isInitialized = true;
     notifyListeners();
     
-    // Sincronizar do Nostr IMEDIATAMENTE (não em background)
-    debugPrint('🔄 Iniciando sincronização do Nostr...');
+    // Sincronizar do Nostr IMEDIATAMENTE (nÃ£o em background)
     try {
       await syncOrdersFromNostr();
-      debugPrint('✅ Sincronização do Nostr concluída');
     } catch (e) {
-      debugPrint('⚠️ Erro ao sincronizar do Nostr: $e');
     }
   }
   
@@ -394,12 +356,11 @@ class OrderProvider with ChangeNotifier {
   void _syncFromNostrBackground() {
     if (_currentUserPubkey == null) return;
     
-    debugPrint('🔄 Iniciando sincronização do Nostr em background...');
     
     // Executar em background sem bloquear a UI
     Future.microtask(() async {
       try {
-        // Primeiro republicar ordens locais antigas que não estão no Nostr
+        // Primeiro republicar ordens locais antigas que nÃ£o estÃ£o no Nostr
         final privateKey = _nostrService.privateKey;
         if (privateKey != null) {
           await republishLocalOrdersToNostr();
@@ -408,16 +369,14 @@ class OrderProvider with ChangeNotifier {
         // Depois sincronizar do Nostr
         await syncOrdersFromNostr();
       } catch (e) {
-        debugPrint('⚠️ Erro ao sincronizar do Nostr: $e');
       }
     });
   }
 
-  // Limpar ordens ao fazer logout - SEGURANÇA CRÍTICA
+  // Limpar ordens ao fazer logout - SEGURANÃ‡A CRÃTICA
   void clearOrders() {
-    debugPrint('🗑️ Limpando ordens da memória (logout)');
     _orders = [];
-    _availableOrdersForProvider = [];  // Também limpar lista de disponíveis
+    _availableOrdersForProvider = [];  // TambÃ©m limpar lista de disponÃ­veis
     _currentOrder = null;
     _currentUserPubkey = null;
     _isProviderMode = false;  // Reset modo provedor
@@ -427,11 +386,9 @@ class OrderProvider with ChangeNotifier {
 
   // Carregar ordens do SharedPreferences
   Future<void> _loadSavedOrders() async {
-    // SEGURANÇA CRÍTICA: Não carregar ordens de 'orders_anonymous'
-    // Isso previne vazamento de ordens de outros usuários para contas novas
+    // SEGURANÃ‡A CRÃTICA: NÃ£o carregar ordens de 'orders_anonymous'
+    // Isso previne vazamento de ordens de outros usuÃ¡rios para contas novas
     if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) {
-      debugPrint('⚠️ _loadSavedOrders: Sem pubkey definida, NÃO carregando ordens (segurança)');
-      debugPrint('   Isso previne vazamento de ordens do storage "orders_anonymous"');
       return;
     }
     
@@ -445,21 +402,19 @@ class OrderProvider with ChangeNotifier {
           try {
             return Order.fromJson(data);
           } catch (e) {
-            debugPrint('⚠️ Erro ao carregar ordem individual: $e');
             return null;
           }
         }).whereType<Order>().toList(); // Remove nulls
         
-        debugPrint('📦 Carregadas ${_orders.length} ordens salvas');
         
-        // SEGURANÇA CRÍTICA: Filtrar ordens de OUTROS usuários que vazaram para este storage
+        // SEGURANÃ‡A CRÃTICA: Filtrar ordens de OUTROS usuÃ¡rios que vazaram para este storage
         // Isso pode acontecer se o modo provedor salvou ordens incorretamente
         final beforeFilter = _orders.length;
         _orders = _orders.where((o) {
-          // REGRA ESTRITA: Ordem DEVE ter userPubkey igual ao usuário atual
-          // Não aceitar mais ordens sem pubkey (eram causando vazamento)
+          // REGRA ESTRITA: Ordem DEVE ter userPubkey igual ao usuÃ¡rio atual
+          // NÃ£o aceitar mais ordens sem pubkey (eram causando vazamento)
           final isOwner = o.userPubkey == _currentUserPubkey;
-          // Ordem que este usuário aceitou como provedor
+          // Ordem que este usuÃ¡rio aceitou como provedor
           final isProvider = o.providerId == _currentUserPubkey;
           
           if (isOwner || isProvider) {
@@ -468,67 +423,57 @@ class OrderProvider with ChangeNotifier {
           
           // Log ordens removidas
           if (o.userPubkey == null || o.userPubkey!.isEmpty) {
-            debugPrint('🚫 Removendo ordem ${o.id.substring(0, 8)} SEM userPubkey (legado/corrompido)');
           } else {
-            debugPrint('🚫 Removendo ordem ${o.id.substring(0, 8)} de outro usuário: ${o.userPubkey?.substring(0, 8)}');
           }
           return false;
         }).toList();
         
         final removedOtherUsers = beforeFilter - _orders.length;
         if (removedOtherUsers > 0) {
-          debugPrint('🧹 SEGURANÇA: Removidas $removedOtherUsers ordens de OUTROS usuários que vazaram para storage!');
           // Salvar storage limpo
           await _saveOnlyUserOrders();
         }
         
-        // CORREÇÃO: Remover providerId falso (provider_test_001) de ordens
-        // Este valor foi setado erroneamente por migração antiga
-        // O providerId correto será recuperado do Nostr durante o sync
+        // CORREÃ‡ÃƒO: Remover providerId falso (provider_test_001) de ordens
+        // Este valor foi setado erroneamente por migraÃ§Ã£o antiga
+        // O providerId correto serÃ¡ recuperado do Nostr durante o sync
         bool needsMigration = false;
         for (int i = 0; i < _orders.length; i++) {
           final order = _orders[i];
-          debugPrint('   - ${order.id.substring(0, 8)}: R\$ ${order.amount.toStringAsFixed(2)} (${order.status}, providerId=${order.providerId ?? "null"})');
           
-          // Se ordem tem o providerId de teste antigo, REMOVER (será corrigido pelo Nostr)
+          // Se ordem tem o providerId de teste antigo, REMOVER (serÃ¡ corrigido pelo Nostr)
           if (order.providerId == 'provider_test_001') {
-            debugPrint('   🔧 Removendo providerId falso de ${order.id.substring(0, 8)}');
             // Setar providerId como null para que seja recuperado do Nostr
             _orders[i] = order.copyWith(providerId: null);
             needsMigration = true;
           }
         }
         
-        // Se houve migração, salvar
+        // Se houve migraÃ§Ã£o, salvar
         if (needsMigration) {
-          debugPrint('🔄 Salvando ordens corrigidas...');
           await _saveOrders();
         }
       } else {
-        debugPrint('📦 Nenhuma ordem salva encontrada');
       }
     } catch (e) {
-      debugPrint('❌ Erro ao carregar ordens: $e');
       // Em caso de erro, limpar dados corrompidos
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove(_ordersKey);
-        debugPrint('🗑️ Dados corrompidos removidos');
       } catch (e2) {
-        debugPrint('❌ Erro ao limpar dados: $e2');
       }
     }
   }
 
   /// Corrigir ordens que foram marcadas incorretamente como "payment_received"
-  /// pela reconciliação automática antiga (baseada apenas em saldo).
+  /// pela reconciliaÃ§Ã£o automÃ¡tica antiga (baseada apenas em saldo).
   /// 
   /// Corrigir ordens marcadas incorretamente como "payment_received"
   /// 
-  /// REGRA SIMPLES: Se a ordem tem status "payment_received" mas NÃO tem paymentHash,
-  /// é um falso positivo e deve voltar para "pending".
+  /// REGRA SIMPLES: Se a ordem tem status "payment_received" mas NÃƒO tem paymentHash,
+  /// Ã© um falso positivo e deve voltar para "pending".
   /// 
-  /// Ordens COM paymentHash foram verificadas pelo SDK Breez e são válidas.
+  /// Ordens COM paymentHash foram verificadas pelo SDK Breez e sÃ£o vÃ¡lidas.
   Future<void> _fixIncorrectlyPaidOrders() async {
     // Buscar ordens com payment_received
     final paidOrders = _orders.where((o) => o.status == 'payment_received').toList();
@@ -537,14 +482,12 @@ class OrderProvider with ChangeNotifier {
       return;
     }
     
-    debugPrint('🔧 Verificando ${paidOrders.length} ordens com payment_received...');
     
     bool needsCorrection = false;
     
     for (final order in paidOrders) {
-      // Se NÃO tem paymentHash, é falso positivo!
+      // Se NÃƒO tem paymentHash, Ã© falso positivo!
       if (order.paymentHash == null || order.paymentHash!.isEmpty) {
-        debugPrint('🔧 FALSO POSITIVO: Ordem ${order.id.substring(0, 8)} sem paymentHash -> voltando para pending');
         
         final index = _orders.indexWhere((o) => o.id == order.id);
         if (index != -1) {
@@ -552,20 +495,17 @@ class OrderProvider with ChangeNotifier {
           needsCorrection = true;
         }
       } else {
-        debugPrint('✅ Ordem ${order.id.substring(0, 8)} tem paymentHash - status válido');
       }
     }
     
     if (needsCorrection) {
       await _saveOrders();
-      debugPrint('✅ Status de ordens corrigido e salvo');
       
       // Republicar no Nostr com status correto
       for (final order in _orders.where((o) => o.status == 'pending')) {
         try {
           await _publishOrderToNostr(order);
         } catch (e) {
-          debugPrint('⚠️ Erro ao republicar ordem ${order.id.substring(0, 8)}: $e');
         }
       }
     }
@@ -573,18 +513,17 @@ class OrderProvider with ChangeNotifier {
 
   /// Expirar ordens pendentes antigas (> 2 horas sem aceite)
   /// Ordens que ficam muito tempo pendentes provavelmente foram abandonadas
-  // Salvar ordens no SharedPreferences (SEMPRE salva, não só em testMode)
-  // SEGURANÇA: Agora só salva ordens do usuário atual (igual _saveOnlyUserOrders)
+  // Salvar ordens no SharedPreferences (SEMPRE salva, nÃ£o sÃ³ em testMode)
+  // SEGURANÃ‡A: Agora sÃ³ salva ordens do usuÃ¡rio atual (igual _saveOnlyUserOrders)
   Future<void> _saveOrders() async {
-    // SEGURANÇA CRÍTICA: Não salvar se não temos pubkey definida
-    // Isso previne salvar ordens de outros usuários no storage 'orders_anonymous'
+    // SEGURANÃ‡A CRÃTICA: NÃ£o salvar se nÃ£o temos pubkey definida
+    // Isso previne salvar ordens de outros usuÃ¡rios no storage 'orders_anonymous'
     if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) {
-      debugPrint('⚠️ _saveOrders: Sem pubkey definida, NÃO salvando ordens (segurança)');
       return;
     }
     
     try {
-      // SEGURANÇA: Filtrar apenas ordens do usuário atual antes de salvar
+      // SEGURANÃ‡A: Filtrar apenas ordens do usuÃ¡rio atual antes de salvar
       final userOrders = _orders.where((o) => 
         o.userPubkey == _currentUserPubkey || 
         o.providerId == _currentUserPubkey
@@ -593,40 +532,34 @@ class OrderProvider with ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final ordersJson = json.encode(userOrders.map((o) => o.toJson()).toList());
       await prefs.setString(_ordersKey, ordersJson);
-      debugPrint('💾 SEGURO: ${userOrders.length}/${_orders.length} ordens salvas (apenas do usuário atual)');
       
       // Log de cada ordem salva
       for (var order in userOrders) {
-        debugPrint('   - ${order.id.substring(0, 8)}: status="${order.status}", providerId=${order.providerId ?? "null"}, R\$ ${order.amount}');
       }
     } catch (e) {
-      debugPrint('❌ Erro ao salvar ordens: $e');
     }
   }
   
-  /// SEGURANÇA: Salvar APENAS ordens do usuário atual no SharedPreferences
-  /// Ordens de outros usuários (visualizadas no modo provedor) ficam apenas em memória
+  /// SEGURANÃ‡A: Salvar APENAS ordens do usuÃ¡rio atual no SharedPreferences
+  /// Ordens de outros usuÃ¡rios (visualizadas no modo provedor) ficam apenas em memÃ³ria
   Future<void> _saveOnlyUserOrders() async {
-    // SEGURANÇA CRÍTICA: Não salvar se não temos pubkey definida
-    // Isso previne que ordens de outros usuários sejam salvas em 'orders_anonymous'
+    // SEGURANÃ‡A CRÃTICA: NÃ£o salvar se nÃ£o temos pubkey definida
+    // Isso previne que ordens de outros usuÃ¡rios sejam salvas em 'orders_anonymous'
     if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) {
-      debugPrint('⚠️ _saveOnlyUserOrders: Sem pubkey definida, NÃO salvando (segurança)');
       return;
     }
     
     try {
-      // Filtrar apenas ordens do usuário atual
+      // Filtrar apenas ordens do usuÃ¡rio atual
       final userOrders = _orders.where((o) => 
         o.userPubkey == _currentUserPubkey || 
-        o.providerId == _currentUserPubkey  // Ordens que este usuário aceitou como provedor
+        o.providerId == _currentUserPubkey  // Ordens que este usuÃ¡rio aceitou como provedor
       ).toList();
       
       final prefs = await SharedPreferences.getInstance();
       final ordersJson = json.encode(userOrders.map((o) => o.toJson()).toList());
       await prefs.setString(_ordersKey, ordersJson);
-      debugPrint('💾 SEGURO: ${userOrders.length}/${_orders.length} ordens salvas (apenas do usuário atual)');
     } catch (e) {
-      debugPrint('❌ Erro ao salvar ordens: $e');
     }
   }
 
@@ -635,13 +568,11 @@ class OrderProvider with ChangeNotifier {
   Future<bool> fixOrderStatus(String orderId, String newStatus) async {
     final index = _orders.indexWhere((o) => o.id == orderId);
     if (index == -1) {
-      debugPrint('❌ Ordem não encontrada para corrigir: $orderId');
       return false;
     }
     
     final oldStatus = _orders[index].status;
     _orders[index] = _orders[index].copyWith(status: newStatus);
-    debugPrint('🔧 Status da ordem ${orderId.substring(0, 8)} corrigido: $oldStatus -> $newStatus');
     
     await _saveOrders();
     notifyListeners();
@@ -650,33 +581,27 @@ class OrderProvider with ChangeNotifier {
 
   /// Cancelar uma ordem pendente
   /// Apenas ordens com status 'pending' podem ser canceladas
-  /// SEGURANÇA: Apenas o dono da ordem pode cancelá-la!
+  /// SEGURANÃ‡A: Apenas o dono da ordem pode cancelÃ¡-la!
   Future<bool> cancelOrder(String orderId) async {
     final index = _orders.indexWhere((o) => o.id == orderId);
     if (index == -1) {
-      debugPrint('❌ Ordem não encontrada para cancelar: $orderId');
       return false;
     }
     
     final order = _orders[index];
     
-    // VERIFICAÇÃO DE SEGURANÇA: Apenas o dono pode cancelar
+    // VERIFICAÃ‡ÃƒO DE SEGURANÃ‡A: Apenas o dono pode cancelar
     if (order.userPubkey != null && 
         _currentUserPubkey != null && 
         order.userPubkey != _currentUserPubkey) {
-      debugPrint('❌ SEGURANÇA: Tentativa de cancelar ordem de outro usuário!');
-      debugPrint('   Ordem pertence a: ${order.userPubkey?.substring(0, 8)}');
-      debugPrint('   Usuário atual: ${_currentUserPubkey?.substring(0, 8)}');
       return false;
     }
     
     if (order.status != 'pending') {
-      debugPrint('❌ Apenas ordens pendentes podem ser canceladas. Status atual: ${order.status}');
       return false;
     }
     
     _orders[index] = order.copyWith(status: 'cancelled');
-    debugPrint('🗑️ Ordem ${orderId.substring(0, 8)} cancelada');
     
     await _saveOrders();
     
@@ -689,41 +614,35 @@ class OrderProvider with ChangeNotifier {
           orderId: orderId,
           newStatus: 'cancelled',
         );
-        debugPrint('✅ Cancelamento publicado no Nostr');
       }
     } catch (e) {
-      debugPrint('⚠️ Erro ao publicar cancelamento no Nostr: $e');
     }
     
     notifyListeners();
     return true;
   }
 
-  /// Verificar se um pagamento específico corresponde a uma ordem pendente
-  /// Usa match por valor quando paymentHash não está disponível (ordens antigas)
-  /// IMPORTANTE: Este método deve ser chamado manualmente pelo usuário para evitar falsos positivos
+  /// Verificar se um pagamento especÃ­fico corresponde a uma ordem pendente
+  /// Usa match por valor quando paymentHash nÃ£o estÃ¡ disponÃ­vel (ordens antigas)
+  /// IMPORTANTE: Este mÃ©todo deve ser chamado manualmente pelo usuÃ¡rio para evitar falsos positivos
   Future<bool> verifyAndFixOrderPayment(String orderId, List<dynamic> breezPayments) async {
     final index = _orders.indexWhere((o) => o.id == orderId);
     if (index == -1) {
-      debugPrint('❌ Ordem não encontrada: $orderId');
       return false;
     }
     
     final order = _orders[index];
     if (order.status != 'pending') {
-      debugPrint('ℹ️ Ordem ${orderId.substring(0, 8)} não está pendente: ${order.status}');
       return false;
     }
     
     final expectedSats = (order.btcAmount * 100000000).toInt();
-    debugPrint('🔍 Verificando ordem ${orderId.substring(0, 8)}: esperado=$expectedSats sats');
     
     // Primeiro tentar por paymentHash (mais seguro)
     if (order.paymentHash != null && order.paymentHash!.isNotEmpty) {
       for (var payment in breezPayments) {
         final paymentHash = payment['paymentHash'] as String?;
         if (paymentHash == order.paymentHash) {
-          debugPrint('✅ MATCH por paymentHash! Atualizando ordem...');
           _orders[index] = order.copyWith(status: 'payment_received');
           await _saveOrders();
           notifyListeners();
@@ -732,8 +651,8 @@ class OrderProvider with ChangeNotifier {
       }
     }
     
-    // Fallback: verificar por valor (menos seguro, mas útil para ordens antigas)
-    // Tolerar diferença de até 5 sats (taxas de rede podem variar ligeiramente)
+    // Fallback: verificar por valor (menos seguro, mas Ãºtil para ordens antigas)
+    // Tolerar diferenÃ§a de atÃ© 5 sats (taxas de rede podem variar ligeiramente)
     for (var payment in breezPayments) {
       final paymentAmount = (payment['amount'] is int) 
           ? payment['amount'] as int 
@@ -741,7 +660,6 @@ class OrderProvider with ChangeNotifier {
       
       final diff = (paymentAmount - expectedSats).abs();
       if (diff <= 5) {
-        debugPrint('✅ MATCH por valor! Pagamento de $paymentAmount sats corresponde a ordem de $expectedSats sats');
         _orders[index] = order.copyWith(
           status: 'payment_received',
           metadata: {
@@ -757,13 +675,12 @@ class OrderProvider with ChangeNotifier {
       }
     }
     
-    debugPrint('❌ Nenhum pagamento correspondente encontrado para ordem ${orderId.substring(0, 8)}');
     return false;
   }
 
-  // Criar ordem LOCAL (NÃO publica no Nostr!)
-  // A ordem só será publicada no Nostr APÓS pagamento confirmado
-  // Isso evita que Bros vejam ordens sem depósito
+  // Criar ordem LOCAL (NÃƒO publica no Nostr!)
+  // A ordem sÃ³ serÃ¡ publicada no Nostr APÃ“S pagamento confirmado
+  // Isso evita que Bros vejam ordens sem depÃ³sito
   Future<Order?> createOrder({
     required String billType,
     required String billCode,
@@ -771,17 +688,15 @@ class OrderProvider with ChangeNotifier {
     required double btcAmount,
     required double btcPrice,
   }) async {
-    // VALIDAÇÃO CRÍTICA: Nunca criar ordem com amount = 0
+    // VALIDAÃ‡ÃƒO CRÃTICA: Nunca criar ordem com amount = 0
     if (amount <= 0) {
-      debugPrint('❌ ERRO CRÍTICO: Tentativa de criar ordem com amount=$amount');
-      _error = 'Valor da ordem inválido';
+      _error = 'Valor da ordem invÃ¡lido';
       notifyListeners();
       return null;
     }
     
     if (btcAmount <= 0) {
-      debugPrint('❌ ERRO CRÍTICO: Tentativa de criar ordem com btcAmount=$btcAmount');
-      _error = 'Valor em BTC inválido';
+      _error = 'Valor em BTC invÃ¡lido';
       notifyListeners();
       return null;
     }
@@ -791,15 +706,14 @@ class OrderProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      debugPrint('📦 Criando ordem LOCAL: amount=$amount, btcAmount=$btcAmount, btcPrice=$btcPrice');
       
       // Calcular taxas (1% provider + 2% platform)
       final providerFee = amount * 0.01;
       final platformFee = amount * 0.02;
       final total = amount + providerFee + platformFee;
       
-      // 🔥 SIMPLIFICADO: Status 'pending' = Aguardando Bro
-      // A ordem já está paga (invoice/endereço já foi criado)
+      // ðŸ”¥ SIMPLIFICADO: Status 'pending' = Aguardando Bro
+      // A ordem jÃ¡ estÃ¡ paga (invoice/endereÃ§o jÃ¡ foi criado)
       final order = Order(
         id: const Uuid().v4(),
         userPubkey: _currentUserPubkey,
@@ -811,32 +725,27 @@ class OrderProvider with ChangeNotifier {
         providerFee: providerFee,
         platformFee: platformFee,
         total: total,
-        status: 'pending',  // ✅ Direto para pending = Aguardando Bro
+        status: 'pending',  // âœ… Direto para pending = Aguardando Bro
         createdAt: DateTime.now(),
       );
       
-      // LOG DE VALIDAÇÃO
-      debugPrint('✅ Ordem criada: amount=${order.amount}, btcAmount=${order.btcAmount}, status=pending');
-      debugPrint('✅ Ordem pronta para publicar no Nostr!');
+      // LOG DE VALIDAÃ‡ÃƒO
       
       _orders.insert(0, order);
       _currentOrder = order;
       
-      // Salvar localmente - USAR _saveOrders() para garantir filtro de segurança!
+      // Salvar localmente - USAR _saveOrders() para garantir filtro de seguranÃ§a!
       await _saveOrders();
       
       notifyListeners();
       
-      // 🔥 PUBLICAR NO NOSTR IMEDIATAMENTE
-      // A ordem já está com pagamento sendo processado
-      debugPrint('📡 Publicando ordem no Nostr...');
+      // ðŸ”¥ PUBLICAR NO NOSTR IMEDIATAMENTE
+      // A ordem jÃ¡ estÃ¡ com pagamento sendo processado
       _publishOrderToNostr(order);
       
-      debugPrint('✅ Ordem criada e publicada: ${order.id}');
       return order;
     } catch (e) {
       _error = e.toString();
-      debugPrint('❌ Erro ao criar ordem: $e');
       return null;
     } finally {
       _isLoading = false;
@@ -844,24 +753,21 @@ class OrderProvider with ChangeNotifier {
     }
   }
   
-  /// CRÍTICO: Publicar ordem no Nostr SOMENTE APÓS pagamento confirmado
-  /// Este método transforma a ordem de 'draft' para 'pending' e publica no Nostr
-  /// para que os Bros possam vê-la e aceitar
+  /// CRÃTICO: Publicar ordem no Nostr SOMENTE APÃ“S pagamento confirmado
+  /// Este mÃ©todo transforma a ordem de 'draft' para 'pending' e publica no Nostr
+  /// para que os Bros possam vÃª-la e aceitar
   Future<bool> publishOrderAfterPayment(String orderId) async {
-    debugPrint('🚀 publishOrderAfterPayment chamado para ordem: $orderId');
     
     final index = _orders.indexWhere((o) => o.id == orderId);
     if (index == -1) {
-      debugPrint('❌ Ordem não encontrada: $orderId');
       return false;
     }
     
     final order = _orders[index];
     
-    // Validar que ordem está em draft (não foi publicada ainda)
+    // Validar que ordem estÃ¡ em draft (nÃ£o foi publicada ainda)
     if (order.status != 'draft') {
-      debugPrint('⚠️ Ordem ${orderId.substring(0, 8)} não está em draft: ${order.status}');
-      // Se já foi publicada, apenas retornar sucesso
+      // Se jÃ¡ foi publicada, apenas retornar sucesso
       if (order.status == 'pending' || order.status == 'payment_received') {
         return true;
       }
@@ -869,48 +775,42 @@ class OrderProvider with ChangeNotifier {
     }
     
     try {
-      // Atualizar status para 'pending' (agora visível para Bros)
+      // Atualizar status para 'pending' (agora visÃ­vel para Bros)
       _orders[index] = order.copyWith(status: 'pending');
       await _saveOrders();
       notifyListeners();
       
       // AGORA SIM publicar no Nostr
-      debugPrint('📤 Publicando ordem no Nostr APÓS pagamento confirmado...');
       await _publishOrderToNostr(_orders[index]);
       
-      // Pequeno delay para propagação
+      // Pequeno delay para propagaÃ§Ã£o
       await Future.delayed(const Duration(milliseconds: 500));
       
-      debugPrint('✅ Ordem ${orderId.substring(0, 8)} publicada no Nostr com sucesso!');
-      debugPrint('👀 Agora os Bros podem ver e aceitar esta ordem');
       return true;
     } catch (e) {
-      debugPrint('❌ Erro ao publicar ordem no Nostr: $e');
       return false;
     }
   }
 
-  // Listar ordens (para usuário normal ou provedor)
+  // Listar ordens (para usuÃ¡rio normal ou provedor)
   Future<void> fetchOrders({String? status, bool forProvider = false}) async {
-    debugPrint('📦 Sincronizando ordens com Nostr... (forProvider: $forProvider)');
     _isLoading = true;
     
-    // SEGURANÇA: Definir modo provedor ANTES de sincronizar
+    // SEGURANÃ‡A: Definir modo provedor ANTES de sincronizar
     _isProviderMode = forProvider;
     
-    // Se SAINDO do modo provedor (ou em modo usuário), limpar ordens de outros usuários
+    // Se SAINDO do modo provedor (ou em modo usuÃ¡rio), limpar ordens de outros usuÃ¡rios
     if (!forProvider && _orders.isNotEmpty) {
       final before = _orders.length;
       _orders = _orders.where((o) {
-        // REGRA ESTRITA: Apenas ordens deste usuário
+        // REGRA ESTRITA: Apenas ordens deste usuÃ¡rio
         final isOwner = o.userPubkey == _currentUserPubkey;
-        // Ou ordens que este usuário aceitou como provedor
+        // Ou ordens que este usuÃ¡rio aceitou como provedor
         final isProvider = o.providerId == _currentUserPubkey;
         return isOwner || isProvider;
       }).toList();
       final removed = before - _orders.length;
       if (removed > 0) {
-        debugPrint('🧹 SEGURANÇA: Removidas $removed ordens de outros usuários da memória');
         // Salvar storage limpo
         await _saveOnlyUserOrders();
       }
@@ -919,29 +819,23 @@ class OrderProvider with ChangeNotifier {
     notifyListeners();
     
     try {
-      print('🚨🚨🚨 fetchOrders: forProvider=$forProvider 🚨🚨🚨');
       if (forProvider) {
-        // MODO PROVEDOR: Buscar TODAS as ordens pendentes de TODOS os usuários
-        print('🚨🚨🚨 Chamando syncAllPendingOrdersFromNostr... 🚨🚨🚨');
-        // CORREÇÃO: Timeout aumentado para 90s para permitir busca completa de ordens do provedor
+        // MODO PROVEDOR: Buscar TODAS as ordens pendentes de TODOS os usuÃ¡rios
+        // Timeout de 30s para sync provedor
         await syncAllPendingOrdersFromNostr().timeout(
-          const Duration(seconds: 90),
+          const Duration(seconds: 30),
           onTimeout: () {
-            print('⏰ Timeout na sincronização Nostr (modo provedor), usando ordens locais');
           },
         );
       } else {
-        // MODO USUÁRIO: Buscar apenas ordens do próprio usuário
+        // MODO USUÃRIO: Buscar apenas ordens do prÃ³prio usuÃ¡rio
         await syncOrdersFromNostr().timeout(
           const Duration(seconds: 15),
           onTimeout: () {
-            debugPrint('⏰ Timeout na sincronização Nostr, usando ordens locais');
           },
         );
       }
-      debugPrint('✅ Sincronização com Nostr concluída (${_orders.length} ordens)');
     } catch (e) {
-      debugPrint('❌ Erro ao sincronizar com Nostr: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -949,29 +843,24 @@ class OrderProvider with ChangeNotifier {
   }
   
   /// Buscar TODAS as ordens pendentes do Nostr (para modo Provedor/Bro)
-  /// SEGURANÇA: Ordens de outros usuários vão para _availableOrdersForProvider
-  /// e NUNCA são adicionadas à lista principal _orders!
+  /// SEGURANÃ‡A: Ordens de outros usuÃ¡rios vÃ£o para _availableOrdersForProvider
+  /// e NUNCA sÃ£o adicionadas Ã  lista principal _orders!
   Future<void> syncAllPendingOrdersFromNostr() async {
-    print('🚨🚨🚨 syncAllPendingOrdersFromNostr CHAMADO! 🚨🚨🚨');
     try {
-      print('🔄🔄🔄 [PROVEDOR] Iniciando busca PARALELA de ordens... 🔄🔄🔄');
       
-      // Helper para busca segura (captura exceções e retorna lista vazia)
-      // CORREÇÃO: Timeout aumentado para 60s para dar tempo de buscar todas as ordens
+      // Helper para busca segura (captura exceÃ§Ãµes e retorna lista vazia)
+      // Timeout de 25s por fonte individual
       Future<List<Order>> safeFetch(Future<List<Order>> Function() fetcher, String name) async {
         try {
-          return await fetcher().timeout(const Duration(seconds: 60), onTimeout: () {
-            print('⏰ Timeout em $name (60s) - continuando com ordens locais');
+          return await fetcher().timeout(const Duration(seconds: 25), onTimeout: () {
             return <Order>[];
           });
         } catch (e) {
-          print('❌ Erro em $name: $e');
           return <Order>[];
         }
       }
       
       // Executar buscas EM PARALELO com tratamento de erro individual
-      print('🔄 Aguardando buscas em paralelo...');
       final results = await Future.wait([
         safeFetch(() => _nostrOrderService.fetchPendingOrders(), 'fetchPendingOrders'),
         safeFetch(() => _currentUserPubkey != null 
@@ -986,11 +875,10 @@ class OrderProvider with ChangeNotifier {
       final userOrders = results[1];
       final providerOrders = results[2];
       
-      print('📦 Resultados: ${allPendingOrders.length} pendentes, ${userOrders.length} do usuário, ${providerOrders.length} do provedor');
       
-      // SEGURANÇA: Separar ordens em duas listas:
-      // 1. Ordens do usuário atual -> _orders
-      // 2. Ordens de outros (disponíveis para aceitar) -> _availableOrdersForProvider
+      // SEGURANÃ‡A: Separar ordens em duas listas:
+      // 1. Ordens do usuÃ¡rio atual -> _orders
+      // 2. Ordens de outros (disponÃ­veis para aceitar) -> _availableOrdersForProvider
       
       _availableOrdersForProvider = []; // Limpar lista anterior
       final seenAvailableIds = <String>{}; // Para evitar duplicatas
@@ -1001,55 +889,50 @@ class OrderProvider with ChangeNotifier {
         // Ignorar ordens com amount=0
         if (pendingOrder.amount <= 0) continue;
         
-        // DEDUPLICAÇÃO: Ignorar se já vimos esta ordem
+        // DEDUPLICAÃ‡ÃƒO: Ignorar se jÃ¡ vimos esta ordem
         if (seenAvailableIds.contains(pendingOrder.id)) {
-          debugPrint('   ⚠️ Duplicata ignorada: ${pendingOrder.id.substring(0, 8)}');
           continue;
         }
         seenAvailableIds.add(pendingOrder.id);
         
-        // Verificar se é ordem do usuário atual OU ordem que ele aceitou como provedor
+        // Verificar se Ã© ordem do usuÃ¡rio atual OU ordem que ele aceitou como provedor
         final isMyOrder = pendingOrder.userPubkey == _currentUserPubkey;
         final isMyProviderOrder = pendingOrder.providerId == _currentUserPubkey;
         
-        // Se NÃO é minha ordem e NÃO é ordem que aceitei, verificar status
-        // Ordens de outros com status final não interessam
+        // Se NÃƒO Ã© minha ordem e NÃƒO Ã© ordem que aceitei, verificar status
+        // Ordens de outros com status final nÃ£o interessam
         if (!isMyOrder && !isMyProviderOrder) {
           if (pendingOrder.status == 'cancelled' || pendingOrder.status == 'completed') continue;
         }
         
         if (isMyOrder || isMyProviderOrder) {
-          // Ordem do usuário OU ordem aceita como provedor: atualizar na lista _orders
+          // Ordem do usuÃ¡rio OU ordem aceita como provedor: atualizar na lista _orders
           final existingIndex = _orders.indexWhere((o) => o.id == pendingOrder.id);
           if (existingIndex == -1) {
-            // SEGURANÇA CRÍTICA: Só adicionar se realmente é minha ordem ou aceitei como provedor
-            // NUNCA adicionar ordem de outro usuário aqui!
+            // SEGURANÃ‡A CRÃTICA: SÃ³ adicionar se realmente Ã© minha ordem ou aceitei como provedor
+            // NUNCA adicionar ordem de outro usuÃ¡rio aqui!
             if (isMyOrder || (isMyProviderOrder && pendingOrder.providerId == _currentUserPubkey)) {
               _orders.add(pendingOrder);
-              debugPrint('   ➕ Adicionada ordem ${pendingOrder.id.substring(0, 8)} (myOrder=$isMyOrder, myProvider=$isMyProviderOrder)');
             } else {
-              debugPrint('   🛡️ BLOQUEADA ordem ${pendingOrder.id.substring(0, 8)} - não pertence ao usuário atual');
             }
           } else {
             final existing = _orders[existingIndex];
-            // SEGURANÇA: Verificar que ordem pertence ao usuário atual antes de atualizar
+            // SEGURANÃ‡A: Verificar que ordem pertence ao usuÃ¡rio atual antes de atualizar
             final isOwnerExisting = existing.userPubkey == _currentUserPubkey;
             final isProviderExisting = existing.providerId == _currentUserPubkey;
             
             if (!isOwnerExisting && !isProviderExisting) {
-              debugPrint('   🛡️ BLOQUEADA atualização ordem ${pendingOrder.id.substring(0, 8)} - não pertence ao usuário');
               continue;
             }
             
-            // CORREÇÃO: Apenas status FINAIS devem ser protegidos
+            // CORREÃ‡ÃƒO: Apenas status FINAIS devem ser protegidos
             // accepted e awaiting_confirmation podem evoluir para completed
             const protectedStatuses = ['cancelled', 'completed', 'liquidated', 'disputed'];
             if (protectedStatuses.contains(existing.status)) {
-              debugPrint('   🛡️ Ordem ${existing.id.substring(0, 8)} tem status final (${existing.status}), preservando');
               continue;
             }
             
-            // CORREÇÃO: Sempre atualizar se status do Nostr é mais recente
+            // CORREÃ‡ÃƒO: Sempre atualizar se status do Nostr Ã© mais recente
             // Mesmo para ordens completed (para que provedor veja completed)
             if (_isStatusMoreRecent(pendingOrder.status, existing.status)) {
               _orders[existingIndex] = existing.copyWith(
@@ -1058,25 +941,23 @@ class OrderProvider with ChangeNotifier {
                 completedAt: pendingOrder.status == 'completed' ? DateTime.now() : existing.completedAt,
               );
               updated++;
-              debugPrint('   🔄 Atualizada ordem ${pendingOrder.id.substring(0, 8)}: ${existing.status} -> ${pendingOrder.status}');
             }
           }
         } else {
-          // Ordem de OUTRO usuário: adicionar apenas à lista de disponíveis
-          // NUNCA adicionar à lista principal _orders!
+          // Ordem de OUTRO usuÃ¡rio: adicionar apenas Ã  lista de disponÃ­veis
+          // NUNCA adicionar Ã  lista principal _orders!
           
-          // CORREÇÃO CRÍTICA: Verificar se essa ordem já existe em _orders com status avançado
-          // (significa que EU já aceitei essa ordem, mas o evento Nostr ainda está como pending)
+          // CORREÃ‡ÃƒO CRÃTICA: Verificar se essa ordem jÃ¡ existe em _orders com status avanÃ§ado
+          // (significa que EU jÃ¡ aceitei essa ordem, mas o evento Nostr ainda estÃ¡ como pending)
           final existingInOrders = _orders.cast<Order?>().firstWhere(
             (o) => o?.id == pendingOrder.id,
             orElse: () => null,
           );
           
           if (existingInOrders != null) {
-            // Ordem já existe - NÃO adicionar à lista de disponíveis
+            // Ordem jÃ¡ existe - NÃƒO adicionar Ã  lista de disponÃ­veis
             const protectedStatuses = ['accepted', 'awaiting_confirmation', 'completed', 'liquidated', 'cancelled', 'disputed'];
             if (protectedStatuses.contains(existingInOrders.status)) {
-              debugPrint('   🛡️ Ordem ${pendingOrder.id.substring(0, 8)} já aceita/processada (status=${existingInOrders.status}), não mostrar como disponível');
               continue;
             }
           }
@@ -1086,15 +967,12 @@ class OrderProvider with ChangeNotifier {
         }
       }
       
-      debugPrint('📊 [PROVEDOR] Separação de ordens pendentes:');
-      debugPrint('   - Minhas ordens atualizadas: $updated');
-      debugPrint('   - Ordens disponíveis para aceitar: $addedToAvailable');
       
-      // Processar ordens do próprio usuário (já buscadas em paralelo)
+      // Processar ordens do prÃ³prio usuÃ¡rio (jÃ¡ buscadas em paralelo)
       int addedFromUser = 0;
       int addedFromProviderHistory = 0;
       
-      // 1. Processar ordens criadas pelo usuário
+      // 1. Processar ordens criadas pelo usuÃ¡rio
       for (var order in userOrders) {
         final existingIndex = _orders.indexWhere((o) => o.id == order.id);
         if (existingIndex == -1 && order.amount > 0) {
@@ -1103,61 +981,52 @@ class OrderProvider with ChangeNotifier {
         }
       }
       
-      // 2. CRÍTICO: Processar ordens onde este usuário é o PROVEDOR (histórico de ordens aceitas)
+      // 2. CRÃTICO: Processar ordens onde este usuÃ¡rio Ã© o PROVEDOR (histÃ³rico de ordens aceitas)
       // Estas ordens foram buscadas em paralelo acima
-      print('🚨🚨🚨 Processando ${providerOrders.length} ordens do provedor 🚨🚨🚨');
       
       for (var provOrder in providerOrders) {
         final existingIndex = _orders.indexWhere((o) => o.id == provOrder.id);
         if (existingIndex == -1 && provOrder.amount > 0) {
-          // Nova ordem do histórico - adicionar
-          // NOTA: O status agora já vem correto de fetchProviderOrders (que busca updates)
-          // Só forçar "accepted" se vier como "pending" E não houver outro status mais avançado
+          // Nova ordem do histÃ³rico - adicionar
+          // NOTA: O status agora jÃ¡ vem correto de fetchProviderOrders (que busca updates)
+          // SÃ³ forÃ§ar "accepted" se vier como "pending" E nÃ£o houver outro status mais avanÃ§ado
           if (provOrder.status == 'pending') {
-            // Se status ainda é pending, significa que não houve evento de update
-            // Então esta é uma ordem aceita mas ainda não processada
-            print('   ⚠️ Ordem ${provOrder.id.substring(0, 8)} tem status pending, assumindo accepted');
+            // Se status ainda Ã© pending, significa que nÃ£o houve evento de update
+            // EntÃ£o esta Ã© uma ordem aceita mas ainda nÃ£o processada
             provOrder = provOrder.copyWith(status: 'accepted');
           }
           _orders.add(provOrder);
           addedFromProviderHistory++;
-          print('   ➕ Recuperada ordem ${provOrder.id.substring(0, 8)}: status=${provOrder.status}, R\$ ${provOrder.amount.toStringAsFixed(2)}');
         } else if (existingIndex != -1) {
-          // Ordem já existe - atualizar se status do Nostr é mais avançado
+          // Ordem jÃ¡ existe - atualizar se status do Nostr Ã© mais avanÃ§ado
           final existing = _orders[existingIndex];
           
-          // CORREÇÃO: Status "accepted" NÃO deve ser protegido pois pode evoluir para completed
+          // CORREÃ‡ÃƒO: Status "accepted" NÃƒO deve ser protegido pois pode evoluir para completed
           // Apenas status finais devem ser protegidos
           const protectedStatuses = ['cancelled', 'completed', 'liquidated', 'disputed'];
           if (protectedStatuses.contains(existing.status)) {
-            print('   🛡️ Ordem ${existing.id.substring(0, 8)} tem status final (${existing.status}), preservando');
             continue;
           }
           
-          // Atualizar se o status do Nostr é mais avançado
+          // Atualizar se o status do Nostr Ã© mais avanÃ§ado
           if (_isStatusMoreRecent(provOrder.status, existing.status)) {
             _orders[existingIndex] = existing.copyWith(
               status: provOrder.status,
               completedAt: provOrder.status == 'completed' ? DateTime.now() : existing.completedAt,
             );
-            print('   🔄 Atualizada ordem ${provOrder.id.substring(0, 8)}: ${existing.status} -> ${provOrder.status}');
           }
         }
       }
       
-      print('📊 [PROVEDOR] Histórico recuperado: $addedFromProviderHistory ordens');
       
-      // 3. CRÍTICO: Buscar updates de status para ordens que este provedor aceitou
-      // Isso permite que o Bro veja quando o usuário confirmou (status=completed)
+      // 3. CRÃTICO: Buscar updates de status para ordens que este provedor aceitou
+      // Isso permite que o Bro veja quando o usuÃ¡rio confirmou (status=completed)
       if (_currentUserPubkey != null && _currentUserPubkey!.isNotEmpty) {
-        debugPrint('🔍 [DEBUG] _currentUserPubkey: ${_currentUserPubkey!.substring(0, 16)}');
-        debugPrint('🔍 [DEBUG] Total de ordens em memória: ${_orders.length}');
         
         // Log de todas as ordens e seus providerIds
         for (final o in _orders) {
           final provId = o.providerId;
           final match = provId == _currentUserPubkey;
-          debugPrint('   📋 ${o.id.substring(0, 8)}: status=${o.status}, providerId=${provId?.substring(0, 8) ?? "null"}, match=$match');
         }
         
         final myOrderIds = _orders
@@ -1165,29 +1034,22 @@ class OrderProvider with ChangeNotifier {
             .map((o) => o.id)
             .toList();
         
-        // Também buscar ordens em awaiting_confirmation que podem ter sido atualizadas
+        // TambÃ©m buscar ordens em awaiting_confirmation que podem ter sido atualizadas
         final awaitingOrderIds = _orders
             .where((o) => o.providerId == _currentUserPubkey && o.status == 'awaiting_confirmation')
             .map((o) => o.id)
             .toList();
         
-        debugPrint('🔍 [PROVEDOR] Ordens aceitas por mim: ${myOrderIds.length}');
-        debugPrint('   Ordens aguardando confirmação: ${awaitingOrderIds.length}');
         if (awaitingOrderIds.isNotEmpty) {
-          debugPrint('   IDs aguardando: ${awaitingOrderIds.map((id) => id.substring(0, 8)).join(", ")}');
         }
         
         if (myOrderIds.isNotEmpty) {
-          debugPrint('🔍 [PROVEDOR] Buscando updates para ${myOrderIds.length} ordens aceitas...');
-          debugPrint('   IDs: ${myOrderIds.map((id) => id.substring(0, 8)).join(", ")}');
           final providerUpdates = await _nostrOrderService.fetchOrderUpdatesForProvider(
             _currentUserPubkey!,
             orderIds: myOrderIds,
           );
           
-          debugPrint('📥 [PROVEDOR] Updates encontrados: ${providerUpdates.length}');
           for (final entry in providerUpdates.entries) {
-            debugPrint('   📋 ${entry.key.substring(0, 8)}: status=${entry.value['status']}');
           }
           
           int statusUpdated = 0;
@@ -1197,45 +1059,36 @@ class OrderProvider with ChangeNotifier {
             final newStatus = update['status'] as String?;
             
             if (newStatus == null) {
-              debugPrint('   ⚠️ ${orderId.substring(0, 8)}: status é null, ignorando');
               continue;
             }
             
             final existingIndex = _orders.indexWhere((o) => o.id == orderId);
             if (existingIndex == -1) {
-              debugPrint('   ⚠️ ${orderId.substring(0, 8)}: ordem não encontrada localmente');
               continue;
             }
             
             final existing = _orders[existingIndex];
-            debugPrint('   🔍 Verificando ${orderId.substring(0, 8)}: local="${existing.status}" vs nostr="$newStatus"');
             
-            // Verificar se é completed e local é awaiting_confirmation
+            // Verificar se Ã© completed e local Ã© awaiting_confirmation
             if (newStatus == 'completed' && existing.status == 'awaiting_confirmation') {
-              debugPrint('   🎯 MATCH! Usuário confirmou pagamento, atualizando para completed');
               _orders[existingIndex] = existing.copyWith(
                 status: 'completed',
                 completedAt: DateTime.now(),
               );
               statusUpdated++;
-              debugPrint('   ✅ Ordem ${orderId.substring(0, 8)}: awaiting_confirmation -> completed');
             } else if (_isStatusMoreRecent(newStatus, existing.status)) {
-              // Caso genérico
+              // Caso genÃ©rico
               _orders[existingIndex] = existing.copyWith(
                 status: newStatus,
                 completedAt: newStatus == 'completed' ? DateTime.now() : existing.completedAt,
               );
               statusUpdated++;
-              debugPrint('   ✅ Ordem ${orderId.substring(0, 8)}: ${existing.status} -> $newStatus');
             } else {
-              debugPrint('   ⏭️ Status local "${existing.status}" é igual ou mais recente que "$newStatus"');
             }
           }
           
           if (statusUpdated > 0) {
-            debugPrint('🎉 [PROVEDOR] $statusUpdated ordens tiveram status atualizado!');
           } else {
-            debugPrint('ℹ️ [PROVEDOR] Nenhuma ordem precisou de atualização');
           }
         }
       }
@@ -1243,19 +1096,17 @@ class OrderProvider with ChangeNotifier {
       // Ordenar por data (mais recente primeiro)
       _orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       
-      // SEGURANÇA: NÃO salvar ordens de outros usuários no storage local!
-      // Apenas salvar as ordens que pertencem ao usuário atual
-      // As ordens de outros ficam apenas em memória (para visualização do provedor)
+      // SEGURANÃ‡A: NÃƒO salvar ordens de outros usuÃ¡rios no storage local!
+      // Apenas salvar as ordens que pertencem ao usuÃ¡rio atual
+      // As ordens de outros ficam apenas em memÃ³ria (para visualizaÃ§Ã£o do provedor)
       await _saveOnlyUserOrders();
       notifyListeners();
       
-      debugPrint('✅ [PROVEDOR] Sincronização concluída: ${_orders.length} ordens do usuário, $addedToAvailable disponíveis para aceitar');
     } catch (e) {
-      debugPrint('❌ [PROVEDOR] Erro ao sincronizar ordens: $e');
     }
   }
 
-  // Buscar ordem específica
+  // Buscar ordem especÃ­fica
   Future<Order?> fetchOrder(String orderId) async {
     _isLoading = true;
     _error = null;
@@ -1267,12 +1118,11 @@ class OrderProvider with ChangeNotifier {
       if (orderData != null) {
         final order = Order.fromJson(orderData);
         
-        // SEGURANÇA: Só inserir se for ordem do usuário atual ou modo provedor ativo
+        // SEGURANÃ‡A: SÃ³ inserir se for ordem do usuÃ¡rio atual ou modo provedor ativo
         final isUserOrder = order.userPubkey == _currentUserPubkey;
         final isProviderOrder = order.providerId == _currentUserPubkey;
         
         if (!_isProviderMode && !isUserOrder && !isProviderOrder) {
-          debugPrint('🚫 fetchOrder: Bloqueando ordem ${order.id.substring(0, 8)} de outro usuário');
           return null;
         }
         
@@ -1329,12 +1179,10 @@ class OrderProvider with ChangeNotifier {
       _orders[index] = _orders[index].copyWith(status: status);
       await _saveOrders();
       notifyListeners();
-      debugPrint('💾 Ordem $orderId atualizada para status: $status');
       
-      // IMPORTANTE: Publicar atualização no Nostr para sincronização P2P
+      // IMPORTANTE: Publicar atualizaÃ§Ã£o no Nostr para sincronizaÃ§Ã£o P2P
       final privateKey = _nostrService.privateKey;
       if (privateKey != null) {
-        debugPrint('📤 Publicando atualização de status no Nostr (local)...');
         try {
           final success = await _nostrOrderService.updateOrderStatus(
             privateKey: privateKey,
@@ -1342,15 +1190,11 @@ class OrderProvider with ChangeNotifier {
             newStatus: status,
           );
           if (success) {
-            debugPrint('✅ Status publicado no Nostr');
           } else {
-            debugPrint('⚠️ Falha ao publicar status no Nostr');
           }
         } catch (e) {
-          debugPrint('❌ Erro ao publicar no Nostr: $e');
         }
       } else {
-        debugPrint('⚠️ Sem privateKey Nostr para publicar status');
       }
     }
   }
@@ -1367,19 +1211,12 @@ class OrderProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      // IMPORTANTE: Publicar no Nostr PRIMEIRO e só atualizar localmente se der certo
+      // IMPORTANTE: Publicar no Nostr PRIMEIRO e sÃ³ atualizar localmente se der certo
       final privateKey = _nostrService.privateKey;
       bool nostrSuccess = false;
       
-      debugPrint('🔑 Verificando chave privada para publicação...');
-      debugPrint('   privateKey disponível: ${privateKey != null}');
-      debugPrint('   privateKey length: ${privateKey?.length ?? 0}');
       
       if (privateKey != null && privateKey.isNotEmpty) {
-        debugPrint('📤 Publicando atualização de status no Nostr...');
-        debugPrint('   orderId: $orderId');
-        debugPrint('   newStatus: $status');
-        debugPrint('   providerId (tag #p): ${providerId ?? "NENHUM - Bro não receberá!"}');
         
         nostrSuccess = await _nostrOrderService.updateOrderStatus(
           privateKey: privateKey,
@@ -1389,27 +1226,23 @@ class OrderProvider with ChangeNotifier {
         );
         
         if (nostrSuccess) {
-          debugPrint('✅ Status "$status" publicado no Nostr com tag #p=${providerId ?? "nenhuma"}');
         } else {
-          debugPrint('❌ FALHA ao publicar status no Nostr - NÃO atualizando localmente');
           _error = 'Falha ao publicar no Nostr';
           _isLoading = false;
           notifyListeners();
-          return false; // CRÍTICO: Retornar false se Nostr falhar
+          return false; // CRÃTICO: Retornar false se Nostr falhar
         }
       } else {
-        debugPrint('⚠️ Sem chave privada - não publicando no Nostr');
-        debugPrint('   _nostrService.privateKey = ${_nostrService.privateKey}');
-        _error = 'Chave privada não disponível';
+        _error = 'Chave privada nÃ£o disponÃ­vel';
         _isLoading = false;
         notifyListeners();
         return false;
       }
       
-      // Só atualizar localmente APÓS sucesso no Nostr
+      // SÃ³ atualizar localmente APÃ“S sucesso no Nostr
       final index = _orders.indexWhere((o) => o.id == orderId);
       if (index != -1) {
-        // Preservar metadata existente se não for passado novo
+        // Preservar metadata existente se nÃ£o for passado novo
         final existingMetadata = _orders[index].metadata;
         final newMetadata = metadata ?? existingMetadata;
         
@@ -1427,9 +1260,7 @@ class OrderProvider with ChangeNotifier {
         final ordersJson = json.encode(_orders.map((o) => o.toJson()).toList());
         await prefs.setString(_ordersKey, ordersJson);
         
-        debugPrint('💾 Ordem $orderId atualizada localmente: status=$status');
       } else {
-        debugPrint('⚠️ Ordem $orderId não encontrada localmente (mas já publicada no Nostr)');
       }
       
       _isLoading = false;
@@ -1437,14 +1268,13 @@ class OrderProvider with ChangeNotifier {
       return true;
     } catch (e) {
       _error = e.toString();
-      debugPrint('❌ Erro ao atualizar ordem: $e');
       _isLoading = false;
       notifyListeners();
       return false;
     }
   }
 
-  /// Provedor aceita uma ordem - publica aceitação no Nostr e atualiza localmente
+  /// Provedor aceita uma ordem - publica aceitaÃ§Ã£o no Nostr e atualiza localmente
   Future<bool> acceptOrderAsProvider(String orderId) async {
     _isLoading = true;
     _error = null;
@@ -1454,22 +1284,19 @@ class OrderProvider with ChangeNotifier {
       // Buscar a ordem localmente primeiro
       Order? order = getOrderById(orderId);
       
-      // Se não encontrou localmente, buscar do Nostr
+      // Se nÃ£o encontrou localmente, buscar do Nostr
       if (order == null) {
-        debugPrint('⚠️ Ordem $orderId não encontrada localmente, buscando no Nostr...');
         
         final orderData = await _nostrOrderService.fetchOrderFromNostr(orderId);
         if (orderData != null) {
           order = Order.fromJson(orderData);
-          // Adicionar à lista local para referência futura
+          // Adicionar Ã  lista local para referÃªncia futura
           _orders.add(order);
-          debugPrint('✅ Ordem encontrada no Nostr e adicionada localmente');
         }
       }
       
       if (order == null) {
-        debugPrint('❌ Ordem $orderId não encontrada em nenhum lugar');
-        _error = 'Ordem não encontrada';
+        _error = 'Ordem nÃ£o encontrada';
         _isLoading = false;
         notifyListeners();
         return false;
@@ -1478,25 +1305,22 @@ class OrderProvider with ChangeNotifier {
       // Pegar chave privada do Nostr
       final privateKey = _nostrService.privateKey;
       if (privateKey == null) {
-        debugPrint('❌ Chave privada Nostr não disponível');
-        _error = 'Chave privada não disponível';
+        _error = 'Chave privada nÃ£o disponÃ­vel';
         _isLoading = false;
         notifyListeners();
         return false;
       }
 
       final providerPubkey = _nostrService.publicKey;
-      debugPrint('🔄 Provedor $providerPubkey aceitando ordem $orderId...');
 
-      // Publicar aceitação no Nostr
+      // Publicar aceitaÃ§Ã£o no Nostr
       final success = await _nostrOrderService.acceptOrderOnNostr(
         order: order,
         providerPrivateKey: privateKey,
       );
 
       if (!success) {
-        debugPrint('⚠️ Falha ao publicar aceitação no Nostr');
-        _error = 'Falha ao publicar aceitação no Nostr';
+        _error = 'Falha ao publicar aceitaÃ§Ã£o no Nostr';
         _isLoading = false;
         notifyListeners();
         return false;
@@ -1511,18 +1335,14 @@ class OrderProvider with ChangeNotifier {
           acceptedAt: DateTime.now(),
         );
         
-        // Salvar localmente (apenas ordens do usuário/provedor atual)
+        // Salvar localmente (apenas ordens do usuÃ¡rio/provedor atual)
         await _saveOnlyUserOrders();
         
-        debugPrint('✅ Ordem $orderId aceita com sucesso');
-        debugPrint('   providerId: $providerPubkey');
-        debugPrint('   status: accepted');
       }
 
       return true;
     } catch (e) {
       _error = e.toString();
-      debugPrint('❌ Erro ao aceitar ordem: $e');
       return false;
     } finally {
       _isLoading = false;
@@ -1540,22 +1360,19 @@ class OrderProvider with ChangeNotifier {
       // Buscar a ordem localmente primeiro
       Order? order = getOrderById(orderId);
       
-      // Se não encontrou localmente, buscar do Nostr
+      // Se nÃ£o encontrou localmente, buscar do Nostr
       if (order == null) {
-        debugPrint('⚠️ Ordem $orderId não encontrada localmente, buscando no Nostr...');
         
         final orderData = await _nostrOrderService.fetchOrderFromNostr(orderId);
         if (orderData != null) {
           order = Order.fromJson(orderData);
-          // Adicionar à lista local para referência futura
+          // Adicionar Ã  lista local para referÃªncia futura
           _orders.add(order);
-          debugPrint('✅ Ordem encontrada no Nostr e adicionada localmente');
         }
       }
       
       if (order == null) {
-        debugPrint('❌ Ordem $orderId não encontrada em nenhum lugar');
-        _error = 'Ordem não encontrada';
+        _error = 'Ordem nÃ£o encontrada';
         _isLoading = false;
         notifyListeners();
         return false;
@@ -1564,16 +1381,14 @@ class OrderProvider with ChangeNotifier {
       // Pegar chave privada do Nostr
       final privateKey = _nostrService.privateKey;
       if (privateKey == null) {
-        debugPrint('❌ Chave privada Nostr não disponível');
-        _error = 'Chave privada não disponível';
+        _error = 'Chave privada nÃ£o disponÃ­vel';
         _isLoading = false;
         notifyListeners();
         return false;
       }
 
-      debugPrint('🔄 Completando ordem $orderId com comprovante...');
 
-      // Publicar conclusão no Nostr
+      // Publicar conclusÃ£o no Nostr
       final success = await _nostrOrderService.completeOrderOnNostr(
         order: order,
         providerPrivateKey: privateKey,
@@ -1582,7 +1397,6 @@ class OrderProvider with ChangeNotifier {
       );
 
       if (!success) {
-        debugPrint('⚠️ Falha ao publicar comprovante no Nostr');
         _error = 'Falha ao publicar comprovante no Nostr';
         _isLoading = false;
         notifyListeners();
@@ -1596,23 +1410,21 @@ class OrderProvider with ChangeNotifier {
           status: 'awaiting_confirmation',
           metadata: {
             ...(_orders[index].metadata ?? {}),
-            // CORRIGIDO: Salvar imagem completa em base64, não truncar!
+            // CORRIGIDO: Salvar imagem completa em base64, nÃ£o truncar!
             'paymentProof': proof,
             'proofSentAt': DateTime.now().toIso8601String(),
             if (providerInvoice != null) 'providerInvoice': providerInvoice,
           },
         );
         
-        // Salvar localmente usando _saveOrders() com filtro de segurança
+        // Salvar localmente usando _saveOrders() com filtro de seguranÃ§a
         await _saveOrders();
         
-        debugPrint('✅ Ordem $orderId completada, aguardando confirmação');
       }
 
       return true;
     } catch (e) {
       _error = e.toString();
-      debugPrint('❌ Erro ao completar ordem: $e');
       return false;
     } finally {
       _isLoading = false;
@@ -1620,22 +1432,20 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
-  /// Auto-liquidação quando usuário não confirma em 24h
-  /// Marca a ordem como 'liquidated' e notifica o usuário
+  /// Auto-liquidaÃ§Ã£o quando usuÃ¡rio nÃ£o confirma em 24h
+  /// Marca a ordem como 'liquidated' e notifica o usuÃ¡rio
   Future<bool> autoLiquidateOrder(String orderId, String proof) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
-      debugPrint('⚡ Executando auto-liquidação para ordem $orderId');
       
       // Buscar a ordem localmente primeiro
       Order? order = getOrderById(orderId);
       
       if (order == null) {
-        debugPrint('⚠️ Ordem $orderId não encontrada');
-        _error = 'Ordem não encontrada';
+        _error = 'Ordem nÃ£o encontrada';
         _isLoading = false;
         notifyListeners();
         return false;
@@ -1644,13 +1454,13 @@ class OrderProvider with ChangeNotifier {
       // Publicar no Nostr com status 'liquidated'
       final privateKey = _nostrService.privateKey;
       if (privateKey == null) {
-        _error = 'Chave privada não disponível';
+        _error = 'Chave privada nÃ£o disponÃ­vel';
         _isLoading = false;
         notifyListeners();
         return false;
       }
 
-      // Usar a função existente de updateOrderStatus com status 'liquidated'
+      // Usar a funÃ§Ã£o existente de updateOrderStatus com status 'liquidated'
       final success = await _nostrOrderService.updateOrderStatus(
         privateKey: privateKey,
         orderId: orderId,
@@ -1659,7 +1469,7 @@ class OrderProvider with ChangeNotifier {
       );
 
       if (!success) {
-        _error = 'Falha ao publicar auto-liquidação no Nostr';
+        _error = 'Falha ao publicar auto-liquidaÃ§Ã£o no Nostr';
         _isLoading = false;
         notifyListeners();
         return false;
@@ -1674,18 +1484,16 @@ class OrderProvider with ChangeNotifier {
             ...(_orders[index].metadata ?? {}),
             'autoLiquidated': true,
             'liquidatedAt': DateTime.now().toIso8601String(),
-            'reason': 'Usuário não confirmou em 24h',
+            'reason': 'UsuÃ¡rio nÃ£o confirmou em 24h',
           },
         );
         
         await _saveOrders();
-        debugPrint('✅ Ordem $orderId auto-liquidada com sucesso');
       }
 
       return true;
     } catch (e) {
       _error = e.toString();
-      debugPrint('❌ Erro na auto-liquidação: $e');
       return false;
     } finally {
       _isLoading = false;
@@ -1729,7 +1537,7 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
-  // Converter preço
+  // Converter preÃ§o
   Future<Map<String, dynamic>?> convertPrice(double amount) async {
     try {
       final result = await _apiService.convertPrice(amount: amount);
@@ -1750,10 +1558,9 @@ class OrderProvider with ChangeNotifier {
     try {
       return _orders.firstWhere(
         (o) => o.id == orderId,
-        orElse: () => throw Exception('Ordem não encontrada'),
+        orElse: () => throw Exception('Ordem nÃ£o encontrada'),
       );
     } catch (e) {
-      debugPrint('❌ Ordem $orderId não encontrada: $e');
       return null;
     }
   }
@@ -1761,46 +1568,37 @@ class OrderProvider with ChangeNotifier {
   // Get order (alias para fetchOrder)
   Future<Map<String, dynamic>?> getOrder(String orderId) async {
     try {
-      debugPrint('🔍 getOrder: Buscando ordem $orderId');
-      debugPrint('🔍 getOrder: Total de ordens em memória: ${_orders.length}');
-      debugPrint('🔍 getOrder: Total de ordens disponíveis: ${_availableOrdersForProvider.length}');
       
-      // Primeiro, tentar encontrar na lista em memória (mais rápido)
+      // Primeiro, tentar encontrar na lista em memÃ³ria (mais rÃ¡pido)
       final localOrder = _orders.cast<Order?>().firstWhere(
         (o) => o?.id == orderId,
         orElse: () => null,
       );
       
       if (localOrder != null) {
-        debugPrint('✅ getOrder: Ordem encontrada em _orders');
         return localOrder.toJson();
       }
       
-      // Também verificar nas ordens disponíveis para provider
+      // TambÃ©m verificar nas ordens disponÃ­veis para provider
       final availableOrder = _availableOrdersForProvider.cast<Order?>().firstWhere(
         (o) => o?.id == orderId,
         orElse: () => null,
       );
       
       if (availableOrder != null) {
-        debugPrint('✅ getOrder: Ordem encontrada em _availableOrdersForProvider');
         return availableOrder.toJson();
       }
       
-      debugPrint('⚠️ getOrder: Ordem não encontrada em memória, tentando backend...');
       
-      // Se não encontrou localmente, tentar buscar do backend
+      // Se nÃ£o encontrou localmente, tentar buscar do backend
       final orderData = await _apiService.getOrder(orderId);
       if (orderData != null) {
-        debugPrint('✅ getOrder: Ordem encontrada no backend');
         return orderData;
       }
       
-      debugPrint('❌ getOrder: Ordem não encontrada em nenhum lugar');
       return null;
     } catch (e) {
       _error = e.toString();
-      debugPrint('❌ Erro ao buscar ordem $orderId: $e');
       return null;
     }
   }
@@ -1835,7 +1633,7 @@ class OrderProvider with ChangeNotifier {
   // Clear all orders (memory only)
   void clear() {
     _orders = [];
-    _availableOrdersForProvider = [];  // Limpar também lista de disponíveis
+    _availableOrdersForProvider = [];  // Limpar tambÃ©m lista de disponÃ­veis
     _currentOrder = null;
     _error = null;
     _isInitialized = false;
@@ -1844,9 +1642,8 @@ class OrderProvider with ChangeNotifier {
 
   // Clear orders from memory only (for logout - keeps data in storage)
   Future<void> clearAllOrders() async {
-    debugPrint('🔄 Limpando ordens da memória (logout) - dados mantidos no storage');
     _orders = [];
-    _availableOrdersForProvider = [];  // Limpar também lista de disponíveis
+    _availableOrdersForProvider = [];  // Limpar tambÃ©m lista de disponÃ­veis
     _currentOrder = null;
     _error = null;
     _currentUserPubkey = null;
@@ -1857,7 +1654,7 @@ class OrderProvider with ChangeNotifier {
   // Permanently delete all orders (for testing/reset)
   Future<void> permanentlyDeleteAllOrders() async {
     _orders = [];
-    _availableOrdersForProvider = [];  // Limpar também lista de disponíveis
+    _availableOrdersForProvider = [];  // Limpar tambÃ©m lista de disponÃ­veis
     _currentOrder = null;
     _error = null;
     _isInitialized = false;
@@ -1866,43 +1663,37 @@ class OrderProvider with ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_ordersKey);
-      debugPrint('🗑️ Todas as ordens foram PERMANENTEMENTE removidas');
     } catch (e) {
-      debugPrint('❌ Erro ao limpar ordens: $e');
     }
     
     notifyListeners();
   }
 
-  /// Reconciliar ordens pendentes com pagamentos já recebidos no Breez
-  /// Esta função verifica os pagamentos recentes do Breez e atualiza ordens pendentes
-  /// que possam ter perdido a atualização de status (ex: app fechou antes do callback)
+  /// Reconciliar ordens pendentes com pagamentos jÃ¡ recebidos no Breez
+  /// Esta funÃ§Ã£o verifica os pagamentos recentes do Breez e atualiza ordens pendentes
+  /// que possam ter perdido a atualizaÃ§Ã£o de status (ex: app fechou antes do callback)
   /// 
-  /// IMPORTANTE: Usa APENAS paymentHash para identificação PRECISA
+  /// IMPORTANTE: Usa APENAS paymentHash para identificaÃ§Ã£o PRECISA
   /// O fallback por valor foi DESATIVADO porque causava falsos positivos
-  /// (mesmo pagamento usado para múltiplas ordens diferentes)
+  /// (mesmo pagamento usado para mÃºltiplas ordens diferentes)
   /// 
   /// @param breezPayments Lista de pagamentos do Breez SDK (obtida via listPayments)
   Future<int> reconcilePendingOrdersWithBreez(List<dynamic> breezPayments) async {
-    debugPrint('🔄 Reconciliando ordens pendentes com pagamentos do Breez...');
     
     // Buscar ordens pendentes
     final pendingOrders = _orders.where((o) => o.status == 'pending').toList();
     
     if (pendingOrders.isEmpty) {
-      debugPrint('✅ Nenhuma ordem pendente para reconciliar');
       return 0;
     }
     
-    debugPrint('📋 ${pendingOrders.length} ordens pendentes encontradas');
-    debugPrint('💰 ${breezPayments.length} pagamentos do Breez para verificar');
     
     int reconciled = 0;
     
-    // Criar set de paymentHashes já usados (para evitar duplicação)
+    // Criar set de paymentHashes jÃ¡ usados (para evitar duplicaÃ§Ã£o)
     final Set<String> usedHashes = {};
     
-    // Primeiro, coletar hashes já usados por ordens que já foram pagas
+    // Primeiro, coletar hashes jÃ¡ usados por ordens que jÃ¡ foram pagas
     for (final order in _orders) {
       if (order.status != 'pending' && order.paymentHash != null) {
         usedHashes.add(order.paymentHash!);
@@ -1910,13 +1701,11 @@ class OrderProvider with ChangeNotifier {
     }
     
     for (var order in pendingOrders) {
-      debugPrint('   🔍 Ordem ${order.id.substring(0, 8)}: paymentHash=${order.paymentHash ?? 'NULL'}');
       
-      // ÚNICO MÉTODO: Match por paymentHash (MAIS SEGURO)
+      // ÃšNICO MÃ‰TODO: Match por paymentHash (MAIS SEGURO)
       if (order.paymentHash != null && order.paymentHash!.isNotEmpty) {
-        // Verificar se este hash não foi usado por outra ordem
+        // Verificar se este hash nÃ£o foi usado por outra ordem
         if (usedHashes.contains(order.paymentHash)) {
-          debugPrint('   ⚠️ Hash ${order.paymentHash!.substring(0, 16)}... já usado por outra ordem');
           continue;
         }
         
@@ -1927,7 +1716,6 @@ class OrderProvider with ChangeNotifier {
                 ? payment['amount'] as int 
                 : int.tryParse(payment['amount']?.toString() ?? '0') ?? 0;
             
-            debugPrint('   ✅ MATCH EXATO por paymentHash!');
             
             // Marcar hash como usado
             usedHashes.add(paymentHash!);
@@ -1952,54 +1740,46 @@ class OrderProvider with ChangeNotifier {
           }
         }
       } else {
-        // Ordem SEM paymentHash - NÃO fazer fallback por valor
-        // Isso evita falsos positivos onde múltiplas ordens são marcadas com o mesmo pagamento
-        debugPrint('   ⚠️ Ordem ${order.id.substring(0, 8)} sem paymentHash - ignorando');
-        debugPrint('      (ordens antigas sem paymentHash precisam ser canceladas manualmente)');
+        // Ordem SEM paymentHash - NÃƒO fazer fallback por valor
+        // Isso evita falsos positivos onde mÃºltiplas ordens sÃ£o marcadas com o mesmo pagamento
       }
     }
     
-    debugPrint('📊 Total reconciliado: $reconciled ordens');
     return reconciled;
   }
 
-  /// Reconciliar ordens na inicialização - DESATIVADO
-  /// NOTA: Esta função foi desativada pois causava falsos positivos de "payment_received"
-  /// quando o usuário tinha saldo de outras transações na carteira.
-  /// A reconciliação correta deve ser feita APENAS via evento do SDK Breez (PaymentSucceeded)
-  /// que traz o paymentHash específico da invoice.
+  /// Reconciliar ordens na inicializaÃ§Ã£o - DESATIVADO
+  /// NOTA: Esta funÃ§Ã£o foi desativada pois causava falsos positivos de "payment_received"
+  /// quando o usuÃ¡rio tinha saldo de outras transaÃ§Ãµes na carteira.
+  /// A reconciliaÃ§Ã£o correta deve ser feita APENAS via evento do SDK Breez (PaymentSucceeded)
+  /// que traz o paymentHash especÃ­fico da invoice.
   Future<void> reconcileOnStartup(int currentBalanceSats) async {
-    debugPrint('🔄 reconcileOnStartup DESATIVADO - reconciliação feita apenas via eventos do SDK');
-    // Não faz nada - reconciliação automática por saldo é muito propensa a erros
+    // NÃ£o faz nada - reconciliaÃ§Ã£o automÃ¡tica por saldo Ã© muito propensa a erros
     return;
   }
 
   /// Callback chamado quando o Breez SDK detecta um pagamento recebido
-  /// Este é o método SEGURO de atualização - baseado no evento real do SDK
-  /// IMPORTANTE: Usa APENAS paymentHash para identificação PRECISA
+  /// Este Ã© o mÃ©todo SEGURO de atualizaÃ§Ã£o - baseado no evento real do SDK
+  /// IMPORTANTE: Usa APENAS paymentHash para identificaÃ§Ã£o PRECISA
   /// O fallback por valor foi DESATIVADO para evitar falsos positivos
   Future<void> onPaymentReceived({
     required String paymentId,
     required int amountSats,
     String? paymentHash,
   }) async {
-    debugPrint('💰 OrderProvider.onPaymentReceived: $amountSats sats (hash: $paymentHash)');
     
     // Buscar ordens pendentes
     final pendingOrders = _orders.where((o) => o.status == 'pending').toList();
     
     if (pendingOrders.isEmpty) {
-      debugPrint('📭 Nenhuma ordem pendente para atualizar');
       return;
     }
     
-    debugPrint('🔍 Verificando ${pendingOrders.length} ordens pendentes...');
     
-    // ÚNICO MÉTODO: Match EXATO por paymentHash (mais seguro)
+    // ÃšNICO MÃ‰TODO: Match EXATO por paymentHash (mais seguro)
     if (paymentHash != null && paymentHash.isNotEmpty) {
       for (final order in pendingOrders) {
         if (order.paymentHash == paymentHash) {
-          debugPrint('   ✅ MATCH EXATO por paymentHash! Ordem ${order.id.substring(0, 8)}');
           
           await updateOrderStatus(
             orderId: order.id,
@@ -2017,24 +1797,19 @@ class OrderProvider with ChangeNotifier {
           final updatedOrder = _orders.firstWhere((o) => o.id == order.id);
           await _publishOrderToNostr(updatedOrder);
           
-          debugPrint('✅ Ordem ${order.id.substring(0, 8)} atualizada e republicada no Nostr!');
           return;
         }
       }
-      debugPrint('   ⚠️ PaymentHash $paymentHash não corresponde a nenhuma ordem pendente');
     }
     
-    // NÃO fazer fallback por valor - isso causa falsos positivos
-    // Se o paymentHash não corresponder, o pagamento não é para nenhuma ordem nossa
-    debugPrint('❌ Pagamento de $amountSats sats (hash: $paymentHash) NÃO correspondeu a nenhuma ordem pendente');
-    debugPrint('   (Isso pode ser um depósito manual ou pagamento não relacionado a ordens)');
+    // NÃƒO fazer fallback por valor - isso causa falsos positivos
+    // Se o paymentHash nÃ£o corresponder, o pagamento nÃ£o Ã© para nenhuma ordem nossa
   }
 
-  /// Atualizar o paymentHash de uma ordem (chamado quando a invoice é gerada)
+  /// Atualizar o paymentHash de uma ordem (chamado quando a invoice Ã© gerada)
   Future<void> setOrderPaymentHash(String orderId, String paymentHash, String invoice) async {
     final index = _orders.indexWhere((o) => o.id == orderId);
     if (index == -1) {
-      debugPrint('❌ Ordem $orderId não encontrada para definir paymentHash');
       return;
     }
     
@@ -2048,7 +1823,6 @@ class OrderProvider with ChangeNotifier {
     // Republicar no Nostr com paymentHash
     await _publishOrderToNostr(_orders[index]);
     
-    debugPrint('✅ PaymentHash definido para ordem $orderId: $paymentHash');
     notifyListeners();
   }
 
@@ -2056,22 +1830,18 @@ class OrderProvider with ChangeNotifier {
   
   /// Publicar ordem no Nostr (background)
   Future<void> _publishOrderToNostr(Order order) async {
-    debugPrint('📤 Tentando publicar ordem no Nostr: ${order.id}');
     try {
       final privateKey = _nostrService.privateKey;
       if (privateKey == null) {
-        debugPrint('⚠️ Sem chave privada Nostr, não publicando');
         return;
       }
       
-      debugPrint('🔑 Chave privada encontrada, publicando...');
       final eventId = await _nostrOrderService.publishOrder(
         order: order,
         privateKey: privateKey,
       );
       
       if (eventId != null) {
-        debugPrint('✅ Ordem publicada no Nostr com eventId: $eventId');
         
         // Atualizar ordem com eventId
         final index = _orders.indexWhere((o) => o.id == order.id);
@@ -2080,87 +1850,74 @@ class OrderProvider with ChangeNotifier {
           await _saveOrders();
         }
       } else {
-        debugPrint('❌ Falha ao publicar ordem no Nostr (eventId null)');
       }
     } catch (e) {
-      debugPrint('❌ Erro ao publicar ordem no Nostr: $e');
     }
   }
 
-  /// Buscar ordens pendentes de todos os usuários (para providers verem)
+  /// Buscar ordens pendentes de todos os usuÃ¡rios (para providers verem)
   Future<List<Order>> fetchPendingOrdersFromNostr() async {
     try {
-      debugPrint('🔍 Buscando ordens pendentes do Nostr...');
       final orders = await _nostrOrderService.fetchPendingOrders();
-      debugPrint('📦 ${orders.length} ordens pendentes encontradas no Nostr');
       return orders;
     } catch (e) {
-      debugPrint('❌ Erro ao buscar ordens do Nostr: $e');
       return [];
     }
   }
 
-  /// Buscar histórico de ordens do usuário atual do Nostr
+  /// Buscar histÃ³rico de ordens do usuÃ¡rio atual do Nostr
   Future<void> syncOrdersFromNostr() async {
-    // Tentar pegar a pubkey do NostrService se não temos
+    // Tentar pegar a pubkey do NostrService se nÃ£o temos
     if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) {
       _currentUserPubkey = _nostrService.publicKey;
-      debugPrint('🔑 Pubkey obtida do NostrService: ${_currentUserPubkey?.substring(0, 16) ?? 'null'}');
     }
     
     if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) {
-      debugPrint('⚠️ Sem pubkey, não sincronizando do Nostr');
       return;
     }
     
     try {
-      debugPrint('🔄 Sincronizando ordens do Nostr para pubkey: ${_currentUserPubkey!.substring(0, 16)}...');
       final nostrOrders = await _nostrOrderService.fetchUserOrders(_currentUserPubkey!);
-      debugPrint('📦 Recebidas ${nostrOrders.length} ordens válidas do Nostr');
       
       // Mesclar ordens do Nostr com locais
       int added = 0;
       int updated = 0;
       int skipped = 0;
       for (var nostrOrder in nostrOrders) {
-        // VALIDAÇÃO: Ignorar ordens com amount=0 vindas do Nostr
-        // (já são filtradas em eventToOrder, mas double-check aqui)
+        // VALIDAÃ‡ÃƒO: Ignorar ordens com amount=0 vindas do Nostr
+        // (jÃ¡ sÃ£o filtradas em eventToOrder, mas double-check aqui)
         if (nostrOrder.amount <= 0) {
-          debugPrint('⚠️ IGNORANDO ordem ${nostrOrder.id.substring(0, 8)} com amount=0');
           skipped++;
           continue;
         }
         
-        // SEGURANÇA CRÍTICA: Verificar se a ordem realmente pertence ao usuário atual
+        // SEGURANÃ‡A CRÃTICA: Verificar se a ordem realmente pertence ao usuÃ¡rio atual
         // Ordem pertence se: userPubkey == atual OU providerId == atual (aceitou como Bro)
         final isMyOrder = nostrOrder.userPubkey == _currentUserPubkey;
         final isMyProviderOrder = nostrOrder.providerId == _currentUserPubkey;
         
         if (!isMyOrder && !isMyProviderOrder) {
-          debugPrint('🚫 SEGURANÇA: Ordem ${nostrOrder.id.substring(0, 8)} é de outro usuário (userPubkey=${nostrOrder.userPubkey?.substring(0, 8)}, providerId=${nostrOrder.providerId?.substring(0, 8) ?? "null"}) - ignorando');
           skipped++;
           continue;
         }
         
         final existingIndex = _orders.indexWhere((o) => o.id == nostrOrder.id);
         if (existingIndex == -1) {
-          // Ordem não existe localmente, adicionar
-          // CORREÇÃO: Adicionar TODAS as ordens do usuário incluindo completed para histórico!
-          // Só ignoramos cancelled pois são ordens canceladas pelo usuário
+          // Ordem nÃ£o existe localmente, adicionar
+          // CORREÃ‡ÃƒO: Adicionar TODAS as ordens do usuÃ¡rio incluindo completed para histÃ³rico!
+          // SÃ³ ignoramos cancelled pois sÃ£o ordens canceladas pelo usuÃ¡rio
           if (nostrOrder.status != 'cancelled') {
             _orders.add(nostrOrder);
             added++;
-            debugPrint('➕ Ordem ${nostrOrder.id.substring(0, 8)} recuperada do Nostr (R\$ ${nostrOrder.amount.toStringAsFixed(2)}, status=${nostrOrder.status})');
           }
         } else {
-          // Ordem já existe, mesclar dados preservando os locais que não são 0
+          // Ordem jÃ¡ existe, mesclar dados preservando os locais que nÃ£o sÃ£o 0
           final existing = _orders[existingIndex];
           
-          // REGRA CRÍTICA: Apenas status FINAIS não podem reverter
+          // REGRA CRÃTICA: Apenas status FINAIS nÃ£o podem reverter
           // accepted e awaiting_confirmation podem evoluir para completed
           final protectedStatuses = ['cancelled', 'completed', 'liquidated', 'disputed'];
           if (protectedStatuses.contains(existing.status)) {
-            debugPrint('🛡️ Ordem ${existing.id.substring(0, 8)} tem status final (${existing.status}), preservando');
             continue;
           }
           
@@ -2169,9 +1926,9 @@ class OrderProvider with ChangeNotifier {
           if (_isStatusMoreRecent(nostrOrder.status, existing.status) || 
               existing.amount == 0 && nostrOrder.amount > 0) {
             
-            // NOTA: O bloqueio de "completed" indevido é feito no NostrOrderService._applyStatusUpdate()
-            // que verifica se o evento foi publicado pelo PROVEDOR ou pelo PRÓPRIO USUÁRIO.
-            // Aqui apenas aplicamos o status que já foi filtrado pelo NostrOrderService.
+            // NOTA: O bloqueio de "completed" indevido Ã© feito no NostrOrderService._applyStatusUpdate()
+            // que verifica se o evento foi publicado pelo PROVEDOR ou pelo PRÃ“PRIO USUÃRIO.
+            // Aqui apenas aplicamos o status que jÃ¡ foi filtrado pelo NostrOrderService.
             String statusToUse = nostrOrder.status;
             
             // Mesclar metadata: preservar local e adicionar do Nostr (proofImage, etc)
@@ -2195,13 +1952,11 @@ class OrderProvider with ChangeNotifier {
               metadata: mergedMetadata.isNotEmpty ? mergedMetadata : null,
             );
             updated++;
-            debugPrint('🔄 Ordem ${nostrOrder.id.substring(0, 8)} mesclada (hasProof=${mergedMetadata["proofImage"] != null})');
           }
         }
       }
       
-      // NOVO: Buscar atualizações de status (aceites e comprovantes de Bros)
-      debugPrint('🔍 Buscando atualizações de status (aceites/comprovantes)...');
+      // NOVO: Buscar atualizaÃ§Ãµes de status (aceites e comprovantes de Bros)
       final orderIds = _orders.map((o) => o.id).toList();
       final orderUpdates = await _nostrOrderService.fetchOrderUpdatesForUser(
         _currentUserPubkey!,
@@ -2223,16 +1978,15 @@ class OrderProvider with ChangeNotifier {
           // Isso corrige ordens com providerId errado ou null
           bool needsUpdate = false;
           if (newProviderId != null && newProviderId != existing.providerId) {
-            debugPrint('📥 ProviderId atualizado: ${orderId.substring(0, 8)} -> ${newProviderId.substring(0, 8)}');
             needsUpdate = true;
           }
           
-          // NOTA: O bloqueio de "completed" indevido é feito no NostrOrderService._applyStatusUpdate()
-          // que verifica se o evento foi publicado pelo PROVEDOR ou pelo PRÓPRIO USUÁRIO.
-          // Aqui apenas aplicamos o status que já foi processado.
+          // NOTA: O bloqueio de "completed" indevido Ã© feito no NostrOrderService._applyStatusUpdate()
+          // que verifica se o evento foi publicado pelo PROVEDOR ou pelo PRÃ“PRIO USUÃRIO.
+          // Aqui apenas aplicamos o status que jÃ¡ foi processado.
           String statusToUse = newStatus;
           
-          // Verificar se o novo status é mais avançado
+          // Verificar se o novo status Ã© mais avanÃ§ado
           if (_isStatusMoreRecent(statusToUse, existing.status)) {
             needsUpdate = true;
           }
@@ -2250,44 +2004,39 @@ class OrderProvider with ChangeNotifier {
               } : existing.metadata,
             );
             statusUpdated++;
-            debugPrint('📥 Ordem atualizada: ${orderId.substring(0, 8)} -> status=$newStatus, providerId=${newProviderId?.substring(0, 8) ?? "null"}, hasInvoice=${update["providerInvoice"] != null}');
           }
         }
       }
       
       if (statusUpdated > 0) {
-        debugPrint('✅ $statusUpdated ordens tiveram status atualizado');
       }
       
       // Ordenar por data (mais recente primeiro)
       _orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       
-      // SEGURANÇA CRÍTICA: Salvar apenas ordens do usuário atual!
-      // Isso evita que ordens de outros usuários sejam persistidas localmente
+      // SEGURANÃ‡A CRÃTICA: Salvar apenas ordens do usuÃ¡rio atual!
+      // Isso evita que ordens de outros usuÃ¡rios sejam persistidas localmente
       await _saveOnlyUserOrders();
       notifyListeners();
       
-      debugPrint('✅ Sincronização concluída: ${_orders.length} ordens totais');
-      debugPrint('   Adicionadas: $added, Atualizadas: $updated, Status: $statusUpdated, Ignoradas(amount=0): $skipped');
     } catch (e) {
-      debugPrint('❌ Erro ao sincronizar ordens do Nostr: $e');
     }
   }
 
-  /// Verificar se um status é mais recente que outro
+  /// Verificar se um status Ã© mais recente que outro
   bool _isStatusMoreRecent(String newStatus, String currentStatus) {
-    // CORREÇÃO: Apenas status FINAIS não podem regredir
+    // CORREÃ‡ÃƒO: Apenas status FINAIS nÃ£o podem regredir
     // accepted e awaiting_confirmation PODEM evoluir para completed/liquidated
     const finalStatuses = ['cancelled', 'completed', 'liquidated', 'disputed'];
     if (finalStatuses.contains(currentStatus)) {
-      // Status final - só pode virar disputed
+      // Status final - sÃ³ pode virar disputed
       if (currentStatus != 'disputed' && newStatus == 'disputed') {
         return true;
       }
       return false;
     }
     
-    // Ordem de progressão de status:
+    // Ordem de progressÃ£o de status:
     // draft -> pending -> payment_received -> accepted -> processing -> awaiting_confirmation -> completed/liquidated
     const statusOrder = [
       'draft',
@@ -2295,48 +2044,44 @@ class OrderProvider with ChangeNotifier {
       'payment_received', 
       'accepted', 
       'processing',
-      'awaiting_confirmation',  // Bro enviou comprovante, aguardando validação do usuário
+      'awaiting_confirmation',  // Bro enviou comprovante, aguardando validaÃ§Ã£o do usuÃ¡rio
       'completed',
-      'liquidated',  // Auto-liquidação após 24h
+      'liquidated',  // Auto-liquidaÃ§Ã£o apÃ³s 24h
     ];
     final newIndex = statusOrder.indexOf(newStatus);
     final currentIndex = statusOrder.indexOf(currentStatus);
     
-    // Se algum status não está na lista, considerar como não sendo mais recente
+    // Se algum status nÃ£o estÃ¡ na lista, considerar como nÃ£o sendo mais recente
     if (newIndex == -1 || currentIndex == -1) return false;
     
     return newIndex > currentIndex;
   }
 
-  /// Republicar ordens locais que não têm eventId no Nostr
-  /// Útil para migrar ordens criadas antes da integração Nostr
-  /// SEGURANÇA: Só republica ordens que PERTENCEM ao usuário atual!
+  /// Republicar ordens locais que nÃ£o tÃªm eventId no Nostr
+  /// Ãštil para migrar ordens criadas antes da integraÃ§Ã£o Nostr
+  /// SEGURANÃ‡A: SÃ³ republica ordens que PERTENCEM ao usuÃ¡rio atual!
   Future<int> republishLocalOrdersToNostr() async {
     final privateKey = _nostrService.privateKey;
     if (privateKey == null) {
-      debugPrint('⚠️ Sem chave privada para republicar ordens');
       return 0;
     }
     
     if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) {
-      debugPrint('⚠️ Sem pubkey atual para verificar propriedade das ordens');
       return 0;
     }
     
     int republished = 0;
     
     for (var order in _orders) {
-      // SEGURANÇA CRÍTICA: Só republicar ordens que PERTENCEM ao usuário atual!
-      // Nunca republicar ordens de outros usuários (isso causaria duplicação com pubkey errado)
+      // SEGURANÃ‡A CRÃTICA: SÃ³ republicar ordens que PERTENCEM ao usuÃ¡rio atual!
+      // Nunca republicar ordens de outros usuÃ¡rios (isso causaria duplicaÃ§Ã£o com pubkey errado)
       if (order.userPubkey != _currentUserPubkey) {
-        debugPrint('🚫 Pulando ordem ${order.id.substring(0, 8)} - pertence a outro usuário (${order.userPubkey?.substring(0, 8)})');
         continue;
       }
       
-      // Só republicar ordens que não têm eventId
+      // SÃ³ republicar ordens que nÃ£o tÃªm eventId
       if (order.eventId == null || order.eventId!.isEmpty) {
         try {
-          debugPrint('📤 Republicando ordem ${order.id.substring(0, 8)}...');
           final eventId = await _nostrOrderService.publishOrder(
             order: order,
             privateKey: privateKey,
@@ -2351,11 +2096,9 @@ class OrderProvider with ChangeNotifier {
                 userPubkey: _currentUserPubkey,
               );
               republished++;
-              debugPrint('✅ Ordem ${order.id.substring(0, 8)} republicada: $eventId');
             }
           }
         } catch (e) {
-          debugPrint('⚠️ Erro ao republicar ordem ${order.id}: $e');
         }
       }
     }
@@ -2365,36 +2108,31 @@ class OrderProvider with ChangeNotifier {
       notifyListeners();
     }
     
-    debugPrint('📦 Total republicado: $republished ordens');
     return republished;
   }
 
   // ==================== AUTO RECONCILIATION ====================
 
-  /// Reconciliação automática de ordens baseada em pagamentos do Breez SDK
+  /// ReconciliaÃ§Ã£o automÃ¡tica de ordens baseada em pagamentos do Breez SDK
   /// 
-  /// Esta função analisa TODOS os pagamentos (recebidos e enviados) e atualiza
+  /// Esta funÃ§Ã£o analisa TODOS os pagamentos (recebidos e enviados) e atualiza
   /// os status das ordens automaticamente:
   /// 
-  /// 1. Pagamentos RECEBIDOS → Atualiza ordens 'pending' para 'payment_received'
+  /// 1. Pagamentos RECEBIDOS â†’ Atualiza ordens 'pending' para 'payment_received'
   ///    (usado quando o Bro paga via Lightning - menos comum no fluxo atual)
   /// 
-  /// 2. Pagamentos ENVIADOS → Atualiza ordens 'awaiting_confirmation' para 'completed'
-  ///    (quando o usuário liberou BTC para o Bro após confirmar prova de pagamento)
+  /// 2. Pagamentos ENVIADOS â†’ Atualiza ordens 'awaiting_confirmation' para 'completed'
+  ///    (quando o usuÃ¡rio liberou BTC para o Bro apÃ³s confirmar prova de pagamento)
   /// 
-  /// A identificação é feita por:
-  /// - paymentHash (se disponível) - mais preciso
+  /// A identificaÃ§Ã£o Ã© feita por:
+  /// - paymentHash (se disponÃ­vel) - mais preciso
   /// - Valor aproximado + timestamp (fallback)
   Future<Map<String, int>> autoReconcileWithBreezPayments(List<Map<String, dynamic>> breezPayments) async {
-    debugPrint('');
-    debugPrint('═══════════════════════════════════════════════════════════════');
-    debugPrint('🔄 RECONCILIAÇÃO AUTOMÁTICA DE ORDENS');
-    debugPrint('═══════════════════════════════════════════════════════════════');
     
     int pendingReconciled = 0;
     int completedReconciled = 0;
     
-    // Separar pagamentos por direção
+    // Separar pagamentos por direÃ§Ã£o
     final receivedPayments = breezPayments.where((p) {
       final type = p['type']?.toString() ?? '';
       final direction = p['direction']?.toString() ?? '';
@@ -2407,25 +2145,19 @@ class OrderProvider with ChangeNotifier {
       return direction == 'ENVIADO' || type.toLowerCase().contains('send');
     }).toList();
     
-    debugPrint('📥 ${receivedPayments.length} pagamentos RECEBIDOS encontrados');
-    debugPrint('📤 ${sentPayments.length} pagamentos ENVIADOS encontrados');
-    debugPrint('📋 ${_orders.length} ordens no total');
     
     // ========== RECONCILIAR PAGAMENTOS RECEBIDOS ==========
     // (ordens pending que receberam pagamento)
     final pendingOrders = _orders.where((o) => o.status == 'pending').toList();
-    debugPrint('\n🔍 Verificando ${pendingOrders.length} ordens PENDENTES...');
     
     for (final order in pendingOrders) {
       final expectedSats = (order.btcAmount * 100000000).toInt();
-      debugPrint('   📋 Ordem ${order.id.substring(0, 8)}: esperado=$expectedSats sats, hash=${order.paymentHash ?? "null"}');
       
       // Tentar match por paymentHash primeiro (mais seguro)
       if (order.paymentHash != null && order.paymentHash!.isNotEmpty) {
         for (final payment in receivedPayments) {
           final paymentHash = payment['paymentHash']?.toString();
           if (paymentHash == order.paymentHash) {
-            debugPrint('   ✅ MATCH por paymentHash! Atualizando para payment_received');
             await updateOrderStatus(
               orderId: order.id,
               status: 'payment_received',
@@ -2443,80 +2175,10 @@ class OrderProvider with ChangeNotifier {
     }
     
     // ========== RECONCILIAR PAGAMENTOS ENVIADOS ==========
-    // (ordens awaiting_confirmation onde o usuário já pagou o Bro)
-    // CORREÇÃO CRÍTICA: Só reconciliar ordens que EU CRIEI (sou o userPubkey)
-    // Isso evita que provedor marque suas próprias ordens aceitas como completed
-    final currentUserPubkey = _nostrService.publicKey;
-    final awaitingOrders = _orders.where((o) => 
-      (o.status == 'awaiting_confirmation' || o.status == 'accepted') &&
-      o.userPubkey == currentUserPubkey // IMPORTANTE: Só minhas ordens!
-    ).toList();
-    debugPrint('\n🔍 Verificando ${awaitingOrders.length} ordens MINHAS AGUARDANDO CONFIRMAÇÃO/ACEITAS...');
-    debugPrint('   (meu pubkey: ${currentUserPubkey?.substring(0, 8) ?? "null"}...)');
+    // DESATIVADO: Esta seÃ§Ã£o auto-completava ordens sem confirmaÃ§Ã£o do usuÃ¡rio.
+    // Matchava por valor aproximado (5% tolerÃ¢ncia), o que causava falsos positivos.
+    // A confirmaÃ§Ã£o de pagamento DEVE ser feita MANUALMENTE pelo usuÃ¡rio.
     
-    for (final order in awaitingOrders) {
-      final expectedSats = (order.btcAmount * 100000000).toInt();
-      debugPrint('   📋 Ordem ${order.id.substring(0, 8)}: status=${order.status}, esperado=$expectedSats sats');
-      
-      // Verificar se há um pagamento enviado com valor aproximado
-      // Tolerância de 5% para taxas de rede
-      for (final payment in sentPayments) {
-        final paymentAmount = (payment['amount'] is int) 
-            ? payment['amount'] as int 
-            : int.tryParse(payment['amount']?.toString() ?? '0') ?? 0;
-        
-        final status = payment['status']?.toString() ?? '';
-        
-        // Só considerar pagamentos completados
-        if (!status.toLowerCase().contains('completed') && 
-            !status.toLowerCase().contains('complete')) {
-          continue;
-        }
-        
-        // Verificar se o valor está dentro da tolerância (5%)
-        final tolerance = (expectedSats * 0.05).toInt();
-        final diff = (paymentAmount - expectedSats).abs();
-        
-        if (diff <= tolerance) {
-          debugPrint('   ✅ MATCH por valor! $paymentAmount sats ≈ $expectedSats sats (diff=$diff)');
-          debugPrint('      Status da ordem: ${order.status} → completed');
-          
-          // IMPORTANTE: Enviar taxa da plataforma (2%) ANTES de marcar como completed
-          final orderSats = (order.btcAmount * 100000000).toInt();
-          debugPrint('💼 Enviando taxa da plataforma para ordem ${order.id.substring(0, 8)} (auto-reconcile)...');
-          final feeSuccess = await PlatformFeeService.sendPlatformFee(
-            orderId: order.id,
-            totalSats: orderSats,
-          );
-          if (!feeSuccess) {
-            debugPrint('⚠️ Falha ao enviar taxa da plataforma (continuando com reconciliação)');
-          }
-          
-          await updateOrderStatus(
-            orderId: order.id,
-            status: 'completed',
-            metadata: {
-              ...?order.metadata,
-              'completedAt': DateTime.now().toIso8601String(),
-              'reconciledFrom': 'auto_reconcile_sent',
-              'paymentAmount': paymentAmount,
-              'paymentId': payment['id'],
-              'platformFeeSent': feeSuccess,
-            },
-          );
-          completedReconciled++;
-          break;
-        }
-      }
-    }
-    
-    debugPrint('');
-    debugPrint('═══════════════════════════════════════════════════════════════');
-    debugPrint('📊 RESULTADO DA RECONCILIAÇÃO:');
-    debugPrint('   - Ordens pending → payment_received: $pendingReconciled');
-    debugPrint('   - Ordens awaiting → completed: $completedReconciled');
-    debugPrint('═══════════════════════════════════════════════════════════════');
-    debugPrint('');
     
     if (pendingReconciled > 0 || completedReconciled > 0) {
       await _saveOrders();
@@ -2530,50 +2192,42 @@ class OrderProvider with ChangeNotifier {
   }
 
   /// Callback chamado quando o Breez SDK detecta um pagamento ENVIADO
-  /// Usado para marcar ordens como completed automaticamente
-  /// CORREÇÃO: Só marca ordens que EU CRIEI como próprio usuário
+  /// DESATIVADO: NÃ£o deve auto-completar ordens. UsuÃ¡rio deve confirmar manualmente.
   Future<void> onPaymentSent({
     required String paymentId,
     required int amountSats,
     String? paymentHash,
   }) async {
-    debugPrint('💸 OrderProvider.onPaymentSent: $amountSats sats (hash: ${paymentHash ?? "N/A"})');
+    return; // DESATIVADO - nÃ£o auto-completar
     
-    // CORREÇÃO CRÍTICA: Só buscar ordens que EU CRIEI
+    // CORREÃ‡ÃƒO CRÃTICA: SÃ³ buscar ordens que EU CRIEI
     final currentUserPubkey = _nostrService.publicKey;
     final awaitingOrders = _orders.where((o) => 
       (o.status == 'awaiting_confirmation' || o.status == 'accepted') &&
-      o.userPubkey == currentUserPubkey // IMPORTANTE: Só minhas ordens!
+      o.userPubkey == currentUserPubkey // IMPORTANTE: SÃ³ minhas ordens!
     ).toList();
     
     if (awaitingOrders.isEmpty) {
-      debugPrint('📭 Nenhuma ordem MINHA aguardando liberação de BTC');
       return;
     }
     
-    debugPrint('🔍 Verificando ${awaitingOrders.length} ordens MINHAS...');
-    debugPrint('   (meu pubkey: ${currentUserPubkey?.substring(0, 8) ?? "null"}...)');
     
     // Procurar ordem com valor correspondente
     for (final order in awaitingOrders) {
       final expectedSats = (order.btcAmount * 100000000).toInt();
       
-      // Tolerância de 5% para taxas
+      // TolerÃ¢ncia de 5% para taxas
       final tolerance = (expectedSats * 0.05).toInt();
       final diff = (amountSats - expectedSats).abs();
       
       if (diff <= tolerance) {
-        debugPrint('✅ Ordem ${order.id.substring(0, 8)} corresponde ao pagamento!');
-        debugPrint('   Valor esperado: $expectedSats sats, Valor enviado: $amountSats sats');
         
         // IMPORTANTE: Enviar taxa da plataforma (2%) ANTES de marcar como completed
-        debugPrint('💼 Enviando taxa da plataforma para ordem ${order.id.substring(0, 8)} (payment_sent)...');
         final feeSuccess = await PlatformFeeService.sendPlatformFee(
           orderId: order.id,
           totalSats: expectedSats,
         );
         if (!feeSuccess) {
-          debugPrint('⚠️ Falha ao enviar taxa da plataforma (continuando)');
         }
         
         await updateOrderStatus(
@@ -2594,40 +2248,32 @@ class OrderProvider with ChangeNotifier {
         final updatedOrder = _orders.firstWhere((o) => o.id == order.id);
         await _publishOrderToNostr(updatedOrder);
         
-        debugPrint('✅ Ordem ${order.id.substring(0, 8)} marcada como COMPLETED!');
         return;
       }
     }
     
-    debugPrint('❌ Pagamento de $amountSats sats não correspondeu a nenhuma ordem');
   }
 
-  /// RECONCILIAÇÃO FORÇADA - Analisa TODAS as ordens e TODOS os pagamentos
-  /// Use quando ordens antigas não estão sendo atualizadas automaticamente
+  /// RECONCILIAÃ‡ÃƒO FORÃ‡ADA - Analisa TODAS as ordens e TODOS os pagamentos
+  /// Use quando ordens antigas nÃ£o estÃ£o sendo atualizadas automaticamente
   /// 
-  /// Esta função é mais agressiva que autoReconcileWithBreezPayments:
-  /// - Verifica TODAS as ordens não-completed (incluindo pending antigas)
-  /// - Usa match por valor com tolerância maior (10%)
-  /// - Cria lista de pagamentos usados para evitar duplicação
+  /// Esta funÃ§Ã£o Ã© mais agressiva que autoReconcileWithBreezPayments:
+  /// - Verifica TODAS as ordens nÃ£o-completed (incluindo pending antigas)
+  /// - Usa match por valor com tolerÃ¢ncia maior (10%)
+  /// - Cria lista de pagamentos usados para evitar duplicaÃ§Ã£o
   Future<Map<String, dynamic>> forceReconcileAllOrders(List<Map<String, dynamic>> breezPayments) async {
-    debugPrint('');
-    debugPrint('╔═══════════════════════════════════════════════════════════════╗');
-    debugPrint('║         🔥 RECONCILIAÇÃO FORÇADA DE TODAS AS ORDENS 🔥        ║');
-    debugPrint('╚═══════════════════════════════════════════════════════════════╝');
     
     int updated = 0;
     final usedPaymentIds = <String>{};
     final reconciliationLog = <Map<String, dynamic>>[];
     
     // Listar todos os pagamentos
-    debugPrint('\n📋 PAGAMENTOS NO BREEZ SDK:');
     for (final p in breezPayments) {
       final amount = p['amount'];
       final status = p['status']?.toString() ?? '';
       final type = p['type']?.toString() ?? '';
       final id = p['id']?.toString() ?? '';
       final direction = p['direction']?.toString() ?? type;
-      debugPrint('   💳 $direction: $amount sats - $status - ID: ${id.substring(0, 16)}...');
     }
     
     // Separar por tipo
@@ -2649,38 +2295,28 @@ class OrderProvider with ChangeNotifier {
       return isSent;
     }).toList();
     
-    debugPrint('\n📊 RESUMO:');
-    debugPrint('   📥 ${receivedPayments.length} pagamentos RECEBIDOS');
-    debugPrint('   📤 ${sentPayments.length} pagamentos ENVIADOS');
     
-    // CORREÇÃO CRÍTICA: Para pagamentos ENVIADOS (que marcam como completed),
-    // só verificar ordens que EU CRIEI (sou o userPubkey)
+    // CORREÃ‡ÃƒO CRÃTICA: Para pagamentos ENVIADOS (que marcam como completed),
+    // sÃ³ verificar ordens que EU CRIEI (sou o userPubkey)
     final currentUserPubkey = _nostrService.publicKey;
-    debugPrint('   🔐 Meu pubkey: ${currentUserPubkey?.substring(0, 8) ?? "null"}...');
     
-    // Buscar TODAS as ordens não finalizadas
+    // Buscar TODAS as ordens nÃ£o finalizadas
     final ordersToCheck = _orders.where((o) => 
       o.status != 'completed' && 
       o.status != 'cancelled'
     ).toList();
     
-    debugPrint('\n📋 ORDENS PARA RECONCILIAR (${ordersToCheck.length}):');
     for (final order in ordersToCheck) {
       final sats = (order.btcAmount * 100000000).toInt();
       final isMine = order.userPubkey == currentUserPubkey;
-      debugPrint('   📦 ${order.id.substring(0, 8)}: ${order.status} - R\$ ${order.amount.toStringAsFixed(2)} ($sats sats) ${isMine ? "✓ MINHA" : "✗ não minha"}');
     }
     
     // ========== VERIFICAR CADA ORDEM ==========
-    debugPrint('\n🔍 INICIANDO RECONCILIAÇÃO...\n');
     
     for (final order in ordersToCheck) {
       final expectedSats = (order.btcAmount * 100000000).toInt();
       final orderId = order.id.substring(0, 8);
       
-      debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      debugPrint('📦 Ordem $orderId: ${order.status}');
-      debugPrint('   Valor: R\$ ${order.amount.toStringAsFixed(2)} = $expectedSats sats');
       
       // Determinar qual lista de pagamentos verificar baseado no status
       List<Map<String, dynamic>> paymentsToCheck;
@@ -2688,20 +2324,13 @@ class OrderProvider with ChangeNotifier {
       
       if (order.status == 'pending' || order.status == 'payment_received') {
         // Para ordens pending - procurar em pagamentos RECEBIDOS
-        // (no fluxo atual do Bro, isso é menos comum)
+        // (no fluxo atual do Bro, isso Ã© menos comum)
         paymentsToCheck = receivedPayments;
         newStatus = 'payment_received';
-        debugPrint('   🔍 Buscando em ${paymentsToCheck.length} pagamentos RECEBIDOS...');
       } else {
-        // Para ordens accepted/awaiting - procurar em pagamentos ENVIADOS
-        // CORREÇÃO CRÍTICA: Só processar se esta ordem foi criada por MIM
-        if (order.userPubkey != currentUserPubkey) {
-          debugPrint('   ⏭️ Pulando - não sou o criador desta ordem (não posso marcar como completed)');
-          continue;
-        }
-        paymentsToCheck = sentPayments;
-        newStatus = 'completed';
-        debugPrint('   🔍 Buscando em ${paymentsToCheck.length} pagamentos ENVIADOS...');
+        // DESATIVADO: NÃ£o auto-completar ordens accepted/awaiting_confirmation
+        // UsuÃ¡rio deve confirmar recebimento MANUALMENTE
+        continue;
       }
       
       // Procurar pagamento correspondente
@@ -2709,7 +2338,7 @@ class OrderProvider with ChangeNotifier {
       for (final payment in paymentsToCheck) {
         final paymentId = payment['id']?.toString() ?? '';
         
-        // Pular se já foi usado
+        // Pular se jÃ¡ foi usado
         if (usedPaymentIds.contains(paymentId)) continue;
         
         final paymentAmount = (payment['amount'] is int) 
@@ -2718,21 +2347,19 @@ class OrderProvider with ChangeNotifier {
         
         final status = payment['status']?.toString() ?? '';
         
-        // Só considerar pagamentos completados
+        // SÃ³ considerar pagamentos completados
         if (!status.toLowerCase().contains('completed') && 
             !status.toLowerCase().contains('complete') &&
             !status.toLowerCase().contains('succeeded')) {
           continue;
         }
         
-        // Tolerância de 10% para match (mais agressivo)
+        // TolerÃ¢ncia de 10% para match (mais agressivo)
         final tolerance = (expectedSats * 0.10).toInt().clamp(100, 10000);
         final diff = (paymentAmount - expectedSats).abs();
         
-        debugPrint('   📊 Comparando: ordem=$expectedSats sats vs pagamento=$paymentAmount sats (diff=$diff, tol=$tolerance)');
         
         if (diff <= tolerance) {
-          debugPrint('   ✅ MATCH ENCONTRADO!');
           
           // Marcar pagamento como usado
           usedPaymentIds.add(paymentId);
@@ -2740,13 +2367,11 @@ class OrderProvider with ChangeNotifier {
           // IMPORTANTE: Se vai marcar como 'completed', enviar taxa da plataforma primeiro
           bool feeSuccess = true;
           if (newStatus == 'completed') {
-            debugPrint('💼 Enviando taxa da plataforma para ordem ${orderId} (force_reconcile)...');
             feeSuccess = await PlatformFeeService.sendPlatformFee(
               orderId: order.id,
               totalSats: expectedSats,
             );
             if (!feeSuccess) {
-              debugPrint('⚠️ Falha ao enviar taxa da plataforma (continuando)');
             }
           }
           
@@ -2780,16 +2405,9 @@ class OrderProvider with ChangeNotifier {
       }
       
       if (!found) {
-        debugPrint('   ❌ Nenhum pagamento correspondente encontrado');
       }
     }
     
-    debugPrint('');
-    debugPrint('╔═══════════════════════════════════════════════════════════════╗');
-    debugPrint('║                    📊 RESULTADO FINAL                         ║');
-    debugPrint('╠═══════════════════════════════════════════════════════════════╣');
-    debugPrint('║   Ordens atualizadas: $updated                                 ');
-    debugPrint('╚═══════════════════════════════════════════════════════════════╝');
     
     if (updated > 0) {
       await _saveOrders();
@@ -2802,28 +2420,23 @@ class OrderProvider with ChangeNotifier {
     };
   }
 
-  /// Forçar status de uma ordem específica para 'completed'
-  /// Use quando você tem certeza que a ordem foi paga mas o sistema não detectou
+  /// ForÃ§ar status de uma ordem especÃ­fica para 'completed'
+  /// Use quando vocÃª tem certeza que a ordem foi paga mas o sistema nÃ£o detectou
   Future<bool> forceCompleteOrder(String orderId) async {
     final index = _orders.indexWhere((o) => o.id == orderId);
     if (index == -1) {
-      debugPrint('❌ Ordem não encontrada: $orderId');
       return false;
     }
     
     final order = _orders[index];
-    debugPrint('🔧 Forçando conclusão da ordem ${order.id.substring(0, 8)}');
-    debugPrint('   Status atual: ${order.status}');
     
     // IMPORTANTE: Enviar taxa da plataforma primeiro
     final expectedSats = (order.btcAmount * 100000000).toInt();
-    debugPrint('💼 Enviando taxa da plataforma para ordem ${order.id.substring(0, 8)} (force_complete)...');
     final feeSuccess = await PlatformFeeService.sendPlatformFee(
       orderId: order.id,
       totalSats: expectedSats,
     );
     if (!feeSuccess) {
-      debugPrint('⚠️ Falha ao enviar taxa da plataforma (continuando)');
     }
     
     _orders[index] = order.copyWith(
@@ -2843,7 +2456,6 @@ class OrderProvider with ChangeNotifier {
     await _publishOrderToNostr(_orders[index]);
     
     notifyListeners();
-    debugPrint('✅ Ordem marcada como COMPLETED');
     return true;
   }
 }

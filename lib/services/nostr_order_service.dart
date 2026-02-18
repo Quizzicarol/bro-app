@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:nostr/nostr.dart';
@@ -6,13 +6,13 @@ import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../models/order.dart';
 
-/// Serviço para publicar e buscar ordens via Nostr Relays
+/// ServiÃ§o para publicar e buscar ordens via Nostr Relays
 /// 
 /// Kinds usados:
 /// - 30078: Ordem de pagamento (replaceable event)
 /// - 30079: Aceite de ordem pelo provedor
-/// - 30080: Confirmação de pagamento
-/// - 30081: Conclusão da ordem
+/// - 30080: ConfirmaÃ§Ã£o de pagamento
+/// - 30081: ConclusÃ£o da ordem
 class NostrOrderService {
   static final NostrOrderService _instance = NostrOrderService._internal();
   factory NostrOrderService() => _instance;
@@ -56,16 +56,16 @@ class NostrOrderService {
     try {
       final keychain = Keychain(privateKey);
       
-      // Conteúdo da ordem - inclui billCode para que o provedor possa pagar
-      // NOTA: eventos kind 30078 são específicos do Bro app e não aparecem em clientes Nostr normais
-      // CRÍTICO: userPubkey DEVE estar no content para identificar o dono original da ordem!
+      // ConteÃºdo da ordem - inclui billCode para que o provedor possa pagar
+      // NOTA: eventos kind 30078 sÃ£o especÃ­ficos do Bro app e nÃ£o aparecem em clientes Nostr normais
+      // CRÃTICO: userPubkey DEVE estar no content para identificar o dono original da ordem!
       final content = jsonEncode({
         'type': 'bro_order',
         'version': '1.0',
         'orderId': orderId,
-        'userPubkey': keychain.public, // CRÍTICO: Identifica o dono original da ordem
+        'userPubkey': keychain.public, // CRÃTICO: Identifica o dono original da ordem
         'billType': billType,
-        'billCode': billCode, // Código PIX/Boleto para o provedor pagar
+        'billCode': billCode, // CÃ³digo PIX/Boleto para o provedor pagar
         'amount': amount,
         'btcAmount': btcAmount,
         'btcPrice': btcPrice,
@@ -80,7 +80,7 @@ class NostrOrderService {
       final event = Event.from(
         kind: kindBroOrder,
         tags: [
-          ['d', orderId], // Identificador único (permite atualizar)
+          ['d', orderId], // Identificador Ãºnico (permite atualizar)
           ['t', broTag],
           ['t', broAppTag],
           ['t', billType],
@@ -91,7 +91,6 @@ class NostrOrderService {
         privkey: keychain.private,
       );
 
-      debugPrint('📤 Publicando ordem $orderId nos relays...');
       
       // Publicar em todos os relays
       int successCount = 0;
@@ -100,21 +99,18 @@ class NostrOrderService {
           final success = await _publishToRelay(relay, event);
           if (success) successCount++;
         } catch (e) {
-          debugPrint('⚠️ Falha ao publicar em $relay: $e');
         }
       }
 
-      debugPrint('✅ Ordem publicada em $successCount/${_relays.length} relays');
       
       return successCount > 0 ? event.id : null;
     } catch (e) {
-      debugPrint('❌ Erro ao publicar ordem: $e');
       return null;
     }
   }
 
   /// Atualiza status de uma ordem nos relays
-  /// NOTA: Usa kind 30080 (não 30078) para NÃO substituir o evento original!
+  /// NOTA: Usa kind 30080 (nÃ£o 30078) para NÃƒO substituir o evento original!
   Future<bool> updateOrderStatus({
     required String privateKey,
     required String orderId,
@@ -136,26 +132,24 @@ class NostrOrderService {
         'updatedAt': DateTime.now().toIso8601String(),
       });
 
-      // CORREÇÃO: Usar d-tag única por usuário+ordem para evitar conflitos
-      // Isso permite que tanto Bro quanto Usuário publiquem updates independentes
-      // NOTA: Removida tag 'e' pois orderId é UUID, não event ID hex de 64 chars
+      // CORREÃ‡ÃƒO: Usar d-tag Ãºnica por usuÃ¡rio+ordem para evitar conflitos
+      // Isso permite que tanto Bro quanto UsuÃ¡rio publiquem updates independentes
+      // NOTA: Removida tag 'e' pois orderId Ã© UUID, nÃ£o event ID hex de 64 chars
       final tags = [
-        ['d', '${orderId}_${userPubkey.substring(0, 8)}_update'], // Tag única por usuário
+        ['d', '${orderId}_${userPubkey.substring(0, 8)}_update'], // Tag Ãºnica por usuÃ¡rio
         ['t', broTag],
         ['t', 'bro-update'],
-        ['t', 'status-$newStatus'], // Tag pesquisável por status
+        ['t', 'status-$newStatus'], // Tag pesquisÃ¡vel por status
         ['orderId', orderId], // Tag customizada para busca
       ];
       
-      // CRÍTICO: Sempre adicionar tag p do provedor para que ele receba
+      // CRÃTICO: Sempre adicionar tag p do provedor para que ele receba
       if (providerId != null && providerId.isNotEmpty) {
-        tags.add(['p', providerId]); // Tag do provedor - CRÍTICO para notificação
-        debugPrint('📤 Adicionando tag p=$providerId ao evento de status $newStatus');
+        tags.add(['p', providerId]); // Tag do provedor - CRÃTICO para notificaÃ§Ã£o
       } else {
-        debugPrint('⚠️ AVISO: Publicando update sem tag p (providerId ausente)');
       }
 
-      // IMPORTANTE: Usa kindBroPaymentProof (30080) para não substituir o evento original!
+      // IMPORTANTE: Usa kindBroPaymentProof (30080) para nÃ£o substituir o evento original!
       final event = Event.from(
         kind: kindBroPaymentProof,
         tags: tags,
@@ -163,56 +157,45 @@ class NostrOrderService {
         privkey: keychain.private,
       );
 
-      debugPrint('📤 Publicando evento kind=${event.kind} com ${tags.length} tags');
-      debugPrint('   orderId: $orderId');
-      debugPrint('   status: $newStatus');
-      debugPrint('   providerId: ${providerId ?? "NENHUM"}');
 
-      // Publicar em PARALELO para ser mais rápido
+      // Publicar em PARALELO para ser mais rÃ¡pido
       final results = await Future.wait(
         _relays.map((relay) async {
           try {
-            // Tentar até 2 vezes
+            // Tentar atÃ© 2 vezes
             for (int attempt = 1; attempt <= 2; attempt++) {
               final success = await _publishToRelay(relay, event);
               if (success) {
-                debugPrint('   ✅ Publicado em $relay (tentativa $attempt)');
                 return true;
               }
               if (attempt < 2) {
-                debugPrint('   🔄 Retry em $relay...');
                 await Future.delayed(const Duration(milliseconds: 500));
               }
             }
-            debugPrint('   ❌ Falhou em $relay após 2 tentativas');
             return false;
           } catch (e) {
-            debugPrint('   ⚠️ Exceção em $relay: $e');
             return false;
           }
         }),
       );
 
       final successCount = results.where((r) => r).length;
-      debugPrint('📤 Evento publicado em $successCount/${_relays.length} relays');
       return successCount > 0;
     } catch (e) {
-      debugPrint('❌ Erro ao atualizar ordem: $e');
       return false;
     }
   }
 
   /// Busca ordens aceitas por um provedor (raw)
-  /// Busca em múltiplas fontes:
+  /// Busca em mÃºltiplas fontes:
   /// 1. Ordens (kindBroOrder) onde tag #p = provedor
-  /// 2. Eventos de aceitação (kindBroAccept) publicados pelo provedor
+  /// 2. Eventos de aceitaÃ§Ã£o (kindBroAccept) publicados pelo provedor
   /// 3. Eventos de comprovante (kindBroComplete) publicados pelo provedor
   Future<List<Map<String, dynamic>>> _fetchProviderOrdersRaw(String providerPubkey) async {
     final orders = <Map<String, dynamic>>[];
     final seenIds = <String>{};
     final orderIdsFromAccepts = <String>{};
 
-    print('🚨🚨🚨 _fetchProviderOrdersRaw CHAMADO para ${providerPubkey.substring(0, 16)} 🚨🚨🚨');
 
     for (final relay in _relays.take(3)) {
       try {
@@ -224,7 +207,6 @@ class NostrOrderService {
           limit: 100,
         );
         
-        debugPrint('   $relay: ${relayOrders.length} ordens via #p');
         
         for (final order in relayOrders) {
           final id = order['id'];
@@ -234,8 +216,8 @@ class NostrOrderService {
           }
         }
         
-        // 2. Buscar eventos de aceitação E updates publicados por este provedor
-        // CORREÇÃO: Adicionar kindBroPaymentProof (30080) que contém providerId nos updates
+        // 2. Buscar eventos de aceitaÃ§Ã£o E updates publicados por este provedor
+        // CORREÃ‡ÃƒO: Adicionar kindBroPaymentProof (30080) que contÃ©m providerId nos updates
         final acceptEvents = await _fetchFromRelay(
           relay,
           kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete], // 30079, 30080 e 30081
@@ -243,81 +225,68 @@ class NostrOrderService {
           limit: 200,
         );
         
-        debugPrint('   $relay: ${acceptEvents.length} eventos de aceite/update/comprovante');
         
-        // Extrair orderIds dos eventos de aceitação/update
+        // Extrair orderIds dos eventos de aceitaÃ§Ã£o/update
         for (final event in acceptEvents) {
           try {
             final content = event['parsedContent'] ?? jsonDecode(event['content']);
             final orderId = content['orderId'] as String?;
             if (orderId != null && !orderIdsFromAccepts.contains(orderId)) {
               orderIdsFromAccepts.add(orderId);
-              debugPrint('   📋 Encontrado orderId $orderId de evento kind=${event['kind']}');
             }
           } catch (_) {}
         }
         
-        // 3. Buscar eventos de UPDATE globais com providerId no conteúdo
-        // OTIMIZAÇÃO: Usar mesmo relay, mas filtrar por providerId no content
-        // Isso é mais lento mas necessário para histórico completo
+        // 3. Buscar eventos de UPDATE globais com providerId no conteÃºdo
+        // OTIMIZAÃ‡ÃƒO: Usar mesmo relay, mas filtrar por providerId no content
+        // Isso Ã© mais lento mas necessÃ¡rio para histÃ³rico completo
         // REMOVIDO: Causava timeout. Vamos buscar apenas por author (provedor que publicou)
       } catch (e) {
-        debugPrint('⚠️ Falha ao buscar de $relay: $e');
       }
     }
     
-    // 3. Buscar as ordens originais pelos IDs encontrados nos eventos de aceitação
+    // 3. Buscar as ordens originais pelos IDs encontrados nos eventos de aceitaÃ§Ã£o
     if (orderIdsFromAccepts.isNotEmpty) {
-      print('🔍 Buscando ${orderIdsFromAccepts.length} ordens por ID: ${orderIdsFromAccepts.take(5).join(", ")}...');
       
-      // CORREÇÃO: Aumentado de 20 para 100 para preservar histórico completo do provedor
+      // CORREÃ‡ÃƒO: Aumentado de 20 para 100 para preservar histÃ³rico completo do provedor
       for (final orderId in orderIdsFromAccepts.take(100)) {
         if (seenIds.contains(orderId)) {
-          print('   ⏭️ Ordem $orderId já vista, pulando');
           continue;
         }
         
-        print('   🔍 Buscando ordem original: $orderId');
         final orderData = await fetchOrderFromNostr(orderId);
         if (orderData != null) {
           seenIds.add(orderId);
           // Adicionar providerId ao orderData
           orderData['providerId'] = providerPubkey;
           orders.add(orderData);
-          print('   ✅ Ordem $orderId recuperada com amount=${orderData['amount']}');
         } else {
-          print('   ❌ Ordem $orderId NÃO encontrada no Nostr');
         }
       }
     } else {
-      print('⚠️ Nenhum orderId encontrado nos eventos de aceitação');
     }
 
-    debugPrint('✅ Encontradas ${orders.length} ordens do provedor');
     return orders;
   }
 
   /// Busca ordens aceitas por um provedor e retorna como List<Order>
-  /// CORREÇÃO: Agora também busca eventos de UPDATE para obter status correto
+  /// CORREÃ‡ÃƒO: Agora tambÃ©m busca eventos de UPDATE para obter status correto
   Future<List<Order>> fetchProviderOrders(String providerPubkey) async {
     final rawOrders = await _fetchProviderOrdersRaw(providerPubkey);
-    print('🔍 fetchProviderOrders: ${rawOrders.length} raw orders recebidas');
     
-    // CORREÇÃO CRÍTICA: Buscar eventos de UPDATE para obter status correto
+    // CORREÃ‡ÃƒO CRÃTICA: Buscar eventos de UPDATE para obter status correto
     // Sem isso, ordens completed apareciam como "pending" ou "accepted"
     final statusUpdates = await _fetchAllOrderStatusUpdates();
-    print('🔍 fetchProviderOrders: ${statusUpdates.length} updates de status encontrados');
     
     final orders = <Order>[];
     for (final raw in rawOrders) {
       final rawId = raw['id']?.toString() ?? '';
-      print('   📋 Convertendo ordem: id=${rawId.length > 8 ? rawId.substring(0, 8) : rawId}');
       
-      // Verificar se já é um Map com campos diretos (vindo de fetchOrderFromNostr)
-      // ou se é um evento Nostr que precisa ser parseado
+      // Verificar se jÃ¡ Ã© um Map com campos diretos (vindo de fetchOrderFromNostr)
+      // ou se Ã© um evento Nostr que precisa ser parseado
       Order? order;
       if (raw['amount'] != null && raw['amount'] != 0) {
-        // É um Map já processado de fetchOrderFromNostr
+        // Ã‰ um Map jÃ¡ processado de fetchOrderFromNostr
         try {
           order = Order(
             id: raw['id']?.toString() ?? '',
@@ -335,41 +304,34 @@ class NostrOrderService {
             providerId: raw['providerId']?.toString() ?? providerPubkey,
             createdAt: DateTime.tryParse(raw['createdAt']?.toString() ?? '') ?? DateTime.now(),
           );
-          print('   ✅ Ordem convertida (direto): ${order.id.substring(0, 8)}, amount=${order.amount}');
         } catch (e) {
-          print('   ❌ Erro ao criar Order direto: $e');
         }
       } else {
-        // É um evento Nostr, usar eventToOrder
+        // Ã‰ um evento Nostr, usar eventToOrder
         order = eventToOrder(raw);
         if (order != null) {
-          print('   ✅ Ordem convertida (evento): ${order.id.substring(0, 8)}, amount=${order.amount}');
         } else {
-          print('   ❌ Ordem descartada (null)');
         }
       }
       
       if (order != null) {
-        // CORREÇÃO CRÍTICA: Garantir que providerId seja setado para ordens do provedor
+        // CORREÃ‡ÃƒO CRÃTICA: Garantir que providerId seja setado para ordens do provedor
         if (order.providerId == null || order.providerId!.isEmpty) {
           order = order.copyWith(providerId: providerPubkey);
-          print('   🔧 ProviderId setado para ordem ${order.id.substring(0, 8)}');
         }
         
-        // CORREÇÃO CRÍTICA: Aplicar status atualizado dos eventos de UPDATE
-        // Isso garante que ordens completed/awaiting_confirmation apareçam com status correto
+        // CORREÃ‡ÃƒO CRÃTICA: Aplicar status atualizado dos eventos de UPDATE
+        // Isso garante que ordens completed/awaiting_confirmation apareÃ§am com status correto
         order = _applyStatusUpdate(order, statusUpdates);
-        print('   📋 Status final: ${order.id.substring(0, 8)} -> ${order.status}');
         
         orders.add(order);
       }
     }
     
-    print('🔍 fetchProviderOrders: ${orders.length} ordens válidas após conversão');
     return orders;
   }
 
-  /// Publica evento em um relay específico
+  /// Publica evento em um relay especÃ­fico
   /// Tenta WebSocket primeiro, com timeout maior para iOS
   Future<bool> _publishToRelay(String relayUrl, Event event) async {
     final completer = Completer<bool>();
@@ -377,34 +339,29 @@ class NostrOrderService {
     Timer? timeout;
 
     try {
-      debugPrint('   🔌 Conectando a $relayUrl...');
       
-      // Criar conexão WebSocket
+      // Criar conexÃ£o WebSocket
       final uri = Uri.parse(relayUrl);
       channel = WebSocketChannel.connect(uri);
       
-      // Aguardar conexão estar pronta
-      // NOTA: Em iOS, channel.ready pode não funcionar bem, então usamos try/catch
+      // Aguardar conexÃ£o estar pronta
+      // NOTA: Em iOS, channel.ready pode nÃ£o funcionar bem, entÃ£o usamos try/catch
       try {
         await channel.ready.timeout(
-          const Duration(seconds: 10),
+          const Duration(seconds: 5),
           onTimeout: () {
-            debugPrint('   ⏰ Timeout aguardando conexão com $relayUrl');
             throw TimeoutException('Connection timeout');
           },
         );
       } catch (e) {
         // Se channel.ready falhar, dar um pequeno delay e tentar assim mesmo
-        debugPrint('   ⚠️ channel.ready falhou ($e), tentando mesmo assim...');
         await Future.delayed(const Duration(milliseconds: 500));
       }
       
-      debugPrint('   ✅ Conectado a $relayUrl');
       
       // Timeout de 8 segundos para resposta
-      timeout = Timer(const Duration(seconds: 10), () {
+      timeout = Timer(const Duration(seconds: 5), () {
         if (!completer.isCompleted) {
-          debugPrint('   ⏰ Timeout aguardando resposta de $relayUrl');
           completer.complete(false);
           channel?.sink.close();
         }
@@ -415,26 +372,21 @@ class NostrOrderService {
         (message) {
           try {
             final response = jsonDecode(message);
-            debugPrint('   📩 Resposta de $relayUrl: $response');
             if (response[0] == 'OK' && response[1] == event.id) {
               final success = response[2] == true;
               if (!completer.isCompleted) {
                 completer.complete(success);
               }
               if (!success) {
-                debugPrint('   ❌ Relay rejeitou: ${response.length > 3 ? response[3] : "sem motivo"}');
               }
             }
           } catch (e) {
-            debugPrint('   ⚠️ Erro ao parsear resposta: $e');
           }
         },
         onError: (e) {
-          debugPrint('   ❌ Erro no stream de $relayUrl: $e');
           if (!completer.isCompleted) completer.complete(false);
         },
         onDone: () {
-          debugPrint('   🔚 Conexão fechada com $relayUrl');
           if (!completer.isCompleted) completer.complete(false);
         },
       );
@@ -442,14 +394,11 @@ class NostrOrderService {
       // Enviar evento
       final eventJson = ['EVENT', event.toJson()];
       channel.sink.add(jsonEncode(eventJson));
-      debugPrint('   📤 Evento enviado para $relayUrl');
 
       return await completer.future;
     } on TimeoutException catch (e) {
-      debugPrint('   ⏰ TimeoutException em $relayUrl: $e');
       return false;
     } catch (e) {
-      debugPrint('   ❌ Exceção ao publicar em $relayUrl: $e');
       return false;
     } finally {
       timeout?.cancel();
@@ -478,8 +427,8 @@ class NostrOrderService {
   }
   
   /// Busca eventos de um relay com suporte a 'since' timestamp
-  /// CRÍTICO para sincronização entre dispositivos - o 'since' permite
-  /// que relays retornem apenas eventos recentes, melhorando consistência
+  /// CRÃTICO para sincronizaÃ§Ã£o entre dispositivos - o 'since' permite
+  /// que relays retornem apenas eventos recentes, melhorando consistÃªncia
   Future<List<Map<String, dynamic>>> _fetchFromRelayWithSince(
     String relayUrl, {
     required List<int> kinds,
@@ -495,23 +444,22 @@ class NostrOrderService {
     final subscriptionId = const Uuid().v4().substring(0, 8);
 
     try {
-      // CRÍTICO: Envolver connect em try-catch para capturar erros 429/HTTP
+      // CRÃTICO: Envolver connect em try-catch para capturar erros 429/HTTP
       try {
         channel = WebSocketChannel.connect(Uri.parse(relayUrl));
       } catch (e) {
-        debugPrint('⚠️ Falha ao conectar em $relayUrl: $e');
-        return events; // Retorna lista vazia em vez de propagar exceção
+        return events; // Retorna lista vazia em vez de propagar exceÃ§Ã£o
       }
       
       // Timeout de 8 segundos
-      timeout = Timer(const Duration(seconds: 10), () {
+      timeout = Timer(const Duration(seconds: 5), () {
         if (!completer.isCompleted) {
           completer.complete(events);
           try { channel?.sink.close(); } catch (_) {}
         }
       });
 
-      // Escutar eventos - envolver em try-catch para capturar erros de conexão
+      // Escutar eventos - envolver em try-catch para capturar erros de conexÃ£o
       try {
         channel.stream.listen(
           (message) {
@@ -520,7 +468,7 @@ class NostrOrderService {
               if (response[0] == 'EVENT' && response[1] == subscriptionId) {
                 final eventData = response[2] as Map<String, dynamic>;
                 
-                // Parsear conteúdo JSON se possível
+                // Parsear conteÃºdo JSON se possÃ­vel
                 try {
                   final content = jsonDecode(eventData['content']);
                   eventData['parsedContent'] = content;
@@ -536,7 +484,6 @@ class NostrOrderService {
             } catch (_) {}
           },
           onError: (e) {
-            debugPrint('⚠️ Erro no stream de $relayUrl: $e');
             if (!completer.isCompleted) completer.complete(events);
           },
           onDone: () {
@@ -544,7 +491,6 @@ class NostrOrderService {
           },
         );
       } catch (e) {
-        debugPrint('⚠️ Falha ao escutar stream de $relayUrl: $e');
         if (!completer.isCompleted) completer.complete(events);
         return events;
       }
@@ -563,18 +509,17 @@ class NostrOrderService {
         filter.addAll(tags);
       }
       
-      // CRÍTICO: Adicionar 'since' para melhor sincronização entre dispositivos
+      // CRÃTICO: Adicionar 'since' para melhor sincronizaÃ§Ã£o entre dispositivos
       if (since != null) {
         filter['since'] = since;
       }
 
-      // Enviar requisição
+      // Enviar requisiÃ§Ã£o
       final req = ['REQ', subscriptionId, filter];
       channel.sink.add(jsonEncode(req));
 
       return await completer.future;
     } catch (e) {
-      debugPrint('❌ Erro ao buscar de $relayUrl: $e');
       return events;
     } finally {
       timeout?.cancel();
@@ -587,27 +532,24 @@ class NostrOrderService {
   }
 
   /// Converte evento Nostr para Order model
-  /// RETORNA NULL se ordem inválida (amount=0 e não é evento de update)
+  /// RETORNA NULL se ordem invÃ¡lida (amount=0 e nÃ£o Ã© evento de update)
   Order? eventToOrder(Map<String, dynamic> event) {
     try {
       final rawContent = event['content'];
-      debugPrint('📋 RAW CONTENT: $rawContent');
       
       final content = event['parsedContent'] ?? jsonDecode(rawContent ?? '{}');
       
-      // Verificar se é um evento de update (não tem dados completos)
+      // Verificar se Ã© um evento de update (nÃ£o tem dados completos)
       final eventType = content['type'] as String?;
       if (eventType == 'bro_order_update') {
-        debugPrint('⚠️ Evento é um UPDATE, não uma ordem completa - ignorando');
-        return null; // Updates são tratados separadamente
+        return null; // Updates sÃ£o tratados separadamente
       }
       
       // Log para debug
       final amount = (content['amount'] as num?)?.toDouble() ?? 0;
       final orderId = content['orderId'] ?? event['id'];
-      debugPrint('📋 eventToOrder: $orderId -> amount=$amount, btcAmount=${content['btcAmount']}');
       
-      // Se amount é 0, tentar pegar das tags
+      // Se amount Ã© 0, tentar pegar das tags
       double finalAmount = amount;
       if (finalAmount == 0) {
         final tags = event['tags'] as List<dynamic>?;
@@ -615,34 +557,30 @@ class NostrOrderService {
           for (final tag in tags) {
             if (tag is List && tag.length >= 2 && tag[0] == 'amount') {
               finalAmount = double.tryParse(tag[1].toString()) ?? 0;
-              debugPrint('📋 eventToOrder: amount from tags = $finalAmount');
               break;
             }
           }
         }
       }
       
-      // VALIDAÇÃO CRÍTICA: Não aceitar ordens com amount=0
+      // VALIDAÃ‡ÃƒO CRÃTICA: NÃ£o aceitar ordens com amount=0
       if (finalAmount == 0) {
-        debugPrint('⚠️ REJEITANDO ordem ${orderId} com amount=0 (dados corrompidos)');
         return null;
       }
       
-      // CRÍTICO: Determinar o userPubkey correto - APENAS do CONTENT!
-      // SEGURANÇA: Não usar event.pubkey como fallback pois pode ser de quem republicou!
+      // CRÃTICO: Determinar o userPubkey correto - APENAS do CONTENT!
+      // SEGURANÃ‡A: NÃ£o usar event.pubkey como fallback pois pode ser de quem republicou!
       final contentUserPubkey = content['userPubkey'] as String?;
       
       String? originalUserPubkey;
       if (contentUserPubkey != null && contentUserPubkey.isNotEmpty) {
-        // Ordem nova com userPubkey no content - CONFIÁVEL
+        // Ordem nova com userPubkey no content - CONFIÃVEL
         originalUserPubkey = contentUserPubkey;
-        debugPrint('🔑 Order ${orderId.substring(0,8)}: userPubkey do CONTENT = ${contentUserPubkey.substring(0,16)}');
       } else {
-        // SEGURANÇA CRÍTICA: Ordem legada sem userPubkey no content
-        // NÃO usar event.pubkey como fallback - pode ser de quem republicou!
+        // SEGURANÃ‡A CRÃTICA: Ordem legada sem userPubkey no content
+        // NÃƒO usar event.pubkey como fallback - pode ser de quem republicou!
         // Isso pode ter causado ordens aparecerem no dispositivo errado
-        debugPrint('🚫 REJEITANDO ordem ${orderId.substring(0,8)}: SEM userPubkey no content (ordem legada/republicada)');
-        return null; // REJEITAR - não temos como saber quem é o dono real
+        return null; // REJEITAR - nÃ£o temos como saber quem Ã© o dono real
       }
       
       return Order(
@@ -663,7 +601,6 @@ class NostrOrderService {
                    DateTime.fromMillisecondsSinceEpoch((event['created_at'] ?? 0) * 1000),
       );
     } catch (e) {
-      debugPrint('⚠️ Erro ao converter evento para Order: $e');
       return null;
     }
   }
@@ -678,15 +615,14 @@ class NostrOrderService {
     return 'pending';
   }
 
-  /// Busca uma ordem específica do Nostr pelo ID
+  /// Busca uma ordem especÃ­fica do Nostr pelo ID
   Future<Map<String, dynamic>?> fetchOrderFromNostr(String orderId) async {
-    print('🔍 fetchOrderFromNostr: Buscando $orderId...');
     
     Map<String, dynamic>? orderData;
     
     for (final relay in _relays.take(3)) {
       try {
-        // Estratégia 1: Buscar pelo d-tag (orderId)
+        // EstratÃ©gia 1: Buscar pelo d-tag (orderId)
         var events = await _fetchFromRelay(
           relay,
           kinds: [kindBroOrder],
@@ -694,7 +630,7 @@ class NostrOrderService {
           limit: 5,
         );
         
-        // Estratégia 2: Se não encontrou, buscar pelo #t tag com orderId
+        // EstratÃ©gia 2: Se nÃ£o encontrou, buscar pelo #t tag com orderId
         if (events.isEmpty) {
           events = await _fetchFromRelay(
             relay,
@@ -711,7 +647,6 @@ class NostrOrderService {
             final eventOrderId = content['orderId'] as String?;
             
             if (eventOrderId == orderId) {
-              print('   ✅ fetchOrderFromNostr: Encontrada em $relay');
               
               orderData = {
                 'id': orderId,
@@ -741,7 +676,6 @@ class NostrOrderService {
           final event = events.first;
           final content = event['parsedContent'] ?? jsonDecode(event['content']);
           
-          print('   ✅ fetchOrderFromNostr: Usando primeiro evento de $relay');
           
           orderData = {
             'id': content['orderId'] ?? orderId,
@@ -762,23 +696,21 @@ class NostrOrderService {
           break;
         }
       } catch (e) {
-        print('   ⚠️ fetchOrderFromNostr: Falha em $relay: $e');
       }
     }
     
     if (orderData == null) {
-      print('   ❌ fetchOrderFromNostr: $orderId não encontrada em nenhum relay');
       return null;
     }
     
-    // NOTA: O status local é gerenciado pelo order_provider.dart
-    // Não fazer busca extra aqui para evitar timeout
+    // NOTA: O status local Ã© gerenciado pelo order_provider.dart
+    // NÃ£o fazer busca extra aqui para evitar timeout
     
     return orderData;
   }
   
   /// Busca o status mais recente de uma ordem dos eventos de UPDATE (kind 30080) e COMPLETE (kind 30081)
-  /// NOTA: Esta função é lenta e deve ser usada apenas quando necessário, não em batch
+  /// NOTA: Esta funÃ§Ã£o Ã© lenta e deve ser usada apenas quando necessÃ¡rio, nÃ£o em batch
   Future<String?> _fetchLatestOrderStatus(String orderId) async {
     String? latestStatus;
     int latestTimestamp = 0;
@@ -793,7 +725,7 @@ class NostrOrderService {
           limit: 20,
         );
         
-        // Também tentar buscar por #t tag
+        // TambÃ©m tentar buscar por #t tag
         final updateEventsT = await _fetchFromRelay(
           relay,
           kinds: [kindBroPaymentProof, kindBroComplete],
@@ -815,13 +747,11 @@ class NostrOrderService {
               if (eventStatus != null && eventTimestamp > latestTimestamp) {
                 latestTimestamp = eventTimestamp;
                 latestStatus = eventStatus;
-                print('   📋 Encontrado status "$eventStatus" (timestamp: $eventTimestamp)');
               }
             }
           } catch (_) {}
         }
       } catch (e) {
-        print('   ⚠️ _fetchLatestOrderStatus: Falha em $relay: $e');
       }
     }
     
@@ -831,7 +761,6 @@ class NostrOrderService {
   /// Busca o evento COMPLETE de uma ordem para obter o providerInvoice
   /// Retorna um Map com os dados do evento COMPLETE incluindo providerInvoice
   Future<Map<String, dynamic>?> fetchOrderCompleteEvent(String orderId) async {
-    print('🔍 fetchOrderCompleteEvent: Buscando evento COMPLETE para $orderId...');
     
     for (final relay in _relays.take(3)) {
       try {
@@ -843,7 +772,7 @@ class NostrOrderService {
           limit: 5,
         );
         
-        // Também tentar por #d tag (pattern: orderId_complete)
+        // TambÃ©m tentar por #d tag (pattern: orderId_complete)
         if (completeEvents.isEmpty) {
           completeEvents = await _fetchFromRelay(
             relay,
@@ -862,9 +791,7 @@ class NostrOrderService {
               final providerInvoice = content['providerInvoice'] as String?;
               final providerId = content['providerId'] as String?;
               
-              print('   ✅ Evento COMPLETE encontrado em $relay');
               if (providerInvoice != null) {
-                print('   ⚡ Invoice: ${providerInvoice.substring(0, 30)}...');
               }
               
               return {
@@ -877,11 +804,9 @@ class NostrOrderService {
           } catch (_) {}
         }
       } catch (e) {
-        print('   ⚠️ fetchOrderCompleteEvent: Falha em $relay: $e');
       }
     }
     
-    print('   ❌ Evento COMPLETE não encontrado para $orderId');
     return null;
   }
   /// Publica uma ordem usando objeto Order
@@ -909,12 +834,8 @@ class NostrOrderService {
     required String providerPrivateKey,
   }) async {
     try {
-      debugPrint('🔑 acceptOrderOnNostr: Iniciando...');
-      debugPrint('   orderId: ${order.id}');
-      debugPrint('   privateKey length: ${providerPrivateKey.length}');
       
       final keychain = Keychain(providerPrivateKey);
-      debugPrint('   providerPubkey: ${keychain.public.substring(0, 16)}...');
       
       final content = jsonEncode({
         'type': 'bro_accept',
@@ -924,21 +845,19 @@ class NostrOrderService {
         'acceptedAt': DateTime.now().toIso8601String(),
       });
 
-      // Construir tags - só incluir 'e' se tivermos eventId válido (64 chars hex)
+      // Construir tags - sÃ³ incluir 'e' se tivermos eventId vÃ¡lido (64 chars hex)
       final tags = [
         ['d', '${order.id}_accept'],
-        ['p', order.userPubkey ?? ''], // Tag do usuário que criou a ordem
+        ['p', order.userPubkey ?? ''], // Tag do usuÃ¡rio que criou a ordem
         ['t', broTag],
         ['t', 'bro-accept'],
         ['orderId', order.id],
       ];
-      // Só adicionar tag 'e' se eventId for válido (64 chars hex)
+      // SÃ³ adicionar tag 'e' se eventId for vÃ¡lido (64 chars hex)
       if (order.eventId != null && order.eventId!.length == 64) {
         tags.insert(1, ['e', order.eventId!]);
       }
       
-      debugPrint('   userPubkey (tag p): ${order.userPubkey?.substring(0, 16) ?? "NENHUM"}');
-      debugPrint('   tags count: ${tags.length}');
 
       final event = Event.from(
         kind: kindBroAccept,
@@ -947,37 +866,22 @@ class NostrOrderService {
         privkey: keychain.private,
       );
 
-      debugPrint('📤 Publicando aceite da ordem ${order.id}...');
-      debugPrint('   Event ID: ${event.id}');
-      debugPrint('   Event Kind: ${event.kind}');
       
       int successCount = 0;
-      for (final relay in _relays) {
-        try {
-          debugPrint('   Tentando $relay...');
-          final success = await _publishToRelay(relay, event);
-          if (success) {
-            successCount++;
-            debugPrint('   ✅ SUCESSO em $relay');
-          } else {
-            debugPrint('   ❌ FALHOU em $relay');
-          }
-        } catch (e) {
-          debugPrint('⚠️ Exceção ao publicar aceite em $relay: $e');
-        }
-      }
+      // Publicar em paralelo para maior velocidade
+      final results = await Future.wait(
+        _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
+      );
+      successCount = results.where((s) => s).length;
 
-      debugPrint('✅ Aceite publicado em $successCount/${_relays.length} relays');
       return successCount > 0;
     } catch (e, stack) {
-      debugPrint('❌ Erro ao publicar aceite: $e');
-      debugPrint('   Stack: $stack');
       return false;
     }
   }
 
   /// Provider completa uma ordem (com prova de pagamento)
-  /// NOTA: A prova é enviada em base64. Para privacidade total, 
+  /// NOTA: A prova Ã© enviada em base64. Para privacidade total, 
   /// considerar implementar NIP-17 (Gift Wraps) ou enviar via DM separado
   Future<bool> completeOrderOnNostr({
     required Order order,
@@ -988,36 +892,35 @@ class NostrOrderService {
     try {
       final keychain = Keychain(providerPrivateKey);
       
-      // NOTA: O comprovante é enviado em texto claro por enquanto
+      // NOTA: O comprovante Ã© enviado em texto claro por enquanto
       // Para privacidade total, implementar NIP-17 ou enviar via canal separado
-      // O evento é tagged com a pubkey do usuário para que ele possa encontrar
+      // O evento Ã© tagged com a pubkey do usuÃ¡rio para que ele possa encontrar
       final contentMap = {
         'type': 'bro_complete',
         'orderId': order.id,
         'orderEventId': order.eventId,
         'providerId': keychain.public,
         'proofImage': proofImageBase64, // Base64 do comprovante
-        'recipientPubkey': order.userPubkey, // Para quem é destinado
+        'recipientPubkey': order.userPubkey, // Para quem Ã© destinado
         'completedAt': DateTime.now().toIso8601String(),
       };
       
       // Incluir invoice do provedor se fornecido
       if (providerInvoice != null && providerInvoice.isNotEmpty) {
         contentMap['providerInvoice'] = providerInvoice;
-        debugPrint('⚡ Invoice do provedor incluído no evento');
       }
       
       final content = jsonEncode(contentMap);
 
-      // Construir tags - só incluir 'e' se tivermos eventId válido (64 chars hex)
+      // Construir tags - sÃ³ incluir 'e' se tivermos eventId vÃ¡lido (64 chars hex)
       final tags = [
         ['d', '${order.id}_complete'],
-        ['p', order.userPubkey ?? ''], // Tag do usuário que criou a ordem
+        ['p', order.userPubkey ?? ''], // Tag do usuÃ¡rio que criou a ordem
         ['t', broTag],
         ['t', 'bro-complete'],
         ['orderId', order.id],
       ];
-      // Só adicionar tag 'e' se eventId for válido (64 chars hex)
+      // SÃ³ adicionar tag 'e' se eventId for vÃ¡lido (64 chars hex)
       if (order.eventId != null && order.eventId!.length == 64) {
         tags.insert(1, ['e', order.eventId!]);
       }
@@ -1029,94 +932,75 @@ class NostrOrderService {
         privkey: keychain.private,
       );
 
-      debugPrint('📤 Publicando conclusão da ordem ${order.id}...');
       
       int successCount = 0;
-      for (final relay in _relays) {
-        try {
-          final success = await _publishToRelay(relay, event);
-          if (success) successCount++;
-        } catch (e) {
-          debugPrint('⚠️ Falha ao publicar conclusão em $relay: $e');
-        }
-      }
+      // Publicar em paralelo para maior velocidade
+      final results = await Future.wait(
+        _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
+      );
+      successCount = results.where((s) => s).length;
 
-      debugPrint('✅ Conclusão publicada em $successCount/${_relays.length} relays');
       return successCount > 0;
     } catch (e) {
-      debugPrint('❌ Erro ao publicar conclusão: $e');
       return false;
     }
   }
 
   /// Busca ordens pendentes e retorna como List<Order>
-  /// Para modo Bro: retorna APENAS ordens que ainda não foram aceitas por nenhum Bro
+  /// Para modo Bro: retorna APENAS ordens que ainda nÃ£o foram aceitas por nenhum Bro
   Future<List<Order>> fetchPendingOrders() async {
-    debugPrint('🔍 ══════════════════════════════════════════════════');
-    debugPrint('🔍 FETCH PENDING ORDERS - INÍCIO');
-    debugPrint('🔍 ══════════════════════════════════════════════════');
     
     final rawOrders = await _fetchPendingOrdersRaw();
-    debugPrint('📦 rawOrders retornadas: ${rawOrders.length}');
     
-    // Buscar eventos de UPDATE para saber quais ordens já foram aceitas
+    // Buscar eventos de UPDATE para saber quais ordens jÃ¡ foram aceitas
     final statusUpdates = await _fetchAllOrderStatusUpdates();
-    debugPrint('📦 statusUpdates encontrados: ${statusUpdates.length}');
     
-    // Converter para Orders COM DEDUPLICAÇÃO por orderId
+    // Converter para Orders COM DEDUPLICAÃ‡ÃƒO por orderId
     final seenOrderIds = <String>{};
     final allOrders = <Order>[];
     for (final e in rawOrders) {
       final order = eventToOrder(e);
       if (order == null) continue;
       
-      // DEDUPLICAÇÃO: Só adicionar se ainda não vimos este orderId
+      // DEDUPLICAÃ‡ÃƒO: SÃ³ adicionar se ainda nÃ£o vimos este orderId
       if (seenOrderIds.contains(order.id)) {
-        debugPrint('   ⚠️ Duplicata ignorada: ${order.id.substring(0, 8)}');
         continue;
       }
       seenOrderIds.add(order.id);
       allOrders.add(order);
     }
     
-    debugPrint('📦 Total de ordens ÚNICAS após conversão: ${allOrders.length}');
     
     // LOG DETALHADO de cada ordem
     for (var order in allOrders) {
       final hasUpdate = statusUpdates.containsKey(order.id);
       final update = statusUpdates[order.id];
-      debugPrint('   📋 ${order.id.substring(0, 8)}: amount=R\$${order.amount}, status=${order.status}, hasUpdate=$hasUpdate, updateStatus=${update?['status']}');
     }
     
-    // FILTRAR: Mostrar apenas ordens que NÃO foram aceitas por nenhum Bro
-    // OU que têm status pending/payment_received
+    // FILTRAR: Mostrar apenas ordens que NÃƒO foram aceitas por nenhum Bro
+    // OU que tÃªm status pending/payment_received
     final availableOrders = <Order>[];
     for (var order in allOrders) {
       final update = statusUpdates[order.id];
       final updateStatus = update?['status'] as String?;
       final updateProviderId = update?['providerId'] as String?;
       
-      // Se não tem update OU se o update não é de accept/complete, está disponível
+      // Se nÃ£o tem update OU se o update nÃ£o Ã© de accept/complete, estÃ¡ disponÃ­vel
       final isAccepted = updateStatus == 'accepted' || updateStatus == 'awaiting_confirmation' || updateStatus == 'completed';
       
       if (!isAccepted) {
-        // Ordem ainda não foi aceita - DISPONÍVEL para Bros
-        debugPrint('   ✅ ${order.id.substring(0, 8)}: status=${order.status} - DISPONÍVEL');
+        // Ordem ainda nÃ£o foi aceita - DISPONÃVEL para Bros
         availableOrders.add(order);
       } else {
-        // Ordem já foi aceita por alguém
-        debugPrint('   ❌ ${order.id.substring(0, 8)}: já aceita (status=$updateStatus, providerId=${updateProviderId?.substring(0, 8) ?? "?"})');
+        // Ordem jÃ¡ foi aceita por alguÃ©m
       }
     }
     
-    debugPrint('🔍 ══════════════════════════════════════════════════');
-    debugPrint('📦 Ordens disponíveis para Bros: ${availableOrders.length}/${allOrders.length}');
-    debugPrint('🔍 ══════════════════════════════════════════════════');
     
     return availableOrders;
   }
 
-  /// Busca ordens de um usuário específico e retorna como List<Order>
+  /// Busca ordens de um usuÃ¡rio especÃ­fico e retorna como List<Order>
   /// INCLUI merge com eventos de UPDATE para obter status correto
   Future<List<Order>> fetchUserOrders(String pubkey) async {
     final rawOrders = await _fetchUserOrdersRaw(pubkey);
@@ -1125,16 +1009,15 @@ class NostrOrderService {
     final statusUpdates = await _fetchAllOrderStatusUpdates();
     
     // Converter para Orders e aplicar status atualizado
-    // SEGURANÇA CRÍTICA: Filtrar novamente para garantir que só retorne ordens deste usuário
+    // SEGURANÃ‡A CRÃTICA: Filtrar novamente para garantir que sÃ³ retorne ordens deste usuÃ¡rio
     // (alguns relays podem ignorar o filtro 'authors')
     // IMPORTANTE: Passar pubkey para bloquear status "completed" vindo do Nostr
     final orders = rawOrders
         .map((e) => eventToOrder(e))
         .whereType<Order>()
         .where((order) {
-          // Verificar se a ordem realmente pertence ao usuário
+          // Verificar se a ordem realmente pertence ao usuÃ¡rio
           if (order.userPubkey != pubkey) {
-            debugPrint('🚫 SEGURANÇA: Ordem ${order.id.substring(0, 8)} é de ${order.userPubkey?.substring(0, 8) ?? "null"}, esperado $pubkey - REMOVENDO');
             return false;
           }
           return true;
@@ -1142,24 +1025,20 @@ class NostrOrderService {
         .map((order) => _applyStatusUpdate(order, statusUpdates))
         .toList();
     
-    debugPrint('✅ fetchUserOrders: ${orders.length} ordens VERIFICADAS para $pubkey');
     return orders;
   }
   
   /// Busca TODOS os eventos de UPDATE de status (kind 30080, 30081)
-  /// Inclui: updates de status, conclusões de ordem
-  /// CRÍTICO: Busca de TODOS os relays para garantir sincronização
+  /// Inclui: updates de status, conclusÃµes de ordem
+  /// CRÃTICO: Busca de TODOS os relays para garantir sincronizaÃ§Ã£o
   Future<Map<String, Map<String, dynamic>>> _fetchAllOrderStatusUpdates() async {
     final updates = <String, Map<String, dynamic>>{}; // orderId -> latest update
     
-    debugPrint('🔄 ══════════════════════════════════════════════════');
-    debugPrint('🔄 BUSCANDO UPDATES DE STATUS DE TODOS OS RELAYS');
-    debugPrint('🔄 ══════════════════════════════════════════════════');
     
     // Buscar de TODOS os relays (sequencialmente para evitar sobrecarga)
     for (final relay in _relays) {
       try {
-        // ESTRATÉGIA: Buscar com tag bro-order primeiro (mais preciso)
+        // ESTRATÃ‰GIA: Buscar com tag bro-order primeiro (mais preciso)
         // Se falhar ou retornar poucos resultados, fallback para busca por kind
         var events = await _fetchFromRelay(
           relay,
@@ -1167,14 +1046,12 @@ class NostrOrderService {
           tags: {'#t': [broTag]}, // Filtra apenas eventos do app BRO
           limit: 300,
         ).timeout(
-          const Duration(seconds: 10),
+          const Duration(seconds: 5),
           onTimeout: () {
-            debugPrint('⏰ Timeout ao buscar updates de $relay');
             return <Map<String, dynamic>>[];
           },
         );
         
-        debugPrint('   📥 $relay retornou ${events.length} eventos de update (com tag bro-order)');
         
         // Fallback: se retornou poucos eventos, tentar sem tag
         // (para compatibilidade com eventos antigos publicados sem tag)
@@ -1184,12 +1061,11 @@ class NostrOrderService {
             kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete],
             limit: 300,
           ).timeout(
-            const Duration(seconds: 10),
+            const Duration(seconds: 5),
             onTimeout: () => <Map<String, dynamic>>[],
           );
-          debugPrint('   📥 $relay fallback: ${fallbackEvents.length} eventos (sem tag)');
           
-          // Mesclar eventos únicos do fallback
+          // Mesclar eventos Ãºnicos do fallback
           final seenIds = events.map((e) => e['id']).toSet();
           for (final e in fallbackEvents) {
             if (!seenIds.contains(e['id'])) {
@@ -1224,32 +1100,31 @@ class NostrOrderService {
               if (eventType == 'bro_accept' || eventKind == kindBroAccept) {
                 status = 'accepted';
               } else if (eventType == 'bro_complete' || eventKind == kindBroComplete) {
-                status = 'awaiting_confirmation'; // Bro pagou, aguardando confirmação do usuário
+                status = 'awaiting_confirmation'; // Bro pagou, aguardando confirmaÃ§Ã£o do usuÃ¡rio
               }
               
-              // PROTEÇÃO: Não regredir status mais avançado
-              // Ordem de progressão: pending -> accepted -> awaiting_confirmation -> completed
+              // PROTEÃ‡ÃƒO: NÃ£o regredir status mais avanÃ§ado
+              // Ordem de progressÃ£o: pending -> accepted -> awaiting_confirmation -> completed
               final existingStatus = existingUpdate?['status'] as String?;
               if (existingStatus != null) {
                 const statusOrder = ['pending', 'accepted', 'awaiting_confirmation', 'completed', 'liquidated'];
                 final existingIdx = statusOrder.indexOf(existingStatus);
                 final newIdx = statusOrder.indexOf(status ?? 'pending');
                 if (existingIdx >= 0 && newIdx >= 0 && newIdx < existingIdx) {
-                  debugPrint('   ⚠️ Ignorando update $orderId: $existingStatus -> $status (regressão)');
                   continue;
                 }
               }
               
-              // IMPORTANTE: Incluir proofImage do comprovante para o usuário ver
+              // IMPORTANTE: Incluir proofImage do comprovante para o usuÃ¡rio ver
               final proofImage = content['proofImage'] as String?;
               
-              // NOVO: Incluir providerInvoice para pagamento automático
+              // NOVO: Incluir providerInvoice para pagamento automÃ¡tico
               final providerInvoice = content['providerInvoice'] as String?;
               
               // providerId pode vir do content ou do pubkey do evento (para accepts)
               final providerId = content['providerId'] as String? ?? event['pubkey'] as String?;
               
-              // IMPORTANTE: Guardar quem publicou o evento para verificar se foi o próprio usuário
+              // IMPORTANTE: Guardar quem publicou o evento para verificar se foi o prÃ³prio usuÃ¡rio
               final eventAuthorPubkey = event['pubkey'] as String?;
               
               updates[orderId] = {
@@ -1262,20 +1137,15 @@ class NostrOrderService {
                 'completedAt': content['completedAt'],
                 'created_at': createdAt,
               };
-              debugPrint('   📥 Update: $orderId -> status=$status, providerId=${providerId?.substring(0, 8) ?? "null"}, author=${eventAuthorPubkey?.substring(0, 8) ?? "null"}, hasInvoice=${providerInvoice != null} (type=$eventType)');
             }
           } catch (e) {
             // Ignorar eventos mal formatados
           }
         }
       } catch (e) {
-        debugPrint('⚠️ Falha ao buscar updates de $relay: $e');
       }
     }
     
-    debugPrint('🔄 ══════════════════════════════════════════════════');
-    debugPrint('✅ ${updates.length} updates de status encontrados');
-    debugPrint('🔄 ══════════════════════════════════════════════════');
     return updates;
   }
   
@@ -1289,16 +1159,15 @@ class NostrOrderService {
     final providerId = update['providerId'] as String?;
     final proofImage = update['proofImage'] as String?;
     final completedAt = update['completedAt'] as String?;
-    final providerInvoice = update['providerInvoice'] as String?; // CRÍTICO: Invoice do provedor
+    final providerInvoice = update['providerInvoice'] as String?; // CRÃTICO: Invoice do provedor
     
-    // NOTA: Não bloqueamos mais "completed" do provedor porque:
-    // 1. O pagamento ao provedor só acontece via invoice Lightning que ele gera
-    // 2. O pagamento da taxa só acontece quando o USUÁRIO confirma localmente
-    // 3. O provedor marcar "completed" não causa dano financeiro
-    // 4. Bloquear causa problemas de sincronização entre dispositivos
+    // NOTA: NÃ£o bloqueamos mais "completed" do provedor porque:
+    // 1. O pagamento ao provedor sÃ³ acontece via invoice Lightning que ele gera
+    // 2. O pagamento da taxa sÃ³ acontece quando o USUÃRIO confirma localmente
+    // 3. O provedor marcar "completed" nÃ£o causa dano financeiro
+    // 4. Bloquear causa problemas de sincronizaÃ§Ã£o entre dispositivos
     
     if (newStatus != null && newStatus != order.status) {
-      debugPrint('   🔄 Aplicando status: ${order.id.substring(0, 8)} ${order.status} -> $newStatus (hasProof=${proofImage != null}, hasInvoice=${providerInvoice != null})');
       
       // Mesclar metadata existente com novos dados do comprovante
       final updatedMetadata = Map<String, dynamic>.from(order.metadata ?? {});
@@ -1308,12 +1177,11 @@ class NostrOrderService {
       }
       if (completedAt != null) {
         updatedMetadata['proofReceivedAt'] = completedAt;
-        updatedMetadata['receipt_submitted_at'] = completedAt; // Compatibilidade com auto-liquidação
+        updatedMetadata['receipt_submitted_at'] = completedAt; // Compatibilidade com auto-liquidaÃ§Ã£o
       }
-      // CRÍTICO: Incluir providerInvoice para pagamento automático
+      // CRÃTICO: Incluir providerInvoice para pagamento automÃ¡tico
       if (providerInvoice != null && providerInvoice.isNotEmpty) {
         updatedMetadata['providerInvoice'] = providerInvoice;
-        debugPrint('   ⚡ Invoice do provedor adicionado ao metadata: ${providerInvoice.substring(0, 30)}...');
       }
       
       return Order(
@@ -1338,28 +1206,22 @@ class NostrOrderService {
     return order;
   }
 
-  /// Busca ordens pendentes (raw) - todas as ordens disponíveis para Bros
-  /// CRÍTICO: Busca em TODOS os relays para garantir sincronização entre dispositivos
+  /// Busca ordens pendentes (raw) - todas as ordens disponÃ­veis para Bros
+  /// CRÃTICO: Busca em TODOS os relays para garantir sincronizaÃ§Ã£o entre dispositivos
   Future<List<Map<String, dynamic>>> _fetchPendingOrdersRaw() async {
     final orders = <Map<String, dynamic>>[];
     final seenIds = <String>{};
 
-    debugPrint('🔍 ══════════════════════════════════════════════════');
-    debugPrint('🔍 BUSCANDO ORDENS PENDENTES DE TODOS OS RELAYS');
-    debugPrint('🔍 ══════════════════════════════════════════════════');
-    debugPrint('   Relays configurados: ${_relays.length}');
     for (final r in _relays) {
-      debugPrint('      - $r');
     }
     
-    // IMPORTANTE: Buscar ordens dos últimos 45 dias (aumentado de 14)
-    // Isso garante que ordens mais antigas ainda disponíveis sejam encontradas
-    // Ordens de PIX/Boleto podem demorar para serem aceitas em períodos de baixa atividade
-    final fortyFiveDaysAgo = DateTime.now().subtract(const Duration(days: 45));
-    final sinceTimestamp = (fortyFiveDaysAgo.millisecondsSinceEpoch / 1000).floor();
-    debugPrint('   Since: ${fortyFiveDaysAgo.toIso8601String()} (timestamp: $sinceTimestamp)');
+    // IMPORTANTE: Buscar ordens dos Ãºltimos 45 dias (aumentado de 14)
+    // Isso garante que ordens mais antigas ainda disponÃ­veis sejam encontradas
+    // Ordens de PIX/Boleto podem demorar para serem aceitas em perÃ­odos de baixa atividade
+    final fourteenDaysAgo = DateTime.now().subtract(const Duration(days: 14));
+    final sinceTimestamp = (fourteenDaysAgo.millisecondsSinceEpoch / 1000).floor();
 
-    // ESTRATÉGIA: Buscar por KIND diretamente (mais confiável que tags)
+    // ESTRATÃ‰GIA: Buscar por KIND diretamente (mais confiÃ¡vel que tags)
     // Buscar de TODOS os relays em paralelo para maior velocidade
     final futures = <Future<List<Map<String, dynamic>>>>[];
     
@@ -1374,52 +1236,45 @@ class NostrOrderService {
     for (int i = 0; i < results.length; i++) {
       final relayOrders = results[i];
       final relay = _relays[i];
-      debugPrint('   📥 $relay retornou ${relayOrders.length} eventos');
       
       for (final order in relayOrders) {
         final id = order['id'];
         if (!seenIds.contains(id)) {
           seenIds.add(id);
           orders.add(order);
-          debugPrint('      ✅ Nova ordem: ${id.substring(0, 8)}');
         }
       }
     }
-    debugPrint('🔍 ══════════════════════════════════════════════════');
-    debugPrint('✅ TOTAL: ${orders.length} ordens únicas encontradas');
-    debugPrint('🔍 ══════════════════════════════════════════════════');
     return orders;
   }
   
-  /// Helper: Busca ordens pendentes de um relay específico
-  /// ROBUSTO: Retorna lista vazia em caso de QUALQUER erro (timeout, conexão, etc)
-  /// CRÍTICO: Usa tag #t: ['bro-order'] para filtrar apenas eventos do app BRO
-  /// (kind 30078 é usado por muitos apps, sem a tag retorna eventos irrelevantes)
+  /// Helper: Busca ordens pendentes de um relay especÃ­fico
+  /// ROBUSTO: Retorna lista vazia em caso de QUALQUER erro (timeout, conexÃ£o, etc)
+  /// CRÃTICO: Usa tag #t: ['bro-order'] para filtrar apenas eventos do app BRO
+  /// (kind 30078 Ã© usado por muitos apps, sem a tag retorna eventos irrelevantes)
   Future<List<Map<String, dynamic>>> _fetchPendingFromRelay(String relay, int sinceTimestamp) async {
     final orders = <Map<String, dynamic>>[];
     
     try {
-      // CRÍTICO: Buscar por KIND 30078 COM tag 'bro-order' para filtrar apenas ordens BRO
+      // CRÃTICO: Buscar por KIND 30078 COM tag 'bro-order' para filtrar apenas ordens BRO
       // Sem esta tag, o relay retorna eventos de outros apps (double-ratchet, drss, etc)
       // e as ordens BRO ficam "enterradas" no limit de 200
       final relayOrders = await _fetchFromRelayWithSince(
         relay,
         kinds: [kindBroOrder],
-        tags: {'#t': [broTag]}, // CRÍTICO: Filtra apenas ordens do app BRO
+        tags: {'#t': [broTag]}, // CRÃTICO: Filtra apenas ordens do app BRO
         since: sinceTimestamp,
         limit: 200, // Aumentado para pegar mais ordens
       ).timeout(
-        const Duration(seconds: 10),
+        const Duration(seconds: 5),
         onTimeout: () {
-          debugPrint('⏰ Timeout ao buscar de $relay');
           return <Map<String, dynamic>>[];
         },
       );
       
-      debugPrint('   📥 $relay: ${relayOrders.length} eventos kind 30078 com tag bro-order');
       
       for (final order in relayOrders) {
-        // Verificar se é ordem do Bro app (verificando content)
+        // Verificar se Ã© ordem do Bro app (verificando content)
         try {
           final content = order['parsedContent'] ?? jsonDecode(order['content'] ?? '{}');
           if (content['type'] == 'bro_order') {
@@ -1428,20 +1283,16 @@ class NostrOrderService {
         } catch (_) {}
       }
     } catch (e) {
-      debugPrint('⚠️ Falha ao buscar de $relay: $e');
     }
     
     return orders;
   }
 
-  /// Busca ordens de um usuário (raw)
+  /// Busca ordens de um usuÃ¡rio (raw)
   Future<List<Map<String, dynamic>>> _fetchUserOrdersRaw(String pubkey) async {
     final orders = <Map<String, dynamic>>[];
     final seenIds = <String>{};
 
-    debugPrint('🔍 ══════════════════════════════════════════════════');
-    debugPrint('🔍 BUSCANDO ORDENS DO USUÁRIO ${pubkey.substring(0, 16)}');
-    debugPrint('🔍 ══════════════════════════════════════════════════');
 
     // Buscar de TODOS os relays em paralelo
     final futures = <Future<List<Map<String, dynamic>>>>[];
@@ -1457,7 +1308,6 @@ class NostrOrderService {
     for (int i = 0; i < results.length; i++) {
       final relayOrders = results[i];
       final relay = _relays[i];
-      debugPrint('   📥 $relay retornou ${relayOrders.length} eventos');
       
       for (final order in relayOrders) {
         final id = order['id'];
@@ -1468,33 +1318,30 @@ class NostrOrderService {
       }
     }
 
-    debugPrint('✅ Total: ${orders.length} ordens únicas do usuário');
-    debugPrint('🔍 ══════════════════════════════════════════════════');
     return orders;
   }
   
-  /// Helper: Busca ordens de um usuário de um relay específico
+  /// Helper: Busca ordens de um usuÃ¡rio de um relay especÃ­fico
   /// ROBUSTO: Retorna lista vazia em caso de QUALQUER erro
   Future<List<Map<String, dynamic>>> _fetchUserOrdersFromRelay(String relay, String pubkey) async {
     final orders = <Map<String, dynamic>>[];
     
     try {
-      // ESTRATÉGIA 1: Buscar por author (com timeout)
+      // ESTRATÃ‰GIA 1: Buscar por author (com timeout)
       final relayOrders = await _fetchFromRelay(
         relay,
         kinds: [kindBroOrder],
         authors: [pubkey],
         limit: 100,
       ).timeout(
-        const Duration(seconds: 10),
+        const Duration(seconds: 5),
         onTimeout: () {
-          debugPrint('⏰ Timeout ao buscar ordens do usuário de $relay');
           return <Map<String, dynamic>>[];
         },
       );
       
       for (final order in relayOrders) {
-        // Verificar se é ordem do Bro app
+        // Verificar se Ã© ordem do Bro app
         try {
           final content = order['parsedContent'] ?? jsonDecode(order['content'] ?? '{}');
           if (content['type'] == 'bro_order') {
@@ -1503,35 +1350,31 @@ class NostrOrderService {
         } catch (_) {}
       }
     } catch (e) {
-      debugPrint('⚠️ Falha ao buscar de $relay: $e');
     }
     
     return orders;
   }
 
-  /// Busca eventos de aceitação e comprovante direcionados a um usuário
-  /// Isso permite que o usuário veja quando um Bro aceitou sua ordem ou enviou comprovante
+  /// Busca eventos de aceitaÃ§Ã£o e comprovante direcionados a um usuÃ¡rio
+  /// Isso permite que o usuÃ¡rio veja quando um Bro aceitou sua ordem ou enviou comprovante
   Future<Map<String, Map<String, dynamic>>> fetchOrderUpdatesForUser(String userPubkey, {List<String>? orderIds}) async {
     final updates = <String, Map<String, dynamic>>{}; // orderId -> latest update
     
-    debugPrint('🔍 Buscando atualizações de ordens para ${userPubkey.substring(0, 16)}...');
     if (orderIds != null && orderIds.isNotEmpty) {
-      debugPrint('   IDs das ordens: ${orderIds.join(", ")}');
     }
 
     for (final relay in _relays.take(3)) {
       try {
-        // Buscar eventos de aceitação (kind 30079) e comprovante (kind 30081) onde o usuário é tagged
+        // Buscar eventos de aceitaÃ§Ã£o (kind 30079) e comprovante (kind 30081) onde o usuÃ¡rio Ã© tagged
         var events = await _fetchFromRelay(
           relay,
           kinds: [kindBroAccept, kindBroComplete],
-          tags: {'#p': [userPubkey]}, // Eventos direcionados ao usuário
+          tags: {'#p': [userPubkey]}, // Eventos direcionados ao usuÃ¡rio
           limit: 100,
         );
         
-        debugPrint('   $relay: ${events.length} eventos via #p');
         
-        // Se não encontrou eventos e temos IDs de ordens, buscar por tag #t (bro-accept, bro-complete)
+        // Se nÃ£o encontrou eventos e temos IDs de ordens, buscar por tag #t (bro-accept, bro-complete)
         if (events.isEmpty) {
           final altEvents = await _fetchFromRelay(
             relay,
@@ -1539,7 +1382,6 @@ class NostrOrderService {
             tags: {'#t': [broTag]}, // Todos os eventos bro
             limit: 100,
           );
-          debugPrint('   $relay: ${altEvents.length} eventos via #t (fallback)');
           events = altEvents;
         }
         
@@ -1552,7 +1394,7 @@ class NostrOrderService {
             
             if (orderId == null) continue;
             
-            // Verificar se este evento é mais recente que o atual
+            // Verificar se este evento Ã© mais recente que o atual
             final existingUpdate = updates[orderId];
             final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
             
@@ -1576,46 +1418,38 @@ class NostrOrderService {
                 'created_at': createdAt,
               };
               
-              debugPrint('   📥 Ordem $orderId: status=$newStatus (kind=$eventKind)');
             }
           } catch (e) {
-            debugPrint('   ⚠️ Erro ao processar evento: $e');
           }
         }
       } catch (e) {
-        debugPrint('⚠️ Falha ao buscar de $relay: $e');
       }
     }
 
-    debugPrint('✅ ${updates.length} atualizações encontradas');
     return updates;
   }
   
   /// Busca eventos de update de status para ordens que o provedor aceitou
-  /// Isso permite que o Bro veja quando o usuário confirmou o pagamento (completed)
-  /// SEGURANÇA: Só retorna updates para ordens específicas do provedor
+  /// Isso permite que o Bro veja quando o usuÃ¡rio confirmou o pagamento (completed)
+  /// SEGURANÃ‡A: SÃ³ retorna updates para ordens especÃ­ficas do provedor
   Future<Map<String, Map<String, dynamic>>> fetchOrderUpdatesForProvider(String providerPubkey, {List<String>? orderIds}) async {
     final updates = <String, Map<String, dynamic>>{}; // orderId -> latest update
     
-    // SEGURANÇA: Se não temos orderIds específicos, não buscar nada
-    // Isso previne vazamento de ordens de outros usuários
+    // SEGURANÃ‡A: Se nÃ£o temos orderIds especÃ­ficos, nÃ£o buscar nada
+    // Isso previne vazamento de ordens de outros usuÃ¡rios
     if (orderIds == null || orderIds.isEmpty) {
-      debugPrint('⚠️ [BUSCA UPDATES] Nenhum orderId fornecido, retornando vazio (segurança)');
       return updates;
     }
     
-    debugPrint('🔍 [BUSCA UPDATES] Buscando atualizações para provedor ${providerPubkey.substring(0, 16)}...');
-    debugPrint('   Ordens a verificar (${orderIds.length}): ${orderIds.map((id) => id.substring(0, 8)).join(", ")}');
 
     // Converter orderIds para Set para busca O(1)
     final orderIdSet = orderIds.toSet();
 
     for (final relay in _relays.take(3)) {
       try {
-        debugPrint('   🔍 Buscando em $relay...');
         
-        // ESTRATÉGIA 1: Buscar por tag #p (eventos direcionados ao provedor)
-        // Esta é a forma mais segura - só retorna eventos onde o provedor foi tagueado
+        // ESTRATÃ‰GIA 1: Buscar por tag #p (eventos direcionados ao provedor)
+        // Esta Ã© a forma mais segura - sÃ³ retorna eventos onde o provedor foi tagueado
         final pTagEvents = await _fetchFromRelay(
           relay,
           kinds: [kindBroPaymentProof], // 30080
@@ -1623,7 +1457,6 @@ class NostrOrderService {
           limit: 100,
         );
         
-        debugPrint('   📥 $relay: ${pTagEvents.length} eventos via #p');
         
         for (final event in pTagEvents) {
           try {
@@ -1634,7 +1467,7 @@ class NostrOrderService {
             
             if (eventOrderId == null || status == null) continue;
             
-            // SEGURANÇA: Só processar se a ordem está na lista que buscamos
+            // SEGURANÃ‡A: SÃ³ processar se a ordem estÃ¡ na lista que buscamos
             if (!orderIdSet.contains(eventOrderId)) continue;
             
             final existingUpdate = updates[eventOrderId];
@@ -1646,17 +1479,16 @@ class NostrOrderService {
                 'status': status,
                 'created_at': createdAt,
               };
-              debugPrint('   ✅ Update via #p: ${eventOrderId.substring(0, 8)} -> $status');
             }
           } catch (_) {}
         }
         
-        // ESTRATÉGIA 2: Buscar diretamente por cada orderId específico
-        // Fallback para quando a tag #p não foi indexada
-        // CORREÇÃO: Aumentado de 20 para 100 para preservar histórico completo
+        // ESTRATÃ‰GIA 2: Buscar diretamente por cada orderId especÃ­fico
+        // Fallback para quando a tag #p nÃ£o foi indexada
+        // CORREÃ‡ÃƒO: Aumentado de 20 para 100 para preservar histÃ³rico completo
         for (final orderId in orderIds.take(100)) {
           try {
-            // Buscar por tag #e (referência ao orderId)
+            // Buscar por tag #e (referÃªncia ao orderId)
             final eTagEvents = await _fetchFromRelay(
               relay,
               kinds: [kindBroPaymentProof],
@@ -1664,7 +1496,6 @@ class NostrOrderService {
               limit: 10,
             );
             
-            debugPrint('   📥 Busca #e para ${orderId.substring(0, 8)}: ${eTagEvents.length} eventos');
             
             for (final event in eTagEvents) {
               try {
@@ -1673,7 +1504,7 @@ class NostrOrderService {
                 final status = content['status'] as String?;
                 final createdAt = event['created_at'] as int? ?? 0;
                 
-                // SEGURANÇA: Verificar se é a ordem correta
+                // SEGURANÃ‡A: Verificar se Ã© a ordem correta
                 if (eventOrderId == null || eventOrderId != orderId) continue;
                 if (status == null) continue;
                 
@@ -1686,20 +1517,18 @@ class NostrOrderService {
                     'status': status,
                     'created_at': createdAt,
                   };
-                  debugPrint('   ✅ Update via #e: ${eventOrderId.substring(0, 8)} -> $status');
                 }
               } catch (_) {}
             }
           } catch (_) {}
         }
         
-        // ESTRATÉGIA 3: Buscar todos os eventos bro-update e filtrar
-        // CORREÇÃO: Rodar SEMPRE que houver ordens sem updates encontrados
-        // (antes só rodava quando updates estava totalmente vazio)
+        // ESTRATÃ‰GIA 3: Buscar todos os eventos bro-update e filtrar
+        // CORREÃ‡ÃƒO: Rodar SEMPRE que houver ordens sem updates encontrados
+        // (antes sÃ³ rodava quando updates estava totalmente vazio)
         final missingOrderIds = orderIds.where((id) => !updates.containsKey(id)).toList();
         if (missingOrderIds.isNotEmpty) {
           try {
-            debugPrint('   🔍 Estratégia 3: Buscando ${missingOrderIds.length} ordens sem update ainda...');
             final updateEvents = await _fetchFromRelay(
               relay,
               kinds: [kindBroPaymentProof],
@@ -1707,7 +1536,6 @@ class NostrOrderService {
               limit: 100,
             );
             
-            debugPrint('   📥 Busca #t=bro-update: ${updateEvents.length} eventos');
             
             for (final event in updateEvents) {
               try {
@@ -1718,7 +1546,7 @@ class NostrOrderService {
                 
                 if (eventOrderId == null || status == null) continue;
                 
-                // Verificar se esta ordem está na lista que buscamos
+                // Verificar se esta ordem estÃ¡ na lista que buscamos
                 if (!orderIdSet.contains(eventOrderId)) continue;
                 
                 final existingUpdate = updates[eventOrderId];
@@ -1730,7 +1558,6 @@ class NostrOrderService {
                     'status': status,
                     'created_at': createdAt,
                   };
-                  debugPrint('   ✅ Update via #t: ${eventOrderId.substring(0, 8)} -> $status');
                 }
               } catch (_) {}
             }
@@ -1738,16 +1565,14 @@ class NostrOrderService {
         }
         
       } catch (e) {
-        debugPrint('   ⚠️ Falha em $relay: $e');
       }
     }
 
-    debugPrint('🔍 [BUSCA UPDATES] Total: ${updates.length} updates encontrados');
     return updates;
   }
 
   // ============================================
-  // TIER/COLLATERAL - Persistência no Nostr
+  // TIER/COLLATERAL - PersistÃªncia no Nostr
   // ============================================
   
   /// Kind para dados do provedor (tier, collateral, etc)
@@ -1778,11 +1603,11 @@ class NostrOrderService {
       });
 
       // Usar evento replaceable (kind 30082) com 'd' tag = pubkey do provedor
-      // Isso permite atualizar o tier sem criar múltiplos eventos
+      // Isso permite atualizar o tier sem criar mÃºltiplos eventos
       final event = Event.from(
         kind: kindBroProviderTier,
         tags: [
-          ['d', 'tier_${keychain.public}'], // Identificador único por provedor
+          ['d', 'tier_${keychain.public}'], // Identificador Ãºnico por provedor
           ['t', providerDataTag],
           ['t', broAppTag],
           ['tierId', tierId],
@@ -1791,7 +1616,6 @@ class NostrOrderService {
         privkey: keychain.private,
       );
 
-      debugPrint('📤 Publicando tier $tierId do provedor nos relays...');
       
       int successCount = 0;
       for (final relay in _relays) {
@@ -1799,21 +1623,17 @@ class NostrOrderService {
           final success = await _publishToRelay(relay, event);
           if (success) successCount++;
         } catch (e) {
-          debugPrint('⚠️ Falha ao publicar tier em $relay: $e');
         }
       }
 
-      debugPrint('✅ Tier publicado em $successCount/${_relays.length} relays');
       return successCount > 0;
     } catch (e) {
-      debugPrint('❌ Erro ao publicar tier: $e');
       return false;
     }
   }
 
   /// Busca os dados do tier do provedor no Nostr
   Future<Map<String, dynamic>?> fetchProviderTier(String providerPubkey) async {
-    debugPrint('🔍 Buscando tier do provedor $providerPubkey...');
     
     for (final relay in _relays) {
       try {
@@ -1828,7 +1648,6 @@ class NostrOrderService {
           final event = events.first;
           final content = event['parsedContent'] ?? jsonDecode(event['content']);
           
-          debugPrint('✅ Tier encontrado: ${content['tierName']}');
           
           return {
             'tierId': content['tierId'],
@@ -1840,11 +1659,9 @@ class NostrOrderService {
           };
         }
       } catch (e) {
-        debugPrint('⚠️ Falha ao buscar tier de $relay: $e');
       }
     }
     
-    debugPrint('❌ Tier não encontrado no Nostr');
     return null;
   }
 
@@ -1901,7 +1718,6 @@ class NostrOrderService {
         privkey: keychain.private,
       );
 
-      debugPrint('📤 Publicando oferta "$title" nos relays...');
       
       int successCount = 0;
       for (final relay in _relays.take(5)) {
@@ -1909,17 +1725,13 @@ class NostrOrderService {
           final success = await _publishToRelay(relay, event);
           if (success) {
             successCount++;
-            debugPrint('✅ Publicado em $relay');
           }
         } catch (e) {
-          debugPrint('⚠️ Falha em $relay: $e');
         }
       }
 
-      debugPrint('✅ Oferta publicada em $successCount relays');
       return successCount > 0 ? offerId : null;
     } catch (e) {
-      debugPrint('❌ Erro ao publicar oferta: $e');
       return null;
     }
   }
@@ -1929,7 +1741,6 @@ class NostrOrderService {
     final offers = <Map<String, dynamic>>[];
     final seenIds = <String>{};
 
-    debugPrint('🔍 Buscando ofertas do marketplace...');
 
     for (final relay in _relays.take(5)) {
       try {
@@ -1940,7 +1751,6 @@ class NostrOrderService {
           limit: 50,
         );
         
-        debugPrint('   $relay: ${events.length} ofertas');
         
         for (final event in events) {
           final id = event['id'];
@@ -1962,25 +1772,21 @@ class NostrOrderService {
                 ).toIso8601String(),
               });
             } catch (e) {
-              debugPrint('⚠️ Erro ao parsear oferta: $e');
             }
           }
         }
       } catch (e) {
-        debugPrint('⚠️ Falha ao buscar de $relay: $e');
       }
     }
 
-    debugPrint('✅ Total: ${offers.length} ofertas do marketplace');
     return offers;
   }
 
-  /// Busca ofertas de um usuário específico
+  /// Busca ofertas de um usuÃ¡rio especÃ­fico
   Future<List<Map<String, dynamic>>> fetchUserMarketplaceOffers(String pubkey) async {
     final offers = <Map<String, dynamic>>[];
     final seenIds = <String>{};
 
-    debugPrint('🔍 Buscando ofertas do usuário ${pubkey.substring(0, 8)}...');
 
     for (final relay in _relays.take(3)) {
       try {
@@ -2011,16 +1817,13 @@ class NostrOrderService {
                 ).toIso8601String(),
               });
             } catch (e) {
-              debugPrint('⚠️ Erro ao parsear oferta: $e');
             }
           }
         }
       } catch (e) {
-        debugPrint('⚠️ Falha ao buscar de $relay: $e');
       }
     }
 
-    debugPrint('✅ ${offers.length} ofertas do usuário');
     return offers;
   }
 }

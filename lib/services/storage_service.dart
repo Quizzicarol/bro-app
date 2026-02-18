@@ -202,10 +202,7 @@ class StorageService {
     // NÃO salvar mais em MASTER_SEED ou breez_mnemonic global!
     // Isso causava conflito entre seeds de diferentes usuários.
     
-    debugPrint('🔐 Seed salva para usuário: ${pubkey.substring(0, 16)}...');
-    debugPrint('   1. SecureStorage[$seedKey]');
-    debugPrint('   2. SharedPrefs[$backupKey]');  
-    debugPrint('   Seed: ${mnemonic.split(' ').take(2).join(' ')}...');
+    debugPrint('🔐 Seed salva para usuário com sucesso');
   }
   
   /// Força a troca de seed (usado nas configurações avançadas)
@@ -220,73 +217,9 @@ class StorageService {
     if (_prefs == null) await init();
     
     debugPrint('');
-    debugPrint('╔═══════════════════════════════════════════════════════════╗');
-    debugPrint('║          DIAGNÓSTICO COMPLETO DE SEEDS                    ║');
-    debugPrint('╚═══════════════════════════════════════════════════════════╝');
-    
-    // SecureStorage keys
-    final secureKeys = ['breez_mnemonic', 'MASTER_SEED_BACKUP'];
-    for (final key in secureKeys) {
-      final value = await _secureStorage.read(key: key);
-      if (value != null && value.isNotEmpty) {
-        debugPrint('🔒 SecureStorage[$key]: ${value.split(' ').take(2).join(' ')}... (${value.split(' ').length} palavras)');
-      } else {
-        debugPrint('❌ SecureStorage[$key]: VAZIO');
-      }
-    }
-    
-    // SharedPreferences keys
-    final allKeys = _prefs?.getKeys() ?? {};
-    debugPrint('');
-    debugPrint('📋 SharedPreferences (${allKeys.length} chaves):');
-    
-    for (final key in allKeys.where((k) => 
-        k.startsWith('bm_backup_') || 
-        k.startsWith('breez_seed_') ||
-        k.contains('seed') ||
-        k.contains('mnemonic') ||
-        k == 'MASTER_SEED_PREFS')) {
-      // IMPORTANTE: Usar get() e verificar tipo antes de fazer cast
-      try {
-        final rawValue = _prefs?.get(key);
-        final value = rawValue is String ? rawValue : null;
-        if (value != null) {
-          // Tentar deofuscar
-          final deobfuscated = _deobfuscateSeed(value);
-          if (deobfuscated.isNotEmpty && deobfuscated.split(' ').length == 12) {
-            debugPrint('   ✅ $key: ${deobfuscated.split(' ').take(2).join(' ')}...');
-          } else {
-            debugPrint('   📦 $key: [ofuscado ou inválido]');
-          }
-        }
-      } catch (e) {
-        debugPrint('   ⚠️ $key: [erro ao ler: $e]');
-      }
-    }
-    
-    // Pubkey atual
-    final pubkey = await getNostrPublicKey();
-    debugPrint('');
-    debugPrint('👤 Pubkey atual: ${pubkey?.substring(0, 16) ?? "NULL"}...');
-    
-    if (pubkey != null) {
-      final userSeedKey = _getSeedKeyForUser(pubkey);
-      final userBackupKey = _getSeedBackupKeyForUser(pubkey);
-      
-      final userSeed = await _secureStorage.read(key: userSeedKey);
-      debugPrint('   🔒 $userSeedKey: ${userSeed != null ? "${userSeed.split(' ').take(2).join(' ')}..." : "NULL"}');
-      
-      final userBackup = _prefs?.getString(userBackupKey);
-      if (userBackup != null) {
-        final deobfuscated = _deobfuscateSeed(userBackup);
-        debugPrint('   📋 $userBackupKey: ${deobfuscated.isNotEmpty ? "${deobfuscated.split(' ').take(2).join(' ')}..." : "INVÁLIDO"}');
-      } else {
-        debugPrint('   📋 $userBackupKey: NULL');
-      }
-    }
-    
-    debugPrint('╔═══════════════════════════════════════════════════════════╝');
-    debugPrint('');
+    debugPrint('🔍 debugShowAllSeeds() - DESATIVADO em produção (dados sensíveis)');
+    // Diagnóstico de seeds desativado para segurança.
+    // Em debug, use o breakpoint ou flutter inspect.
   }
   
   /// Retorna o pubkey do dono da seed atual (se houver)
@@ -314,9 +247,7 @@ class StorageService {
     final pubkey = forPubkey ?? await getNostrPublicKey();
     
     debugPrint('');
-    debugPrint('═══════════════════════════════════════════════════════════');
-    debugPrint('🔍 BUSCANDO SEED - Pubkey: ${pubkey?.substring(0, 16) ?? "NULL"}...');
-    debugPrint('═══════════════════════════════════════════════════════════');
+    debugPrint('🔍 Buscando seed...');
     
     String? mnemonic;
     
@@ -324,9 +255,8 @@ class StorageService {
     if (pubkey != null) {
       final seedKey = _getSeedKeyForUser(pubkey);
       mnemonic = await _secureStorage.read(key: seedKey);
-      debugPrint('   [1] SecureStorage[$seedKey]: ${mnemonic != null ? "${mnemonic.split(' ').take(2).join(' ')}..." : "NULL"}');
       if (mnemonic != null && mnemonic.split(' ').length == 12) {
-        debugPrint('✅ FONTE 1: Seed encontrada!');
+        debugPrint('✅ Seed encontrada (Fonte 1)');
         return mnemonic;
       }
     }
@@ -335,11 +265,10 @@ class StorageService {
     if (pubkey != null) {
       final backupKey = _getSeedBackupKeyForUser(pubkey);
       final backupObfuscated = _prefs?.getString(backupKey);
-      debugPrint('   [2] SharedPrefs[$backupKey]: ${backupObfuscated != null ? "EXISTE" : "NULL"}');
       if (backupObfuscated != null && backupObfuscated.isNotEmpty) {
         mnemonic = _deobfuscateSeed(backupObfuscated);
         if (mnemonic.isNotEmpty && mnemonic.split(' ').length == 12) {
-          debugPrint('✅ FONTE 2: Seed encontrada no backup!');
+          debugPrint('✅ Seed encontrada (Fonte 2 - backup)');
           // Restaurar no SecureStorage
           if (pubkey != null) {
             await _secureStorage.write(key: _getSeedKeyForUser(pubkey), value: mnemonic);
@@ -381,9 +310,8 @@ class StorageService {
     
     // FONTE 3: MASTER SEED BACKUP (nunca é apagado)
     mnemonic = await _secureStorage.read(key: _masterSeedKey);
-    debugPrint('   [3] MASTER_SEED_BACKUP: ${mnemonic != null ? "${mnemonic.split(' ').take(2).join(' ')}..." : "NULL"}');
     if (mnemonic != null && mnemonic.split(' ').length == 12) {
-      debugPrint('✅ FONTE 3: Seed encontrada no MASTER BACKUP!');
+      debugPrint('✅ Seed encontrada (Fonte 3 - master backup)');
       // Salvar para o usuário atual
       if (pubkey != null) {
         await _secureStorage.write(key: _getSeedKeyForUser(pubkey), value: mnemonic);
@@ -393,7 +321,6 @@ class StorageService {
     
     // FONTE 4: SharedPrefs MASTER
     final masterPrefs = _prefs?.getString('MASTER_SEED_PREFS');
-    debugPrint('   [4] MASTER_SEED_PREFS: ${masterPrefs != null ? "EXISTE" : "NULL"}');
     if (masterPrefs != null && masterPrefs.isNotEmpty) {
       mnemonic = _deobfuscateSeed(masterPrefs);
       if (mnemonic.isNotEmpty && mnemonic.split(' ').length == 12) {

@@ -44,6 +44,10 @@
         "/^& \"\\$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb\\.exe\" logcat -d -v time \\| Select-String -Pattern \"flutter\\|Bro\\|💼\\|Taxa\\|ganhos\\|provedor\\|carteira\\|wallet\\|fee\\|orderId\\|sats\" \\| Select-Object -Last 150$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^& \"\\$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb\\.exe\" logcat -v time -s flutter 2>&1 \\| Tee-Object -FilePath \"c:\\\\Users\\\\produ\\\\Documents\\\\GitHub\\\\bro_app\\\\logs_render2\\.txt\"$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }

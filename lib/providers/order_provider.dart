@@ -2169,14 +2169,10 @@ class OrderProvider with ChangeNotifier {
           if (_isStatusMoreRecent(nostrOrder.status, existing.status) || 
               existing.amount == 0 && nostrOrder.amount > 0) {
             
-            // CORREÇÃO CRÍTICA: Se sou o CRIADOR da ordem (userPubkey == minha pubkey),
-            // NÃO aceitar status "completed" via Nostr - só EU posso confirmar após PAGAR!
-            // O provedor pode enviar "completed" mas o usuário precisa confirmar localmente.
+            // NOTA: O bloqueio de "completed" indevido é feito no NostrOrderService._applyStatusUpdate()
+            // que verifica se o evento foi publicado pelo PROVEDOR ou pelo PRÓPRIO USUÁRIO.
+            // Aqui apenas aplicamos o status que já foi filtrado pelo NostrOrderService.
             String statusToUse = nostrOrder.status;
-            if (nostrOrder.status == 'completed' && existing.userPubkey == _currentUserPubkey) {
-              debugPrint('🛡️ BLOQUEANDO status completed via Nostr para ordem ${existing.id.substring(0, 8)} - sou o CRIADOR, preciso confirmar após pagar');
-              statusToUse = existing.status; // Manter status atual
-            }
             
             // Mesclar metadata: preservar local e adicionar do Nostr (proofImage, etc)
             final mergedMetadata = <String, dynamic>{
@@ -2231,13 +2227,10 @@ class OrderProvider with ChangeNotifier {
             needsUpdate = true;
           }
           
-          // CORREÇÃO CRÍTICA: Se sou o CRIADOR da ordem (userPubkey == minha pubkey),
-          // NÃO aceitar status "completed" via Nostr - só EU posso confirmar após PAGAR!
+          // NOTA: O bloqueio de "completed" indevido é feito no NostrOrderService._applyStatusUpdate()
+          // que verifica se o evento foi publicado pelo PROVEDOR ou pelo PRÓPRIO USUÁRIO.
+          // Aqui apenas aplicamos o status que já foi processado.
           String statusToUse = newStatus;
-          if (newStatus == 'completed' && existing.userPubkey == _currentUserPubkey) {
-            debugPrint('🛡️ BLOQUEANDO status completed via update Nostr para ordem ${orderId.substring(0, 8)} - sou o CRIADOR, preciso confirmar após pagar');
-            statusToUse = existing.status; // Manter status atual
-          }
           
           // Verificar se o novo status é mais avançado
           if (_isStatusMoreRecent(statusToUse, existing.status)) {

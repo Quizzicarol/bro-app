@@ -1249,16 +1249,20 @@ class NostrOrderService {
               // providerId pode vir do content ou do pubkey do evento (para accepts)
               final providerId = content['providerId'] as String? ?? event['pubkey'] as String?;
               
+              // IMPORTANTE: Guardar quem publicou o evento para verificar se foi o próprio usuário
+              final eventAuthorPubkey = event['pubkey'] as String?;
+              
               updates[orderId] = {
                 'orderId': orderId,
                 'status': status,
                 'providerId': providerId,
+                'eventAuthorPubkey': eventAuthorPubkey, // Quem publicou este update
                 'proofImage': proofImage, // Comprovante enviado pelo Bro
                 'providerInvoice': providerInvoice, // Invoice para pagar o Bro
                 'completedAt': content['completedAt'],
                 'created_at': createdAt,
               };
-              debugPrint('   📥 Update: $orderId -> status=$status, providerId=${providerId?.substring(0, 8) ?? "null"}, hasInvoice=${providerInvoice != null} (type=$eventType)');
+              debugPrint('   📥 Update: $orderId -> status=$status, providerId=${providerId?.substring(0, 8) ?? "null"}, author=${eventAuthorPubkey?.substring(0, 8) ?? "null"}, hasInvoice=${providerInvoice != null} (type=$eventType)');
             }
           } catch (e) {
             // Ignorar eventos mal formatados
@@ -1287,30 +1291,42 @@ class NostrOrderService {
     final proofImage = update['proofImage'] as String?;
     final completedAt = update['completedAt'] as String?;
     final providerInvoice = update['providerInvoice'] as String?; // CRÍTICO: Invoice do provedor
+    final eventAuthorPubkey = update['eventAuthorPubkey'] as String?; // Quem publicou o evento
     
-    // CORREÇÃO CRÍTICA: Bloquear status "completed" via Nostr quando EU sou o CRIADOR da ordem
-    // O provedor pode marcar como "completed" mas o CLIENTE precisa confirmar localmente
-    // que recebeu o valor antes de liberar o pagamento ao provedor
+    // CORREÇÃO CRÍTICA: Bloquear status "completed" via Nostr APENAS quando:
+    // 1. EU sou o CRIADOR da ordem (order.userPubkey == currentUserPubkey)
+    // 2. E o evento foi publicado pelo PROVEDOR (eventAuthorPubkey != currentUserPubkey)
+    // 
+    // Se EU MESMO publiquei o "completed", então é minha confirmação legítima e deve ser aceita!
+    // Isso permite recuperar status de ordens já completadas quando o storage local é perdido.
     if (newStatus == 'completed' && currentUserPubkey != null && order.userPubkey == currentUserPubkey) {
-      debugPrint('   🛡️ BLOQUEANDO status completed via Nostr para ordem ${order.id.substring(0, 8)} - sou o CRIADOR');
-      // NÃO aplicar completed, mas ainda aplicar metadata (proofImage, providerInvoice)
-      // para que o usuário possa ver o comprovante
-      if (proofImage != null || providerInvoice != null) {
-        final updatedMetadata = Map<String, dynamic>.from(order.metadata ?? {});
-        if (proofImage != null && proofImage.isNotEmpty) {
-          updatedMetadata['proofImage'] = proofImage;
-          updatedMetadata['paymentProof'] = proofImage;
+      // Verificar se FUI EU quem publicou o evento de completed
+      final isMyOwnCompletionEvent = eventAuthorPubkey == currentUserPubkey;
+      
+      if (!isMyOwnCompletionEvent) {
+        debugPrint('   🛡️ BLOQUEANDO status completed via Nostr para ordem ${order.id.substring(0, 8)} - publicado por PROVEDOR (${eventAuthorPubkey?.substring(0, 8) ?? "unknown"})');
+        // NÃO aplicar completed, mas ainda aplicar metadata (proofImage, providerInvoice)
+        // para que o usuário possa ver o comprovante
+        if (proofImage != null || providerInvoice != null) {
+          final updatedMetadata = Map<String, dynamic>.from(order.metadata ?? {});
+          if (proofImage != null && proofImage.isNotEmpty) {
+            updatedMetadata['proofImage'] = proofImage;
+            updatedMetadata['paymentProof'] = proofImage;
+          }
+          if (providerInvoice != null && providerInvoice.isNotEmpty) {
+            updatedMetadata['providerInvoice'] = providerInvoice;
+          }
+          // Retornar ordem com metadata atualizado mas SEM mudar status
+          return order.copyWith(
+            providerId: providerId ?? order.providerId,
+            metadata: updatedMetadata,
+          );
         }
-        if (providerInvoice != null && providerInvoice.isNotEmpty) {
-          updatedMetadata['providerInvoice'] = providerInvoice;
-        }
-        // Retornar ordem com metadata atualizado mas SEM mudar status
-        return order.copyWith(
-          providerId: providerId ?? order.providerId,
-          metadata: updatedMetadata,
-        );
+        return order; // Manter ordem inalterada
+      } else {
+        debugPrint('   ✅ Aceitando status completed para ordem ${order.id.substring(0, 8)} - FUI EU quem confirmou');
+        // Continuar para aplicar o status normalmente
       }
-      return order; // Manter ordem inalterada
     }
     
     if (newStatus != null && newStatus != order.status) {

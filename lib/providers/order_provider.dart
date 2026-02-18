@@ -2166,6 +2166,15 @@ class OrderProvider with ChangeNotifier {
           if (_isStatusMoreRecent(nostrOrder.status, existing.status) || 
               existing.amount == 0 && nostrOrder.amount > 0) {
             
+            // CORREÇÃO CRÍTICA: Se sou o CRIADOR da ordem (userPubkey == minha pubkey),
+            // NÃO aceitar status "completed" via Nostr - só EU posso confirmar após PAGAR!
+            // O provedor pode enviar "completed" mas o usuário precisa confirmar localmente.
+            String statusToUse = nostrOrder.status;
+            if (nostrOrder.status == 'completed' && existing.userPubkey == _currentUserPubkey) {
+              debugPrint('🛡️ BLOQUEANDO status completed via Nostr para ordem ${existing.id.substring(0, 8)} - sou o CRIADOR, preciso confirmar após pagar');
+              statusToUse = existing.status; // Manter status atual
+            }
+            
             // Mesclar metadata: preservar local e adicionar do Nostr (proofImage, etc)
             final mergedMetadata = <String, dynamic>{
               ...?existing.metadata,
@@ -2173,8 +2182,8 @@ class OrderProvider with ChangeNotifier {
             };
             
             _orders[existingIndex] = existing.copyWith(
-              status: _isStatusMoreRecent(nostrOrder.status, existing.status) 
-                  ? nostrOrder.status 
+              status: _isStatusMoreRecent(statusToUse, existing.status) 
+                  ? statusToUse 
                   : existing.status,
               // Preservar dados locais se Nostr tem 0
               amount: nostrOrder.amount > 0 ? nostrOrder.amount : existing.amount,
@@ -2219,14 +2228,22 @@ class OrderProvider with ChangeNotifier {
             needsUpdate = true;
           }
           
+          // CORREÇÃO CRÍTICA: Se sou o CRIADOR da ordem (userPubkey == minha pubkey),
+          // NÃO aceitar status "completed" via Nostr - só EU posso confirmar após PAGAR!
+          String statusToUse = newStatus;
+          if (newStatus == 'completed' && existing.userPubkey == _currentUserPubkey) {
+            debugPrint('🛡️ BLOQUEANDO status completed via update Nostr para ordem ${orderId.substring(0, 8)} - sou o CRIADOR, preciso confirmar após pagar');
+            statusToUse = existing.status; // Manter status atual
+          }
+          
           // Verificar se o novo status é mais avançado
-          if (_isStatusMoreRecent(newStatus, existing.status)) {
+          if (_isStatusMoreRecent(statusToUse, existing.status)) {
             needsUpdate = true;
           }
           
           if (needsUpdate) {
             _orders[existingIndex] = existing.copyWith(
-              status: _isStatusMoreRecent(newStatus, existing.status) ? newStatus : existing.status,
+              status: _isStatusMoreRecent(statusToUse, existing.status) ? statusToUse : existing.status,
               providerId: newProviderId ?? existing.providerId,
               // Se for comprovante, salvar no metadata (incluindo providerInvoice)
               metadata: (update['proofImage'] != null || update['providerInvoice'] != null) ? {

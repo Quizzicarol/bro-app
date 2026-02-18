@@ -1139,7 +1139,7 @@ class NostrOrderService {
           }
           return true;
         })
-        .map((order) => _applyStatusUpdate(order, statusUpdates, currentUserPubkey: pubkey))
+        .map((order) => _applyStatusUpdate(order, statusUpdates))
         .toList();
     
     debugPrint('✅ fetchUserOrders: ${orders.length} ordens VERIFICADAS para $pubkey');
@@ -1280,9 +1280,8 @@ class NostrOrderService {
   }
   
   /// Aplica o status mais recente de um update a uma ordem
-  /// [currentUserPubkey] - Se fornecido, bloqueia status "completed" para ordens do próprio usuário
-  /// Isso evita que o provedor marque como completed antes do usuário confirmar o recebimento
-  Order _applyStatusUpdate(Order order, Map<String, Map<String, dynamic>> statusUpdates, {String? currentUserPubkey}) {
+  /// Aplica updates de status do Nostr a uma ordem
+  Order _applyStatusUpdate(Order order, Map<String, Map<String, dynamic>> statusUpdates) {
     final update = statusUpdates[order.id];
     if (update == null) return order;
     
@@ -1291,43 +1290,12 @@ class NostrOrderService {
     final proofImage = update['proofImage'] as String?;
     final completedAt = update['completedAt'] as String?;
     final providerInvoice = update['providerInvoice'] as String?; // CRÍTICO: Invoice do provedor
-    final eventAuthorPubkey = update['eventAuthorPubkey'] as String?; // Quem publicou o evento
     
-    // CORREÇÃO CRÍTICA: Bloquear status "completed" via Nostr APENAS quando:
-    // 1. EU sou o CRIADOR da ordem (order.userPubkey == currentUserPubkey)
-    // 2. E o evento foi publicado pelo PROVEDOR (eventAuthorPubkey != currentUserPubkey)
-    // 
-    // Se EU MESMO publiquei o "completed", então é minha confirmação legítima e deve ser aceita!
-    // Isso permite recuperar status de ordens já completadas quando o storage local é perdido.
-    if (newStatus == 'completed' && currentUserPubkey != null && order.userPubkey == currentUserPubkey) {
-      // Verificar se FUI EU quem publicou o evento de completed
-      final isMyOwnCompletionEvent = eventAuthorPubkey == currentUserPubkey;
-      
-      if (!isMyOwnCompletionEvent) {
-        debugPrint('   🛡️ BLOQUEANDO status completed via Nostr para ordem ${order.id.substring(0, 8)} - publicado por PROVEDOR (${eventAuthorPubkey?.substring(0, 8) ?? "unknown"})');
-        // NÃO aplicar completed, mas ainda aplicar metadata (proofImage, providerInvoice)
-        // para que o usuário possa ver o comprovante
-        if (proofImage != null || providerInvoice != null) {
-          final updatedMetadata = Map<String, dynamic>.from(order.metadata ?? {});
-          if (proofImage != null && proofImage.isNotEmpty) {
-            updatedMetadata['proofImage'] = proofImage;
-            updatedMetadata['paymentProof'] = proofImage;
-          }
-          if (providerInvoice != null && providerInvoice.isNotEmpty) {
-            updatedMetadata['providerInvoice'] = providerInvoice;
-          }
-          // Retornar ordem com metadata atualizado mas SEM mudar status
-          return order.copyWith(
-            providerId: providerId ?? order.providerId,
-            metadata: updatedMetadata,
-          );
-        }
-        return order; // Manter ordem inalterada
-      } else {
-        debugPrint('   ✅ Aceitando status completed para ordem ${order.id.substring(0, 8)} - FUI EU quem confirmou');
-        // Continuar para aplicar o status normalmente
-      }
-    }
+    // NOTA: Não bloqueamos mais "completed" do provedor porque:
+    // 1. O pagamento ao provedor só acontece via invoice Lightning que ele gera
+    // 2. O pagamento da taxa só acontece quando o USUÁRIO confirma localmente
+    // 3. O provedor marcar "completed" não causa dano financeiro
+    // 4. Bloquear causa problemas de sincronização entre dispositivos
     
     if (newStatus != null && newStatus != order.status) {
       debugPrint('   🔄 Aplicando status: ${order.id.substring(0, 8)} ${order.status} -> $newStatus (hasProof=${proofImage != null}, hasInvoice=${providerInvoice != null})');

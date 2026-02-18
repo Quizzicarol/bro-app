@@ -7,6 +7,7 @@ import '../providers/breez_provider_export.dart';
 import '../providers/lightning_provider.dart';
 import '../providers/provider_balance_provider.dart';
 import '../providers/order_provider.dart';
+import '../models/order.dart';
 import '../services/storage_service.dart';
 import '../services/nostr_service.dart';
 import '../services/lnaddress_service.dart';
@@ -2080,18 +2081,23 @@ class _WalletScreenState extends State<WalletScreen> {
     final date = payment['createdAt'] ?? payment['timestamp'];
     final description = payment['description']?.toString() ?? '';
     
+    // Obter OrderProvider para correlações
+    final orderProvider = context.read<OrderProvider>();
+    final currentPubkey = orderProvider.currentUserPubkey;
+    
     // CORREÇÃO CRÍTICA: Verificar se é REALMENTE um ganho como Bro
     // Só é ganho Bro se:
     // 1. É um pagamento RECEBIDO
     // 2. Descrição contém 'Bro - Ordem' (formato do invoice do provedor)
     // 3. O usuário atual é o PROVEDOR da ordem (NÃO o criador!)
     bool isBroOrderPayment = false;
+    String? correlatedOrderId;
+    
     if (isReceived && 
         (description.contains('Bro - Ordem') || description.contains('Bro Payment')) && 
         !description.contains('Garantia') &&
         !description.contains('Platform Fee')) {
       // Extrair orderId da descrição (formato: "Bro - Ordem XXXXXXXX")
-      final orderProvider = context.read<OrderProvider>();
       String? orderIdFromDesc;
       if (description.contains('Bro - Ordem ')) {
         orderIdFromDesc = description.split('Bro - Ordem ').last.trim();
@@ -2103,11 +2109,39 @@ class _WalletScreenState extends State<WalletScreen> {
           (o) => o.id.startsWith(orderIdFromDesc!) || orderIdFromDesc!.startsWith(o.id.substring(0, 8)),
           orElse: () => orderProvider.orders.first, // fallback
         );
-        final currentPubkey = orderProvider.currentUserPubkey;
         // Só é ganho Bro se EU sou o provedor (não o criador da ordem)
         isBroOrderPayment = order.providerId == currentPubkey && order.userPubkey != currentPubkey;
         if (!isBroOrderPayment) {
           debugPrint('🚫 Pagamento ${description.substring(0, 20)}... NÃO é ganho Bro - sou o criador, não o provedor');
+          // Se não é ganho Bro e sou o criador, é um depósito para ordem
+          if (order.userPubkey == currentPubkey) {
+            correlatedOrderId = order.id;
+          }
+        }
+      }
+    }
+    
+    // NOVO: Se é um pagamento RECEBIDO genérico ('Bro Payment'), correlacionar com ordens criadas por mim
+    // Correlação por valor aproximado e timing
+    if (isReceived && description == 'Bro Payment' && !isBroOrderPayment && correlatedOrderId == null) {
+      // Buscar ordens que eu criei com valor similar (tolerância de 5%)
+      final myOrders = orderProvider.myCreatedOrders;
+      final paymentDate = date is DateTime ? date : DateTime.now();
+      
+      for (final order in myOrders) {
+        // Converter valor da ordem para sats para comparação
+        final orderSats = (order.btcAmount * 100000000).round();
+        final tolerance = (orderSats * 0.05).round(); // 5% tolerância
+        
+        if ((amount - orderSats).abs() <= tolerance) {
+          // Verificar se a data é próxima (dentro de 24h)
+          final orderDate = order.createdAt;
+          final diff = paymentDate.difference(orderDate).abs();
+          if (diff.inHours <= 24) {
+            correlatedOrderId = order.id;
+            debugPrint('📋 Correlacionado depósito $amount sats com ordem ${order.id.substring(0, 8)}');
+            break;
+          }
         }
       }
     }
@@ -2122,9 +2156,16 @@ class _WalletScreenState extends State<WalletScreen> {
       iconColor = Colors.green;
       icon = Icons.volunteer_activism;
     } else if (isReceived) {
-      label = 'Recebido';
-      iconColor = Colors.green;
-      icon = Icons.arrow_downward;
+      // Se temos uma ordem correlacionada para este depósito
+      if (correlatedOrderId != null) {
+        label = '📄 Depósito para Ordem #${correlatedOrderId.substring(0, 8)}';
+        iconColor = Colors.amber;
+        icon = Icons.receipt_long;
+      } else {
+        label = 'Recebido';
+        iconColor = Colors.green;
+        icon = Icons.arrow_downward;
+      }
     } else {
       // Verificar se é pagamento de conta (descrição contém info de ordem)
       if (description.contains('Ordem') || description.contains('conta')) {
@@ -2232,15 +2273,69 @@ class _WalletScreenState extends State<WalletScreen> {
     final paymentHash = payment['paymentHash']?.toString() ?? '';
     final paymentId = payment['id']?.toString() ?? '';
     
+    // Correlacionar com ordem se possível
+    final orderProvider = context.read<OrderProvider>();
+    final currentPubkey = orderProvider.currentUserPubkey;
+    String? correlatedOrderId;
+    Order? correlatedOrder;
+    
+    // Verificar se é depósito para uma ordem que eu criei
+    if (isReceived && (description.contains('Bro Payment') || description.contains('Bro - Ordem'))) {
+      String? orderIdFromDesc;
+      if (description.contains('Bro - Ordem ')) {
+        orderIdFromDesc = description.split('Bro - Ordem ').last.trim();
+      }
+      
+      if (orderIdFromDesc != null && orderIdFromDesc.isNotEmpty) {
+        try {
+          correlatedOrder = orderProvider.orders.firstWhere(
+            (o) => o.id.startsWith(orderIdFromDesc!) || orderIdFromDesc!.startsWith(o.id.substring(0, 8)),
+          );
+          correlatedOrderId = correlatedOrder.id;
+        } catch (_) {}
+      }
+      
+      // Se não encontrou pelo ID, tentar correlação por valor
+      if (correlatedOrderId == null) {
+        final myOrders = orderProvider.myCreatedOrders;
+        final paymentDate = date is DateTime ? date : DateTime.now();
+        
+        for (final order in myOrders) {
+          final orderSats = (order.btcAmount * 100000000).round();
+          final tolerance = (orderSats * 0.05).round();
+          
+          if ((amount - orderSats).abs() <= tolerance) {
+            final orderDate = order.createdAt;
+            final diff = paymentDate.difference(orderDate).abs();
+            if (diff.inHours <= 24) {
+              correlatedOrderId = order.id;
+              correlatedOrder = order;
+              break;
+            }
+          }
+        }
+      }
+    }
+    
     // Determinar tipo para exibição
     String typeLabel;
     Color typeColor;
     IconData typeIcon;
     
-    if (isBroEarning) {
+    // Verificar se é ganho Bro (sou o provedor, não o criador)
+    bool isGanhoBro = isBroEarning;
+    if (correlatedOrder != null && correlatedOrder.providerId == currentPubkey && correlatedOrder.userPubkey != currentPubkey) {
+      isGanhoBro = true;
+    }
+    
+    if (isGanhoBro) {
       typeLabel = 'Ganho como Bro';
       typeColor = Colors.green;
       typeIcon = Icons.volunteer_activism;
+    } else if (isReceived && correlatedOrderId != null) {
+      typeLabel = 'Depósito para Ordem';
+      typeColor = Colors.amber;
+      typeIcon = Icons.receipt_long;
     } else if (isReceived) {
       typeLabel = 'Recebido via Lightning';
       typeColor = Colors.green;
@@ -2319,6 +2414,31 @@ class _WalletScreenState extends State<WalletScreen> {
                 if (description.isNotEmpty)
                   _buildDetailRow('📝 Descrição', description),
                 _buildDetailRow('⚡ Rede', 'Lightning Network'),
+                
+                // NOVO: Mostrar dados da ordem correlacionada
+                if (correlatedOrder != null) ...[
+                  const SizedBox(height: 16),
+                  const Divider(color: Color(0xFF333333)),
+                  const SizedBox(height: 16),
+                  
+                  const Text(
+                    'Dados da Ordem',
+                    style: TextStyle(
+                      color: Colors.amber,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  _buildDetailRow('🔢 Nº Ordem', '#${correlatedOrder.id.substring(0, 8).toUpperCase()}'),
+                  _buildDetailRow('📄 Tipo', correlatedOrder.billType),
+                  _buildDetailRow('💰 Valor BRL', 'R\$ ${correlatedOrder.amount.toStringAsFixed(2)}'),
+                  _buildDetailRow('₿ Valor BTC', '${correlatedOrder.btcAmount.toStringAsFixed(8)} BTC'),
+                  _buildDetailRow('📊 Status Ordem', correlatedOrder.status.toUpperCase()),
+                  if (correlatedOrder.billCode.isNotEmpty)
+                    _buildDetailRow('📋 Código', correlatedOrder.billCode, monospace: true),
+                ],
                   
                 const SizedBox(height: 16),
                 const Divider(color: Color(0xFF333333)),

@@ -47,7 +47,7 @@ class ChatMessage {
   );
 }
 
-/// Servi�o de Chat via Nostr DMs (NIP-04)
+/// Serviço de Chat via Nostr DMs (NIP-04)
 class ChatService {
   static final ChatService _instance = ChatService._internal();
   factory ChatService() => _instance;
@@ -74,26 +74,26 @@ class ChatService {
   /// Limpar cache de mensagens (chamado no logout)
   Future<void> clearCache() async {
     _messageCache.clear();
-    debugPrint('?? ChatService: Cache de mensagens limpo');
+    debugPrint('💬 ChatService: Cache de mensagens limpo');
   }
 
-  /// Inicializar servi�o de chat
+  /// Inicializar serviço de chat
   Future<void> initialize(String privateKey, String publicKey) async {
-    // Limpar cache de mem�ria ao trocar de usu�rio
+    // Limpar cache de memória ao trocar de usuário
     if (_publicKey != null && _publicKey != publicKey) {
       _messageCache.clear();
-      debugPrint('?? ChatService: Cache limpo - usu�rio mudou');
+      debugPrint('💬 ChatService: Cache limpo - usuário mudou');
     }
     
     _privateKey = privateKey;
     _publicKey = publicKey;
     
-    debugPrint('?? ChatService: Inicializando com pubkey ${publicKey.substring(0, 16)}...');
-    debugPrint('?? ChatService: PrivateKey hash: ${privateKey.hashCode}');
+    debugPrint('💬 ChatService: Inicializando com pubkey ${publicKey.substring(0, 16)}...');
+    debugPrint('💬 ChatService: PrivateKey hash: ${privateKey.hashCode}');
     
     // Carregar mensagens do cache local
     await _loadCachedMessages();
-    debugPrint('?? ChatService: ${_messageCache.length} conversas no cache local');
+    debugPrint('💬 ChatService: ${_messageCache.length} conversas no cache local');
     
     // Listar todas as conversas carregadas
     for (final entry in _messageCache.entries) {
@@ -107,11 +107,11 @@ class ChatService {
       final connected = await _connectToRelay(relay);
       if (connected) connectedCount++;
     }
-    debugPrint('?? ChatService: Conectado a $connectedCount/${chatRelays.length} relays');
+    debugPrint('💬 ChatService: Conectado a $connectedCount/${chatRelays.length} relays');
     
-    // Come�ar a escutar DMs
+    // Começar a escutar DMs
     _subscribeToDirectMessages();
-    debugPrint('?? ChatService: Inscrito para receber DMs');
+    debugPrint('💬 ChatService: Inscrito para receber DMs');
   }
 
   /// Conectar a um relay
@@ -119,7 +119,7 @@ class ChatService {
     if (_connections.containsKey(url)) return true;
     
     try {
-      debugPrint('?? Chat: Conectando ao relay $url');
+      debugPrint('💬 Chat: Conectando ao relay $url');
       final channel = WebSocketChannel.connect(Uri.parse(url));
       
       _connections[url] = channel;
@@ -127,19 +127,19 @@ class ChatService {
       channel.stream.listen(
         (message) => _handleMessage(url, message),
         onError: (error) {
-          debugPrint('? Chat: Erro no relay $url: $error');
+          debugPrint('❌ Chat: Erro no relay $url: $error');
           _connections.remove(url);
         },
         onDone: () {
-          debugPrint('?? Chat: Desconectado de $url');
+          debugPrint('🔌 Chat: Desconectado de $url');
           _connections.remove(url);
         },
       );
       
-      debugPrint('? Chat: Conectado ao relay $url');
+      debugPrint('✅ Chat: Conectado ao relay $url');
       return true;
     } catch (e) {
-      debugPrint('? Chat: Falha ao conectar ao relay $url: $e');
+      debugPrint('❌ Chat: Falha ao conectar ao relay $url: $e');
       return false;
     }
   }
@@ -171,7 +171,7 @@ class ChatService {
         try {
           channel.sink.add(request);
         } catch (e) {
-          debugPrint('? Chat: Erro ao enviar subscription: $e');
+          debugPrint('❌ Chat: Erro ao enviar subscription: $e');
         }
       }
     }
@@ -189,12 +189,12 @@ class ChatService {
         final eventData = data[2] as Map<String, dynamic>;
         _handleIncomingEvent(eventData);
       } else if (type == 'OK') {
-        debugPrint('? Chat: Mensagem aceita pelo relay $relayUrl');
+        debugPrint('✅ Chat: Mensagem aceita pelo relay $relayUrl');
       } else if (type == 'NOTICE') {
-        debugPrint('?? Chat: $relayUrl: ${data[1]}');
+        debugPrint('📢 Chat: $relayUrl: ${data[1]}');
       }
     } catch (e) {
-      debugPrint('? Chat: Erro ao processar mensagem: $e');
+      debugPrint('❌ Chat: Erro ao processar mensagem: $e');
     }
   }
 
@@ -210,9 +210,9 @@ class ChatService {
       final createdAt = eventData['created_at'] as int;
       final tags = eventData['tags'] as List<dynamic>;
       
-      debugPrint('?? Chat: Recebido evento DM de ${pubkey.substring(0, 8)}...');
+      debugPrint('💬 Chat: Recebido evento DM de ${pubkey.substring(0, 8)}...');
       
-      // Extrair destinat�rio da tag 'p'
+      // Extrair destinatário da tag 'p'
       String? recipientPubkey;
       for (final tag in tags) {
         if (tag is List && tag.isNotEmpty && tag[0] == 'p') {
@@ -222,15 +222,15 @@ class ChatService {
       }
       
       if (recipientPubkey == null) {
-        debugPrint('?? Chat: Evento sem tag p (destinat�rio)');
+        debugPrint('⚠️ Chat: Evento sem tag p (destinatário)');
         return;
       }
       
-      // Determinar se sou o remetente ou destinat�rio
+      // Determinar se sou o remetente ou destinatário
       final isFromMe = pubkey == _publicKey;
       final otherPubkey = isFromMe ? recipientPubkey : pubkey;
       
-      debugPrint('?? Chat: isFromMe=$isFromMe, otherPubkey=${otherPubkey.substring(0, 8)}...');
+      debugPrint('💬 Chat: isFromMe=$isFromMe, otherPubkey=${otherPubkey.substring(0, 8)}...');
       
       // Descriptografar mensagem
       String decryptedContent;
@@ -240,9 +240,9 @@ class ChatService {
           _privateKey!,
           otherPubkey,
         );
-        debugPrint('? Chat: Mensagem descriptografada com sucesso');
+        debugPrint('✅ Chat: Mensagem descriptografada com sucesso');
       } catch (e) {
-        debugPrint('?? Chat: N�o foi poss�vel descriptografar: $e');
+        debugPrint('⚠️ Chat: Não foi possível descriptografar: $e');
         decryptedContent = '[Mensagem criptografada]';
       }
       
@@ -255,7 +255,7 @@ class ChatService {
         isFromMe: isFromMe,
       );
       
-      // Adicionar ao cache se n�o existir
+      // Adicionar ao cache se não existir
       _messageCache.putIfAbsent(otherPubkey, () => []);
       if (!_messageCache[otherPubkey]!.any((m) => m.id == id)) {
         _messageCache[otherPubkey]!.add(chatMessage);
@@ -268,16 +268,16 @@ class ChatService {
         _saveCachedMessages();
       }
       
-      debugPrint('?? Chat: Mensagem ${isFromMe ? "enviada" : "recebida"} de/para $otherPubkey');
+      debugPrint('📨 Chat: Mensagem ${isFromMe ? "enviada" : "recebida"} de/para $otherPubkey');
     } catch (e) {
-      debugPrint('? Chat: Erro ao processar evento: $e');
+      debugPrint('❌ Chat: Erro ao processar evento: $e');
     }
   }
 
   /// Enviar mensagem para um pubkey
   Future<bool> sendMessage(String recipientPubkey, String message) async {
     if (_privateKey == null || _publicKey == null) {
-      debugPrint('? Chat: Chaves n�o configuradas');
+      debugPrint('❌ Chat: Chaves não configuradas');
       return false;
     }
     
@@ -318,7 +318,7 @@ class ChatService {
           channel.sink.add(eventMessage);
           sentCount++;
         } catch (e) {
-          debugPrint('? Chat: Erro ao enviar para relay: $e');
+          debugPrint('❌ Chat: Erro ao enviar para relay: $e');
         }
       }
       
@@ -338,13 +338,13 @@ class ChatService {
         _messageStreams[recipientPubkey]?.add(chatMessage);
         _saveCachedMessages();
         
-        debugPrint('? Chat: Mensagem enviada para $sentCount relays');
+        debugPrint('✅ Chat: Mensagem enviada para $sentCount relays');
         return true;
       }
       
       return false;
     } catch (e) {
-      debugPrint('? Chat: Erro ao enviar mensagem: $e');
+      debugPrint('❌ Chat: Erro ao enviar mensagem: $e');
       return false;
     }
   }
@@ -358,16 +358,16 @@ class ChatService {
     return _messageStreams[otherPubkey]!.stream;
   }
 
-  /// Obter hist�rico de mensagens com um pubkey
+  /// Obter histórico de mensagens com um pubkey
   List<ChatMessage> getMessages(String otherPubkey) {
     return _messageCache[otherPubkey] ?? [];
   }
 
-  /// For�ar re-fetch de todas as mensagens dos relays
+  /// Forçar re-fetch de todas as mensagens dos relays
   Future<void> refreshAllMessages() async {
     if (_publicKey == null) return;
     
-    debugPrint('?? Chat: For�ando refresh de todas as mensagens...');
+    debugPrint('🔄 Chat: Forçando refresh de todas as mensagens...');
     
     // Re-inscrever para DMs
     _subscribeToDirectMessages();
@@ -377,10 +377,10 @@ class ChatService {
       await fetchMessagesFrom(pubkey);
     }
     
-    debugPrint('?? Chat: Refresh solicitado para ${_messageCache.length} conversas');
+    debugPrint('🔄 Chat: Refresh solicitado para ${_messageCache.length} conversas');
   }
 
-  /// Obter n�mero total de mensagens no cache
+  /// Obter número total de mensagens no cache
   int get totalCachedMessages {
     int total = 0;
     for (final messages in _messageCache.values) {
@@ -398,7 +398,7 @@ class ChatService {
   Future<void> _loadCachedMessages() async {
     try {
       final prefs = await _storage.prefs;
-      // Usar chave per-user para n�o vazar mensagens entre usu�rios
+      // Usar chave per-user para não vazar mensagens entre usuários
       final cacheKey = _publicKey != null ? 'chat_messages_${_publicKey!.substring(0, 16)}' : 'chat_messages';
       final cached = prefs?.getString(cacheKey);
       if (cached != null) {
@@ -409,10 +409,10 @@ class ChatService {
               .toList();
           _messageCache[entry.key] = messages;
         }
-        debugPrint('?? Chat: ${_messageCache.length} conversas carregadas');
+        debugPrint('💾 Chat: ${_messageCache.length} conversas carregadas');
       }
     } catch (e) {
-      debugPrint('?? Chat: Erro ao carregar cache: $e');
+      debugPrint('⚠️ Chat: Erro ao carregar cache: $e');
     }
   }
 
@@ -424,15 +424,15 @@ class ChatService {
         data[entry.key] = entry.value.map((m) => m.toJson()).toList();
       }
       final prefs = await _storage.prefs;
-      // Usar chave per-user para n�o vazar mensagens entre usu�rios
+      // Usar chave per-user para não vazar mensagens entre usuários
       final cacheKey = _publicKey != null ? 'chat_messages_${_publicKey!.substring(0, 16)}' : 'chat_messages';
       await prefs?.setString(cacheKey, jsonEncode(data));
     } catch (e) {
-      debugPrint('?? Chat: Erro ao salvar cache: $e');
+      debugPrint('⚠️ Chat: Erro ao salvar cache: $e');
     }
   }
 
-  /// Buscar mensagens antigas de um pubkey espec�fico
+  /// Buscar mensagens antigas de um pubkey específico
   Future<void> fetchMessagesFrom(String otherPubkey) async {
     if (_publicKey == null) return;
     
@@ -462,12 +462,12 @@ class ChatService {
         channel.sink.add(request1);
         channel.sink.add(request2);
       } catch (e) {
-        debugPrint('? Chat: Erro ao buscar mensagens: $e');
+        debugPrint('❌ Chat: Erro ao buscar mensagens: $e');
       }
     }
   }
 
-  /// Fechar todas as conex�es
+  /// Fechar todas as conexões
   void dispose() {
     for (final channel in _connections.values) {
       channel.sink.close();

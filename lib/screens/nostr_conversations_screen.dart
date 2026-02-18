@@ -46,12 +46,12 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
     try {
       setState(() => _isLoading = true);
       
-      // Obter chaves Nostr do armazenamento seguro (m�todos corretos!)
+      // Obter chaves Nostr do armazenamento seguro (métodos corretos!)
       final privateKey = await _storage.getNostrPrivateKey();
       final publicKey = await _storage.getNostrPublicKey();
       
       if (privateKey == null || publicKey == null) {
-        debugPrint('? Chaves Nostr n�o encontradas no armazenamento seguro');
+        debugPrint('❌ Chaves Nostr não encontradas no armazenamento seguro');
         setState(() {
           _isLoading = false;
           _isInitialized = false;
@@ -59,9 +59,9 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
         return;
       }
       
-      debugPrint('? Chaves Nostr encontradas!');
+      debugPrint('✅ Chaves Nostr encontradas!');
       _myPubkey = publicKey;
-      debugPrint('?? Conversas: Minha pubkey: ${publicKey.substring(0, 16)}...');
+      debugPrint('💬 Conversas: Minha pubkey: ${publicKey.substring(0, 16)}...');
       
       // Inicializar chat service
       await _chatService.initialize(privateKey, publicKey);
@@ -71,14 +71,14 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
       });
       
       // Aguardar mais tempo para receber mensagens dos relays
-      debugPrint('?? Conversas: Aguardando mensagens dos relays...');
+      debugPrint('💬 Conversas: Aguardando mensagens dos relays...');
       await Future.delayed(const Duration(seconds: 4));
       
       // Carregar conversas
       await _loadConversations();
       
     } catch (e) {
-      debugPrint('? Erro ao inicializar chat: $e');
+      debugPrint('❌ Erro ao inicializar chat: $e');
       setState(() {
         _isLoading = false;
         _isInitialized = false;
@@ -88,7 +88,7 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
 
   Future<void> _loadConversations() async {
     try {
-      // For�ar refresh das mensagens dos relays
+      // Forçar refresh das mensagens dos relays
       await _chatService.refreshAllMessages();
       
       // Aguardar mais um pouco para receber respostas
@@ -97,14 +97,14 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
       final pubkeys = _chatService.getConversations();
       final conversations = <ConversationInfo>[];
       
-      debugPrint('?? Conversas: ${pubkeys.length} conversas encontradas');
-      debugPrint('?? Conversas: ${_chatService.totalCachedMessages} mensagens no cache');
+      debugPrint('💬 Conversas: ${pubkeys.length} conversas encontradas');
+      debugPrint('💬 Conversas: ${_chatService.totalCachedMessages} mensagens no cache');
       
       for (final pubkey in pubkeys) {
         final messages = _chatService.getMessages(pubkey);
         final lastMessage = messages.isNotEmpty ? messages.last : null;
         
-        // Verificar se � conversa consigo mesmo
+        // Verificar se é conversa consigo mesmo
         final isSelfChat = pubkey == _myPubkey;
         
         debugPrint('   - ${pubkey.substring(0, 8)}...: ${messages.length} mensagens ${isSelfChat ? "(EU MESMO)" : ""}');
@@ -112,20 +112,20 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
         // Tentar obter nome salvo
         String? savedName = await _storage.getData('contact_name_$pubkey');
         
-        // Se for conversa consigo mesmo e n�o tem nome, usar "Notas Pessoais"
+        // Se for conversa consigo mesmo e não tem nome, usar "Notas Pessoais"
         if (isSelfChat && (savedName == null || savedName.isEmpty)) {
-          savedName = '?? Notas Pessoais (eu mesmo)';
+          savedName = '📝 Notas Pessoais (eu mesmo)';
         }
         
         conversations.add(ConversationInfo(
           pubkey: pubkey,
           displayName: savedName,
           lastMessage: lastMessage,
-          unreadCount: 0, // TODO: implementar contagem de n�o lidos
+          unreadCount: 0, // TODO: implementar contagem de não lidos
         ));
       }
       
-      // Ordenar por �ltima mensagem
+      // Ordenar por última mensagem
       conversations.sort((a, b) {
         if (a.lastMessage == null && b.lastMessage == null) return 0;
         if (a.lastMessage == null) return 1;
@@ -140,7 +140,7 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
         });
       }
     } catch (e) {
-      debugPrint('? Erro ao carregar conversas: $e');
+      debugPrint('❌ Erro ao carregar conversas: $e');
       if (mounted) {
         setState(() => _isLoading = false);
       }
@@ -159,11 +159,11 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
     if (diff.inDays > 7) {
       return '${time.day}/${time.month}/${time.year}';
     } else if (diff.inDays > 0) {
-      return '${diff.inDays}d atr�s';
+      return '${diff.inDays}d atrás';
     } else if (diff.inHours > 0) {
-      return '${diff.inHours}h atr�s';
+      return '${diff.inHours}h atrás';
     } else if (diff.inMinutes > 0) {
-      return '${diff.inMinutes}m atr�s';
+      return '${diff.inMinutes}m atrás';
     } else {
       return 'Agora';
     }
@@ -204,7 +204,7 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
           autofocus: true,
           decoration: const InputDecoration(
             labelText: 'Nome do contato',
-            hintText: 'Ex: Jo�o do P2P',
+            hintText: 'Ex: João do P2P',
           ),
         ),
         actions: [
@@ -285,7 +285,7 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
             ),
             const SizedBox(height: 24),
             const Text(
-              'Identidade Nostr n�o configurada',
+              'Identidade Nostr não configurada',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -295,7 +295,7 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Acesse Configura��es > Identidade Nostr para configurar suas chaves e poder enviar/receber mensagens criptografadas.',
+              'Acesse Configurações > Identidade Nostr para configurar suas chaves e poder enviar/receber mensagens criptografadas.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 14,
@@ -348,7 +348,7 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Suas conversas do marketplace P2P aparecer�o aqui.\n\nInicie uma conversa acessando uma oferta e clicando em "Contatar vendedor".',
+              'Suas conversas do marketplace P2P aparecerão aqui.\n\nInicie uma conversa acessando uma oferta e clicando em "Contatar vendedor".',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 14,
@@ -369,7 +369,7 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
                   SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Todas as mensagens s�o criptografadas de ponta a ponta usando NIP-04',
+                      'Todas as mensagens são criptografadas de ponta a ponta usando NIP-04',
                       style: TextStyle(
                         fontSize: 12,
                         color: Color(0xFF3DE98C),

@@ -18,7 +18,7 @@ class OrderService {
     required String paymentHash,
   }) async {
     try {
-      debugPrint('?? Criando ordem: R\$ $amountBrl');
+      debugPrint('📝 Criando ordem: R\$ $amountBrl');
       
       final response = await http.post(
         Uri.parse('$baseUrl/orders/create'),
@@ -38,13 +38,13 @@ class OrderService {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = json.decode(response.body);
-        debugPrint('? Ordem criada: ${data['order_id']}');
+        debugPrint('✅ Ordem criada: ${data['order_id']}');
         return data;
       }
 
       throw Exception('Failed to create order: ${response.statusCode}');
     } catch (e) {
-      debugPrint('? Erro ao criar ordem: $e');
+      debugPrint('❌ Erro ao criar ordem: $e');
       rethrow;
     }
   }
@@ -52,7 +52,7 @@ class OrderService {
   /// Obter detalhes da ordem
   Future<Map<String, dynamic>?> getOrder(String orderId) async {
     try {
-      // SEMPRE buscar do cache local primeiro (mais r�pido e offline-first)
+      // SEMPRE buscar do cache local primeiro (mais rápido e offline-first)
       final prefs = await SharedPreferences.getInstance();
       
       // Buscar em todas as chaves de ordens (orders_*)
@@ -68,7 +68,7 @@ class OrderService {
             );
             
             if (order != null) {
-              debugPrint('? Ordem encontrada no cache ($key): $orderId');
+              debugPrint('✅ Ordem encontrada no cache ($key): $orderId');
               debugPrint('   Status: ${order['status']}, providerId: ${order['providerId']}');
               return Map<String, dynamic>.from(order);
             }
@@ -86,12 +86,12 @@ class OrderService {
         );
         
         if (order != null) {
-          debugPrint('? Ordem encontrada no cache (legacy): $orderId');
+          debugPrint('✅ Ordem encontrada no cache (legacy): $orderId');
           return Map<String, dynamic>.from(order);
         }
       }
       
-      // Se n�o encontrou no cache e estamos em testMode com backend, tentar API
+      // Se não encontrou no cache e estamos em testMode com backend, tentar API
       if (AppConfig.testMode) {
         try {
           final response = await http.get(
@@ -103,19 +103,19 @@ class OrderService {
             return json.decode(response.body);
           }
         } catch (e) {
-          debugPrint('?? API indispon�vel, usando apenas cache: $e');
+          debugPrint('⚠️ API indisponível, usando apenas cache: $e');
         }
       }
       
-      debugPrint('?? Ordem n�o encontrada no cache: $orderId');
+      debugPrint('⚠️ Ordem não encontrada no cache: $orderId');
       return null;
     } catch (e) {
-      debugPrint('? Erro ao buscar ordem: $e');
+      debugPrint('❌ Erro ao buscar ordem: $e');
       rethrow;
     }
   }
 
-  /// Listar ordens do usu�rio
+  /// Listar ordens do usuário
   Future<List<Map<String, dynamic>>> getUserOrders(String userId) async {
     try {
       final response = await http.get(
@@ -130,7 +130,7 @@ class OrderService {
 
       return [];
     } catch (e) {
-      debugPrint('? Erro ao listar ordens: $e');
+      debugPrint('❌ Erro ao listar ordens: $e');
       return [];
     }
   }
@@ -142,7 +142,7 @@ class OrderService {
     required String reason,
   }) async {
     try {
-      debugPrint('?? Cancelando ordem: $orderId');
+      debugPrint('🚫 Cancelando ordem: $orderId');
       
       final response = await http.post(
         Uri.parse('$baseUrl/orders/$orderId/cancel'),
@@ -155,14 +155,14 @@ class OrderService {
       );
 
       if (response.statusCode == 200) {
-        debugPrint('? Ordem cancelada');
+        debugPrint('✅ Ordem cancelada');
         return true;
       }
 
-      debugPrint('? Falha ao cancelar: ${response.statusCode}');
+      debugPrint('❌ Falha ao cancelar: ${response.statusCode}');
       return false;
     } catch (e) {
-      debugPrint('? Erro ao cancelar ordem: $e');
+      debugPrint('❌ Erro ao cancelar ordem: $e');
       return false;
     }
   }
@@ -175,7 +175,7 @@ class OrderService {
       
       return order['status'] ?? 'unknown';
     } catch (e) {
-      debugPrint('? Erro ao verificar status: $e');
+      debugPrint('❌ Erro ao verificar status: $e');
       return 'error';
     }
   }

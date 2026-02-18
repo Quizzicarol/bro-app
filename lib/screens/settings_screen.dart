@@ -34,7 +34,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _appVersion = '${packageInfo.version}+${packageInfo.buildNumber}';
       });
     } catch (e) {
-      debugPrint('Erro ao carregar vers�o: $e');
+      debugPrint('Erro ao carregar versão: $e');
     }
   }
 
@@ -67,7 +67,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       Clipboard.setData(ClipboardData(text: _mnemonic!));
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Seed copiada para a �rea de transfer�ncia'),
+          content: Text('Seed copiada para a área de transferência'),
           backgroundColor: Colors.green,
           duration: Duration(seconds: 2),
         ),
@@ -83,11 +83,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
             SizedBox(width: 10),
-            Text('Aten��o'),
+            Text('Atenção'),
           ],
         ),
         content: const Text(
-          'Nunca compartilhe sua seed com ningu�m!\n\n'
+          'Nunca compartilhe sua seed com ninguém!\n\n'
           'Qualquer pessoa com acesso a estas 12 palavras pode roubar todos os seus Bitcoin.',
         ),
         actions: [
@@ -130,7 +130,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Digite as 12 palavras da sua seed, separadas por espa�o:',
+                'Digite as 12 palavras da sua seed, separadas por espaço:',
                 style: TextStyle(fontSize: 14),
               ),
               const SizedBox(height: 15),
@@ -156,7 +156,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'A carteira atual ser� substitu�da!',
+                        'A carteira atual será substituída!',
                         style: TextStyle(
                           color: Colors.red,
                           fontSize: 13,
@@ -281,7 +281,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: AppBar(
         title: GestureDetector(
           onTap: _onTitleTap,
-          child: const Text('Configura��es'),
+          child: const Text('Configurações'),
         ),
         backgroundColor: const Color(0xFF1A1A1A),
         foregroundColor: Colors.orange,
@@ -293,9 +293,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Se��o de Seguran�a
+                  // Seção de Segurança
                   const Text(
-                    'Seguran�a',
+                    'Segurança',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -346,7 +346,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     ),
                                     SizedBox(height: 2),
                                     Text(
-                                      '12 palavras de recupera��o',
+                                      '12 palavras de recuperação',
                                       style: TextStyle(
                                         fontSize: 12,
                                         color: Colors.white54,
@@ -392,7 +392,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                           const SizedBox(height: 16),
 
-                          // Seed (oculta ou vis�vel)
+                          // Seed (oculta ou visível)
                           if (_mnemonic != null) ...[
                             if (_showSeed) ...[
                               Container(
@@ -454,7 +454,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 ],
                               ),
                               const SizedBox(height: 12),
-                              // Info: Seed vinculada ao usu�rio
+                              // Info: Seed vinculada ao usuário
                               Container(
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
@@ -467,7 +467,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
-                                        'Esta seed est� vinculada � sua conta Nostr',
+                                        'Esta seed está vinculada à sua conta Nostr',
                                         style: TextStyle(fontSize: 11, color: Colors.blue),
                                       ),
                                     ),
@@ -518,7 +518,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       SizedBox(width: 8),
                                       Expanded(
                                         child: Text(
-                                          'Sua carteira n�o foi encontrada!',
+                                          'Sua carteira não foi encontrada!',
                                           style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
                                         ),
                                       ),
@@ -526,7 +526,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   ),
                                   SizedBox(height: 8),
                                   Text(
-                                    'Entre em contato com o suporte se voc� tinha sats nesta carteira.',
+                                    'Entre em contato com o suporte se você tinha sats nesta carteira.',
                                     style: TextStyle(color: Colors.red, fontSize: 13),
                                   ),
                                 ],
@@ -568,7 +568,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         child: const Icon(Icons.account_balance_wallet, color: Colors.orange),
                       ),
                       title: const Text('Minha Carteira', style: TextStyle(color: Colors.white)),
-                      subtitle: const Text('Ver saldo e transa��es', style: TextStyle(color: Colors.white54)),
+                      subtitle: const Text('Ver saldo e transações', style: TextStyle(color: Colors.white54)),
                       trailing: const Icon(Icons.chevron_right, color: Colors.white38),
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 20,
@@ -580,7 +580,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   
                   const SizedBox(height: 10),
                   
-                  // BOT�O RESTAURAR SEED
+                  // BOTÃO RESTAURAR SEED
                   Card(
                     elevation: 0,
                     color: const Color(0xFF1A1A1A),
@@ -796,7 +796,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       children: [
                         ListTile(
                           leading: const Icon(Icons.info_outline, color: Colors.orange),
-                          title: const Text('Vers�o', style: TextStyle(color: Colors.white)),
+                          title: const Text('Versão', style: TextStyle(color: Colors.white)),
                           subtitle: Text(_appVersion, style: const TextStyle(color: Colors.white54)),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20,
@@ -827,7 +827,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                   const SizedBox(height: 30),
 
-                  // Bot�o de Logout
+                  // Botão de Logout
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
@@ -885,7 +885,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   
-                  // Espa�o extra para bot�es de navega��o
+                  // Espaço extra para botões de navegação
                   const SizedBox(height: 100),
                 ],
               ),

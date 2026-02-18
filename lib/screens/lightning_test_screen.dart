@@ -29,12 +29,12 @@ class _LightningTestScreenState extends State<LightningTestScreen> {
   Future<void> _loadData() async {
     final breez = context.read<BreezProvider>();
     
-    // Inicializar SDK se necess�rio
+    // Inicializar SDK se necessário
     if (!breez.isInitialized) {
       await breez.initialize();
     }
 
-    // Carregar saldo e hist�rico
+    // Carregar saldo e histórico
     final balance = await breez.getBalance();
     final payments = await breez.listPayments();
 
@@ -63,13 +63,13 @@ class _LightningTestScreenState extends State<LightningTestScreen> {
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('? Invoice criada! Copie ou mostre o QR code')),
+          const SnackBar(content: Text('✅ Invoice criada! Copie ou mostre o QR code')),
         );
       }
     } else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('? Erro: ${result?['error']}')),
+          SnackBar(content: Text('❌ Erro: ${result?['error']}')),
         );
       }
     }
@@ -91,7 +91,7 @@ class _LightningTestScreenState extends State<LightningTestScreen> {
     if (decoded?['success'] != true) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('? Invoice inv�lida: ${decoded?['error']}')),
+          SnackBar(content: Text('❌ Invoice inválida: ${decoded?['error']}')),
         );
       }
       return;
@@ -112,7 +112,7 @@ class _LightningTestScreenState extends State<LightningTestScreen> {
           children: [
             Text('Valor: $amountSats sats'),
             const SizedBox(height: 8),
-            Text('Descri��o: $description'),
+            Text('Descrição: $description'),
           ],
         ),
         actions: [
@@ -139,11 +139,11 @@ class _LightningTestScreenState extends State<LightningTestScreen> {
         _invoiceController.clear();
       });
       
-      _loadData(); // Atualizar saldo e hist�rico
+      _loadData(); // Atualizar saldo e histórico
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('? Pagamento enviado!')),
+          const SnackBar(content: Text('✅ Pagamento enviado!')),
         );
       }
     } else {
@@ -153,7 +153,7 @@ class _LightningTestScreenState extends State<LightningTestScreen> {
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('? ${result?['error']}')),
+          SnackBar(content: Text('❌ ${result?['error']}')),
         );
       }
     }
@@ -165,7 +165,7 @@ class _LightningTestScreenState extends State<LightningTestScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('? Lightning Test'),
+        title: const Text('⚡ Lightning Test'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -190,7 +190,7 @@ class _LightningTestScreenState extends State<LightningTestScreen> {
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const SizedBox(height: 8),
-                    Text('SDK: ${breez.isInitialized ? '? Conectado' : '? Desconectado'}'),
+                    Text('SDK: ${breez.isInitialized ? '✅ Conectado' : '❌ Desconectado'}'),
                     if (_balance != null) ...[
                       const SizedBox(height: 4),
                       Text('Saldo: ${_balance!['balance']} sats'),
@@ -210,7 +210,7 @@ class _LightningTestScreenState extends State<LightningTestScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '?? Receber Pagamento',
+                      '📥 Receber Pagamento',
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const SizedBox(height: 16),
@@ -282,7 +282,7 @@ class _LightningTestScreenState extends State<LightningTestScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '?? Enviar Pagamento',
+                      '📤 Enviar Pagamento',
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const SizedBox(height: 16),
@@ -337,7 +337,7 @@ class _LightningTestScreenState extends State<LightningTestScreen> {
 
             const SizedBox(height: 16),
 
-            // Hist�rico de pagamentos
+            // Histórico de pagamentos
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -345,7 +345,7 @@ class _LightningTestScreenState extends State<LightningTestScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '?? Hist�rico',
+                      '📜 Histórico',
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const SizedBox(height: 16),
@@ -360,7 +360,7 @@ class _LightningTestScreenState extends State<LightningTestScreen> {
                             color: isReceived ? Colors.green : Colors.orange,
                           ),
                           title: Text('${payment['amount']} sats'),
-                          subtitle: Text(payment['description'] ?? 'Sem descri��o'),
+                          subtitle: Text(payment['description'] ?? 'Sem descrição'),
                           trailing: Text(
                             payment['status'].toString().split('.').last,
                             style: const TextStyle(fontSize: 12),
@@ -374,7 +374,7 @@ class _LightningTestScreenState extends State<LightningTestScreen> {
 
             const SizedBox(height: 16),
 
-            // Instru��es
+            // Instruções
             Card(
               color: Colors.blue.shade900.withOpacity(0.3),
               child: Padding(
@@ -383,12 +383,12 @@ class _LightningTestScreenState extends State<LightningTestScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '?? Como Testar',
+                      '💡 Como Testar',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      '1. Criar Invoice: Gera uma invoice para voc� receber pagamento\n'
+                      '1. Criar Invoice: Gera uma invoice para você receber pagamento\n'
                       '2. Pagar Invoice: Cole uma invoice de outra carteira Lightning\n'
                       '3. Teste com Testnet: Use https://htlc.me para criar invoices de teste\n'
                       '4. Ou use outra wallet Lightning (Phoenix, Muun, etc.)',

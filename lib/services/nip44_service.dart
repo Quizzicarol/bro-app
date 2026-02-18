@@ -3,14 +3,14 @@ import 'dart:typed_data';
 import 'package:pointycastle/export.dart';
 import 'package:convert/convert.dart';
 
-/// Servi�o de criptografia NIP-44 (vers�o 2 - mais segura)
+/// Serviço de criptografia NIP-44 (versão 2 - mais segura)
 /// Implementa criptografia XChaCha20-Poly1305 para mensagens diretas
 class Nip44Service {
   static final Nip44Service _instance = Nip44Service._internal();
   factory Nip44Service() => _instance;
   Nip44Service._internal();
 
-  /// Vers�o do protocolo NIP-44
+  /// Versão do protocolo NIP-44
   static const int version = 2;
 
   /// Gerar shared secret usando ECDH (secp256k1)
@@ -32,7 +32,7 @@ class Nip44Service {
       throw Exception('Invalid public key');
     }
 
-    // Multiplica��o escalar para ECDH
+    // Multiplicação escalar para ECDH
     final sharedPoint = publicKeyPoint * privateKeyParam.d;
     if (sharedPoint == null) {
       throw Exception('Failed to compute shared secret');
@@ -50,7 +50,7 @@ class Nip44Service {
   String encrypt(String plaintext, String conversationKey) {
     final key = Uint8List.fromList(hex.decode(conversationKey));
     
-    // Gerar nonce aleat�rio de 24 bytes para XChaCha20
+    // Gerar nonce aleatório de 24 bytes para XChaCha20
     final nonce = _generateSecureRandom(24);
     
     // Padding da mensagem (calc_padded_len)
@@ -93,7 +93,7 @@ class Nip44Service {
     
     final payloadVersion = data[0];
     if (payloadVersion != version) {
-      throw Exception('Vers�o NIP-44 n�o suportada: $payloadVersion');
+      throw Exception('Versão NIP-44 não suportada: $payloadVersion');
     }
     
     final nonce = data.sublist(1, 25);
@@ -109,7 +109,7 @@ class Nip44Service {
     // Verificar HMAC
     final expectedMac = _computeHmac(hmacKey, nonce, ciphertext);
     if (!_constantTimeCompare(mac, expectedMac)) {
-      throw Exception('HMAC inv�lido - mensagem pode ter sido adulterada');
+      throw Exception('HMAC inválido - mensagem pode ter sido adulterada');
     }
     
     // Descriptografar
@@ -140,7 +140,7 @@ class Nip44Service {
     // Copiar mensagem
     padded.setRange(2, 2 + messageLength, messageBytes);
     
-    // Resto � zero (padding)
+    // Resto é zero (padding)
     return padded;
   }
 
@@ -153,13 +153,13 @@ class Nip44Service {
     final messageLength = (padded[0] << 8) | padded[1];
     
     if (messageLength > padded.length - 2) {
-      throw Exception('Tamanho da mensagem inv�lido');
+      throw Exception('Tamanho da mensagem inválido');
     }
     
     return utf8.decode(padded.sublist(2, 2 + messageLength));
   }
 
-  /// Calcular tamanho com padding (pot�ncia de 2)
+  /// Calcular tamanho com padding (potência de 2)
   int _calcPaddedLen(int unpadded) {
     if (unpadded <= 32) return 32;
     
@@ -170,7 +170,7 @@ class Nip44Service {
     return paddedLen;
   }
 
-  /// HKDF-Expand para deriva��o de chaves
+  /// HKDF-Expand para derivação de chaves
   Uint8List _hkdfExpand(Uint8List key, Uint8List info, int length) {
     final hmac = HMac(SHA256Digest(), 64);
     hmac.init(KeyParameter(key));
@@ -213,7 +213,7 @@ class Nip44Service {
     return mac;
   }
 
-  /// Compara��o em tempo constante para evitar timing attacks
+  /// Comparação em tempo constante para evitar timing attacks
   bool _constantTimeCompare(Uint8List a, Uint8List b) {
     if (a.length != b.length) return false;
     
@@ -224,7 +224,7 @@ class Nip44Service {
     return result == 0;
   }
 
-  /// Gerar bytes aleat�rios seguros
+  /// Gerar bytes aleatórios seguros
   Uint8List _generateSecureRandom(int length) {
     final random = SecureRandom('Fortuna')
       ..seed(KeyParameter(Uint8List.fromList(

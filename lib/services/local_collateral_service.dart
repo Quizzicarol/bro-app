@@ -73,31 +73,31 @@ class LocalCollateral {
   }
 }
 
-/// Servi�o para gerenciar garantia LOCAL do provedor
-/// A garantia � uma "reserva cont�bil" - o provedor precisa manter esse saldo
+/// Serviço para gerenciar garantia LOCAL do provedor
+/// A garantia é uma "reserva contábil" - o provedor precisa manter esse saldo
 /// na carteira para poder aceitar ordens.
 /// 
-/// ?? IMPORTANTE: Dados s�o isolados POR USU�RIO usando pubkey!
-/// Isso evita vazamento de dados de tier entre usu�rios diferentes.
+/// ⚠️ IMPORTANTE: Dados são isolados POR USUÁRIO usando pubkey!
+/// Isso evita vazamento de dados de tier entre usuários diferentes.
 /// 
 /// Fluxo:
-/// 1. Provedor escolhe um tier e "deposita" (reserva sats da pr�pria carteira)
-/// 2. Enquanto tiver a garantia reservada, pode aceitar ordens at� o limite do tier
+/// 1. Provedor escolhe um tier e "deposita" (reserva sats da própria carteira)
+/// 2. Enquanto tiver a garantia reservada, pode aceitar ordens até o limite do tier
 /// 3. Quando aceita uma ordem, parte da garantia fica "travada" para aquela ordem
-/// 4. Se a ordem for conclu�da com sucesso, a garantia � liberada
-/// 5. Se houver disputa e o provedor perder, a garantia � confiscada
-/// 6. Provedor pode "sacar" (remover reserva) se n�o tiver ordens em aberto
+/// 4. Se a ordem for concluída com sucesso, a garantia é liberada
+/// 5. Se houver disputa e o provedor perder, a garantia é confiscada
+/// 6. Provedor pode "sacar" (remover reserva) se não tiver ordens em aberto
 class LocalCollateralService {
   static const String _collateralKeyBase = 'local_collateral';
   static const String _legacyCollateralKey = 'local_collateral'; // Chave antiga (sem pubkey)
   static final FlutterSecureStorage _storage = const FlutterSecureStorage();
   
-  // Cache em mem�ria para garantir consist�ncia POR USU�RIO
+  // Cache em memória para garantir consistência POR USUÁRIO
   static LocalCollateral? _cachedCollateral;
   static bool _cacheInitialized = false;
-  static String? _cachedUserPubkey; // Para invalidar cache quando usu�rio muda
+  static String? _cachedUserPubkey; // Para invalidar cache quando usuário muda
   
-  /// Gera a chave de storage para um usu�rio espec�fico
+  /// Gera a chave de storage para um usuário específico
   static String _getKeyForUser(String? pubkey) {
     if (pubkey == null || pubkey.isEmpty) {
       return _legacyCollateralKey;
@@ -107,10 +107,10 @@ class LocalCollateralService {
     return '${_collateralKeyBase}_$shortKey';
   }
   
-  /// Define o usu�rio atual e limpa cache se necess�rio
+  /// Define o usuário atual e limpa cache se necessário
   void setCurrentUser(String? pubkey) {
     if (_cachedUserPubkey != pubkey) {
-      debugPrint('?? LocalCollateralService: Usu�rio mudou de ${_cachedUserPubkey?.substring(0, 8) ?? "null"} para ${pubkey?.substring(0, 8) ?? "null"}');
+      debugPrint('🔄 LocalCollateralService: Usuário mudou de ${_cachedUserPubkey?.substring(0, 8) ?? "null"} para ${pubkey?.substring(0, 8) ?? "null"}');
       _cachedCollateral = null;
       _cacheInitialized = false;
       _cachedUserPubkey = pubkey;
@@ -138,33 +138,33 @@ class LocalCollateralService {
     
     final key = _getKeyForUser(userPubkey ?? _cachedUserPubkey);
     final jsonStr = json.encode(collateral.toJson());
-    debugPrint('?? setCollateral: Salvando tier $tierName ($requiredSats sats) para key=$key');
-    debugPrint('?? setCollateral: JSON=$jsonStr');
+    debugPrint('💾 setCollateral: Salvando tier $tierName ($requiredSats sats) para key=$key');
+    debugPrint('💾 setCollateral: JSON=$jsonStr');
     
     await _storage.write(key: key, value: jsonStr);
-    debugPrint('?? setCollateral: Salvo no FlutterSecureStorage');
+    debugPrint('💾 setCollateral: Salvo no FlutterSecureStorage');
     
-    // IMPORTANTE: Atualizar cache em mem�ria
+    // IMPORTANTE: Atualizar cache em memória
     _cachedCollateral = collateral;
     _cacheInitialized = true;
     _cachedUserPubkey = userPubkey ?? _cachedUserPubkey;
-    debugPrint('?? setCollateral: Cache atualizado para user ${_cachedUserPubkey?.substring(0, 8) ?? "null"}');
+    debugPrint('💾 setCollateral: Cache atualizado para user ${_cachedUserPubkey?.substring(0, 8) ?? "null"}');
     
     // Verificar se realmente salvou
     final verify = await _storage.read(key: key);
-    debugPrint('?? setCollateral: Verifica��o p�s-save: ${verify != null ? "OK" : "FALHOU"}');
+    debugPrint('💾 setCollateral: Verificação pós-save: ${verify != null ? "OK" : "FALHOU"}');
     
     return collateral;
   }
 
-  /// Obter garantia atual do usu�rio
+  /// Obter garantia atual do usuário
   Future<LocalCollateral?> getCollateral({String? userPubkey}) async {
     try {
       final effectivePubkey = userPubkey ?? _cachedUserPubkey;
       
-      // Se cache � para este usu�rio e j� foi inicializado
+      // Se cache é para este usuário e já foi inicializado
       if (_cacheInitialized && _cachedUserPubkey == effectivePubkey && _cachedCollateral != null) {
-        debugPrint('?? getCollateral: Usando cache - ${_cachedCollateral!.tierName}');
+        debugPrint('🔍 getCollateral: Usando cache - ${_cachedCollateral!.tierName}');
         return _cachedCollateral;
       }
       
@@ -172,26 +172,26 @@ class LocalCollateralService {
       final key = _getKeyForUser(effectivePubkey);
       var dataStr = await _storage.read(key: key);
       
-      debugPrint('?? getCollateral: key=$key');
-      debugPrint('?? getCollateral: dataStr=${dataStr?.substring(0, (dataStr?.length ?? 0).clamp(0, 100)) ?? "null"}...');
+      debugPrint('🔍 getCollateral: key=$key');
+      debugPrint('🔍 getCollateral: dataStr=${dataStr?.substring(0, (dataStr?.length ?? 0).clamp(0, 100)) ?? "null"}...');
       
-      // ?? MIGRA��O: Se n�o encontrou na key nova, tentar key legada e migrar
+      // 🔄 MIGRAÇÃO: Se não encontrou na key nova, tentar key legada e migrar
       if (dataStr == null && effectivePubkey != null && effectivePubkey.isNotEmpty) {
-        debugPrint('?? getCollateral: Tentando migrar da key legada...');
+        debugPrint('🔄 getCollateral: Tentando migrar da key legada...');
         final legacyData = await _storage.read(key: _legacyCollateralKey);
         if (legacyData != null) {
-          debugPrint('?? getCollateral: Dados encontrados na key legada! Migrando...');
+          debugPrint('🔄 getCollateral: Dados encontrados na key legada! Migrando...');
           // Salvar na key nova
           await _storage.write(key: key, value: legacyData);
-          // Deletar key antiga para evitar confus�o
+          // Deletar key antiga para evitar confusão
           await _storage.delete(key: _legacyCollateralKey);
           dataStr = legacyData;
-          debugPrint('? getCollateral: Migra��o conclu�da para key=$key');
+          debugPrint('✅ getCollateral: Migração concluída para key=$key');
         }
       }
       
       if (dataStr == null) {
-        debugPrint('?? getCollateral: Nenhuma garantia salva para usu�rio ${effectivePubkey?.substring(0, 8) ?? "null"}');
+        debugPrint('📭 getCollateral: Nenhuma garantia salva para usuário ${effectivePubkey?.substring(0, 8) ?? "null"}');
         _cacheInitialized = true;
         _cachedCollateral = null;
         _cachedUserPubkey = effectivePubkey;
@@ -203,17 +203,17 @@ class LocalCollateralService {
       _cachedCollateral = collateral;
       _cacheInitialized = true;
       _cachedUserPubkey = effectivePubkey;
-      debugPrint('? getCollateral: Tier ${collateral.tierName} (${collateral.requiredSats} sats) - Cache atualizado');
+      debugPrint('✅ getCollateral: Tier ${collateral.tierName} (${collateral.requiredSats} sats) - Cache atualizado');
       return collateral;
     } catch (e) {
-      debugPrint('? Erro ao carregar garantia local: $e');
+      debugPrint('❌ Erro ao carregar garantia local: $e');
       return null;
     }
   }
 
   /// Verificar se tem garantia configurada
   Future<bool> hasCollateral({String? userPubkey}) async {
-    // Se cache � para este usu�rio
+    // Se cache é para este usuário
     final effectivePubkey = userPubkey ?? _cachedUserPubkey;
     if (_cacheInitialized && _cachedUserPubkey == effectivePubkey) {
       return _cachedCollateral != null;
@@ -222,48 +222,48 @@ class LocalCollateralService {
     return collateral != null;
   }
   
-  /// Limpar cache (para for�ar reload)
+  /// Limpar cache (para forçar reload)
   static void clearCache() {
     _cachedCollateral = null;
     _cacheInitialized = false;
     _cachedUserPubkey = null;
-    debugPrint('??? Cache de collateral limpo');
+    debugPrint('🗑️ Cache de collateral limpo');
   }
   
-  /// ?? Limpar dados de colateral do usu�rio atual (para logout)
+  /// 🧹 Limpar dados de colateral do usuário atual (para logout)
   Future<void> clearUserCollateral({String? userPubkey}) async {
     final key = _getKeyForUser(userPubkey ?? _cachedUserPubkey);
     await _storage.delete(key: key);
-    debugPrint('??? Collateral removido para key=$key');
+    debugPrint('🗑️ Collateral removido para key=$key');
     
-    // Tamb�m limpar chave legada se existir
+    // Também limpar chave legada se existir
     await _storage.delete(key: _legacyCollateralKey);
-    debugPrint('??? Collateral legado removido');
+    debugPrint('🗑️ Collateral legado removido');
     
     clearCache();
   }
 
   /// Verificar se pode aceitar uma ordem de determinado valor
-  /// Retorna (canAccept, reason) - reason explica porque n�o pode aceitar
+  /// Retorna (canAccept, reason) - reason explica porque não pode aceitar
   (bool, String?) canAcceptOrderWithReason(LocalCollateral collateral, double orderValueBrl, int walletBalanceSats) {
-    // Primeiro verificar se valor da ordem est� dentro do limite do tier
+    // Primeiro verificar se valor da ordem está dentro do limite do tier
     if (orderValueBrl > collateral.maxOrderBrl) {
-      debugPrint('? canAcceptOrder: Ordem R\$ $orderValueBrl > limite R\$ ${collateral.maxOrderBrl}');
-      return (false, 'Ordem acima do limite do tier (m�x R\$ ${collateral.maxOrderBrl.toStringAsFixed(0)})');
+      debugPrint('❌ canAcceptOrder: Ordem R\$ $orderValueBrl > limite R\$ ${collateral.maxOrderBrl}');
+      return (false, 'Ordem acima do limite do tier (máx R\$ ${collateral.maxOrderBrl.toStringAsFixed(0)})');
     }
     
-    // ?? TOLER�NCIA DE 10% - Permitir pequenas oscila��es do Bitcoin
+    // 🔥 TOLERÂNCIA DE 10% - Permitir pequenas oscilações do Bitcoin
     final tolerancePercent = 0.10; // 10%
     final minRequired = (collateral.lockedSats * (1 - tolerancePercent)).round();
     
-    // Verificar se carteira tem saldo suficiente (com toler�ncia)
+    // Verificar se carteira tem saldo suficiente (com tolerância)
     if (walletBalanceSats < minRequired) {
       final deficit = collateral.lockedSats - walletBalanceSats;
-      debugPrint('? canAcceptOrder: Saldo insuficiente ($walletBalanceSats < $minRequired com toler�ncia 10%)');
+      debugPrint('❌ canAcceptOrder: Saldo insuficiente ($walletBalanceSats < $minRequired com tolerância 10%)');
       return (false, 'Saldo insuficiente: faltam $deficit sats para manter o tier ${collateral.tierName}');
     }
     
-    debugPrint('? canAcceptOrder: OK - ordem R\$ $orderValueBrl (limite R\$ ${collateral.maxOrderBrl})');
+    debugPrint('✅ canAcceptOrder: OK - ordem R\$ $orderValueBrl (limite R\$ ${collateral.maxOrderBrl})');
     return (true, null);
   }
 
@@ -283,7 +283,7 @@ class LocalCollateralService {
     await _storage.write(key: key, value: json.encode(updated.toJson()));
     _cachedCollateral = updated;
     
-    debugPrint('?? Ordem $orderId travada. Total ordens: ${updated.activeOrders}');
+    debugPrint('🔒 Ordem $orderId travada. Total ordens: ${updated.activeOrders}');
     return updated;
   }
 
@@ -299,11 +299,11 @@ class LocalCollateralService {
     await _storage.write(key: key, value: json.encode(updated.toJson()));
     _cachedCollateral = updated;
     
-    debugPrint('?? Ordem $orderId liberada. Total ordens: ${updated.activeOrders}');
+    debugPrint('🔓 Ordem $orderId liberada. Total ordens: ${updated.activeOrders}');
     return updated;
   }
 
-  /// Obter saldo dispon�vel (carteira - travado)
+  /// Obter saldo disponível (carteira - travado)
   int getAvailableBalance(LocalCollateral collateral, int walletBalanceSats) {
     final available = walletBalanceSats - collateral.lockedSats;
     return available > 0 ? available : 0;
@@ -320,6 +320,6 @@ class LocalCollateralService {
     await _storage.delete(key: key);
     _cachedCollateral = null;
     _cacheInitialized = false;
-    debugPrint('? Garantia local removida para key=$key');
+    debugPrint('✅ Garantia local removida para key=$key');
   }
 }

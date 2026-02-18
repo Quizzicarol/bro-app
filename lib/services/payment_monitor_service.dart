@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../providers/breez_provider_export.dart';
 
-/// Servi�o para monitorar pagamentos Lightning/Onchain automaticamente
+/// Serviço para monitorar pagamentos Lightning/Onchain automaticamente
 class PaymentMonitorService {
   final BreezProvider _breezProvider;
   Timer? _monitorTimer;
@@ -10,14 +10,14 @@ class PaymentMonitorService {
   
   PaymentMonitorService(this._breezProvider);
 
-  /// Inicia monitoramento de um pagamento espec�fico
+  /// Inicia monitoramento de um pagamento específico
   void monitorPayment({
     required String paymentId,
     required String paymentHash,
     required PaymentMonitorCallback onStatusChange,
     Duration checkInterval = const Duration(seconds: 3),
   }) {
-    debugPrint('?? Iniciando monitoramento do pagamento: $paymentId');
+    debugPrint('🔍 Iniciando monitoramento do pagamento: $paymentId');
     
     _callbacks[paymentId] = onStatusChange;
     
@@ -32,10 +32,10 @@ class PaymentMonitorService {
 
   /// Para o monitoramento de um pagamento
   void stopMonitoring(String paymentId) {
-    debugPrint('?? Parando monitoramento do pagamento: $paymentId');
+    debugPrint('🛑 Parando monitoramento do pagamento: $paymentId');
     _callbacks.remove(paymentId);
     
-    // Se n�o h� mais callbacks, cancela o timer
+    // Se não há mais callbacks, cancela o timer
     if (_callbacks.isEmpty) {
       _monitorTimer?.cancel();
       _monitorTimer = null;
@@ -44,7 +44,7 @@ class PaymentMonitorService {
 
   /// Para todos os monitoramentos
   void stopAll() {
-    debugPrint('?? Parando todos os monitoramentos');
+    debugPrint('🛑 Parando todos os monitoramentos');
     _callbacks.clear();
     _monitorTimer?.cancel();
     _monitorTimer = null;
@@ -59,31 +59,31 @@ class PaymentMonitorService {
       final status = await _breezProvider.checkPaymentStatus(paymentHash);
       
       if (status['paid'] == true) {
-        debugPrint('? Pagamento $paymentId confirmado!');
+        debugPrint('✅ Pagamento $paymentId confirmado!');
         callback(PaymentStatus.confirmed, status);
-        stopMonitoring(paymentId); // Para de monitorar ap�s confirma��o
+        stopMonitoring(paymentId); // Para de monitorar após confirmação
       } else if (status['error'] != null) {
-        debugPrint('? Erro no pagamento $paymentId: ${status['error']}');
+        debugPrint('❌ Erro no pagamento $paymentId: ${status['error']}');
         callback(PaymentStatus.failed, status);
       } else {
-        debugPrint('? Pagamento $paymentId ainda pendente...');
+        debugPrint('⏳ Pagamento $paymentId ainda pendente...');
         callback(PaymentStatus.pending, status);
       }
     } catch (e) {
-      debugPrint('?? Erro ao verificar status: $e');
+      debugPrint('⚠️ Erro ao verificar status: $e');
       callback(PaymentStatus.error, {'error': e.toString()});
     }
   }
 
-  /// Monitora endere�o onchain (verifica se fundos foram recebidos)
+  /// Monitora endereço onchain (verifica se fundos foram recebidos)
   void monitorOnchainAddress({
     required String paymentId,
     required String address,
     required int expectedSats,
     required PaymentMonitorCallback onStatusChange,
-    Duration checkInterval = const Duration(seconds: 5), // Reduzido para 5s para detec��o mais r�pida
+    Duration checkInterval = const Duration(seconds: 5), // Reduzido para 5s para detecção mais rápida
   }) {
-    debugPrint('?? Iniciando monitoramento onchain: $address');
+    debugPrint('🔍 Iniciando monitoramento onchain: $address');
     
     _callbacks[paymentId] = onStatusChange;
     
@@ -105,20 +105,20 @@ class PaymentMonitorService {
 
     try {
       // Breez SDK Spark gerencia automaticamente swaps
-      // Verificar se h� pagamentos recentes recebidos
+      // Verificar se há pagamentos recentes recebidos
       final payments = await _breezProvider.listPayments();
       
-      // IMPORTANTE: Apenas considerar pagamentos dos �ltimos 30 minutos
+      // IMPORTANTE: Apenas considerar pagamentos dos últimos 30 minutos
       final thirtyMinutesAgo = DateTime.now().subtract(const Duration(minutes: 30));
       
-      // Procurar por pagamento onchain recente com valor pr�ximo ao esperado
+      // Procurar por pagamento onchain recente com valor próximo ao esperado
       for (final payment in payments) {
-        // Verificar timestamp se dispon�vel
+        // Verificar timestamp se disponível
         final paymentTime = payment['timestamp'] != null 
             ? DateTime.fromMillisecondsSinceEpoch(payment['timestamp'] as int)
             : null;
         
-        // S� considerar se for recente (�ltimos 30 min) ou timestamp n�o dispon�vel
+        // Só considerar se for recente (últimos 30 min) ou timestamp não disponível
         final isRecent = paymentTime == null || paymentTime.isAfter(thirtyMinutesAgo);
         
         if (isRecent &&
@@ -126,17 +126,17 @@ class PaymentMonitorService {
             payment['amountSats'] != null &&
             (payment['amountSats'] as int) >= expectedSats * 0.95) { // 5% margem
           
-          debugPrint('? Pagamento onchain $paymentId detectado!');
+          debugPrint('✅ Pagamento onchain $paymentId detectado!');
           callback(PaymentStatus.confirmed, payment);
           stopMonitoring(paymentId);
           return;
         }
       }
       
-      debugPrint('? Aguardando pagamento onchain $paymentId...');
+      debugPrint('⏳ Aguardando pagamento onchain $paymentId...');
       callback(PaymentStatus.pending, {'address': address});
     } catch (e) {
-      debugPrint('?? Erro ao verificar onchain: $e');
+      debugPrint('⚠️ Erro ao verificar onchain: $e');
       callback(PaymentStatus.error, {'error': e.toString()});
     }
   }
@@ -154,7 +154,7 @@ enum PaymentStatus {
   error,
 }
 
-/// Callback para mudan�as de status
+/// Callback para mudanças de status
 typedef PaymentMonitorCallback = void Function(
   PaymentStatus status,
   Map<String, dynamic> data,

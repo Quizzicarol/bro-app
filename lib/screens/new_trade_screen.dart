@@ -32,7 +32,7 @@ class NewTradeScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // T�tulo direto
+              // Título direto
               const Text(
                 'O que voce quer fazer?',
                 style: TextStyle(
@@ -75,7 +75,7 @@ class NewTradeScreen extends StatelessWidget {
                   );
                 },
               ),
-              const SizedBox(height: 24), // Espa�o extra para evitar bot�es de navega��o
+              const SizedBox(height: 24), // Espaço extra para evitar botões de navegação
             ],
           ),
         ),
@@ -119,13 +119,13 @@ class NewTradeScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          _buildGuideItem('???', 'Ofereca produtos ou servicos e receba pagamento em sats via Lightning'),
+          _buildGuideItem('🛍️', 'Ofereca produtos ou servicos e receba pagamento em sats via Lightning'),
           const SizedBox(height: 8),
-          _buildGuideItem('??', 'Negocie via Nostr - chat privado e criptografado'),
+          _buildGuideItem('💬', 'Negocie via Nostr - chat privado e criptografado'),
           const SizedBox(height: 8),
-          _buildGuideItem('??', 'Envie fotos do produto de forma privada para interessados'),
+          _buildGuideItem('📸', 'Envie fotos do produto de forma privada para interessados'),
           const SizedBox(height: 8),
-          _buildGuideItem('??', 'Cole o codigo de uma conta e um Bro paga pra voce'),
+          _buildGuideItem('💳', 'Cole o codigo de uma conta e um Bro paga pra voce'),
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(12),

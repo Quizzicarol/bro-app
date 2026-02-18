@@ -1,23 +1,23 @@
 import 'package:flutter/foundation.dart';
 
-/// Servi�o de Rate Limiting para prevenir abuso
-/// Limita tentativas de opera��es sens�veis por per�odo de tempo
+/// Serviço de Rate Limiting para prevenir abuso
+/// Limita tentativas de operações sensíveis por período de tempo
 class RateLimitService {
   static final RateLimitService _instance = RateLimitService._internal();
   factory RateLimitService() => _instance;
   RateLimitService._internal();
 
-  // Configura��es de limites
+  // Configurações de limites
   static const int maxLoginAttempts = 5;
   static const int loginLockoutMinutes = 15;
   static const int maxPaymentAttempts = 10;
   static const int paymentLockoutMinutes = 30;
   static const int maxApiCallsPerMinute = 60;
 
-  // Contadores em mem�ria
+  // Contadores em memória
   final Map<String, List<DateTime>> _attemptLog = {};
   
-  /// Verifica se uma opera��o est� bloqueada por rate limit
+  /// Verifica se uma operação está bloqueada por rate limit
   Future<RateLimitResult> checkRateLimit({
     required String operation,
     required String identifier,
@@ -40,7 +40,7 @@ class RateLimitService {
       final unlockTime = oldestAttempt.add(Duration(minutes: windowMinutes));
       final remainingSeconds = unlockTime.difference(now).inSeconds;
       
-      debugPrint('?? Rate limit atingido para $key. Desbloqueio em ${remainingSeconds}s');
+      debugPrint('🚫 Rate limit atingido para $key. Desbloqueio em ${remainingSeconds}s');
       
       return RateLimitResult(
         allowed: false,
@@ -56,7 +56,7 @@ class RateLimitService {
     );
   }
   
-  /// Registra uma tentativa de opera��o
+  /// Registra uma tentativa de operação
   void recordAttempt({
     required String operation,
     required String identifier,
@@ -64,17 +64,17 @@ class RateLimitService {
     final key = '${operation}_$identifier';
     _attemptLog[key] = _attemptLog[key] ?? [];
     _attemptLog[key]!.add(DateTime.now());
-    debugPrint('?? Tentativa registrada: $key (${_attemptLog[key]!.length} total)');
+    debugPrint('📝 Tentativa registrada: $key (${_attemptLog[key]!.length} total)');
   }
   
-  /// Limpa tentativas ap�s sucesso (ex: login bem sucedido)
+  /// Limpa tentativas após sucesso (ex: login bem sucedido)
   void clearAttempts({
     required String operation,
     required String identifier,
   }) {
     final key = '${operation}_$identifier';
     _attemptLog.remove(key);
-    debugPrint('? Tentativas limpas para $key');
+    debugPrint('✅ Tentativas limpas para $key');
   }
   
   /// Verifica rate limit para login

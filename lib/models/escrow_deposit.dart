@@ -1,4 +1,4 @@
-/// Modelo de dep�sito de garantia do provedor
+/// Modelo de depósito de garantia do provedor
 class EscrowDeposit {
   final String id;
   final String providerId;

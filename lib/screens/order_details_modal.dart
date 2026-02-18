@@ -105,7 +105,7 @@ class _OrderDetailsModalState extends State<OrderDetailsModal> {
   Future<void> _pickAndSendReceipt() async {
     final picker = ImagePicker();
     
-    // Mostrar op��es
+    // Mostrar opções
     final result = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -152,7 +152,7 @@ class _OrderDetailsModalState extends State<OrderDetailsModal> {
     if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('? Comprovante enviado'),
+          content: Text('✅ Comprovante enviado'),
           backgroundColor: Color(0xFF4CAF50),
         ),
       );
@@ -231,7 +231,7 @@ class _OrderDetailsModalState extends State<OrderDetailsModal> {
                   ),
                 ),
                 Text(
-                  widget.order['barCode'] ?? 'Sem c�digo',
+                  widget.order['barCode'] ?? 'Sem código',
                   style: const TextStyle(
                     fontSize: 12,
                     color: Color(0x99FFFFFF),
@@ -258,7 +258,7 @@ class _OrderDetailsModalState extends State<OrderDetailsModal> {
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // QR Code do c�digo de barras (se provider)
+          // QR Code do código de barras (se provider)
           if (widget.isProvider && widget.order['barCode'] != null)
             Column(
               children: [
@@ -401,7 +401,7 @@ class _OrderDetailsModalState extends State<OrderDetailsModal> {
       ),
       child: Row(
         children: [
-          // Bot�o de anexo (s� para provider)
+          // Botão de anexo (só para provider)
           if (widget.isProvider)
             IconButton(
               icon: const Icon(Icons.attach_file, color: Color(0xFFFF6B6B)),
@@ -431,7 +431,7 @@ class _OrderDetailsModalState extends State<OrderDetailsModal> {
 
           const SizedBox(width: 8),
 
-          // Bot�o enviar
+          // Botão enviar
           IconButton(
             icon: const Icon(Icons.send, color: Color(0xFFFF6B6B)),
             onPressed: _sendMessage,

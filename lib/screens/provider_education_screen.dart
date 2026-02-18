@@ -4,7 +4,7 @@ import '../services/secure_storage_service.dart';
 import '../services/nostr_service.dart';
 
 /// Tela educacional sobre o sistema de provedor
-/// Explica como funciona, requisitos, riscos e benef�cios
+/// Explica como funciona, requisitos, riscos e benefícios
 class ProviderEducationScreen extends StatelessWidget {
   const ProviderEducationScreen({super.key});
 
@@ -23,22 +23,22 @@ class ProviderEducationScreen extends StatelessWidget {
           children: [
             _buildHeroSection(),
             const SizedBox(height: 24),
-            _buildSectionTitle('?? Como Funciona'),
+            _buildSectionTitle('🎯 Como Funciona'),
             _buildInfoCard(
               steps: [
-                '1?? Deposite Bitcoin como garantia',
-                '2?? Escolha ordens dispon�veis na plataforma',
-                '3?? Pague a conta no banco com seu dinheiro',
-                '4?? Envie o comprovante de pagamento',
-                '5?? Receba 3% de cada opera��o por ser um Bro',
-                '6?? Resgate sua garantia ao zerar suas ordens aceitas',
+                '1️⃣ Deposite Bitcoin como garantia',
+                '2️⃣ Escolha ordens disponíveis na plataforma',
+                '3️⃣ Pague a conta no banco com seu dinheiro',
+                '4️⃣ Envie o comprovante de pagamento',
+                '5️⃣ Receba 3% de cada operação por ser um Bro',
+                '6️⃣ Resgate sua garantia ao zerar suas ordens aceitas',
               ],
             ),
             const SizedBox(height: 24),
-            _buildSectionTitle('?? Sistema de Garantias'),
+            _buildSectionTitle('💰 Sistema de Garantias'),
             _buildTierTable(),
             const SizedBox(height: 24),
-            _buildSectionTitle('?? Riscos e Responsabilidades'),
+            _buildSectionTitle('⚠️ Riscos e Responsabilidades'),
             _buildRisksCard(),
             const SizedBox(height: 32),
             _buildStartButton(context),
@@ -76,7 +76,7 @@ class ProviderEducationScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Como Bro voc� faz a ponte, ajuda pessoas a pagarem contas e recebe sats como recompensa',
+            'Como Bro você faz a ponte, ajuda pessoas a pagarem contas e recebe sats como recompensa',
             style: TextStyle(color: Colors.white70, fontSize: 14),
             textAlign: TextAlign.center,
           ),
@@ -141,43 +141,43 @@ class ProviderEducationScreen extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // ?? Tier Trial para testar
+          // 🧪 Tier Trial para testar
           _buildTierRow(
-            tier: '?? Trial',
+            tier: '🧪 Trial',
             guarantee: 'R\$ 10',
-            maxOrder: 'at� R\$ 10',
+            maxOrder: 'até R\$ 10',
             color: Colors.green,
             isHeader: false,
           ),
           const Divider(color: Colors.white12, height: 1),
           _buildTierRow(
-            tier: '?? Iniciante',
+            tier: '🥉 Iniciante',
             guarantee: 'R\$ 50',
-            maxOrder: 'at� R\$ 50',
+            maxOrder: 'até R\$ 50',
             color: Colors.orange,
             isHeader: false,
           ),
           const Divider(color: Colors.white12, height: 1),
           _buildTierRow(
-            tier: '?? B�sico',
+            tier: '🥈 Básico',
             guarantee: 'R\$ 200',
-            maxOrder: 'at� R\$ 200',
+            maxOrder: 'até R\$ 200',
             color: Colors.grey,
             isHeader: false,
           ),
           const Divider(color: Colors.white12, height: 1),
           _buildTierRow(
-            tier: '?? Intermedi�rio',
+            tier: '🥇 Intermediário',
             guarantee: 'R\$ 500',
-            maxOrder: 'at� R\$ 500',
+            maxOrder: 'até R\$ 500',
             color: Colors.blue,
             isHeader: false,
           ),
           const Divider(color: Colors.white12, height: 1),
           _buildTierRow(
-            tier: '?? Avan�ado',
+            tier: '💎 Avançado',
             guarantee: 'R\$ 1.000',
-            maxOrder: 'at� R\$ 1.000',
+            maxOrder: 'até R\$ 1.000',
             color: Colors.purple,
             isHeader: false,
           ),
@@ -250,13 +250,13 @@ class ProviderEducationScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildBenefit('??', 'Ganhe 3% em cada transa��o'),
-          _buildBenefit('?', 'Receba Bitcoin instantaneamente'),
-          _buildBenefit('??', 'Protegido por sistema de escrow'),
-          _buildBenefit('??', 'Sem limite de ganhos'),
-          _buildBenefit('??', 'Use seu banco normalmente'),
-          _buildBenefit('??', 'Trabalhe de qualquer lugar'),
-          _buildBenefit('?', 'Hor�rio flex�vel'),
+          _buildBenefit('💵', 'Ganhe 3% em cada transação'),
+          _buildBenefit('⚡', 'Receba Bitcoin instantaneamente'),
+          _buildBenefit('🔒', 'Protegido por sistema de escrow'),
+          _buildBenefit('📈', 'Sem limite de ganhos'),
+          _buildBenefit('🏦', 'Use seu banco normalmente'),
+          _buildBenefit('🌐', 'Trabalhe de qualquer lugar'),
+          _buildBenefit('⏰', 'Horário flexível'),
         ],
       ),
     );
@@ -291,16 +291,16 @@ class ProviderEducationScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildRisk('??', 'Garantia bloqueada durante ordem ativa'),
-          _buildRisk('??', 'Voc� paga com seu dinheiro primeiro'),
-          _buildRisk('??', 'Valida��o pode levar at� 2 horas'),
-          _buildRisk('??', 'Disputas podem resultar em perda de garantia'),
-          _buildRisk('??', 'Comprovante obrigat�rio com dados leg�veis'),
+          _buildRisk('⚠️', 'Garantia bloqueada durante ordem ativa'),
+          _buildRisk('💸', 'Você paga com seu dinheiro primeiro'),
+          _buildRisk('🕐', 'Validação pode levar até 2 horas'),
+          _buildRisk('⚖️', 'Disputas podem resultar em perda de garantia'),
+          _buildRisk('📸', 'Comprovante obrigatório com dados legíveis'),
           const SizedBox(height: 12),
           const Divider(color: Colors.orange),
           const SizedBox(height: 12),
           const Text(
-            '?? ATEN��O: Fraude ou tentativa de golpe resulta em perda total da garantia e banimento permanente.',
+            '⚠️ ATENÇÃO: Fraude ou tentativa de golpe resulta em perda total da garantia e banimento permanente.',
             style: TextStyle(
               color: Colors.red,
               fontSize: 13,
@@ -343,7 +343,7 @@ class ProviderEducationScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'O que � Escrow?',
+            'O que é Escrow?',
             style: TextStyle(
               color: Colors.blue,
               fontSize: 16,
@@ -352,15 +352,15 @@ class ProviderEducationScreen extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           const Text(
-            'Escrow � um sistema de garantia onde o Bitcoin do usu�rio fica bloqueado at� voc� provar que pagou a conta. Isso protege ambas as partes:',
+            'Escrow é um sistema de garantia onde o Bitcoin do usuário fica bloqueado até você provar que pagou a conta. Isso protege ambas as partes:',
             style: TextStyle(color: Colors.white70, fontSize: 14),
           ),
           const SizedBox(height: 12),
-          _buildEscrowStep('1', 'Usu�rio paga Lightning ? Bitcoin bloqueado'),
-          _buildEscrowStep('2', 'Voc� aceita ordem ? Garantia bloqueada'),
-          _buildEscrowStep('3', 'Voc� Bro ? Envia comprovante'),
-          _buildEscrowStep('4', 'Valida��o aprovada ? Voc� recebe Bitcoin + taxa'),
-          _buildEscrowStep('5', 'Garantia desbloqueada ? Pode aceitar nova ordem'),
+          _buildEscrowStep('1', 'Usuário paga Lightning → Bitcoin bloqueado'),
+          _buildEscrowStep('2', 'Você aceita ordem → Garantia bloqueada'),
+          _buildEscrowStep('3', 'Você Bro → Envia comprovante'),
+          _buildEscrowStep('4', 'Validação aprovada → Você recebe Bitcoin + taxa'),
+          _buildEscrowStep('5', 'Garantia desbloqueada → Pode aceitar nova ordem'),
         ],
       ),
     );
@@ -423,18 +423,18 @@ class ProviderEducationScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          _buildExampleRow('Voc� paga no banco:', 'R\$ 1.000,00'),
+          _buildExampleRow('Você paga no banco:', 'R\$ 1.000,00'),
           _buildExampleRow('Sua taxa (3%):', 'R\$ 30,00', color: Colors.green),
           const Divider(color: Colors.white12),
           _buildExampleRow(
-            'Voc� recebe:',
+            'Você recebe:',
             'R\$ 1.030,00 em Bitcoin',
             isBold: true,
             color: Colors.orange,
           ),
           const SizedBox(height: 12),
           const Text(
-            '?? Se Bitcoin for 1 BTC = R\$ 500.000, voc� recebe ~206.000 sats',
+            '💡 Se Bitcoin for 1 BTC = R\$ 500.000, você recebe ~206.000 sats',
             style: TextStyle(
               color: Colors.white54,
               fontSize: 12,
@@ -478,19 +478,19 @@ class ProviderEducationScreen extends StatelessWidget {
       children: [
         _buildFAQItem(
           question: 'Quanto posso ganhar?',
-          answer: '3% de cada transa��o. Sem limite! Quanto mais ordens aceitar, mais ganha.',
+          answer: '3% de cada transação. Sem limite! Quanto mais ordens aceitar, mais ganha.',
         ),
         _buildFAQItem(
           question: 'Quanto tempo leva para receber?',
-          answer: 'Ap�s enviar o comprovante, a valida��o leva at� 2 horas. Aprovado = recebe na hora!',
+          answer: 'Após enviar o comprovante, a validação leva até 2 horas. Aprovado = recebe na hora!',
         ),
         _buildFAQItem(
           question: 'Posso sacar minha garantia?',
-          answer: 'Sim! Quando n�o houver ordens ativas, pode solicitar o resgate da garantia.',
+          answer: 'Sim! Quando não houver ordens ativas, pode solicitar o resgate da garantia.',
         ),
         _buildFAQItem(
           question: 'O que acontece em disputa?',
-          answer: 'A plataforma analisa os comprovantes. Se comprovar fraude, perde a garantia. Se for engano do usu�rio, recebe normalmente.',
+          answer: 'A plataforma analisa os comprovantes. Se comprovar fraude, perde a garantia. Se for engano do usuário, recebe normalmente.',
         ),
 
       ],
@@ -538,21 +538,21 @@ class ProviderEducationScreen extends StatelessWidget {
   Widget _buildStartButton(BuildContext context) {
     return Column(
       children: [
-        // Bot�o principal
+        // Botão principal
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
             onPressed: () async {
-              // Obter pubkey do usu�rio atual
+              // Obter pubkey do usuário atual
               final nostrService = NostrService();
               final pubkey = nostrService.publicKey;
-              // Salvar que est� iniciando modo provedor COM PUBKEY
+              // Salvar que está iniciando modo provedor COM PUBKEY
               await SecureStorageService.setProviderMode(true, userPubkey: pubkey);
-              debugPrint('? Modo provedor salvo (via Come�ar Agora) para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
+              debugPrint('✅ Modo provedor salvo (via Começar Agora) para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
               Navigator.pushNamed(context, '/provider-collateral');
             },
             icon: const Icon(Icons.rocket_launch),
-            label: const Text('Come�ar Agora'),
+            label: const Text('Começar Agora'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.orange,
               padding: const EdgeInsets.symmetric(vertical: 16),
@@ -561,31 +561,31 @@ class ProviderEducationScreen extends StatelessWidget {
           ),
         ),
         
-        // Bot�o de teste (apenas em modo teste)
+        // Botão de teste (apenas em modo teste)
         if (AppConfig.providerTestMode) ...[
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
               onPressed: () async {
-                debugPrint('?? Clicou no bot�o Modo Teste');
+                debugPrint('🧪 Clicou no botão Modo Teste');
                 try {
-                  // Obter pubkey do usu�rio atual
+                  // Obter pubkey do usuário atual
                   final nostrService = NostrService();
                   final pubkey = nostrService.publicKey;
-                  // Salvar que o usu�rio est� em modo provedor COM PUBKEY
+                  // Salvar que o usuário está em modo provedor COM PUBKEY
                   await SecureStorageService.setProviderMode(true, userPubkey: pubkey);
-                  debugPrint('? Modo provedor salvo como ativo para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
+                  debugPrint('✅ Modo provedor salvo como ativo para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
                   
                   // Usar pubkey real do NostrService
                   final providerId = pubkey ?? 'unknown';
-                  debugPrint('?? Navegando para /provider-orders com providerId: $providerId');
+                  debugPrint('🧪 Navegando para /provider-orders com providerId: $providerId');
                   Navigator.pushNamed(context, '/provider-orders', arguments: {
                     'providerId': providerId,
                   });
-                  debugPrint('?? pushNamed executado');
+                  debugPrint('🧪 pushNamed executado');
                 } catch (e) {
-                  debugPrint('? Erro ao navegar: $e');
+                  debugPrint('❌ Erro ao navegar: $e');
                 }
               },
               icon: const Icon(Icons.science, color: Colors.cyan),
@@ -602,7 +602,7 @@ class ProviderEducationScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            '?? Modo teste: n�o requer garantias (apenas desenvolvimento)',
+            '⚠️ Modo teste: não requer garantias (apenas desenvolvimento)',
             style: TextStyle(color: Colors.cyan, fontSize: 12, fontStyle: FontStyle.italic),
             textAlign: TextAlign.center,
           ),

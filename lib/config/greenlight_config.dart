@@ -1,32 +1,32 @@
 import 'dart:io';
 
-/// Configura��o do Greenlight (Blockstream Lightning)
+/// Configuração do Greenlight (Blockstream Lightning)
 /// 
-/// O Greenlight permite rodar um n� Lightning na nuvem sem gerenciar infraestrutura.
+/// O Greenlight permite rodar um nó Lightning na nuvem sem gerenciar infraestrutura.
 /// 
 /// **COMO OBTER CREDENCIAIS:**
 /// 
-/// **Op��o 1: Developer Certificate (Produ��o - Recomendado)**
-/// - V� para: https://greenlight.blockstream.com/
+/// **Opção 1: Developer Certificate (Produção - Recomendado)**
+/// - Vá para: https://greenlight.blockstream.com/
 /// - Crie uma conta e solicite Partner Credentials
 /// - Baixe `client.crt` e `client-key.pem`
 /// - Coloque na pasta `gl-certs/` do projeto
-/// - O c�digo abaixo ler� automaticamente
+/// - O código abaixo lerá automaticamente
 /// 
-/// **Op��o 2: Invite Code (Desenvolvimento)**
+/// **Opção 2: Invite Code (Desenvolvimento)**
 /// - Visite: https://greenlight.blockstream.com/
 /// - Solicite um invite code
 /// - Configure abaixo em `inviteCode`
 /// 
-/// **Op��o 3: Sem Credenciais (Fallback)**
-/// - O app funcionar� com backend LNURL de terceiros
-/// - N�o ter� detec��o autom�tica de pagamentos
+/// **Opção 3: Sem Credenciais (Fallback)**
+/// - O app funcionará com backend LNURL de terceiros
+/// - Não terá detecção automática de pagamentos
 /// - Use apenas para testes de UI
 class GreenlightConfig {
-  /// Developer Certificate (Partner Credentials) - PRODU��O
+  /// Developer Certificate (Partner Credentials) - PRODUÇÃO
   /// 
-  /// Se voc� tem gl-certs/client.crt e gl-certs/client-key.pem no projeto,
-  /// eles ser�o lidos automaticamente.
+  /// Se você tem gl-certs/client.crt e gl-certs/client-key.pem no projeto,
+  /// eles serão lidos automaticamente.
   static String? get partnerCertificatePEM {
     try {
       final certFile = File('gl-certs/client.crt');
@@ -34,7 +34,7 @@ class GreenlightConfig {
         return certFile.readAsStringSync();
       }
     } catch (e) {
-      // Arquivo n�o existe, retornar null
+      // Arquivo não existe, retornar null
     }
     return null;
   }
@@ -46,34 +46,34 @@ class GreenlightConfig {
         return keyFile.readAsStringSync();
       }
     } catch (e) {
-      // Arquivo n�o existe, retornar null
+      // Arquivo não existe, retornar null
     }
     return null;
   }
 
   /// Invite Code (alternativa para desenvolvimento)
   /// 
-  /// Se voc� n�o tem Partner Credentials, use um invite code.
+  /// Se você não tem Partner Credentials, use um invite code.
   /// Obtenha em: https://greenlight.blockstream.com/
   /// 
   /// Exemplo: 'abc123def456'
   static String? get inviteCode {
-    // Configure seu invite code aqui se necess�rio:
+    // Configure seu invite code aqui se necessário:
     return null; // ou return 'SEU_INVITE_CODE_AQUI';
   }
 
-  /// Se true, mostra avisos quando credenciais n�o est�o configuradas
+  /// Se true, mostra avisos quando credenciais não estão configuradas
   static bool get showWarningIfNotConfigured => true;
 
-  /// Verifica se h� alguma credencial configurada
+  /// Verifica se há alguma credencial configurada
   static bool get hasCredentials {
     return partnerCertificatePEM != null || inviteCode != null;
   }
 
-  /// Descri��o do modo atual
+  /// Descrição do modo atual
   static String get currentMode {
     if (partnerCertificatePEM != null) {
-      return 'Developer Certificate (Produ��o)';
+      return 'Developer Certificate (Produção)';
     } else if (inviteCode != null) {
       return 'Invite Code (Desenvolvimento)';
     } else {

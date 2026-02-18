@@ -47,7 +47,7 @@ void main() async {
   // Inicializar cache
   await CacheService().init();
   
-  // Inicializar PlatformFeeService (carrega ordens j� pagas do storage)
+  // Inicializar PlatformFeeService (carrega ordens já pagas do storage)
   await PlatformFeeService.initialize();
 
   // Verificar se ja esta logado
@@ -58,11 +58,11 @@ void main() async {
   // Obter pubkey para o OrderProvider (antes de restaurar chaves)
   String? userPubkey;
   
-  // Se j� est� logado, restaurar chaves Nostr
+  // Se já está logado, restaurar chaves Nostr
   if (isLoggedIn) {
     await _restoreNostrKeys(storage);
     userPubkey = await storage.getNostrPublicKey();
-    debugPrint('?? Pubkey para OrderProvider: ${userPubkey?.substring(0, 16) ?? "null"}...');
+    debugPrint('📦 Pubkey para OrderProvider: ${userPubkey?.substring(0, 16) ?? "null"}...');
   }
 
   // Breez SDK sera inicializado no provider (lazy initialization)
@@ -78,12 +78,12 @@ Future<void> _restoreNostrKeys(StorageService storage) async {
       final nostrService = NostrService();
       final publicKey = nostrService.getPublicKey(privateKey);
       nostrService.setKeys(privateKey, publicKey);
-      debugPrint('?? Chaves Nostr restauradas na inicializa��o: ${publicKey.substring(0, 16)}...');
+      debugPrint('🔑 Chaves Nostr restauradas na inicialização: ${publicKey.substring(0, 16)}...');
     } else {
-      debugPrint('?? Nenhuma chave Nostr salva para restaurar');
+      debugPrint('⚠️ Nenhuma chave Nostr salva para restaurar');
     }
   } catch (e) {
-    debugPrint('? Erro ao restaurar chaves Nostr: $e');
+    debugPrint('❌ Erro ao restaurar chaves Nostr: $e');
   }
 }
 
@@ -110,28 +110,28 @@ Future<void> _tryReconciliation(BreezProvider breezProvider, OrderProvider order
   }
 
   try {
-    debugPrint('?? Iniciando reconcilia��o autom�tica na inicializa��o...');
+    debugPrint('🔄 Iniciando reconciliação automática na inicialização...');
     
     // Buscar TODOS os pagamentos (recebidos e enviados)
     final payments = await breezProvider.getAllPayments();
     
     if (payments.isEmpty) {
-      debugPrint('?? Nenhum pagamento na carteira para reconciliar');
+      debugPrint('📭 Nenhum pagamento na carteira para reconciliar');
       return;
     }
     
-    debugPrint('?? ${payments.length} pagamentos encontrados, reconciliando...');
+    debugPrint('💰 ${payments.length} pagamentos encontrados, reconciliando...');
     
-    // Usar o novo m�todo completo de reconcilia��o
+    // Usar o novo método completo de reconciliação
     final result = await orderProvider.autoReconcileWithBreezPayments(payments);
     
     final pendingReconciled = result['pendingReconciled'] ?? 0;
     final completedReconciled = result['completedReconciled'] ?? 0;
     
     if (pendingReconciled > 0 || completedReconciled > 0) {
-      debugPrint('?? Reconcilia��o na inicializa��o: $pendingReconciled pending?paid, $completedReconciled awaiting?completed');
+      debugPrint('🎉 Reconciliação na inicialização: $pendingReconciled pending→paid, $completedReconciled awaiting→completed');
     } else {
-      debugPrint('? Nenhuma ordem precisou ser reconciliada na inicializa��o');
+      debugPrint('✅ Nenhuma ordem precisou ser reconciliada na inicialização');
     }
   } catch (e) {
     debugPrint('Erro na reconciliacao: $e');
@@ -152,17 +152,17 @@ class BroApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => BreezProvider()),
         ChangeNotifierProvider(create: (_) => BreezLiquidProvider()),
-        // LightningProvider - abstra��o que unifica Spark e Liquid com fallback
-        // IMPORTANTE: Usar as mesmas inst�ncias de Spark e Liquid, n�o criar novas!
+        // LightningProvider - abstração que unifica Spark e Liquid com fallback
+        // IMPORTANTE: Usar as mesmas instâncias de Spark e Liquid, não criar novas!
         ChangeNotifierProxyProvider2<BreezProvider, BreezLiquidProvider, LightningProvider>(
           create: (context) {
-            // Na cria��o inicial, pegar as inst�ncias do context
+            // Na criação inicial, pegar as instâncias do context
             final spark = context.read<BreezProvider>();
             final liquid = context.read<BreezLiquidProvider>();
             return LightningProvider(spark, liquid);
           },
           update: (_, spark, liquid, previous) {
-            // Se j� existe, retornar o mesmo (n�o criar novo)
+            // Se já existe, retornar o mesmo (não criar novo)
             if (previous != null) return previous;
             return LightningProvider(spark, liquid);
           },
@@ -190,7 +190,7 @@ class BroApp extends StatelessWidget {
           
           // Callback para pagamentos RECEBIDOS (menos comum no fluxo atual)
           breezProvider.onPaymentReceived = (String paymentId, int amountSats, String? paymentHash) {
-            debugPrint('?? CALLBACK MAIN: Pagamento recebido! Reconciliando automaticamente...');
+            debugPrint('🔔 CALLBACK MAIN: Pagamento recebido! Reconciliando automaticamente...');
             orderProvider.onPaymentReceived(
               paymentId: paymentId,
               amountSats: amountSats,
@@ -198,9 +198,9 @@ class BroApp extends StatelessWidget {
             );
           };
           
-          // Callback para pagamentos ENVIADOS (quando usu�rio libera BTC para o Bro)
+          // Callback para pagamentos ENVIADOS (quando usuário libera BTC para o Bro)
           breezProvider.onPaymentSent = (String paymentId, int amountSats, String? paymentHash) {
-            debugPrint('?? CALLBACK MAIN: Pagamento ENVIADO! Marcando ordem como completed...');
+            debugPrint('🔔 CALLBACK MAIN: Pagamento ENVIADO! Marcando ordem como completed...');
             orderProvider.onPaymentSent(
               paymentId: paymentId,
               amountSats: amountSats,

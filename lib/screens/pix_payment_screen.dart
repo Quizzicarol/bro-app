@@ -6,7 +6,7 @@ import '../services/api_service.dart';
 import '../widgets/gradient_button.dart';
 import 'payment_success_screen.dart';
 
-/// Tela de pagamento PIX com detec��o autom�tica via QR Code
+/// Tela de pagamento PIX com detecção automática via QR Code
 class PixPaymentScreen extends StatefulWidget {
   final String? orderId;
   final double? amount;
@@ -36,7 +36,7 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
     super.dispose();
   }
 
-  /// Detecta e processa c�digo PIX automaticamente
+  /// Detecta e processa código PIX automaticamente
   void _onQRDetected(BarcodeCapture barcodeCapture) async {
     if (_isProcessing || _paymentSuccess) return;
 
@@ -45,7 +45,7 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
 
     final code = barcode.rawValue!;
     
-    // Valida se � c�digo PIX
+    // Valida se é código PIX
     if (!code.startsWith('00020126')) return;
 
     setState(() {
@@ -53,22 +53,22 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
       _pixCode = code;
     });
 
-    debugPrint('?? Processando c�digo: ${code.substring(0, 50)}');
-    debugPrint('?? Tipo detectado: PIX');
+    debugPrint('🔍 Processando código: ${code.substring(0, 50)}');
+    debugPrint('📊 Tipo detectado: PIX');
 
     try {
       // Decodifica PIX via backend
       final pixInfo = await _apiService.decodePixCode(code);
       
       if (pixInfo == null) {
-        throw Exception('N�o foi poss�vel decodificar o c�digo PIX');
+        throw Exception('Não foi possível decodificar o código PIX');
       }
 
       setState(() {
         _pixData = pixInfo;
       });
 
-      // Mostra confirma��o antes de pagar
+      // Mostra confirmação antes de pagar
       final confirm = await _showPaymentConfirmation(pixInfo);
       
       if (!confirm) {
@@ -84,7 +84,7 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
       await _processPayment(code, pixInfo);
 
     } catch (e) {
-      debugPrint('? Erro ao processar PIX: $e');
+      debugPrint('❌ Erro ao processar PIX: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -115,13 +115,13 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Destinat�rio: ${pixInfo['recipient'] ?? 'N/A'}', style: const TextStyle(color: Colors.white70)),
+            Text('Destinatário: ${pixInfo['recipient'] ?? 'N/A'}', style: const TextStyle(color: Colors.white70)),
             const SizedBox(height: 8),
             if (amount > 0)
               Text('Valor: R\$ ${amount.toStringAsFixed(2)}', style: const TextStyle(color: Colors.white)),
             const SizedBox(height: 8),
             if (pixInfo['description'] != null)
-              Text('Descri��o: ${pixInfo['description']}', style: const TextStyle(color: Colors.white70)),
+              Text('Descrição: ${pixInfo['description']}', style: const TextStyle(color: Colors.white70)),
           ],
         ),
         actions: [
@@ -167,7 +167,7 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
             MaterialPageRoute(
               builder: (_) => PaymentSuccessScreen(
                 orderId: widget.orderId ?? 'pix_temp',
-                amountSats: 0, // PIX n�o usa sats
+                amountSats: 0, // PIX não usa sats
                 totalBrl: amount,
                 paymentType: 'pix',
               ),
@@ -175,10 +175,10 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
           );
         }
       } else {
-        throw Exception(result['error'] ?? 'Pagamento n�o autorizado');
+        throw Exception(result['error'] ?? 'Pagamento não autorizado');
       }
     } catch (e) {
-      debugPrint('? Erro ao processar pagamento: $e');
+      debugPrint('❌ Erro ao processar pagamento: $e');
       rethrow;
     }
   }
@@ -215,7 +215,7 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
             )
           : Column(
               children: [
-                // Instru��es
+                // Instruções
                 Container(
                   padding: const EdgeInsets.all(16),
                   color: const Color(0xFF1A1A1A),
@@ -282,7 +282,7 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
                   ),
                 ),
 
-                // Informa��es adicionais
+                // Informações adicionais
                 Container(
                   padding: const EdgeInsets.all(16),
                   child: Column(
@@ -304,9 +304,9 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
                                   style: TextStyle(fontWeight: FontWeight.w600, color: Colors.orange),
                                 ),
                                 const SizedBox(height: 8),
-                                Text('Destinat�rio: ${_pixData!['recipient'] ?? 'N/A'}', style: const TextStyle(color: Colors.white70)),
+                                Text('Destinatário: ${_pixData!['recipient'] ?? 'N/A'}', style: const TextStyle(color: Colors.white70)),
                                 if (_pixData!['description'] != null)
-                                  Text('Descri��o: ${_pixData!['description']}', style: const TextStyle(color: Colors.white70)),
+                                  Text('Descrição: ${_pixData!['description']}', style: const TextStyle(color: Colors.white70)),
                               ],
                             ),
                           ),

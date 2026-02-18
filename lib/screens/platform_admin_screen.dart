@@ -3,15 +3,15 @@ import 'package:flutter/services.dart';
 import '../services/platform_fee_service.dart';
 import '../config.dart';
 
-/// Tela de administra��o MASTER - Taxas da Plataforma
+/// Tela de administração MASTER - Taxas da Plataforma
 /// ACESSO RESTRITO - Apenas para o administrador da plataforma
 /// 
-/// Para acessar: Na tela de Settings, toque 7 vezes no logo "Vers�o"
+/// Para acessar: Na tela de Settings, toque 7 vezes no logo "Versão"
 /// 
 /// Esta tela mostra:
-/// - Total de taxas coletadas (2% de cada transa��o)
-/// - Hist�rico de transa��es
-/// - Op��o para exportar dados
+/// - Total de taxas coletadas (2% de cada transação)
+/// - Histórico de transações
+/// - Opção para exportar dados
 class PlatformAdminScreen extends StatefulWidget {
   const PlatformAdminScreen({Key? key}) : super(key: key);
 
@@ -98,7 +98,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
         title: const Text('Confirmar'),
         content: Text(
           'Marcar ${_pendingRecords.length} taxas como coletadas?\n\n'
-          'Fa�a isso APENAS ap�s transferir os fundos para sua carteira.',
+          'Faça isso APENAS após transferir os fundos para sua carteira.',
         ),
         actions: [
           TextButton(
@@ -130,8 +130,8 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
     setState(() => _isTesting = true);
     
     try {
-      debugPrint('?? Testando envio de taxa da plataforma...');
-      debugPrint('?? Destino: ${AppConfig.platformLightningAddress}');
+      debugPrint('🧪 Testando envio de taxa da plataforma...');
+      debugPrint('📍 Destino: ${AppConfig.platformLightningAddress}');
       
       final result = await PlatformFeeService.sendPlatformFee(
         orderId: 'test_${DateTime.now().millisecondsSinceEpoch}',
@@ -141,7 +141,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(result ? '? Taxa enviada com sucesso para ${AppConfig.platformLightningAddress}!' : '? Falha - verifique logs'),
+            content: Text(result ? '✅ Taxa enviada com sucesso para ${AppConfig.platformLightningAddress}!' : '❌ Falha - verifique logs'),
             backgroundColor: result ? Colors.green : Colors.red,
             duration: const Duration(seconds: 5),
           ),
@@ -151,10 +151,10 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
         await _loadData();
       }
     } catch (e) {
-      debugPrint('? Erro no teste: $e');
+      debugPrint('❌ Erro no teste: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('? Erro: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('❌ Erro: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -204,7 +204,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Aviso de seguran�a
+                  // Aviso de segurança
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
@@ -218,7 +218,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
                         SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            '�REA RESTRITA - Dados sens�veis da plataforma',
+                            'ÁREA RESTRITA - Dados sensíveis da plataforma',
                             style: TextStyle(color: Colors.red, fontSize: 12),
                           ),
                         ),
@@ -231,7 +231,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
                   _buildTotalsCard(),
                   const SizedBox(height: 24),
 
-                  // Endere�os para receber
+                  // Endereços para receber
                   _buildReceiveAddressesCard(),
                   const SizedBox(height: 24),
 
@@ -239,7 +239,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
                   _buildPendingFeesCard(),
                   const SizedBox(height: 24),
 
-                  // Hist�rico
+                  // Histórico
                   _buildHistorySection(),
                 ],
               ),
@@ -283,7 +283,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
                 Icon(Icons.check_circle, color: Colors.green, size: 16),
                 SizedBox(width: 6),
                 Text(
-                  'COLETA AUTOM�TICA ATIVA',
+                  'COLETA AUTOMÁTICA ATIVA',
                   style: TextStyle(color: Colors.green, fontSize: 11, fontWeight: FontWeight.bold),
                 ),
               ],
@@ -291,13 +291,13 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
           ),
           const SizedBox(height: 8),
           const Text(
-            '2% de cada transa��o � enviado automaticamente\npara ${AppConfig.platformLightningAddress}',
+            '2% de cada transação é enviado automaticamente\npara ${AppConfig.platformLightningAddress}',
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.white38, fontSize: 10),
           ),
           const SizedBox(height: 16),
           const Text(
-            '?? TAXAS DA PLATAFORMA (2%)',
+            '💰 TAXAS DA PLATAFORMA (2%)',
             style: TextStyle(
               color: Colors.amber,
               fontSize: 16,
@@ -306,11 +306,11 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
           ),
           const SizedBox(height: 20),
           
-          // Total Hist�rico
+          // Total Histórico
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Total Hist�rico:', style: TextStyle(color: Colors.white70)),
+              const Text('Total Histórico:', style: TextStyle(color: Colors.white70)),
               Text(
                 '$totalSats sats',
                 style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
@@ -332,7 +332,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('? Pendente:', style: TextStyle(color: Colors.orange)),
+              const Text('⏳ Pendente:', style: TextStyle(color: Colors.orange)),
               Text(
                 '$pendingSats sats',
                 style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 18),
@@ -354,7 +354,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('? Coletado:', style: TextStyle(color: Colors.green)),
+              const Text('✅ Coletado:', style: TextStyle(color: Colors.green)),
               Text(
                 '$collectedSats sats',
                 style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
@@ -363,7 +363,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
           ),
           const SizedBox(height: 16),
           
-          // Total de transa��es
+          // Total de transações
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
@@ -371,7 +371,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-              'Total de $totalTx transa��es processadas',
+              'Total de $totalTx transações processadas',
               style: const TextStyle(color: Colors.white54, fontSize: 12),
             ),
           ),
@@ -393,13 +393,13 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '?? Endere�os para Receber Taxas',
+            '📥 Endereços para Receber Taxas',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
           ),
           const SizedBox(height: 16),
           
           // Lightning Address
-          const Text('? Lightning Address:', style: TextStyle(color: Colors.white70, fontSize: 12)),
+          const Text('⚡ Lightning Address:', style: TextStyle(color: Colors.white70, fontSize: 12)),
           const SizedBox(height: 4),
           Row(
             children: [
@@ -411,7 +411,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    AppConfig.platformLightningAddress.isNotEmpty ? AppConfig.platformLightningAddress : 'N�o configurado',
+                    AppConfig.platformLightningAddress.isNotEmpty ? AppConfig.platformLightningAddress : 'Não configurado',
                     style: const TextStyle(color: Colors.white, fontFamily: 'monospace'),
                   ),
                 ),
@@ -425,7 +425,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
           ),
           const SizedBox(height: 16),
           
-          // Bot�o de teste
+          // Botão de teste
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
@@ -464,7 +464,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                '? Taxas Pendentes',
+                '⏳ Taxas Pendentes',
                 style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 16),
               ),
               Container(
@@ -485,12 +485,12 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
           if (_pendingRecords.isEmpty)
             const Center(
               child: Text(
-                'Nenhuma taxa pendente ??',
+                'Nenhuma taxa pendente 🎉',
                 style: TextStyle(color: Colors.white54),
               ),
             )
           else ...[
-            // Lista das �ltimas 5 pendentes
+            // Lista das últimas 5 pendentes
             ...(_pendingRecords.take(5).map((record) => Container(
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.all(12),
@@ -541,7 +541,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
             
             const SizedBox(height: 16),
             
-            // Bot�o para marcar como coletado
+            // Botão para marcar como coletado
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
@@ -575,18 +575,18 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '?? Estat�sticas',
+            '📊 Estatísticas',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
           ),
           const SizedBox(height: 16),
           
-          _buildStatRow('Total de Transa��es', '${_totals?['totalTransactions'] ?? 0}'),
-          _buildStatRow('Taxa por Transa��o', '2%'),
-          _buildStatRow('Taxa M�dia', _calculateAverageFee()),
+          _buildStatRow('Total de Transações', '${_totals?['totalTransactions'] ?? 0}'),
+          _buildStatRow('Taxa por Transação', '2%'),
+          _buildStatRow('Taxa Média', _calculateAverageFee()),
           
           const SizedBox(height: 16),
           
-          // Bot�o de exportar
+          // Botão de exportar
           OutlinedButton.icon(
             onPressed: _exportData,
             icon: const Icon(Icons.download, color: Colors.amber),

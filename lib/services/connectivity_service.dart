@@ -9,7 +9,7 @@ class ConnectivityService {
         // Para web, tentamos um fetch simples
         return true; // Simplificado para web
       } else {
-        // Para mobile/desktop, tentamos uma conex�o socket
+        // Para mobile/desktop, tentamos uma conexão socket
         final socket = await Socket.connect(
           uri.host, 
           uri.port,

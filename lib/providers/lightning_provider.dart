@@ -11,14 +11,14 @@ enum LightningBackend {
   liquid,  // Breez SDK Liquid (L-BTC + Boltz)
 }
 
-/// Abstra��o que unifica Breez SDK Spark e Liquid
+/// Abstração que unifica Breez SDK Spark e Liquid
 /// 
-/// Estrat�gia:
+/// Estratégia:
 /// 1. SEMPRE tenta usar Spark primeiro (menores taxas)
 /// 2. Se Spark falhar, tenta Liquid como fallback
-/// 3. Quando usar Liquid, as taxas s�o calculadas e embutidas
+/// 3. Quando usar Liquid, as taxas são calculadas e embutidas
 /// 
-/// IMPORTANTE: As taxas do Liquid devem ser embutidas no spread da cota��o
+/// IMPORTANTE: As taxas do Liquid devem ser embutidas no spread da cotação
 /// pelo chamador usando calculateTotalFees() e adjustPriceForLiquidFees()
 class LightningProvider with ChangeNotifier {
   final BreezProvider _sparkProvider;
@@ -29,13 +29,13 @@ class LightningProvider with ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   
-  // Estat�sticas de uso
+  // Estatísticas de uso
   int _sparkAttempts = 0;
   int _sparkFailures = 0;
   int _liquidAttempts = 0;
   int _liquidFailures = 0;
   
-  // Cache de �ltima falha Spark para evitar retry imediato
+  // Cache de última falha Spark para evitar retry imediato
   DateTime? _lastSparkFailure;
   static const _sparkCooldownSeconds = 60; // Esperar 1 min antes de tentar Spark novamente
   
@@ -52,7 +52,7 @@ class LightningProvider with ChangeNotifier {
   BreezProvider get sparkProvider => _sparkProvider;
   BreezLiquidProvider get liquidProvider => _liquidProvider;
   
-  // Estat�sticas
+  // Estatísticas
   int get sparkAttempts => _sparkAttempts;
   int get sparkFailures => _sparkFailures;
   int get liquidAttempts => _liquidAttempts;
@@ -71,7 +71,7 @@ class LightningProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  /// Verifica se deve tentar Spark ou se est� em cooldown por falhas recentes
+  /// Verifica se deve tentar Spark ou se está em cooldown por falhas recentes
   bool get _shouldTrySpark {
     if (_lastSparkFailure == null) return true;
     
@@ -79,7 +79,7 @@ class LightningProvider with ChangeNotifier {
     return elapsed.inSeconds >= _sparkCooldownSeconds;
   }
   
-  /// Calcula as taxas totais para uma transa��o Liquid
+  /// Calcula as taxas totais para uma transação Liquid
   /// Inclui: taxa Boltz (0.25% + 200 sats) + taxa rede (50 sats)
   /// 
   /// Retorna em sats
@@ -95,22 +95,22 @@ class LightningProvider with ChangeNotifier {
     return BreezLiquidProvider.calculateLiquidSpread(amountSats);
   }
   
-  /// Ajusta um pre�o em BRL para embutir taxas do Liquid
+  /// Ajusta um preço em BRL para embutir taxas do Liquid
   /// 
   /// Exemplo: 
-  ///   - Pre�o original: R$ 100,00 (para 10.000 sats)
+  ///   - Preço original: R$ 100,00 (para 10.000 sats)
   ///   - Taxas Liquid: ~275 sats (2.75%)
-  ///   - Pre�o ajustado: R$ 100,00 + 2.75% = R$ 102,75
+  ///   - Preço ajustado: R$ 100,00 + 2.75% = R$ 102,75
   /// 
-  /// O usu�rio paga R$ 102,75 e recebe R$ 100,00 em Bitcoin l�quido
+  /// O usuário paga R$ 102,75 e recebe R$ 100,00 em Bitcoin líquido
   static double adjustPriceForLiquidFees(double priceBrl, int amountSats) {
     final spread = calculateLiquidSpread(amountSats);
     return priceBrl * (1 + spread);
   }
   
-  /// Calcula o valor em sats que o usu�rio deve pagar para receber um valor l�quido
+  /// Calcula o valor em sats que o usuário deve pagar para receber um valor líquido
   /// 
-  /// netAmountSats = valor que o usu�rio quer receber
+  /// netAmountSats = valor que o usuário quer receber
   /// Retorna = valor que ele precisa enviar (incluindo taxas)
   static int calculateGrossAmount(int netAmountSats) {
     return BreezLiquidProvider.calculateGrossAmount(netAmountSats);
@@ -123,7 +123,7 @@ class LightningProvider with ChangeNotifier {
     _setLoading(true);
     _setError(null);
     
-    debugPrint('? LightningProvider: Inicializando backends...');
+    debugPrint('⚡ LightningProvider: Inicializando backends...');
     
     // Sempre inicializar Spark primeiro
     bool sparkOk = false;
@@ -131,22 +131,22 @@ class LightningProvider with ChangeNotifier {
       sparkOk = await _sparkProvider.initialize(mnemonic: mnemonic);
       if (sparkOk) {
         _currentBackend = LightningBackend.spark;
-        debugPrint('? Spark inicializado - usando como prim�rio');
+        debugPrint('✅ Spark inicializado - usando como primário');
       }
     } catch (e) {
-      debugPrint('? Erro ao inicializar Spark: $e');
+      debugPrint('❌ Erro ao inicializar Spark: $e');
     }
     
-    // Se Spark falhou e Liquid fallback est� habilitado, inicializar Liquid
+    // Se Spark falhou e Liquid fallback está habilitado, inicializar Liquid
     if (!sparkOk && AppConfig.enableLiquidFallback) {
       try {
         final liquidOk = await _liquidProvider.initialize(mnemonic: mnemonic);
         if (liquidOk) {
           _currentBackend = LightningBackend.liquid;
-          debugPrint('? Liquid inicializado como fallback (Spark falhou)');
+          debugPrint('✅ Liquid inicializado como fallback (Spark falhou)');
         }
       } catch (e) {
-        debugPrint('? Erro ao inicializar Liquid fallback: $e');
+        debugPrint('❌ Erro ao inicializar Liquid fallback: $e');
       }
     }
     
@@ -154,7 +154,7 @@ class LightningProvider with ChangeNotifier {
     _isInitialized = _sparkProvider.isInitialized || _liquidProvider.isInitialized;
     
     if (!_isInitialized) {
-      _setError('Nenhum backend Lightning dispon�vel');
+      _setError('Nenhum backend Lightning disponível');
     } else {
       // IMPORTANTE: Configurar callback do PlatformFeeService para envio de taxas
       _configurePlatformFeeCallback();
@@ -164,14 +164,14 @@ class LightningProvider with ChangeNotifier {
     return _isInitialized;
   }
   
-  /// Configura o callback do PlatformFeeService com o m�todo payInvoice deste provider
+  /// Configura o callback do PlatformFeeService com o método payInvoice deste provider
   void _configurePlatformFeeCallback() {
     final backend = _currentBackend == LightningBackend.spark ? 'Spark' : 'Liquid';
     PlatformFeeService.setPaymentCallback(
       (String invoice) => payInvoice(invoice),
       backend,
     );
-    debugPrint('?? PlatformFeeService configurado para usar $backend');
+    debugPrint('💼 PlatformFeeService configurado para usar $backend');
   }
 
   /// Obter saldo total (Spark + Liquid)
@@ -207,10 +207,10 @@ class LightningProvider with ChangeNotifier {
     return result;
   }
 
-  /// Criar invoice com fallback autom�tico
+  /// Criar invoice com fallback automático
   /// 
   /// IMPORTANTE: Se retornar com 'isLiquid': true, as taxas devem ser embutidas
-  /// no spread da cota��o pelo chamador!
+  /// no spread da cotação pelo chamador!
   /// 
   /// Retorna:
   ///   - success: bool
@@ -225,10 +225,10 @@ class LightningProvider with ChangeNotifier {
     _setLoading(true);
     _setError(null);
     
-    // 1. Tentar Spark primeiro (se n�o estiver em cooldown)
+    // 1. Tentar Spark primeiro (se não estiver em cooldown)
     if (_sparkProvider.isInitialized && _shouldTrySpark) {
       _sparkAttempts++;
-      debugPrint('? Tentando criar invoice via Spark...');
+      debugPrint('⚡ Tentando criar invoice via Spark...');
       
       try {
         final result = await _sparkProvider.createInvoice(
@@ -240,7 +240,7 @@ class LightningProvider with ChangeNotifier {
           _currentBackend = LightningBackend.spark;
           _setLoading(false);
           
-          debugPrint('? Invoice criado via Spark');
+          debugPrint('✅ Invoice criado via Spark');
           return {
             ...result,
             'isLiquid': false,
@@ -249,29 +249,29 @@ class LightningProvider with ChangeNotifier {
         } else {
           _sparkFailures++;
           _lastSparkFailure = DateTime.now();
-          debugPrint('? Spark falhou: ${result?['error']}');
+          debugPrint('❌ Spark falhou: ${result?['error']}');
         }
       } catch (e) {
         _sparkFailures++;
         _lastSparkFailure = DateTime.now();
-        debugPrint('? Erro ao criar invoice Spark: $e');
+        debugPrint('❌ Erro ao criar invoice Spark: $e');
       }
     } else if (!_shouldTrySpark) {
-      debugPrint('? Spark em cooldown, pulando...');
+      debugPrint('⏳ Spark em cooldown, pulando...');
     }
     
     // 2. Fallback para Liquid se habilitado
     if (AppConfig.enableLiquidFallback) {
-      // Inicializar Liquid se ainda n�o foi
+      // Inicializar Liquid se ainda não foi
       if (!_liquidProvider.isInitialized) {
-        debugPrint('?? Inicializando Liquid para fallback...');
+        debugPrint('💧 Inicializando Liquid para fallback...');
         final mnemonic = _sparkProvider.mnemonic;
         await _liquidProvider.initialize(mnemonic: mnemonic);
       }
       
       if (_liquidProvider.isInitialized) {
         _liquidAttempts++;
-        debugPrint('?? Tentando criar invoice via Liquid (fallback)...');
+        debugPrint('💧 Tentando criar invoice via Liquid (fallback)...');
         
         try {
           final result = await _liquidProvider.createInvoice(
@@ -284,8 +284,8 @@ class LightningProvider with ChangeNotifier {
             _setLoading(false);
             
             final fees = calculateLiquidFees(amountSats);
-            debugPrint('? Invoice criado via Liquid (fallback)');
-            debugPrint('?? Taxas estimadas: $fees sats');
+            debugPrint('✅ Invoice criado via Liquid (fallback)');
+            debugPrint('💰 Taxas estimadas: $fees sats');
             
             return {
               ...result,
@@ -296,25 +296,25 @@ class LightningProvider with ChangeNotifier {
             };
           } else {
             _liquidFailures++;
-            debugPrint('? Liquid tamb�m falhou: ${result?['error']}');
+            debugPrint('❌ Liquid também falhou: ${result?['error']}');
           }
         } catch (e) {
           _liquidFailures++;
-          debugPrint('? Erro ao criar invoice Liquid: $e');
+          debugPrint('❌ Erro ao criar invoice Liquid: $e');
         }
       }
     }
     
     // 3. Todos os backends falharam
-    _setError('N�o foi poss�vel criar invoice - todos os backends falharam');
+    _setError('Não foi possível criar invoice - todos os backends falharam');
     _setLoading(false);
     return {
       'success': false,
-      'error': 'Nenhum backend Lightning dispon�vel no momento',
+      'error': 'Nenhum backend Lightning disponível no momento',
     };
   }
 
-  /// Pagar invoice com fallback autom�tico
+  /// Pagar invoice com fallback automático
   /// 
   /// Tenta pagar usando o backend que tem saldo suficiente
   Future<Map<String, dynamic>?> payInvoice(String bolt11) async {
@@ -326,7 +326,7 @@ class LightningProvider with ChangeNotifier {
       final sparkResult = await _sparkProvider.getBalance();
       final sparkBalance = int.tryParse(sparkResult['balance']?.toString() ?? '0') ?? 0;
       if (sparkBalance > 0) {
-        debugPrint('? Tentando pagar via Spark (saldo: $sparkBalance sats)...');
+        debugPrint('⚡ Tentando pagar via Spark (saldo: $sparkBalance sats)...');
         
         try {
           final result = await _sparkProvider.payInvoice(bolt11);
@@ -338,7 +338,7 @@ class LightningProvider with ChangeNotifier {
             };
           }
         } catch (e) {
-          debugPrint('? Pagamento Spark falhou: $e');
+          debugPrint('❌ Pagamento Spark falhou: $e');
         }
       }
     }
@@ -347,7 +347,7 @@ class LightningProvider with ChangeNotifier {
     if (_liquidProvider.isInitialized) {
       final liquidBalance = await _liquidProvider.getBalance();
       if (liquidBalance > 0) {
-        debugPrint('?? Tentando pagar via Liquid (saldo: $liquidBalance sats)...');
+        debugPrint('💧 Tentando pagar via Liquid (saldo: $liquidBalance sats)...');
         
         try {
           final result = await _liquidProvider.payInvoice(bolt11);
@@ -359,12 +359,12 @@ class LightningProvider with ChangeNotifier {
             };
           }
         } catch (e) {
-          debugPrint('? Pagamento Liquid falhou: $e');
+          debugPrint('❌ Pagamento Liquid falhou: $e');
         }
       }
     }
     
-    _setError('N�o foi poss�vel pagar - saldo insuficiente ou backends indispon�veis');
+    _setError('Não foi possível pagar - saldo insuficiente ou backends indisponíveis');
     _setLoading(false);
     return {
       'success': false,
@@ -372,20 +372,20 @@ class LightningProvider with ChangeNotifier {
     };
   }
   
-  /// For�ar uso de backend espec�fico
+  /// Forçar uso de backend específico
   void forceBackend(LightningBackend backend) {
     _currentBackend = backend;
     notifyListeners();
-    debugPrint('?? Backend for�ado para: $backend');
+    debugPrint('🔧 Backend forçado para: $backend');
   }
   
-  /// Resetar cooldown do Spark (for�ar nova tentativa)
+  /// Resetar cooldown do Spark (forçar nova tentativa)
   void resetSparkCooldown() {
     _lastSparkFailure = null;
-    debugPrint('?? Cooldown do Spark resetado');
+    debugPrint('🔄 Cooldown do Spark resetado');
   }
   
-  /// Debug: obter estat�sticas
+  /// Debug: obter estatísticas
   Map<String, dynamic> getStats() {
     return {
       'currentBackend': _currentBackend.name,
@@ -402,7 +402,7 @@ class LightningProvider with ChangeNotifier {
 
   @override
   void dispose() {
-    // Providers s�o gerenciados externamente
+    // Providers são gerenciados externamente
     super.dispose();
   }
 }

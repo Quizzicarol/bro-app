@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart' show Color;
+﻿import 'package:flutter/material.dart' show Color;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
@@ -121,10 +121,10 @@ class NotificationService {
     );
   }
   // ============================================
-  // NOTIFICA��ES PARA O MODO BRO (PROVEDOR)
+  // NOTIFICAÇÕES PARA O MODO BRO (PROVEDOR)
   // ============================================
 
-  /// Notifica que h� uma nova ordem dispon�vel para aceitar
+  /// Notifica que há uma nova ordem disponível para aceitar
   Future<void> notifyNewOrderAvailable({
     required String orderId,
     required double amount,
@@ -132,14 +132,14 @@ class NotificationService {
   }) async {
     await _showNotification(
       id: orderId.hashCode + 10,
-      title: '?? Nova Ordem Dispon�vel!',
+      title: '🆕 Nova Ordem Disponível!',
       body: 'Ordem de R\$ ${amount.toStringAsFixed(2)} ($paymentType) aguardando. Toque para aceitar.',
       payload: 'new_order:$orderId',
       importance: Importance.high,
     );
   }
 
-  /// Notifica que o usu�rio confirmou o pagamento (ganho liberado)
+  /// Notifica que o usuário confirmou o pagamento (ganho liberado)
   Future<void> notifyUserConfirmedPayment({
     required String orderId,
     required double earnedSats,
@@ -147,14 +147,14 @@ class NotificationService {
   }) async {
     await _showNotification(
       id: orderId.hashCode + 11,
-      title: '?? Pagamento Confirmado!',
-      body: 'Voc� ganhou ${earnedSats.toStringAsFixed(0)} sats pela ordem de R\$ ${amountBrl.toStringAsFixed(2)}!',
+      title: '🎉 Pagamento Confirmado!',
+      body: 'Você ganhou ${earnedSats.toStringAsFixed(0)} sats pela ordem de R\$ ${amountBrl.toStringAsFixed(2)}!',
       payload: 'payment_confirmed:$orderId',
       importance: Importance.high,
     );
   }
 
-  /// Notifica que uma ordem est� prestes a expirar (para Bro completar)
+  /// Notifica que uma ordem está prestes a expirar (para Bro completar)
   Future<void> notifyOrderExpiringSoon({
     required String orderId,
     required int minutesRemaining,
@@ -162,68 +162,68 @@ class NotificationService {
   }) async {
     await _showNotification(
       id: orderId.hashCode + 12,
-      title: '?? Ordem Expirando!',
-      body: 'Voc� tem $minutesRemaining minutos para pagar a conta de R\$ ${amount.toStringAsFixed(2)}.',
+      title: '⚠️ Ordem Expirando!',
+      body: 'Você tem $minutesRemaining minutos para pagar a conta de R\$ ${amount.toStringAsFixed(2)}.',
       payload: 'order_expiring:$orderId',
       importance: Importance.max,
     );
   }
 
-  /// Notifica que o usu�rio abriu disputa
+  /// Notifica que o usuário abriu disputa
   Future<void> notifyDisputeReceivedAsBro({
     required String orderId,
     required String reason,
   }) async {
     await _showNotification(
       id: orderId.hashCode + 13,
-      title: '?? Disputa Aberta!',
-      body: 'O usu�rio abriu disputa: $reason',
+      title: '⚠️ Disputa Aberta!',
+      body: 'O usuário abriu disputa: $reason',
       payload: 'dispute_as_bro:$orderId',
       importance: Importance.max,
     );
   }
 
   // ============================================
-  // NOTIFICA��ES DE TIER/GARANTIA
+  // NOTIFICAÇÕES DE TIER/GARANTIA
   // ============================================
 
-  /// Notifica que o tier est� em risco devido � queda do Bitcoin
+  /// Notifica que o tier está em risco devido à queda do Bitcoin
   Future<void> notifyTierAtRisk({
     required String tierName,
     required int missingAmount,
   }) async {
     await _showNotification(
       id: 'tier_risk'.hashCode,
-      title: '?? Garantia em Risco!',
-      body: 'O pre�o do Bitcoin caiu. Deposite mais $missingAmount sats para manter o $tierName.',
+      title: '⚠️ Garantia em Risco!',
+      body: 'O preço do Bitcoin caiu. Deposite mais $missingAmount sats para manter o $tierName.',
       payload: 'tier_at_risk',
       importance: Importance.high,
     );
   }
 
-  /// Notifica que o prazo de auto-liquida��o est� chegando (para o provedor)
+  /// Notifica que o prazo de auto-liquidação está chegando (para o provedor)
   Future<void> notifyAutoLiquidationPending({
     required String orderId,
     required double amountBrl,
   }) async {
     await _showNotification(
       id: orderId.hashCode + 20,
-      title: '? Prazo de Liquida��o Chegou!',
-      body: 'A ordem de R\$ ${amountBrl.toStringAsFixed(2)} est� pronta para auto-liquida��o. Abra o app para receber seus ganhos.',
+      title: '⏰ Prazo de Liquidação Chegou!',
+      body: 'A ordem de R\$ ${amountBrl.toStringAsFixed(2)} está pronta para auto-liquidação. Abra o app para receber seus ganhos.',
       payload: 'auto_liquidation:$orderId',
       importance: Importance.max,
     );
   }
 
-  /// Notifica que a ordem foi auto-liquidada (para o usu�rio)
+  /// Notifica que a ordem foi auto-liquidada (para o usuário)
   Future<void> notifyOrderAutoLiquidated({
     required String orderId,
     required double amountBrl,
   }) async {
     await _showNotification(
       id: orderId.hashCode + 21,
-      title: '? Ordem Liquidada Automaticamente',
-      body: 'A ordem de R\$ ${amountBrl.toStringAsFixed(2)} foi liquidada. Voc� n�o confirmou em 24h, ent�o os valores foram liberados para o Bro.',
+      title: '⚡ Ordem Liquidada Automaticamente',
+      body: 'A ordem de R\$ ${amountBrl.toStringAsFixed(2)} foi liquidada. Você não confirmou em 24h, então os valores foram liberados para o Bro.',
       payload: 'order_liquidated:$orderId',
       importance: Importance.high,
     );
@@ -236,8 +236,8 @@ class NotificationService {
   }) async {
     await _showNotification(
       id: 'tier_lost'.hashCode,
-      title: '?? Tier Rebaixado',
-      body: 'Voc� perdeu o $tierName. Agora est� no $newTierName.',
+      title: '📉 Tier Rebaixado',
+      body: 'Você perdeu o $tierName. Agora está no $newTierName.',
       payload: 'tier_lost',
       importance: Importance.high,
     );
@@ -250,14 +250,14 @@ class NotificationService {
   }) async {
     await _showNotification(
       id: 'tier_upgrade'.hashCode,
-      title: '?? Tier Atualizado!',
-      body: 'Parab�ns! Voc� agora � $newTierName. Limite: R\$ ${maxOrderBrl.toStringAsFixed(0)}/ordem.',
+      title: '🎉 Tier Atualizado!',
+      body: 'Parabéns! Você agora é $newTierName. Limite: R\$ ${maxOrderBrl.toStringAsFixed(0)}/ordem.',
       payload: 'tier_upgrade',
     );
   }
 
   // ============================================
-  // NOTIFICA��ES DE MENSAGENS
+  // NOTIFICAÇÕES DE MENSAGENS
   // ============================================
 
   /// Notifica sobre nova mensagem de chat do marketplace
@@ -268,7 +268,7 @@ class NotificationService {
   }) async {
     await _showNotification(
       id: DateTime.now().millisecondsSinceEpoch,
-      title: '?? Mensagem de $senderName',
+      title: '💬 Mensagem de $senderName',
       body: '[$offerTitle] $preview',
       payload: 'marketplace_message:$senderName',
     );
@@ -282,14 +282,14 @@ class NotificationService {
   }) async {
     await _showNotification(
       id: DateTime.now().millisecondsSinceEpoch,
-      title: '?? Nova Oferta no Marketplace',
+      title: '🛒 Nova Oferta no Marketplace',
       body: '$title por $sellerName - R\$ ${priceBrl.toStringAsFixed(2)}',
       payload: 'new_marketplace_offer',
     );
   }
 
   // ============================================
-  // NOTIFICA��ES DE PAGAMENTOS
+  // NOTIFICAÇÕES DE PAGAMENTOS
   // ============================================
 
   /// Notifica que recebeu sats na carteira
@@ -298,8 +298,8 @@ class NotificationService {
   }) async {
     await _showNotification(
       id: DateTime.now().millisecondsSinceEpoch,
-      title: '? Pagamento Recebido!',
-      body: 'Voc� recebeu $amountSats sats na sua carteira.',
+      title: '⚡ Pagamento Recebido!',
+      body: 'Você recebeu $amountSats sats na sua carteira.',
       payload: 'payment_received_wallet',
     );
   }
@@ -311,7 +311,7 @@ class NotificationService {
   }) async {
     await _showNotification(
       id: DateTime.now().millisecondsSinceEpoch,
-      title: '?? Pagamento Enviado',
+      title: '📤 Pagamento Enviado',
       body: 'Enviado $amountSats sats para $destination',
       payload: 'payment_sent',
     );

@@ -1,5 +1,5 @@
-/// Servi�o de valida��o e sanitiza��o de inputs
-/// Previne inje��o de c�digo e dados maliciosos
+/// Serviço de validação e sanitização de inputs
+/// Previne injeção de código e dados maliciosos
 class InputValidationService {
   static final InputValidationService _instance = InputValidationService._internal();
   factory InputValidationService() => _instance;
@@ -23,11 +23,11 @@ class InputValidationService {
     return sanitized.trim();
   }
   
-  /// Valida e sanitiza valor monet�rio em BRL
+  /// Valida e sanitiza valor monetário em BRL
   ValidationResult validateBrlAmount(String input) {
     final sanitized = input.replaceAll(RegExp(r'[^\d,.]'), '');
     
-    // Converte v�rgula para ponto
+    // Converte vírgula para ponto
     final normalized = sanitized.replaceAll(',', '.');
     
     final amount = double.tryParse(normalized);
@@ -35,7 +35,7 @@ class InputValidationService {
     if (amount == null) {
       return ValidationResult(
         isValid: false,
-        error: 'Valor inv�lido',
+        error: 'Valor inválido',
       );
     }
     
@@ -49,7 +49,7 @@ class InputValidationService {
     if (amount > 100000) {
       return ValidationResult(
         isValid: false,
-        error: 'Valor m�ximo excedido (R\$ 100.000)',
+        error: 'Valor máximo excedido (R\$ 100.000)',
       );
     }
     
@@ -64,15 +64,15 @@ class InputValidationService {
     final sanitized = sanitizeText(input, maxLength: 100);
     
     if (sanitized.isEmpty) {
-      return ValidationResult(isValid: false, error: 'Chave PIX obrigat�ria');
+      return ValidationResult(isValid: false, error: 'Chave PIX obrigatória');
     }
     
-    // CPF: 11 d�gitos
+    // CPF: 11 dígitos
     if (RegExp(r'^\d{11}$').hasMatch(sanitized)) {
       return ValidationResult(isValid: true, sanitizedValue: sanitized, type: 'cpf');
     }
     
-    // CNPJ: 14 d�gitos
+    // CNPJ: 14 dígitos
     if (RegExp(r'^\d{14}$').hasMatch(sanitized)) {
       return ValidationResult(isValid: true, sanitizedValue: sanitized, type: 'cnpj');
     }
@@ -82,54 +82,54 @@ class InputValidationService {
       return ValidationResult(isValid: true, sanitizedValue: sanitized.toLowerCase(), type: 'email');
     }
     
-    // Telefone: +55 + DDD + n�mero
+    // Telefone: +55 + DDD + número
     final phoneClean = sanitized.replaceAll(RegExp(r'[^\d+]'), '');
     if (RegExp(r'^\+?55?\d{10,11}$').hasMatch(phoneClean)) {
       return ValidationResult(isValid: true, sanitizedValue: phoneClean, type: 'phone');
     }
     
-    // Chave aleat�ria: 32 caracteres alfanum�ricos
+    // Chave aleatória: 32 caracteres alfanuméricos
     if (RegExp(r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$', caseSensitive: false).hasMatch(sanitized)) {
       return ValidationResult(isValid: true, sanitizedValue: sanitized.toLowerCase(), type: 'random');
     }
     
-    // PIX copia e cola (come�a com padr�o EMV)
+    // PIX copia e cola (começa com padrão EMV)
     if (sanitized.startsWith('00020126')) {
       return ValidationResult(isValid: true, sanitizedValue: sanitized, type: 'emv');
     }
     
     return ValidationResult(
       isValid: false,
-      error: 'Formato de chave PIX inv�lido',
+      error: 'Formato de chave PIX inválido',
     );
   }
   
-  /// Valida c�digo de barras de boleto
+  /// Valida código de barras de boleto
   ValidationResult validateBoletoCode(String input) {
     final sanitized = input.replaceAll(RegExp(r'[^\d]'), '');
     
     if (sanitized.isEmpty) {
-      return ValidationResult(isValid: false, error: 'C�digo do boleto obrigat�rio');
+      return ValidationResult(isValid: false, error: 'Código do boleto obrigatório');
     }
     
-    // Boleto banc�rio: 47 d�gitos (linha digit�vel)
+    // Boleto bancário: 47 dígitos (linha digitável)
     if (sanitized.length == 47) {
       return ValidationResult(isValid: true, sanitizedValue: sanitized, type: 'bancario');
     }
     
-    // Conv�nio/concession�ria: 48 d�gitos
+    // Convênio/concessionária: 48 dígitos
     if (sanitized.length == 48) {
       return ValidationResult(isValid: true, sanitizedValue: sanitized, type: 'convenio');
     }
     
-    // C�digo de barras: 44 d�gitos
+    // Código de barras: 44 dígitos
     if (sanitized.length == 44) {
       return ValidationResult(isValid: true, sanitizedValue: sanitized, type: 'barcode');
     }
     
     return ValidationResult(
       isValid: false,
-      error: 'C�digo de boleto inv�lido (esperado 44, 47 ou 48 d�gitos)',
+      error: 'Código de boleto inválido (esperado 44, 47 ou 48 dígitos)',
     );
   }
   
@@ -138,10 +138,10 @@ class InputValidationService {
     final sanitized = sanitizeText(input, maxLength: 1000).toLowerCase();
     
     if (sanitized.isEmpty) {
-      return ValidationResult(isValid: false, error: 'Invoice obrigat�ria');
+      return ValidationResult(isValid: false, error: 'Invoice obrigatória');
     }
     
-    // BOLT11: come�a com lnbc (mainnet), lntb (testnet), lnbcrt (regtest)
+    // BOLT11: começa com lnbc (mainnet), lntb (testnet), lnbcrt (regtest)
     if (sanitized.startsWith('lnbc') || 
         sanitized.startsWith('lntb') || 
         sanitized.startsWith('lnbcrt')) {
@@ -155,36 +155,36 @@ class InputValidationService {
     
     return ValidationResult(
       isValid: false,
-      error: 'Invoice Lightning inv�lida',
+      error: 'Invoice Lightning inválida',
     );
   }
   
-  /// Valida endere�o Bitcoin
+  /// Valida endereço Bitcoin
   ValidationResult validateBitcoinAddress(String input) {
     final sanitized = sanitizeText(input, maxLength: 100);
     
     if (sanitized.isEmpty) {
-      return ValidationResult(isValid: false, error: 'Endere�o obrigat�rio');
+      return ValidationResult(isValid: false, error: 'Endereço obrigatório');
     }
     
-    // Bech32 (SegWit): come�a com bc1 (mainnet) ou tb1 (testnet)
+    // Bech32 (SegWit): começa com bc1 (mainnet) ou tb1 (testnet)
     if (RegExp(r'^(bc1|tb1)[a-z0-9]{39,59}$', caseSensitive: false).hasMatch(sanitized)) {
       return ValidationResult(isValid: true, sanitizedValue: sanitized, type: 'bech32');
     }
     
-    // P2PKH (Legacy): come�a com 1 ou m/n (testnet)
+    // P2PKH (Legacy): começa com 1 ou m/n (testnet)
     if (RegExp(r'^[1mn][a-km-zA-HJ-NP-Z1-9]{25,34}$').hasMatch(sanitized)) {
       return ValidationResult(isValid: true, sanitizedValue: sanitized, type: 'p2pkh');
     }
     
-    // P2SH: come�a com 3 ou 2 (testnet)
+    // P2SH: começa com 3 ou 2 (testnet)
     if (RegExp(r'^[32][a-km-zA-HJ-NP-Z1-9]{25,34}$').hasMatch(sanitized)) {
       return ValidationResult(isValid: true, sanitizedValue: sanitized, type: 'p2sh');
     }
     
     return ValidationResult(
       isValid: false,
-      error: 'Endere�o Bitcoin inv�lido',
+      error: 'Endereço Bitcoin inválido',
     );
   }
 }

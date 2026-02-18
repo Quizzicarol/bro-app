@@ -12,9 +12,9 @@ class OnchainPaymentScreen extends StatefulWidget {
   final double btcAmount;
   final double totalBrl;
   final int amountSats;
-  final String orderId; // Pode ser vazio se ordem ainda n�o foi criada
+  final String orderId; // Pode ser vazio se ordem ainda não foi criada
   
-  // ?? NOVOS CAMPOS: Dados para criar ordem AP�S pagamento
+  // 🔥 NOVOS CAMPOS: Dados para criar ordem APÓS pagamento
   final String? billType;
   final String? billCode;
   final double? billAmount;
@@ -43,13 +43,13 @@ class _OnchainPaymentScreenState extends State<OnchainPaymentScreen> {
   int _confirmations = 0;
   int _secondsElapsed = 0;
   Timer? _timerForDisplay;
-  String? _createdOrderId; // ID da ordem criada ap�s pagamento
+  String? _createdOrderId; // ID da ordem criada após pagamento
 
   @override
   void initState() {
     super.initState();
     
-    // Iniciar monitoramento autom�tico
+    // Iniciar monitoramento automático
     final breezProvider = context.read<BreezProvider>();
     final orderProvider = context.read<OrderProvider>();
     
@@ -58,7 +58,7 @@ class _OnchainPaymentScreenState extends State<OnchainPaymentScreen> {
       paymentId: widget.orderId.isNotEmpty ? widget.orderId : 'pending_${DateTime.now().millisecondsSinceEpoch}',
       address: widget.address,
       expectedSats: widget.amountSats,
-      checkInterval: const Duration(seconds: 30), // On-chain � mais lento
+      checkInterval: const Duration(seconds: 30), // On-chain é mais lento
       onStatusChange: (status, data) async {
         if (status == PaymentStatus.confirmed && !_isPaid) {
           setState(() {
@@ -66,11 +66,11 @@ class _OnchainPaymentScreenState extends State<OnchainPaymentScreen> {
             _confirmations = 1;
           });
           
-          // ?? NOVO FLUXO: Criar ordem SOMENTE AGORA que o pagamento foi confirmado!
+          // 🔥 NOVO FLUXO: Criar ordem SOMENTE AGORA que o pagamento foi confirmado!
           String orderId = widget.orderId;
           
           if (orderId.isEmpty && widget.billType != null) {
-            debugPrint('?? Pagamento on-chain confirmado! CRIANDO ORDEM AGORA...');
+            debugPrint('🚀 Pagamento on-chain confirmado! CRIANDO ORDEM AGORA...');
             
             final order = await orderProvider.createOrder(
               billType: widget.billType!,
@@ -83,13 +83,13 @@ class _OnchainPaymentScreenState extends State<OnchainPaymentScreen> {
             if (order != null) {
               orderId = order.id;
               _createdOrderId = orderId;
-              debugPrint('? Ordem CRIADA ap�s pagamento on-chain: $orderId');
+              debugPrint('✅ Ordem CRIADA após pagamento on-chain: $orderId');
             } else {
-              debugPrint('? Falha ao criar ordem ap�s pagamento on-chain!');
+              debugPrint('❌ Falha ao criar ordem após pagamento on-chain!');
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Erro ao criar ordem. Pagamento recebido mas ordem n�o foi criada.'),
+                    content: Text('Erro ao criar ordem. Pagamento recebido mas ordem não foi criada.'),
                     backgroundColor: Colors.orange,
                     duration: Duration(seconds: 5),
                   ),
@@ -98,13 +98,13 @@ class _OnchainPaymentScreenState extends State<OnchainPaymentScreen> {
               return;
             }
           } else {
-            // Ordem j� existe (fluxo antigo) - apenas publicar
-            debugPrint('?? Pagamento on-chain confirmado! Publicando ordem existente...');
+            // Ordem já existe (fluxo antigo) - apenas publicar
+            debugPrint('🚀 Pagamento on-chain confirmado! Publicando ordem existente...');
             final published = await orderProvider.publishOrderAfterPayment(orderId);
             if (published) {
-              debugPrint('? Ordem publicada no Nostr - Bros agora podem v�-la!');
+              debugPrint('✅ Ordem publicada no Nostr - Bros agora podem vê-la!');
             } else {
-              debugPrint('?? Falha ao publicar ordem no Nostr');
+              debugPrint('⚠️ Falha ao publicar ordem no Nostr');
             }
           }
           
@@ -117,7 +117,7 @@ class _OnchainPaymentScreenState extends State<OnchainPaymentScreen> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('? Pagamento on-chain confirmado!'),
+                content: Text('✅ Pagamento on-chain confirmado!'),
                 backgroundColor: Colors.green,
                 duration: Duration(seconds: 5),
               ),
@@ -145,7 +145,7 @@ class _OnchainPaymentScreenState extends State<OnchainPaymentScreen> {
   }
 
   Future<void> _checkPaymentStatus() async {
-    // N�o � mais necess�rio - o PaymentMonitorService cuida disso
+    // Não é mais necessário - o PaymentMonitorService cuida disso
   }
 
   void _copyToClipboard(String text, String label) {
@@ -208,7 +208,7 @@ class _OnchainPaymentScreenState extends State<OnchainPaymentScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            '$_confirmations confirma��es',
+            '$_confirmations confirmações',
             style: const TextStyle(
               fontSize: 18,
               color: Color(0x99FFFFFF),
@@ -292,7 +292,7 @@ class _OnchainPaymentScreenState extends State<OnchainPaymentScreen> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    '? ${widget.btcAmount.toStringAsFixed(8)}',
+                    '₿ ${widget.btcAmount.toStringAsFixed(8)}',
                     style: const TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
@@ -351,7 +351,7 @@ class _OnchainPaymentScreenState extends State<OnchainPaymentScreen> {
 
           // Address field
           const Text(
-            'Endere�o Bitcoin',
+            'Endereço Bitcoin',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 14,
@@ -383,7 +383,7 @@ class _OnchainPaymentScreenState extends State<OnchainPaymentScreen> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.copy, color: Color(0xFF4CAF50)),
-                  onPressed: () => _copyToClipboard(widget.address, 'Endere�o'),
+                  onPressed: () => _copyToClipboard(widget.address, 'Endereço'),
                 ),
               ],
             ),
@@ -452,7 +452,7 @@ class _OnchainPaymentScreenState extends State<OnchainPaymentScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Aten��o',
+                        'Atenção',
                         style: TextStyle(
                           color: Color(0xFFFFB74D),
                           fontSize: 16,
@@ -461,7 +461,7 @@ class _OnchainPaymentScreenState extends State<OnchainPaymentScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Envie EXATAMENTE ${widget.btcAmount.toStringAsFixed(8)} BTC para o endere�o acima. Valores diferentes podem n�o ser processados.',
+                        'Envie EXATAMENTE ${widget.btcAmount.toStringAsFixed(8)} BTC para o endereço acima. Valores diferentes podem não ser processados.',
                         style: const TextStyle(
                           color: Color(0xFFFFB74D),
                           fontSize: 13,
@@ -502,9 +502,9 @@ class _OnchainPaymentScreenState extends State<OnchainPaymentScreen> {
                 ),
                 const SizedBox(height: 12),
                 _buildInstructionItem('1. Abra sua carteira Bitcoin'),
-                _buildInstructionItem('2. Envie o valor EXATO para o endere�o'),
-                _buildInstructionItem('3. Aguarde 1-3 confirma��es (~10-30 min)'),
-                _buildInstructionItem('4. O pagamento ser� processado automaticamente'),
+                _buildInstructionItem('2. Envie o valor EXATO para o endereço'),
+                _buildInstructionItem('3. Aguarde 1-3 confirmações (~10-30 min)'),
+                _buildInstructionItem('4. O pagamento será processado automaticamente'),
               ],
             ),
           ),
@@ -518,7 +518,7 @@ class _OnchainPaymentScreenState extends State<OnchainPaymentScreen> {
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Text(
-              '?? Taxas de rede: Ser�o deduzidas do valor enviado pela sua carteira',
+              '⛏️ Taxas de rede: Serão deduzidas do valor enviado pela sua carteira',
               style: TextStyle(
                 color: Color(0x99FFFFFF),
                 fontSize: 12,
@@ -550,7 +550,7 @@ class _OnchainPaymentScreenState extends State<OnchainPaymentScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '.  ',
+            '•  ',
             style: TextStyle(color: Color(0xFF64B5F6), fontSize: 14),
           ),
           Expanded(

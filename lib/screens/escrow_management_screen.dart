@@ -4,8 +4,8 @@ import '../services/escrow_service.dart';
 import '../services/storage_service.dart';
 import '../widgets/gradient_button.dart';
 
-/// Tela de gest�o do dep�sito de garantia (500 BRL)
-/// TODO: Implementar integra��o com backend real de escrow
+/// Tela de gestão do depósito de garantia (500 BRL)
+/// TODO: Implementar integração com backend real de escrow
 class EscrowManagementScreen extends StatefulWidget {
   const EscrowManagementScreen({Key? key}) : super(key: key);
 
@@ -44,7 +44,7 @@ class _EscrowManagementScreenState extends State<EscrowManagementScreen> {
     if (_providerId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('?? Voc� precisa estar no modo provedor'),
+          content: Text('⚠️ Você precisa estar no modo provedor'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -54,7 +54,7 @@ class _EscrowManagementScreenState extends State<EscrowManagementScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Por enquanto, usar o tier b�sico
+      // Por enquanto, usar o tier básico
       final result = await _escrowService.depositCollateral(
         tierId: 'basic',
         amountSats: 50000, // ~500 BRL em sats (estimado)
@@ -69,7 +69,7 @@ class _EscrowManagementScreenState extends State<EscrowManagementScreen> {
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('? Erro ao criar dep�sito: $e'),
+          content: Text('❌ Erro ao criar depósito: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -103,8 +103,8 @@ class _EscrowManagementScreenState extends State<EscrowManagementScreen> {
             ),
             const SizedBox(height: 16),
             const Text(
-              '??  Este valor ficar� bloqueado como garantia.\n'
-              'Voc� poder� resgatar quando n�o tiver ordens ativas ou disputas.',
+              '⚠️  Este valor ficará bloqueado como garantia.\n'
+              'Você poderá resgatar quando não tiver ordens ativas ou disputas.',
               style: TextStyle(
                 fontSize: 12,
                 color: Color(0x99FFFFFF),
@@ -136,7 +136,7 @@ class _EscrowManagementScreenState extends State<EscrowManagementScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text('Gest�o de Garantia'),
+        title: const Text('Gestão de Garantia'),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -203,8 +203,8 @@ class _EscrowManagementScreenState extends State<EscrowManagementScreen> {
           const SizedBox(height: 8),
           Text(
             hasCollateral
-                ? 'Voc� pode aceitar ordens'
-                : 'Deposite garantia para come�ar',
+                ? 'Você pode aceitar ordens'
+                : 'Deposite garantia para começar',
             style: const TextStyle(
               color: Colors.white70,
             ),
@@ -232,21 +232,21 @@ class _EscrowManagementScreenState extends State<EscrowManagementScreen> {
             ),
             const SizedBox(height: 16),
             const Text(
-              'Para se tornar um provedor e aceitar ordens, voc� precisa '
+              'Para se tornar um provedor e aceitar ordens, você precisa '
               'depositar uma garantia em Bitcoin.',
               style: TextStyle(color: Color(0x99FFFFFF)),
             ),
             const SizedBox(height: 16),
             const Text(
-              '? Voc� poder� resgatar quando:',
+              '✅ Você poderá resgatar quando:',
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-            _buildCheckItem('N�o tiver ordens ativas'),
-            _buildCheckItem('N�o tiver disputas em aberto'),
+            _buildCheckItem('Não tiver ordens ativas'),
+            _buildCheckItem('Não tiver disputas em aberto'),
             const SizedBox(height: 16),
             const Text(
-              '??  Se houver problemas com pagamentos, a garantia pode ser '
+              '⚠️  Se houver problemas com pagamentos, a garantia pode ser '
               'usada para compensar o cliente.',
               style: TextStyle(
                 color: Color(0xFFFF9800),
@@ -280,7 +280,7 @@ class _EscrowManagementScreenState extends State<EscrowManagementScreen> {
               children: [
                 const Expanded(
                   child: Text(
-                    'Dep�sito Ativo',
+                    'Depósito Ativo',
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
@@ -308,7 +308,7 @@ class _EscrowManagementScreenState extends State<EscrowManagementScreen> {
             ),
             const SizedBox(height: 16),
             
-            _buildInfoRow('Dispon�vel', '$availableSats sats'),
+            _buildInfoRow('Disponível', '$availableSats sats'),
             _buildInfoRow('Bloqueado em ordens', '$lockedSats sats'),
             
             const SizedBox(height: 24),
@@ -326,7 +326,7 @@ class _EscrowManagementScreenState extends State<EscrowManagementScreen> {
                   SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Garantia ativa! Voc� pode aceitar ordens.',
+                      'Garantia ativa! Você pode aceitar ordens.',
                       style: TextStyle(color: Color(0xFF4CAF50)),
                     ),
                   ),

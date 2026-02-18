@@ -11,8 +11,8 @@ import '../providers/order_provider.dart';
 import 'home_screen.dart';
 
 /// Tela de Login baseada em NIP-06
-/// Uma �nica seed BIP-39 = Chave Nostr + Carteira Lightning
-/// Isso garante que o usu�rio NUNCA perca seu saldo ou hist�rico
+/// Uma única seed BIP-39 = Chave Nostr + Carteira Lightning
+/// Isso garante que o usuário NUNCA perca seu saldo ou histórico
 class LoginScreenNip06 extends StatefulWidget {
   const LoginScreenNip06({super.key});
 
@@ -57,7 +57,7 @@ class _LoginScreenNip06State extends State<LoginScreenNip06> {
       Clipboard.setData(ClipboardData(text: _generatedSeed!));
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('?? Seed copiada! Guarde em local seguro!'),
+          content: Text('📋 Seed copiada! Guarde em local seguro!'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -75,11 +75,11 @@ class _LoginScreenNip06State extends State<LoginScreenNip06> {
 
     // Validar seed
     if (!_nip06.validateMnemonic(seed)) {
-      setState(() => _error = 'Seed inv�lida. Verifique as 12 palavras.');
+      setState(() => _error = 'Seed inválida. Verifique as 12 palavras.');
       return;
     }
 
-    // Se � uma seed nova, exigir confirma��o
+    // Se é uma seed nova, exigir confirmação
     if (_generatedSeed != null && !_seedConfirmed) {
       final confirmed = await _showSeedConfirmationDialog();
       if (!confirmed) return;
@@ -98,7 +98,7 @@ class _LoginScreenNip06State extends State<LoginScreenNip06> {
       final privateKey = keys['privateKey']!;
       final publicKey = keys['publicKey']!;
 
-      debugPrint('?? Chaves derivadas via NIP-06');
+      debugPrint('🔑 Chaves derivadas via NIP-06');
       debugPrint('   Pubkey: ${publicKey.substring(0, 16)}...');
 
       // 2. Salvar chaves Nostr
@@ -108,7 +108,7 @@ class _LoginScreenNip06State extends State<LoginScreenNip06> {
       );
       _nostrService.setKeys(privateKey, publicKey);
 
-      // 3. Salvar seed para carteira Lightning (associada ao usu�rio)
+      // 3. Salvar seed para carteira Lightning (associada ao usuário)
       await _storage.saveBreezMnemonic(seed, ownerPubkey: publicKey);
 
       // 4. Buscar perfil Nostr (opcional, com timeout)
@@ -119,7 +119,7 @@ class _LoginScreenNip06State extends State<LoginScreenNip06> {
         final profile = await _profileService.fetchProfile(publicKey)
             .timeout(const Duration(seconds: 5), onTimeout: () => null);
         if (profile != null) {
-          debugPrint('? Perfil encontrado: ${profile.preferredName}');
+          debugPrint('✅ Perfil encontrado: ${profile.preferredName}');
           await _storage.saveNostrProfile(
             name: profile.name,
             displayName: profile.displayName,
@@ -128,7 +128,7 @@ class _LoginScreenNip06State extends State<LoginScreenNip06> {
           );
         }
       } catch (e) {
-        debugPrint('?? Perfil n�o encontrado (novo usu�rio)');
+        debugPrint('⚠️ Perfil não encontrado (novo usuário)');
       }
 
       // 5. Inicializar carteira Lightning com a MESMA seed
@@ -143,23 +143,23 @@ class _LoginScreenNip06State extends State<LoginScreenNip06> {
           // Inicializar com a seed (a mesma do Nostr!)
           final success = await breezProvider.initialize(mnemonic: seed)
               .timeout(const Duration(seconds: 20), onTimeout: () {
-            debugPrint('? Timeout na inicializa��o - continuando');
+            debugPrint('⏰ Timeout na inicialização - continuando');
             return false;
           });
           
           if (success) {
-            debugPrint('? Carteira Lightning inicializada com a seed NIP-06');
+            debugPrint('✅ Carteira Lightning inicializada com a seed NIP-06');
           } else {
-            debugPrint('?? Carteira inicializar� em background');
+            debugPrint('⚠️ Carteira inicializará em background');
           }
         } catch (e) {
-          debugPrint('? Erro no Breez: $e');
+          debugPrint('❌ Erro no Breez: $e');
         }
       }
 
-      // 6. Carregar ordens do usu�rio
+      // 6. Carregar ordens do usuário
       if (mounted) {
-        setState(() => _statusMessage = 'Carregando hist�rico...');
+        setState(() => _statusMessage = 'Carregando histórico...');
         final orderProvider = context.read<OrderProvider>();
         await orderProvider.loadOrdersForUser(publicKey);
       }
@@ -171,7 +171,7 @@ class _LoginScreenNip06State extends State<LoginScreenNip06> {
         );
       }
     } catch (e) {
-      debugPrint('? Erro no login: $e');
+      debugPrint('❌ Erro no login: $e');
       setState(() => _error = 'Erro: ${e.toString()}');
     } finally {
       if (mounted) {
@@ -183,7 +183,7 @@ class _LoginScreenNip06State extends State<LoginScreenNip06> {
     }
   }
 
-  /// Dialog de confirma��o de backup da seed
+  /// Dialog de confirmação de backup da seed
   Future<bool> _showSeedConfirmationDialog() async {
     return await showDialog<bool>(
       context: context,
@@ -195,7 +195,7 @@ class _LoginScreenNip06State extends State<LoginScreenNip06> {
           children: [
             Icon(Icons.warning_amber, color: Colors.orange, size: 28),
             SizedBox(width: 12),
-            Text('Backup Obrigat�rio', style: TextStyle(color: Colors.white)),
+            Text('Backup Obrigatório', style: TextStyle(color: Colors.white)),
           ],
         ),
         content: const Column(
@@ -203,15 +203,15 @@ class _LoginScreenNip06State extends State<LoginScreenNip06> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '?? ATEN��O: Esta seed � a �NICA forma de recuperar sua conta e seu saldo Bitcoin.',
+              '⚠️ ATENÇÃO: Esta seed é a ÚNICA forma de recuperar sua conta e seu saldo Bitcoin.',
               style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
             ),
             SizedBox(height: 16),
             Text(
-              '. Anote as 12 palavras em papel\n'
-              '. Guarde em local seguro\n'
-              '. NUNCA compartilhe com ningu�m\n'
-              '. Se perder, perder� TODO o saldo',
+              '• Anote as 12 palavras em papel\n'
+              '• Guarde em local seguro\n'
+              '• NUNCA compartilhe com ninguém\n'
+              '• Se perder, perderá TODO o saldo',
               style: TextStyle(color: Color(0xB3FFFFFF)),
             ),
             SizedBox(height: 16),
@@ -276,7 +276,7 @@ class _LoginScreenNip06State extends State<LoginScreenNip06> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       const Text(
-                        '?? Login Unificado',
+                        '🔐 Login Unificado',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
@@ -286,7 +286,7 @@ class _LoginScreenNip06State extends State<LoginScreenNip06> {
                       ),
                       const SizedBox(height: 8),
                       const Text(
-                        'Uma �nica seed = Conta Nostr + Carteira Bitcoin',
+                        'Uma única seed = Conta Nostr + Carteira Bitcoin',
                         style: TextStyle(fontSize: 13, color: Color(0x99FFFFFF)),
                         textAlign: TextAlign.center,
                       ),
@@ -323,7 +323,7 @@ class _LoginScreenNip06State extends State<LoginScreenNip06> {
                           fillColor: const Color(0x0DFFFFFF),
                         ),
                         onChanged: (_) {
-                          // Se usu�rio editou, n�o � mais a seed gerada
+                          // Se usuário editou, não é mais a seed gerada
                           if (_generatedSeed != null && _seedController.text != _generatedSeed) {
                             setState(() {
                               _generatedSeed = null;
@@ -334,7 +334,7 @@ class _LoginScreenNip06State extends State<LoginScreenNip06> {
                       ),
                       const SizedBox(height: 12),
 
-                      // Bot�es de a��o da seed
+                      // Botões de ação da seed
                       Row(
                         children: [
                           Expanded(
@@ -376,7 +376,7 @@ class _LoginScreenNip06State extends State<LoginScreenNip06> {
                               SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  '?? Anote esta seed AGORA! Ela n�o ser� mostrada novamente.',
+                                  '⚠️ Anote esta seed AGORA! Ela não será mostrada novamente.',
                                   style: TextStyle(color: Colors.orange, fontSize: 12),
                                 ),
                               ),
@@ -411,7 +411,7 @@ class _LoginScreenNip06State extends State<LoginScreenNip06> {
                       ],
                       const SizedBox(height: 20),
 
-                      // Bot�o principal
+                      // Botão principal
                       Container(
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
@@ -520,7 +520,7 @@ class _LoginScreenNip06State extends State<LoginScreenNip06> {
                       SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Compat�vel com NIP-06. Sua seed nunca sai do dispositivo.',
+                          'Compatível com NIP-06. Sua seed nunca sai do dispositivo.',
                           style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 12),
                         ),
                       ),

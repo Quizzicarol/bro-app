@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/withdrawal.dart';
 
-/// Servi�o para gerenciar hist�rico de saques
+/// Serviço para gerenciar histórico de saques
 class WithdrawalService {
   static const String _storageKeyPrefix = 'withdrawals_';
   
@@ -22,7 +22,7 @@ class WithdrawalService {
       final prefs = await SharedPreferences.getInstance();
       final storageKey = '$_storageKeyPrefix$userPubkey';
       
-      // Gerar ID �nico
+      // Gerar ID único
       final id = '${DateTime.now().millisecondsSinceEpoch}_${orderId.substring(0, 8)}';
       
       final withdrawal = Withdrawal(
@@ -54,13 +54,13 @@ class WithdrawalService {
       // Salvar
       await prefs.setString(storageKey, jsonEncode(withdrawals));
       
-      debugPrint('? Saque registrado: ${withdrawal.id} - $amountSats sats - $status');
+      debugPrint('✅ Saque registrado: ${withdrawal.id} - $amountSats sats - $status');
     } catch (e) {
-      debugPrint('? Erro ao salvar saque: $e');
+      debugPrint('❌ Erro ao salvar saque: $e');
     }
   }
   
-  /// Buscar saques de uma ordem espec�fica
+  /// Buscar saques de uma ordem específica
   Future<List<Withdrawal>> getWithdrawalsByOrder({
     required String orderId,
     required String userPubkey,
@@ -69,12 +69,12 @@ class WithdrawalService {
       final allWithdrawals = await getAllWithdrawals(userPubkey: userPubkey);
       return allWithdrawals.where((w) => w.orderId == orderId).toList();
     } catch (e) {
-      debugPrint('? Erro ao buscar saques da ordem: $e');
+      debugPrint('❌ Erro ao buscar saques da ordem: $e');
       return [];
     }
   }
   
-  /// Buscar todos os saques do usu�rio
+  /// Buscar todos os saques do usuário
   Future<List<Withdrawal>> getAllWithdrawals({
     required String userPubkey,
   }) async {
@@ -97,7 +97,7 @@ class WithdrawalService {
       
       return withdrawals;
     } catch (e) {
-      debugPrint('? Erro ao buscar saques: $e');
+      debugPrint('❌ Erro ao buscar saques: $e');
       return [];
     }
   }
@@ -122,7 +122,7 @@ class WithdrawalService {
     return total;
   }
   
-  /// Calcular total sacado pelo usu�rio
+  /// Calcular total sacado pelo usuário
   Future<int> getTotalWithdrawn({
     required String userPubkey,
   }) async {

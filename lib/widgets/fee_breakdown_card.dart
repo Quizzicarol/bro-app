@@ -80,7 +80,7 @@ class FeeBreakdownCard extends StatelessWidget {
               color: const Color(0xFFFFB74D), // orange 300
             ),
             
-            // Platform fee - escondido por enquanto (n�o estamos cobrando)
+            // Platform fee - escondido por enquanto (não estamos cobrando)
             // TODO: Descomentar quando ativar taxa de plataforma
             
             // Network fee (only for on-chain)
@@ -104,7 +104,7 @@ class FeeBreakdownCard extends StatelessWidget {
               color: const Color(0xFF4CAF50), // green
             ),
             
-            // Info sobre cota��o atual
+            // Info sobre cotação atual
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(8),
@@ -123,7 +123,7 @@ class FeeBreakdownCard extends StatelessWidget {
                   ),
                   SizedBox(width: 6),
                   Text(
-                    'Cota��o atualizada em tempo real',
+                    'Cotação atualizada em tempo real',
                     style: TextStyle(
                       fontSize: 12,
                       color: Color(0xFF81C784),
@@ -211,7 +211,7 @@ class FeeBreakdownCard extends StatelessWidget {
             ),
             const SizedBox(height: 2),
             Text(
-              '? ${(valueBtc * 100000000).toStringAsFixed(0)} sats',
+              '≈ ${(valueBtc * 100000000).toStringAsFixed(0)} sats',
               style: TextStyle(
                 fontSize: 12,
                 color: Colors.grey[600],

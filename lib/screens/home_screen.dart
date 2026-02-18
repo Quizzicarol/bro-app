@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -30,7 +30,7 @@ class _HomeScreenState extends State<HomeScreen> {
   double _btcPrice = 0.0;
   Timer? _priceUpdateTimer;
   Timer? _ordersUpdateTimer; // Timer para atualizar ordens automaticamente
-  String? _currentUserPubkey; // Para filtro extra de seguran�a
+  String? _currentUserPubkey; // Para filtro extra de segurança
 
   @override
   void initState() {
@@ -47,18 +47,18 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
   
-  /// Carrega a pubkey do usu�rio atual para filtro extra de seguran�a
+  /// Carrega a pubkey do usuário atual para filtro extra de segurança
   Future<void> _loadCurrentUserPubkey() async {
     final pubkey = await StorageService().getNostrPublicKey();
     if (mounted) {
       setState(() {
         _currentUserPubkey = pubkey;
       });
-      debugPrint('?? [HOME] Pubkey carregada: ${pubkey?.substring(0, 16) ?? "null"}');
+      debugPrint('🔑 [HOME] Pubkey carregada: ${pubkey?.substring(0, 16) ?? "null"}');
     }
   }
 
-  /// Verifica se precisa recuperar seed perdida (situa��o cr�tica!)
+  /// Verifica se precisa recuperar seed perdida (situação crítica!)
   Future<void> _checkSeedRecoveryStatus() async {
     await Future.delayed(const Duration(milliseconds: 500));
     if (!mounted) return;
@@ -78,7 +78,7 @@ class _HomeScreenState extends State<HomeScreen> {
               SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  '?? RECUPERA��O NECESS�RIA',
+                  '⚠️ RECUPERAÇÃO NECESSÁRIA',
                   style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                 ),
               ),
@@ -89,7 +89,7 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Text(
                 'Houve um problema ao recuperar sua carteira.\n\n'
-                'Se voc� tinha sats nesta carteira, v� em Configura��es e use "Restaurar Carteira" com suas 12 palavras de backup.',
+                'Se você tinha sats nesta carteira, vá em Configurações e use "Restaurar Carteira" com suas 12 palavras de backup.',
                 style: TextStyle(color: Colors.white, fontSize: 14),
               ),
             ],
@@ -101,7 +101,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Navigator.pushNamed(context, '/settings');
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.white),
-              child: const Text('Ir para Configura��es', style: TextStyle(color: Colors.red)),
+              child: const Text('Ir para Configurações', style: TextStyle(color: Colors.red)),
             ),
           ],
         ),
@@ -109,16 +109,16 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
   
-  /// Mostra aviso de backup da seed para novos usu�rios
+  /// Mostra aviso de backup da seed para novos usuários
   Future<void> _checkAndShowBackupReminder() async {
     final storage = StorageService();
     await storage.init();
     
-    // Verificar se j� mostrou o aviso de backup
+    // Verificar se já mostrou o aviso de backup
     final hasShownBackupReminder = await storage.getData('has_shown_backup_reminder');
     if (hasShownBackupReminder == 'true') return;
     
-    // Aguardar um pouco para n�o atrapalhar a inicializa��o
+    // Aguardar um pouco para não atrapalhar a inicialização
     await Future.delayed(const Duration(seconds: 2));
     
     if (!mounted) return;
@@ -175,14 +175,14 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 16),
               const Text(
-                '?? Sua Seed (12 palavras) � a chave da sua carteira Lightning.',
+                '🔑 Sua Seed (12 palavras) é a chave da sua carteira Lightning.',
                 style: TextStyle(color: Colors.white, fontSize: 14),
               ),
               const SizedBox(height: 12),
               const Text(
-                '. Anote em papel e guarde em local seguro\n'
-                '. NUNCA compartilhe com ningu�m\n'
-                '. Se perder o celular, s� a seed recupera seus sats',
+                '• Anote em papel e guarde em local seguro\n'
+                '• NUNCA compartilhe com ninguém\n'
+                '• Se perder o celular, só a seed recupera seus sats',
                 style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 13),
               ),
               const SizedBox(height: 16),
@@ -199,7 +199,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Fa�a backup agora em Configura��es > Backup',
+                        'Faça backup agora em Configurações > Backup',
                         style: TextStyle(color: Colors.green, fontSize: 13),
                       ),
                     ),
@@ -227,7 +227,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
     
-    // Marcar como j� mostrado
+    // Marcar como já mostrado
     await storage.saveData('has_shown_backup_reminder', 'true');
     
     if (result == 'backup' && mounted) {
@@ -251,12 +251,12 @@ class _HomeScreenState extends State<HomeScreen> {
         );
 
         if (success) {
-          // CR�TICO: Configurar callback do PlatformFeeService para envio de taxas
+          // CRÍTICO: Configurar callback do PlatformFeeService para envio de taxas
           PlatformFeeService.setPaymentCallback(
             (String invoice) => breezProvider.payInvoice(invoice),
             'Spark',
           );
-          debugPrint('?? PlatformFeeService callback configurado com BreezProvider');
+          debugPrint('💼 PlatformFeeService callback configurado com BreezProvider');
         }
 
         if (!success && mounted) {
@@ -305,7 +305,7 @@ class _HomeScreenState extends State<HomeScreen> {
         try {
           await orderProvider.syncOrdersFromNostr();
         } catch (e) {
-          debugPrint('?? Erro no polling de ordens: $e');
+          debugPrint('⚠️ Erro no polling de ordens: $e');
         }
       }
     });
@@ -316,31 +316,31 @@ class _HomeScreenState extends State<HomeScreen> {
       final breezProvider = context.read<BreezProvider>();
       final orderProvider = context.read<OrderProvider>();
 
-      // SEGURAN�A CR�TICA: Garantir que N�O estamos em modo provedor na home
+      // SEGURANÇA CRÍTICA: Garantir que NÃO estamos em modo provedor na home
       // Isso previne vazamento de dados se o exitProviderMode falhou
       if (orderProvider.isProviderMode) {
-        debugPrint('?? [HOME] Detectado modo provedor ativo! For�ando reset...');
+        debugPrint('⚠️ [HOME] Detectado modo provedor ativo! Forçando reset...');
         orderProvider.exitProviderMode();
       }
 
       // Mostrar mensagem de progresso
-      _showSyncSnackbar('?? Conectando com a rede Nostr...');
+      _showSyncSnackbar('🔄 Conectando com a rede Nostr...');
       
       await Future.wait([
         breezProvider.refresh(),
         orderProvider.fetchOrders(), // SEMPRE com forProvider: false (default)
       ]);
       
-      // Mostrar conclus�o
+      // Mostrar conclusão
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        _showSyncSnackbar('? Dados atualizados!', duration: const Duration(seconds: 1));
+        _showSyncSnackbar('✅ Dados atualizados!', duration: const Duration(seconds: 1));
       }
     } catch (e) {
-      debugPrint('? Erro no _loadData: $e');
+      debugPrint('❌ Erro no _loadData: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        _showSyncSnackbar('?? Falha ao atualizar dados', duration: const Duration(seconds: 2));
+        _showSyncSnackbar('⚠️ Falha ao atualizar dados', duration: const Duration(seconds: 2));
       }
     }
   }
@@ -351,7 +351,7 @@ class _HomeScreenState extends State<HomeScreen> {
       SnackBar(
         content: Row(
           children: [
-            if (!message.startsWith('?'))
+            if (!message.startsWith('✅'))
               const SizedBox(
                 width: 16,
                 height: 16,
@@ -360,7 +360,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: Colors.white,
                 ),
               ),
-            if (!message.startsWith('?')) const SizedBox(width: 12),
+            if (!message.startsWith('✅')) const SizedBox(width: 12),
             Expanded(child: Text(message)),
           ],
         ),
@@ -477,11 +477,11 @@ class _HomeScreenState extends State<HomeScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        // Grade de Bot�es de A��o (3 bot�es)
+        // Grade de Botões de Ação (3 botões)
         _buildActionButtonsGrid(),
         const SizedBox(height: 14),
 
-        // M�tricas em linha horizontal
+        // Métricas em linha horizontal
         _buildMetricsRow(orderProvider),
         const SizedBox(height: 16),
 
@@ -497,7 +497,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildActionButtonsGrid() {
     return Column(
       children: [
-        // Primeira linha: Nova Troca + Pre�o Bitcoin
+        // Primeira linha: Nova Troca + Preço Bitcoin
         Row(
           children: [
             // Nova Troca
@@ -515,7 +515,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(width: 12),
-            // Pre�o do Bitcoin
+            // Preço do Bitcoin
             Expanded(
               child: _buildBitcoinPriceButton(),
             ),
@@ -525,7 +525,7 @@ class _HomeScreenState extends State<HomeScreen> {
         // Segunda linha: Marketplace + Modo Bro
         Row(
           children: [
-            // Marketplace (laranja com transpar�ncia)
+            // Marketplace (laranja com transparência)
             Expanded(
               child: _buildMarketplaceButton(),
             ),
@@ -537,20 +537,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 label: 'Modo Bro',
                 gradient: const [Color(0xFF3DE98C), Color(0xFF00CC7A)],
                 onTap: () async {
-                  // Obter pubkey do usu�rio atual
+                  // Obter pubkey do usuário atual
                   final pubkey = await StorageService().getNostrPublicKey();
-                  // Verificar se j� tem tier ativado (collateral)
+                  // Verificar se já tem tier ativado (collateral)
                   final collateralService = LocalCollateralService();
                   final hasActiveTier = await collateralService.hasCollateral(userPubkey: pubkey);
                   
                   if (hasActiveTier) {
-                    // J� tem tier, ir direto para tela de ordens
+                    // Já tem tier, ir direto para tela de ordens
                     final providerId = pubkey ?? 'unknown';
                     Navigator.pushNamed(context, '/provider-orders', arguments: {
                       'providerId': providerId,
                     });
                   } else {
-                    // N�o tem tier, mostrar educa��o primeiro
+                    // Não tem tier, mostrar educação primeiro
                     Navigator.pushNamed(context, '/provider-education');
                   }
                 },
@@ -608,7 +608,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildBitcoinPriceButton() {
-    // S� mostrar pre�o se tiver valor real da API
+    // Só mostrar preço se tiver valor real da API
     final btcPriceFormatted = _btcPrice > 0 
         ? _currencyFormat.format(_btcPrice) 
         : 'Carregando...';
@@ -657,7 +657,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Bot�o Marketplace com estilo laranja transparente (como pre�o Bitcoin)
+  /// Botão Marketplace com estilo laranja transparente (como preço Bitcoin)
   Widget _buildMarketplaceButton() {
     return GestureDetector(
       onTap: () => Navigator.pushNamed(context, '/marketplace'),
@@ -698,7 +698,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildMetricsRow(OrderProvider orderProvider) {
-    // CORRE��O VAZAMENTO: Usar myCreatedOrders para evitar contar ordens aceitas como provedor
+    // CORREÇÃO VAZAMENTO: Usar myCreatedOrders para evitar contar ordens aceitas como provedor
     final myOrders = orderProvider.myCreatedOrders;
     final totalBills = myOrders.length;
     final pendingBills = myOrders.where((o) => o.status == 'pending').length;
@@ -715,11 +715,11 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       child: Row(
         children: [
-          _buildMetricItem('??', '$totalBills', 'Criadas'),
+          _buildMetricItem('📋', '$totalBills', 'Criadas'),
           _buildMetricDivider(),
-          _buildMetricItem('?', '$pendingBills', 'Pendentes'),
+          _buildMetricItem('⏳', '$pendingBills', 'Pendentes'),
           _buildMetricDivider(),
-          _buildMetricItem('?', '$completedOrders', 'Finalizadas'),
+          _buildMetricItem('✅', '$completedOrders', 'Finalizadas'),
         ],
       ),
     );
@@ -798,7 +798,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildStatsRow(BreezProvider breezProvider, OrderProvider orderProvider) {
-    // CORRE��O VAZAMENTO: Usar myCreatedOrders para evitar contar ordens aceitas como provedor
+    // CORREÇÃO VAZAMENTO: Usar myCreatedOrders para evitar contar ordens aceitas como provedor
     final myOrders = orderProvider.myCreatedOrders;
     final totalBills = myOrders.length;
     final pendingBills = myOrders.where((o) => o.status == 'pending').length;
@@ -821,17 +821,17 @@ class _HomeScreenState extends State<HomeScreen> {
       childAspectRatio: 0.9,
       children: [
         StatCard(
-          emoji: '??',
+          emoji: '📋',
           value: '$totalBills',
           label: 'Ordens Criadas',
         ),
         StatCard(
-          emoji: '?',
+          emoji: '⏳',
           value: '$pendingBills',
           label: 'Aguardando Bro',
         ),
         StatCard(
-          emoji: '?',
+          emoji: '✅',
           value: '$completedToday',
           label: 'Finalizadas Hoje',
         ),
@@ -908,10 +908,10 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
 
-          // Body - CORRE��O VAZAMENTO: Usar myCreatedOrders ao inv�s de filtrar manualmente
+          // Body - CORREÇÃO VAZAMENTO: Usar myCreatedOrders ao invés de filtrar manualmente
           Builder(
             builder: (context) {
-              // myCreatedOrders j� retorna apenas ordens onde userPubkey == currentUser
+              // myCreatedOrders já retorna apenas ordens onde userPubkey == currentUser
               final myOrders = orderProvider.myCreatedOrders;
               
               return Container(
@@ -946,7 +946,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: const Column(
         children: [
           Text(
-            '?? Privacidade first . Lightning fast',
+            '🔐 Privacidade first • Lightning fast',
             style: TextStyle(
               color: Color(0xFFFF6B6B),
               fontSize: 14,
@@ -969,10 +969,10 @@ class _HomeScreenState extends State<HomeScreen> {
       case 'awaiting_confirmation':
       case 'payment_submitted':
       case 'processing':
-        return 'Confirme Pagamento';  // Bro j� fez o pagamento, usu�rio precisa confirmar
+        return 'Confirme Pagamento';  // Bro já fez o pagamento, usuário precisa confirmar
       case 'completed':
       case 'paid':
-        return 'Conclu�da';
+        return 'Concluída';
       case 'cancelled':
         return 'Cancelada';
       case 'disputed':
@@ -1158,21 +1158,21 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildProviderModeButton() {
     return GestureDetector(
       onTap: () async {
-        // Obter pubkey do usu�rio atual
+        // Obter pubkey do usuário atual
         final pubkey = await StorageService().getNostrPublicKey();
-        // Verificar se j� tem tier ativado (collateral)
+        // Verificar se já tem tier ativado (collateral)
         final collateralService = LocalCollateralService();
         final hasActiveTier = await collateralService.hasCollateral(userPubkey: pubkey);
-        debugPrint('?? hasActiveTier (button): $hasActiveTier (pubkey: ${pubkey?.substring(0, 8) ?? "null"})');
+        debugPrint('🔍 hasActiveTier (button): $hasActiveTier (pubkey: ${pubkey?.substring(0, 8) ?? "null"})');
         
         if (hasActiveTier) {
-          // J� tem tier, ir direto para tela de ordens
+          // Já tem tier, ir direto para tela de ordens
           final providerId = pubkey ?? 'unknown';
           Navigator.pushNamed(context, '/provider-orders', arguments: {
             'providerId': providerId,
           });
         } else {
-          // N�o tem tier, mostrar educa��o primeiro
+          // Não tem tier, mostrar educação primeiro
           Navigator.pushNamed(context, '/provider-education');
         }
       },
@@ -1260,7 +1260,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Voc� tem sats na carteira?',
+                        'Você tem sats na carteira?',
                         style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
                       ),
                     ),
@@ -1269,17 +1269,17 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 16),
               const Text(
-                '?? Salve sua Seed (12 palavras)',
+                '🔑 Salve sua Seed (12 palavras)',
                 style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
               ),
               const SizedBox(height: 4),
               const Text(
-                'Sua seed � a �NICA forma de recuperar seus sats. Sem ela, voc� perde acesso aos fundos para sempre.',
+                'Sua seed é a ÚNICA forma de recuperar seus sats. Sem ela, você perde acesso aos fundos para sempre.',
                 style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 13),
               ),
               const SizedBox(height: 12),
               const Text(
-                '?? Ou saque seus sats',
+                '💸 Ou saque seus sats',
                 style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
               ),
               const SizedBox(height: 4),
@@ -1301,7 +1301,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'O hist�rico de ordens ser� perdido (salvo apenas neste dispositivo).',
+                        'O histórico de ordens será perdido (salvo apenas neste dispositivo).',
                         style: TextStyle(color: Colors.orange, fontSize: 12),
                       ),
                     ),

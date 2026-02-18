@@ -1,7 +1,7 @@
 class Order {
   final String id;
   final String? eventId; // ID do evento Nostr
-  final String? userPubkey; // Pubkey do usu�rio que criou a ordem
+  final String? userPubkey; // Pubkey do usuário que criou a ordem
   final String billType;
   final String billCode;
   final double amount;
@@ -16,7 +16,7 @@ class Order {
   final DateTime? acceptedAt;
   final DateTime? completedAt;
   final Map<String, dynamic>? metadata;
-  final String? paymentHash; // Hash da invoice Lightning para verifica��o de pagamento
+  final String? paymentHash; // Hash da invoice Lightning para verificação de pagamento
   final String? invoice; // Invoice BOLT11 gerada para esta ordem
 
   Order({
@@ -151,7 +151,7 @@ class Order {
   bool get isDisputed => status == 'disputed';
 
   /// Retorna true se o pagamento Lightning foi realmente recebido e confirmado
-  /// Uma ordem s� � considerada "paga" se tiver um paymentHash v�lido
+  /// Uma ordem só é considerada "paga" se tiver um paymentHash válido
   bool get isPaymentVerified => paymentHash != null && paymentHash!.isNotEmpty;
 
   /// Retorna true se o status indica que o pagamento Lightning foi recebido
@@ -164,7 +164,7 @@ class Order {
            status == 'completed';
   }
 
-  /// Retorna true se a ordem est� em um estado ativo (n�o finalizado)
+  /// Retorna true se a ordem está em um estado ativo (não finalizado)
   bool get isActive {
     return status == 'pending' || 
            status == 'payment_received' || 
@@ -179,7 +179,7 @@ class Order {
       case 'pending':
         return 'Aguardando Pagamento';
       case 'payment_received':
-        return 'Pagamento Recebido ?';
+        return 'Pagamento Recebido ✓';
       case 'confirmed':
         return 'Aguardando Bro';
       case 'accepted':
@@ -189,7 +189,7 @@ class Order {
       case 'awaiting_confirmation':
         return 'Verificar Comprovante';
       case 'completed':
-        return 'Conclu�do ?';
+        return 'Concluído ✓';
       case 'cancelled':
         return 'Cancelado';
       case 'disputed':
@@ -199,7 +199,7 @@ class Order {
     }
   }
 
-  /// Retorna uma descri��o mais detalhada do status para exibi��o ao usu�rio
+  /// Retorna uma descrição mais detalhada do status para exibição ao usuário
   String get statusDescription {
     switch (status) {
       case 'pending':
@@ -207,11 +207,11 @@ class Order {
       case 'payment_received':
         return 'Seus sats foram recebidos! Aguardando um Bro aceitar';
       case 'confirmed':
-        return 'Sua ordem est� dispon�vel para Bros';
+        return 'Sua ordem está disponível para Bros';
       case 'accepted':
-        return 'Um Bro aceitou e est� processando seu pagamento';
+        return 'Um Bro aceitou e está processando seu pagamento';
       case 'processing':
-        return 'O Bro est� realizando o pagamento';
+        return 'O Bro está realizando o pagamento';
       case 'awaiting_confirmation':
         return 'Verifique o comprovante enviado pelo Bro';
       case 'completed':
@@ -219,7 +219,7 @@ class Order {
       case 'cancelled':
         return 'Ordem cancelada. Seus sats continuam na carteira';
       case 'disputed':
-        return 'Disputa aberta. Aguardando media��o';
+        return 'Disputa aberta. Aguardando mediação';
       default:
         return '';
     }
@@ -232,9 +232,9 @@ class Order {
       case 'boleto':
         return 'Boleto';
       case 'bancario':
-        return 'Boleto Banc�rio';
+        return 'Boleto Bancário';
       case 'concessionaria':
-        return 'Concession�ria';
+        return 'Concessionária';
       default:
         return billType;
     }

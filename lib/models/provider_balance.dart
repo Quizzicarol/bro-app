@@ -2,9 +2,9 @@
 /// Representa o saldo acumulado de taxas ganhas ao completar ordens
 class ProviderBalance {
   final String providerId;
-  final double availableBalanceSats; // Saldo dispon�vel para saque
-  final double totalEarnedSats; // Total ganho desde o in�cio
-  final List<BalanceTransaction> transactions; // Hist�rico de transa��es
+  final double availableBalanceSats; // Saldo disponível para saque
+  final double totalEarnedSats; // Total ganho desde o início
+  final List<BalanceTransaction> transactions; // Histórico de transações
   final DateTime updatedAt;
 
   ProviderBalance({
@@ -58,14 +58,14 @@ class ProviderBalance {
   }
 }
 
-/// Transa��o no hist�rico do saldo do provedor
+/// Transação no histórico do saldo do provedor
 class BalanceTransaction {
   final String id;
   final String type; // 'earning' | 'withdrawal_lightning' | 'withdrawal_onchain'
   final double amountSats;
   final String? orderId; // ID da ordem que gerou o ganho (se type = earning)
-  final String? orderDescription; // Descri��o da ordem (ex: "PIX R$ 50.00")
-  final String? txHash; // Hash da transa��o onchain (se type = withdrawal_onchain)
+  final String? orderDescription; // Descrição da ordem (ex: "PIX R$ 50.00")
+  final String? txHash; // Hash da transação onchain (se type = withdrawal_onchain)
   final String? invoice; // Invoice Lightning (se type = withdrawal_lightning)
   final DateTime createdAt;
 

@@ -17,7 +17,7 @@ class PlatformBalanceScreen extends StatelessWidget {
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: const Text(
-          '?? Saldo da Plataforma',
+          '💼 Saldo da Plataforma',
           style: TextStyle(
             color: Colors.white,
             fontSize: 20,
@@ -42,12 +42,12 @@ class PlatformBalanceScreen extends StatelessWidget {
                   
                   const SizedBox(height: 24),
                   
-                  // Estat�sticas
+                  // Estatísticas
                   _buildStatsCard(provider),
                   
                   const SizedBox(height: 24),
                   
-                  // Hist�rico de Transa��es
+                  // Histórico de Transações
                   _buildTransactionsSection(provider),
                 ],
               ),
@@ -118,7 +118,7 @@ class PlatformBalanceScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '? ${currencyFormat.format(provider.balanceSats * 0.000001 * 531000)}',
+            '≈ ${currencyFormat.format(provider.balanceSats * 0.000001 * 531000)}',
             style: TextStyle(
               color: Colors.white.withOpacity(0.8),
               fontSize: 16,
@@ -149,7 +149,7 @@ class PlatformBalanceScreen extends StatelessWidget {
           ),
           const Divider(height: 24, color: Color(0xFF2A2A2A)),
           _buildStatRow(
-            'Transa��es',
+            'Transações',
             provider.transactions.length.toString(),
             Icons.receipt_long,
             Colors.blue,
@@ -197,7 +197,7 @@ class PlatformBalanceScreen extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Hist�rico de Taxas',
+          'Histórico de Taxas',
           style: TextStyle(
             color: Colors.white,
             fontSize: 18,
@@ -223,7 +223,7 @@ class PlatformBalanceScreen extends StatelessWidget {
                   ),
                   SizedBox(height: 12),
                   Text(
-                    'Nenhuma transa��o ainda',
+                    'Nenhuma transação ainda',
                     style: TextStyle(
                       color: Colors.white54,
                       fontSize: 14,

@@ -1,6 +1,6 @@
-/// Servi�o para decodificar c�digos PIX localmente (sem backend)
+/// Serviço para decodificar códigos PIX localmente (sem backend)
 class PixDecoderService {
-  /// Decodifica um c�digo PIX copia e cola (formato EMV)
+  /// Decodifica um código PIX copia e cola (formato EMV)
   static Map<String, dynamic>? decodePix(String pixCode) {
     try {
       if (!pixCode.startsWith('00020')) {
@@ -9,8 +9,8 @@ class PixDecoderService {
 
       final data = _parseEmv(pixCode);
       
-      // Extrair informa��es principais
-      final merchantName = data['59'] ?? 'Destinat�rio n�o informado';
+      // Extrair informações principais
+      final merchantName = data['59'] ?? 'Destinatário não informado';
       final merchantCity = data['60'] ?? '';
       final amountStr = data['54'];
       final amount = amountStr != null && amountStr.isNotEmpty 
@@ -22,7 +22,7 @@ class PixDecoderService {
       if (data['26'] != null) {
         final field26 = data['26'] as String;
         final subData = _parseEmv(field26);
-        pixKey = subData['01']; // Chave PIX geralmente est� em 01
+        pixKey = subData['01']; // Chave PIX geralmente está em 01
       }
       
       return {
@@ -36,7 +36,7 @@ class PixDecoderService {
         'rawData': data,
       };
     } catch (e) {
-      print('? Erro ao decodificar PIX: $e');
+      print('❌ Erro ao decodificar PIX: $e');
       return null;
     }
   }
@@ -72,22 +72,22 @@ class PixDecoderService {
     return result;
   }
 
-  /// Valida se o c�digo tem formato PIX
+  /// Valida se o código tem formato PIX
   static bool isValidPixFormat(String code) {
     return code.startsWith('00020') && code.length >= 100;
   }
 
-  /// Extrai informa��es b�sicas para debug
+  /// Extrai informações básicas para debug
   static String getPixSummary(String pixCode) {
     final data = decodePix(pixCode);
-    if (data == null) return 'PIX inv�lido';
+    if (data == null) return 'PIX inválido';
     
     return '''
 PIX Decodificado:
-- Benefici�rio: ${data['merchantName']}
+- Beneficiário: ${data['merchantName']}
 - Cidade: ${data['merchantCity']}
-- Valor: ${data['value'] != null && data['value'] > 0 ? 'R\$ ${data['value'].toStringAsFixed(2)}' : 'N�o especificado'}
-- Chave PIX: ${data['pixKey'] ?? 'N�o identificada'}
+- Valor: ${data['value'] != null && data['value'] > 0 ? 'R\$ ${data['value'].toStringAsFixed(2)}' : 'Não especificado'}
+- Chave PIX: ${data['pixKey'] ?? 'Não identificada'}
 ''';
   }
 }

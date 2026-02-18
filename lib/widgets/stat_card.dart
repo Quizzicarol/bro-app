@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 /// Card de estatística replicando o design do dashboard web
 /// Cores: --primary-orange: #FF6B35, fundo rgba(255, 255, 255, 0.05)

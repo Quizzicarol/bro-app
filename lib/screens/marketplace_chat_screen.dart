@@ -43,7 +43,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
 
   Future<void> _initializeChat() async {
     try {
-      // Carregar chaves do usu�rio
+      // Carregar chaves do usuário
       final privateKey = await _storage.getNostrPrivateKey();
       final publicKey = await _storage.getNostrPublicKey();
       
@@ -51,7 +51,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Chaves Nostr n�o encontradas. Configure sua carteira primeiro.'),
+              content: Text('Chaves Nostr não encontradas. Configure sua carteira primeiro.'),
               backgroundColor: Colors.red,
             ),
           );
@@ -61,7 +61,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
       
       _myPubkey = publicKey;
       
-      // Inicializar servi�o de chat
+      // Inicializar serviço de chat
       await _chatService.initialize(privateKey, publicKey);
       
       // Carregar mensagens existentes
@@ -82,7 +82,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
         _scrollToBottom();
       }
     } catch (e) {
-      debugPrint('? Erro ao inicializar chat: $e');
+      debugPrint('❌ Erro ao inicializar chat: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -129,7 +129,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
       
       if (success) {
         _messageController.clear();
-        // Mensagem j� foi adicionada pelo ChatService
+        // Mensagem já foi adicionada pelo ChatService
         _messages = _chatService.getMessages(widget.sellerPubkey);
         setState(() {});
         _scrollToBottom();
@@ -195,7 +195,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
           IconButton(
             icon: const Icon(Icons.info_outline),
             onPressed: _showChatInfo,
-            tooltip: 'Informa��es',
+            tooltip: 'Informações',
           ),
           IconButton(
             icon: const Icon(Icons.copy),
@@ -567,22 +567,22 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
                 _buildInfoItem(
                   Icons.lock,
                   'Criptografia NIP-04',
-                  'Suas mensagens s�o criptografadas de ponta a ponta usando o protocolo Nostr.',
+                  'Suas mensagens são criptografadas de ponta a ponta usando o protocolo Nostr.',
                 ),
                 _buildInfoItem(
                   Icons.cloud_sync,
                   'Descentralizado',
-                  'As mensagens s�o enviadas atrav�s de relays Nostr distribu�dos.',
+                  'As mensagens são enviadas através de relays Nostr distribuídos.',
                 ),
                 _buildInfoItem(
                   Icons.verified_user,
                   'Privacidade',
-                  'Apenas voc� e o destinat�rio podem ler as mensagens.',
+                  'Apenas você e o destinatário podem ler as mensagens.',
                 ),
                 _buildInfoItem(
                   Icons.warning_amber,
-                  'Seguran�a',
-                  'Nunca compartilhe seeds, chaves privadas ou informa��es sens�veis.',
+                  'Segurança',
+                  'Nunca compartilhe seeds, chaves privadas ou informações sensíveis.',
                 ),
                 const SizedBox(height: 16),
                 SizedBox(

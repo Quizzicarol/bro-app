@@ -37,7 +37,7 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
     if (url.isEmpty) return;
     
     if (!url.startsWith('wss://') && !url.startsWith('ws://')) {
-      _showError('URL deve come�ar com wss:// ou ws://');
+      _showError('URL deve começar com wss:// ou ws://');
       return;
     }
     
@@ -50,7 +50,7 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('? Relay $url adicionado'),
+            content: Text('✅ Relay $url adicionado'),
             backgroundColor: Colors.green,
           ),
         );
@@ -103,7 +103,7 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(success ? '? Relay conectado!' : '? Falha na conex�o'),
+          content: Text(success ? '✅ Relay conectado!' : '❌ Falha na conexão'),
           backgroundColor: success ? Colors.green : Colors.red,
         ),
       );
@@ -199,7 +199,7 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'O que s�o Relays?',
+                  'O que são Relays?',
                   style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
@@ -208,8 +208,8 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
                 ),
                 SizedBox(height: 4),
                 Text(
-                  'Relays s�o servidores que transmitem eventos Nostr. '
-                  'Use m�ltiplos relays para maior resili�ncia e privacidade.',
+                  'Relays são servidores que transmitem eventos Nostr. '
+                  'Use múltiplos relays para maior resiliência e privacidade.',
                   style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 13),
                 ),
               ],

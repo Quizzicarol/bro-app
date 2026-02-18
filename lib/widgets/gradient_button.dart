@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Bot�o com gradiente laranja replicando o design do web
+/// Botão com gradiente laranja replicando o design do web
 /// Gradiente: linear-gradient(135deg, #FF6B35, #FF8F65)
 class GradientButton extends StatelessWidget {
   final String text;
@@ -87,7 +87,7 @@ class GradientButton extends StatelessWidget {
   }
 }
 
-/// Bot�o outline laranja replicando o design do web
+/// Botão outline laranja replicando o design do web
 /// border: 2px solid #FF6B35
 class CustomOutlineButton extends StatelessWidget {
   final String text;

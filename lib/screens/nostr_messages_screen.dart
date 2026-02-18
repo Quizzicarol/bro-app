@@ -52,7 +52,7 @@ class _NostrMessagesScreenState extends State<NostrMessagesScreen> {
           'id': '2', 
           'name': 'Provedor #42',
           'pubkey': 'npub1prov42...',
-          'lastMessage': 'Pagamento confirmado ?',
+          'lastMessage': 'Pagamento confirmado ✓',
           'timestamp': DateTime.now().subtract(const Duration(hours: 2)),
           'unread': 0,
         },
@@ -67,13 +67,13 @@ class _NostrMessagesScreenState extends State<NostrMessagesScreen> {
       _messages = [
         {
           'id': '1',
-          'content': 'Ol�! Preciso de ajuda com um pagamento.',
+          'content': 'Olá! Preciso de ajuda com um pagamento.',
           'sender': _myPublicKey,
           'timestamp': DateTime.now().subtract(const Duration(minutes: 10)),
         },
         {
           'id': '2',
-          'content': 'Claro! Qual � o problema?',
+          'content': 'Claro! Qual é o problema?',
           'sender': conversation['pubkey'],
           'timestamp': DateTime.now().subtract(const Duration(minutes: 8)),
         },
@@ -104,7 +104,7 @@ class _NostrMessagesScreenState extends State<NostrMessagesScreen> {
     // TODO: Implementar envio real via Nostr NIP-04 (DMs criptografadas)
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('?? Mensagem enviada (demo)'),
+        content: Text('📤 Mensagem enviada (demo)'),
         backgroundColor: Color(0xFF9C27B0),
         duration: Duration(seconds: 1),
       ),
@@ -128,7 +128,7 @@ class _NostrMessagesScreenState extends State<NostrMessagesScreen> {
               controller: _recipientController,
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
-                labelText: 'npub ou hex do destinat�rio',
+                labelText: 'npub ou hex do destinatário',
                 labelStyle: const TextStyle(color: Color(0x99FFFFFF)),
                 prefixIcon: const Icon(Icons.person_outline, color: Color(0xFF9C27B0)),
                 enabledBorder: OutlineInputBorder(
@@ -143,7 +143,7 @@ class _NostrMessagesScreenState extends State<NostrMessagesScreen> {
             ),
             const SizedBox(height: 16),
             const Text(
-              '?? Cole a chave p�blica Nostr (npub...) da pessoa com quem deseja conversar',
+              '💡 Cole a chave pública Nostr (npub...) da pessoa com quem deseja conversar',
               style: TextStyle(color: Color(0x99FFFFFF), fontSize: 12),
             ),
           ],
@@ -574,7 +574,7 @@ class _NostrMessagesScreenState extends State<NostrMessagesScreen> {
                 Clipboard.setData(ClipboardData(text: _selectedConversation!['pubkey']));
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('?? Chave p�blica copiada'),
+                    content: Text('📋 Chave pública copiada'),
                     backgroundColor: Color(0xFF9C27B0),
                   ),
                 );

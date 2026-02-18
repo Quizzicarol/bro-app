@@ -6,7 +6,7 @@ import '../services/nostr_service.dart';
 import '../services/nostr_order_service.dart';
 
 /// Provider para gerenciar garantias (collateral) dos provedores
-/// Usa sistema local de garantia (fundos ficam na carteira do pr�prio provedor)
+/// Usa sistema local de garantia (fundos ficam na carteira do próprio provedor)
 class CollateralProvider with ChangeNotifier {
   final BitcoinPriceService _priceService = BitcoinPriceService();
   final LocalCollateralService _localCollateralService = LocalCollateralService();
@@ -29,14 +29,14 @@ class CollateralProvider with ChangeNotifier {
   LocalCollateral? get localCollateral => _localCollateral;
   int get walletBalanceSats => _walletBalanceSats;
   
-  /// Saldo EFETIVAMENTE dispon�vel para garantia = carteira - comprometido
+  /// Saldo EFETIVAMENTE disponível para garantia = carteira - comprometido
   int get effectiveBalanceSats => (_walletBalanceSats - _committedSats).clamp(0, _walletBalanceSats);
   
   int get availableBalanceSats => _localCollateral != null 
       ? _localCollateralService.getAvailableBalance(_localCollateral!, effectiveBalanceSats)
       : effectiveBalanceSats;
 
-  /// Inicializar: carrega pre�o do Bitcoin e garantia do provedor
+  /// Inicializar: carrega preço do Bitcoin e garantia do provedor
   /// IMPORTANTE: committedSats deve conter os sats comprometidos com ordens pendentes do modo cliente
   Future<void> initialize(String providerId, {int? walletBalance, int? committedSats}) async {
     _isLoading = true;
@@ -44,54 +44,54 @@ class CollateralProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      // Carregar pre�o do Bitcoin
+      // Carregar preço do Bitcoin
       _btcPriceBrl = await _priceService.getBitcoinPrice();
-      debugPrint('?? Pre�o do Bitcoin: R\$ $_btcPriceBrl');
+      debugPrint('💰 Preço do Bitcoin: R\$ $_btcPriceBrl');
 
       if (_btcPriceBrl == null) {
-        throw Exception('N�o foi poss�vel obter o pre�o do Bitcoin');
+        throw Exception('Não foi possível obter o preço do Bitcoin');
       }
 
-      // Carregar tiers dispon�veis
+      // Carregar tiers disponíveis
       _availableTiers = CollateralTier.getAvailableTiers(_btcPriceBrl!);
-      debugPrint('?? Tiers dispon�veis: ${_availableTiers!.length}');
+      debugPrint('📊 Tiers disponíveis: ${_availableTiers!.length}');
 
       // Usar saldo da carteira se fornecido
       if (walletBalance != null) {
         _walletBalanceSats = walletBalance;
-        debugPrint('?? Saldo da carteira: $_walletBalanceSats sats');
+        debugPrint('💳 Saldo da carteira: $_walletBalanceSats sats');
       }
       
       // Registrar sats comprometidos com ordens pendentes
       if (committedSats != null) {
         _committedSats = committedSats;
-        debugPrint('?? Sats comprometidos (ordens pendentes): $_committedSats sats');
-        debugPrint('?? Saldo efetivo para garantia: $effectiveBalanceSats sats');
+        debugPrint('🔒 Sats comprometidos (ordens pendentes): $_committedSats sats');
+        debugPrint('💰 Saldo efetivo para garantia: $effectiveBalanceSats sats');
       }
 
-      // ?? CR�TICO: Obter pubkey do Nostr e setar no service ANTES de carregar
-      // O setCurrentUser j� gerencia cache e verifica se usu�rio mudou
+      // 🔑 CRÍTICO: Obter pubkey do Nostr e setar no service ANTES de carregar
+      // O setCurrentUser já gerencia cache e verifica se usuário mudou
       final nostrService = NostrService();
       final pubkey = nostrService.publicKey;
-      debugPrint('?? CollateralProvider: carregando tier para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
+      debugPrint('🔑 CollateralProvider: carregando tier para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
       _localCollateralService.setCurrentUser(pubkey);
       
       // SISTEMA LOCAL: Carregar garantia local (fundos ficam na carteira do provedor)
       _localCollateral = await _localCollateralService.getCollateral(userPubkey: pubkey);
       
-      // Se n�o tem garantia local, tentar buscar do Nostr (restaurar tier que usu�rio j� ativou)
+      // Se não tem garantia local, tentar buscar do Nostr (restaurar tier que usuário já ativou)
       if (_localCollateral == null) {
-        debugPrint('?? Garantia local n�o encontrada, buscando no Nostr...');
+        debugPrint('📭 Garantia local não encontrada, buscando no Nostr...');
         await _tryRestoreFromNostr();
       }
       
       if (_localCollateral != null) {
-        debugPrint('? Garantia local carregada: ${_localCollateral!.tierName}');
+        debugPrint('✅ Garantia local carregada: ${_localCollateral!.tierName}');
         debugPrint('   Sats travados: ${_localCollateral!.lockedSats}');
         debugPrint('   Ordens ativas: ${_localCollateral!.activeOrders}');
         
         // Converter garantia local para formato legado (compatibilidade)
-        // IMPORTANTE: Usar effectiveBalanceSats ao inv�s de _walletBalanceSats
+        // IMPORTANTE: Usar effectiveBalanceSats ao invés de _walletBalanceSats
         _collateral = {
           'current_tier_id': _localCollateral!.tierId,
           'total_collateral': _localCollateral!.lockedSats,
@@ -99,21 +99,21 @@ class CollateralProvider with ChangeNotifier {
           'available_amount': _localCollateralService.getAvailableBalance(_localCollateral!, effectiveBalanceSats),
         };
       } else {
-        debugPrint('?? Provedor n�o possui garantia configurada');
+        debugPrint('📭 Provedor não possui garantia configurada');
         _collateral = null;
       }
 
       _isLoading = false;
       notifyListeners();
     } catch (e) {
-      debugPrint('? Erro ao inicializar CollateralProvider: $e');
+      debugPrint('❌ Erro ao inicializar CollateralProvider: $e');
       _error = e.toString();
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  /// Tenta restaurar tier do Nostr quando n�o encontrado localmente
+  /// Tenta restaurar tier do Nostr quando não encontrado localmente
   Future<void> _tryRestoreFromNostr() async {
     try {
       final nostrService = NostrService();
@@ -121,16 +121,16 @@ class CollateralProvider with ChangeNotifier {
       
       final publicKey = nostrService.publicKey;
       if (publicKey == null) {
-        debugPrint('?? PublicKey n�o dispon�vel para buscar tier no Nostr');
+        debugPrint('⚠️ PublicKey não disponível para buscar tier no Nostr');
         return;
       }
       
-      debugPrint('?? Buscando tier no Nostr para pubkey: $publicKey');
+      debugPrint('🔍 Buscando tier no Nostr para pubkey: $publicKey');
       
       final tierData = await nostrOrderService.fetchProviderTier(publicKey);
       
       if (tierData != null) {
-        debugPrint('? Tier encontrado no Nostr: ${tierData['tierName']}');
+        debugPrint('✅ Tier encontrado no Nostr: ${tierData['tierName']}');
         
         // Restaurar tier localmente
         _localCollateral = await _localCollateralService.setCollateral(
@@ -140,19 +140,19 @@ class CollateralProvider with ChangeNotifier {
           maxOrderBrl: (tierData['maxOrderValue'] as num).toDouble(),
         );
         
-        debugPrint('? Tier restaurado do Nostr e salvo localmente');
+        debugPrint('✅ Tier restaurado do Nostr e salvo localmente');
       } else {
-        debugPrint('?? Nenhum tier encontrado no Nostr');
+        debugPrint('📭 Nenhum tier encontrado no Nostr');
       }
     } catch (e) {
-      debugPrint('?? Erro ao buscar tier do Nostr: $e');
+      debugPrint('⚠️ Erro ao buscar tier do Nostr: $e');
     }
   }
 
   /// Atualizar saldo da carteira
   void updateWalletBalance(int balanceSats) {
     _walletBalanceSats = balanceSats;
-    debugPrint('?? Saldo atualizado: $_walletBalanceSats sats');
+    debugPrint('💳 Saldo atualizado: $_walletBalanceSats sats');
     notifyListeners();
   }
 
@@ -163,7 +163,7 @@ class CollateralProvider with ChangeNotifier {
     required int walletBalanceSats,
   }) async {
     if (_availableTiers == null || _btcPriceBrl == null) {
-      _error = 'Dados n�o carregados. Chame initialize() primeiro.';
+      _error = 'Dados não carregados. Chame initialize() primeiro.';
       notifyListeners();
       return null;
     }
@@ -176,14 +176,14 @@ class CollateralProvider with ChangeNotifier {
       // Encontrar tier selecionado
       final tier = _availableTiers!.firstWhere((t) => t.id == tierId);
       
-      debugPrint('?? Configurando garantia para tier: ${tier.name}');
+      debugPrint('💳 Configurando garantia para tier: ${tier.name}');
       debugPrint('   Valor: ${tier.requiredCollateralSats} sats (R\$ ${tier.requiredCollateralBrl})');
 
       // Atualizar e verificar saldo da carteira
       _walletBalanceSats = walletBalanceSats;
       
       if (_walletBalanceSats < tier.requiredCollateralSats) {
-        _error = 'Saldo insuficiente. Voc� tem $_walletBalanceSats sats, mas precisa de ${tier.requiredCollateralSats} sats para o tier ${tier.name}.';
+        _error = 'Saldo insuficiente. Você tem $_walletBalanceSats sats, mas precisa de ${tier.requiredCollateralSats} sats para o tier ${tier.name}.';
         _isLoading = false;
         notifyListeners();
         return null;
@@ -205,9 +205,9 @@ class CollateralProvider with ChangeNotifier {
         'available_amount': _localCollateralService.getAvailableBalance(_localCollateral!, _walletBalanceSats),
       };
 
-      debugPrint('? Garantia configurada! Tier: ${tier.name}');
+      debugPrint('✅ Garantia configurada! Tier: ${tier.name}');
       debugPrint('   Sats "travados": ${tier.requiredCollateralSats}');
-      debugPrint('   M�ximo por ordem: R\$ ${tier.maxOrderValueBrl}');
+      debugPrint('   Máximo por ordem: R\$ ${tier.maxOrderValueBrl}');
       
       _isLoading = false;
       notifyListeners();
@@ -219,7 +219,7 @@ class CollateralProvider with ChangeNotifier {
         'max_order_brl': tier.maxOrderValueBrl,
       };
     } catch (e) {
-      debugPrint('? Erro ao configurar garantia: $e');
+      debugPrint('❌ Erro ao configurar garantia: $e');
       _error = e.toString();
       _isLoading = false;
       notifyListeners();
@@ -249,7 +249,7 @@ class CollateralProvider with ChangeNotifier {
       
       notifyListeners();
     } catch (e) {
-      debugPrint('? Erro ao atualizar garantia: $e');
+      debugPrint('❌ Erro ao atualizar garantia: $e');
     }
   }
 
@@ -259,18 +259,18 @@ class CollateralProvider with ChangeNotifier {
     if (_localCollateral != null) {
       // IMPORTANTE: Usar effectiveBalanceSats (carteira - sats comprometidos com ordens cliente)
       final canAccept = _localCollateralService.canAcceptOrder(_localCollateral!, orderValueBrl, effectiveBalanceSats);
-      debugPrint('?? canAcceptOrder (local): R\$ $orderValueBrl -> ${canAccept ? "?" : "?"}');
+      debugPrint('📊 canAcceptOrder (local): R\$ $orderValueBrl -> ${canAccept ? "✅" : "❌"}');
       debugPrint('   Saldo efetivo: $effectiveBalanceSats sats (total: $_walletBalanceSats, comprometido: $_committedSats)');
       debugPrint('   Tier ${_localCollateral!.tierName} requer: ${_localCollateral!.lockedSats} sats');
       return canAccept;
     }
     
     // Fallback: sem garantia
-    debugPrint('? canAcceptOrder: Sem garantia configurada');
+    debugPrint('❌ canAcceptOrder: Sem garantia configurada');
     return false;
   }
 
-  /// Verificar se pode aceitar uma ordem e retornar raz�o se n�o puder
+  /// Verificar se pode aceitar uma ordem e retornar razão se não puder
   (bool, String?) canAcceptOrderWithReason(double orderValueBrl) {
     if (_localCollateral != null) {
       return _localCollateralService.canAcceptOrderWithReason(
@@ -282,7 +282,7 @@ class CollateralProvider with ChangeNotifier {
     return (false, 'Sem tier ativo. Configure um tier para aceitar ordens.');
   }
 
-  /// Travar saldo para uma ordem espec�fica
+  /// Travar saldo para uma ordem específica
   Future<bool> lockForOrder(String orderId, double orderValueBrl) async {
     if (_localCollateral == null) return false;
     
@@ -291,7 +291,7 @@ class CollateralProvider with ChangeNotifier {
     return true;
   }
 
-  /// Destravar saldo quando ordem for conclu�da/cancelada
+  /// Destravar saldo quando ordem for concluída/cancelada
   Future<bool> unlockOrder(String orderId) async {
     if (_localCollateral == null) return false;
     
@@ -311,7 +311,7 @@ class CollateralProvider with ChangeNotifier {
     if (_localCollateral == null) return true;
     
     if (!canWithdraw()) {
-      _error = 'Voc� tem ordens em aberto. Finalize-as antes de remover a garantia.';
+      _error = 'Você tem ordens em aberto. Finalize-as antes de remover a garantia.';
       notifyListeners();
       return false;
     }
@@ -323,16 +323,16 @@ class CollateralProvider with ChangeNotifier {
     return true;
   }
   
-  /// Retorna o valor m�ximo de ordem que o provedor pode aceitar
+  /// Retorna o valor máximo de ordem que o provedor pode aceitar
   double getMaxOrderValue() {
     final currentTier = getCurrentTier();
     return currentTier?.maxOrderValueBrl ?? 0.0;
   }
   
-  /// Retorna mensagem explicativa se n�o pode aceitar ordem
+  /// Retorna mensagem explicativa se não pode aceitar ordem
   String? getCannotAcceptReason(double orderValueBrl) {
     if (_collateral == null) {
-      return 'Voc� precisa depositar uma garantia para aceitar ordens.';
+      return 'Você precisa depositar uma garantia para aceitar ordens.';
     }
     
     final currentTier = getCurrentTier();
@@ -341,12 +341,12 @@ class CollateralProvider with ChangeNotifier {
     }
     
     if (orderValueBrl > currentTier.maxOrderValueBrl) {
-      // Encontrar tier necess�rio
+      // Encontrar tier necessário
       final requiredTier = getRequiredTier(orderValueBrl);
       if (requiredTier != null) {
-        return 'Seu tier ${currentTier.name} aceita ordens at� R\$ ${currentTier.maxOrderValueBrl.toStringAsFixed(0)}.\n\nPara aceitar esta ordem de R\$ ${orderValueBrl.toStringAsFixed(2)}, fa�a upgrade para o tier ${requiredTier.name}.';
+        return 'Seu tier ${currentTier.name} aceita ordens até R\$ ${currentTier.maxOrderValueBrl.toStringAsFixed(0)}.\n\nPara aceitar esta ordem de R\$ ${orderValueBrl.toStringAsFixed(2)}, faça upgrade para o tier ${requiredTier.name}.';
       }
-      return 'Esta ordem est� acima do seu limite. Fa�a upgrade de tier.';
+      return 'Esta ordem está acima do seu limite. Faça upgrade de tier.';
     }
     
     return null; // Pode aceitar
@@ -363,7 +363,7 @@ class CollateralProvider with ChangeNotifier {
     );
   }
 
-  /// Obter tier necess�rio para um valor de ordem
+  /// Obter tier necessário para um valor de ordem
   CollateralTier? getRequiredTier(double orderValueBrl) {
     if (_availableTiers == null || _btcPriceBrl == null) return null;
     return CollateralTier.getTierForOrderValue(orderValueBrl, _btcPriceBrl!);

@@ -1,8 +1,8 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 
-/// Servi�o de feedback h�ptico para melhorar UX
-/// Fornece vibra��o sutil em a��es importantes
+/// Serviço de feedback háptico para melhorar UX
+/// Fornece vibração sutil em ações importantes
 class HapticService {
   static final HapticService _instance = HapticService._internal();
   factory HapticService() => _instance;
@@ -10,15 +10,15 @@ class HapticService {
 
   bool _enabled = true;
   
-  /// Habilita/desabilita feedback h�ptico
+  /// Habilita/desabilita feedback háptico
   void setEnabled(bool enabled) {
     _enabled = enabled;
-    debugPrint('?? Haptic feedback ${enabled ? "habilitado" : "desabilitado"}');
+    debugPrint('📳 Haptic feedback ${enabled ? "habilitado" : "desabilitado"}');
   }
   
   bool get isEnabled => _enabled;
 
-  /// Feedback leve - para toques e sele��es
+  /// Feedback leve - para toques e seleções
   Future<void> light() async {
     if (!_enabled) return;
     try {
@@ -28,7 +28,7 @@ class HapticService {
     }
   }
   
-  /// Feedback m�dio - para a��es confirmadas
+  /// Feedback médio - para ações confirmadas
   Future<void> medium() async {
     if (!_enabled) return;
     try {
@@ -38,7 +38,7 @@ class HapticService {
     }
   }
   
-  /// Feedback pesado - para a��es importantes
+  /// Feedback pesado - para ações importantes
   Future<void> heavy() async {
     if (!_enabled) return;
     try {
@@ -48,7 +48,7 @@ class HapticService {
     }
   }
   
-  /// Feedback de sele��o - para mudan�as de estado
+  /// Feedback de seleção - para mudanças de estado
   Future<void> selection() async {
     if (!_enabled) return;
     try {
@@ -58,7 +58,7 @@ class HapticService {
     }
   }
   
-  /// Feedback de sucesso - vibra��o dupla
+  /// Feedback de sucesso - vibração dupla
   Future<void> success() async {
     if (!_enabled) return;
     try {
@@ -70,7 +70,7 @@ class HapticService {
     }
   }
   
-  /// Feedback de erro - vibra��o tripla
+  /// Feedback de erro - vibração tripla
   Future<void> error() async {
     if (!_enabled) return;
     try {
@@ -84,7 +84,7 @@ class HapticService {
     }
   }
   
-  /// Feedback de warning - vibra��o longa
+  /// Feedback de warning - vibração longa
   Future<void> warning() async {
     if (!_enabled) return;
     try {
@@ -98,7 +98,7 @@ class HapticService {
   Future<void> paymentSuccess() async {
     if (!_enabled) return;
     try {
-      // Padr�o de celebra��o
+      // Padrão de celebração
       await HapticFeedback.mediumImpact();
       await Future.delayed(const Duration(milliseconds: 150));
       await HapticFeedback.lightImpact();
@@ -109,7 +109,7 @@ class HapticService {
     }
   }
   
-  /// Feedback para bot�o pressionado
+  /// Feedback para botão pressionado
   Future<void> buttonPress() async {
     if (!_enabled) return;
     await light();

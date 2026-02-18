@@ -24,7 +24,7 @@ class NostrMessage {
       id: json['id'] ?? '',
       orderId: json['orderId'] ?? '',
       senderId: json['senderId'] ?? '',
-      senderName: json['senderName'] ?? 'An�nimo',
+      senderName: json['senderName'] ?? 'Anônimo',
       content: json['content'] ?? '',
       timestamp: json['timestamp'] != null
           ? DateTime.parse(json['timestamp'])

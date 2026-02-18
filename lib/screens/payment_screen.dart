@@ -1,4 +1,4 @@
-import 'dart:math';
+﻿import 'dart:math';
 import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -29,7 +29,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Map<String, dynamic>? _billData;
   Map<String, dynamic>? _conversionData;
 
-  /// Mascara o nome do benefici�rio para privacidade
+  /// Mascara o nome do beneficiário para privacidade
   /// Mostra apenas o primeiro nome e hachurado o resto
   String _maskBeneficiaryName(String fullName) {
     if (fullName.isEmpty) return '';
@@ -39,7 +39,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     
     final firstName = parts[0];
     if (parts.length == 1) {
-      // Se s� tem um nome, mostra as 3 primeiras letras + ***
+      // Se só tem um nome, mostra as 3 primeiras letras + ***
       if (firstName.length <= 3) return firstName;
       return '${firstName.substring(0, 3)}***';
     }
@@ -53,14 +53,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
   @override
   void initState() {
     super.initState();
-    // Listener para detec��o autom�tica de c�digo colado
+    // Listener para detecção automática de código colado
     _codeController.addListener(_onCodeChanged);
-    debugPrint('?? PaymentScreen inicializado - _isProcessing: $_isProcessing');
+    debugPrint('💳 PaymentScreen inicializado - _isProcessing: $_isProcessing');
   }
 
-  // M�todo para for�ar reset do estado de processamento
+  // Método para forçar reset do estado de processamento
   void _forceResetProcessing() {
-    debugPrint('?? For�ando reset de _isProcessing');
+    debugPrint('🔄 Forçando reset de _isProcessing');
     if (mounted) {
       setState(() {
         _isProcessing = false;
@@ -73,10 +73,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
     
     final code = _codeController.text.trim();
     
-    // Detectar PIX (come�a com 00020126) ou Boleto (linha digit�vel de 47 d�gitos)
+    // Detectar PIX (começa com 00020126) ou Boleto (linha digitável de 47 dígitos)
     if (code.length >= 30) {
       if (code.startsWith('00020126') || _isValidBoletoCode(code)) {
-        // Aguardar 500ms ap�s �ltima digita��o antes de processar
+        // Aguardar 500ms após última digitação antes de processar
         Future.delayed(const Duration(milliseconds: 500), () {
           if (_codeController.text.trim() == code && !_isProcessing) {
             _processBill(code);
@@ -87,7 +87,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   bool _isValidBoletoCode(String code) {
-    // Linha digit�vel do boleto tem 47 ou 48 d�gitos
+    // Linha digitável do boleto tem 47 ou 48 dígitos
     final cleanCode = code.replaceAll(RegExp(r'[^\d]'), '');
     return cleanCode.length == 47 || cleanCode.length == 48;
   }
@@ -101,14 +101,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   Future<void> _processBill(String code) async {
-    debugPrint('?? _processBill iniciado - _isProcessing antes: $_isProcessing');
+    debugPrint('📝 _processBill iniciado - _isProcessing antes: $_isProcessing');
     if (!mounted) return;
     setState(() {
       _isProcessing = true;
       _billData = null;
       _conversionData = null;
     });
-    debugPrint('?? _isProcessing setado para TRUE');
+    debugPrint('🔒 _isProcessing setado para TRUE');
 
     final orderProvider = context.read<OrderProvider>();
 
@@ -116,12 +116,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
       Map<String, dynamic>? result;
       String billType;
 
-      // Detectar tipo de c�digo
+      // Detectar tipo de código
       final cleanCode = code.replaceAll(RegExp(r'[^\d]'), '');
       final isPix = code.contains('00020126') || code.contains('pix.') || code.contains('br.gov.bcb');
       
-      debugPrint('?? Processando c�digo: ${code.substring(0, min(50, code.length))}');
-      debugPrint('?? Tipo detectado: ${isPix ? "PIX" : "Boleto"}');
+      debugPrint('🔍 Processando código: ${code.substring(0, min(50, code.length))}');
+      debugPrint('📊 Tipo detectado: ${isPix ? "PIX" : "Boleto"}');
 
       if (isPix) {
         result = await orderProvider.decodePix(code);
@@ -131,16 +131,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
         billType = result != null ? (result['type'] as String? ?? 'boleto') : 'boleto';
       } else {
         if (!mounted) return;
-        _showError('C�digo inv�lido. Use um c�digo PIX ou linha digit�vel de boleto.');
+        _showError('Código inválido. Use um código PIX ou linha digitável de boleto.');
         return;
       }
 
-      debugPrint('?? Resposta da API: $result');
+      debugPrint('📨 Resposta da API: $result');
 
       if (!mounted) return;
       
       if (result != null && result['success'] == true) {
-        debugPrint('? Decodifica��o bem-sucedida: $result');
+        debugPrint('✅ Decodificação bem-sucedida: $result');
         
         final Map<String, dynamic> billDataMap = {};
         result.forEach((key, value) {
@@ -155,13 +155,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
         final dynamic valueData = result['value'];
         final double amount = (valueData is num) ? valueData.toDouble() : 0.0;
         
-        // VALIDA��O: Limites de valor para ordens
-        const double minOrderBrl = 0.01;  // M�nimo R$ 0.01 para testes
-        const double maxOrderBrl = 5000.0; // M�ximo R$ 5.000 para seguran�a
+        // VALIDAÇÃO: Limites de valor para ordens
+        const double minOrderBrl = 0.01;  // Mínimo R$ 0.01 para testes
+        const double maxOrderBrl = 5000.0; // Máximo R$ 5.000 para segurança
         
         if (amount < minOrderBrl) {
           if (!mounted) return;
-          _showError('Valor muito baixo. M�nimo: R\$ ${minOrderBrl.toStringAsFixed(2)}');
+          _showError('Valor muito baixo. Mínimo: R\$ ${minOrderBrl.toStringAsFixed(2)}');
           setState(() {
             _isProcessing = false;
           });
@@ -170,16 +170,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
         
         if (amount > maxOrderBrl) {
           if (!mounted) return;
-          _showError('Valor muito alto. M�ximo: R\$ ${maxOrderBrl.toStringAsFixed(2)}');
+          _showError('Valor muito alto. Máximo: R\$ ${maxOrderBrl.toStringAsFixed(2)}');
           setState(() {
             _isProcessing = false;
           });
           return;
         }
         
-        debugPrint('?? Chamando convertPrice com amount: $amount');
+        debugPrint('💰 Chamando convertPrice com amount: $amount');
         final conversion = await orderProvider.convertPrice(amount);
-        debugPrint('?? Resposta do convertPrice: $conversion');
+        debugPrint('📊 Resposta do convertPrice: $conversion');
 
         if (!mounted) return;
         
@@ -187,27 +187,27 @@ class _PaymentScreenState extends State<PaymentScreen> {
           setState(() {
             _conversionData = conversion;
           });
-          debugPrint('? Convers�o calculada - Breakdown de taxas e bot�o "Criar Ordem" ser�o exibidos');
-          debugPrint('?? Conversion data: $conversion');
+          debugPrint('✅ Conversão calculada - Breakdown de taxas e botão "Criar Ordem" serão exibidos');
+          debugPrint('💎 Conversion data: $conversion');
         } else {
-          debugPrint('? Falha na convers�o: ${conversion?['error']}');
-          _showError('Erro ao calcular convers�o: ${conversion?['error'] ?? 'Desconhecido'}');
+          debugPrint('❌ Falha na conversão: ${conversion?['error']}');
+          _showError('Erro ao calcular conversão: ${conversion?['error'] ?? 'Desconhecido'}');
         }
       } else {
-        debugPrint('? Resultado inv�lido: $result');
-        _showError('C�digo inv�lido ou n�o reconhecido');
+        debugPrint('❌ Resultado inválido: $result');
+        _showError('Código inválido ou não reconhecido');
       }
     } catch (e) {
       if (!mounted) return;
       _showError('Erro ao processar: $e');
     } finally {
-      debugPrint('?? _processBill finally - resetando _isProcessing');
+      debugPrint('🔓 _processBill finally - resetando _isProcessing');
       if (mounted) {
         setState(() {
           _isProcessing = false;
         });
       }
-      debugPrint('? _isProcessing setado para FALSE');
+      debugPrint('✅ _isProcessing setado para FALSE');
     }
   }
 
@@ -228,35 +228,35 @@ class _PaymentScreenState extends State<PaymentScreen> {
       StreamSubscription<spark.SdkEvent>? eventSub;
       
       // Listen to SDK events for payment confirmation
-      debugPrint('?? Escutando eventos do Breez SDK para pagamento $paymentHash');
+      debugPrint('💡 Escutando eventos do Breez SDK para pagamento $paymentHash');
       eventSub = breezProvider.sdk?.addEventListener().listen((event) {
-        debugPrint('?? Evento recebido: ${event.runtimeType}');
+        debugPrint('📡 Evento recebido: ${event.runtimeType}');
         
-        // IMPORTANTE: N�o processar se dialog j� foi fechado ou j� processando
+        // IMPORTANTE: Não processar se dialog já foi fechado ou já processando
         if (dialogClosed || isProcessingPayment) {
-          debugPrint('?? Dialog fechado ou j� processando, ignorando evento');
+          debugPrint('⚠️ Dialog fechado ou já processando, ignorando evento');
           return;
         }
         
         if (event is spark.SdkEvent_PaymentSucceeded && !isPaid) {
-          // Marcar como processando ANTES de qualquer opera��o
+          // Marcar como processando ANTES de qualquer operação
           isProcessingPayment = true;
           
           final payment = event.payment;
-          debugPrint('? PaymentSucceeded recebido! Payment ID: ${payment.id}');
+          debugPrint('✅ PaymentSucceeded recebido! Payment ID: ${payment.id}');
           
-          // Verificar se � o pagamento correto atrav�s do payment hash E valor
+          // Verificar se é o pagamento correto através do payment hash E valor
           if (payment.details is spark.PaymentDetails_Lightning) {
             final details = payment.details as spark.PaymentDetails_Lightning;
             final receivedAmount = payment.amount.toInt();
             
-            // Valida��es: payment hash deve bater E valor deve ser >= 95% do esperado
+            // Validações: payment hash deve bater E valor deve ser >= 95% do esperado
             final isCorrectHash = details.paymentHash == paymentHash;
             final isCorrectAmount = receivedAmount >= (amountSats * 0.95).round();
             
             if (isCorrectHash && isCorrectAmount) {
               isPaid = true;
-              debugPrint('?? � o nosso pagamento! Hash: ? Valor: $receivedAmount sats ?');
+              debugPrint('🎉 É o nosso pagamento! Hash: ✅ Valor: $receivedAmount sats ✅');
               
               orderProvider.updateOrderStatus(orderId: orderId, status: 'confirmed');
               
@@ -264,7 +264,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               try {
                 // Tentar fechar o dialog de QR code
                 Navigator.of(context, rootNavigator: true).pop();
-                debugPrint('? Dialog de QR code fechado');
+                debugPrint('✅ Dialog de QR code fechado');
                 // Aguardar um frame para garantir que o dialog anterior foi fechado
                 Future.delayed(const Duration(milliseconds: 100), () {
                   showDialog(
@@ -285,7 +285,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            '? Seu pagamento Lightning foi recebido com sucesso!',
+                            '✅ Seu pagamento Lightning foi recebido com sucesso!',
                             style: TextStyle(color: Colors.white, fontSize: 16),
                           ),
                           const SizedBox(height: 16),
@@ -327,9 +327,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       actions: [
                         TextButton(
                           onPressed: () {
-                            debugPrint('?? Bot�o "Ver Detalhes" clicado');
+                            debugPrint('📋 Botão "Ver Detalhes" clicado');
                             eventSub?.cancel();
-                            debugPrint('?? EventSub cancelado');
+                            debugPrint('🔌 EventSub cancelado');
                             // Navegar para Detalhes da Ordem
                             Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(
                               '/order-status',
@@ -340,7 +340,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                                 'amountSats': amountSats,
                               },
                             );
-                            debugPrint('? Navegou para Detalhes da Ordem');
+                            debugPrint('✅ Navegou para Detalhes da Ordem');
                           },
                           style: TextButton.styleFrom(
                             backgroundColor: Colors.green,
@@ -356,7 +356,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   );
                 });
               } catch (e) {
-                debugPrint('? Erro ao mostrar dialog de confirma��o: $e');
+                debugPrint('❌ Erro ao mostrar dialog de confirmação: $e');
               }
             }
           }
@@ -367,11 +367,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
         context: context,
         barrierDismissible: true,
         builder: (ctx) {
-          debugPrint('?? DIALOG BUILDER CHAMADO - invoice length: ${invoice.length}');
+          debugPrint('🎨 DIALOG BUILDER CHAMADO - invoice length: ${invoice.length}');
           return WillPopScope(
             onWillPop: () async {
               // Cancelar listener ao fechar o dialog
-              debugPrint('?? Dialog fechado pelo usu�rio');
+              debugPrint('⚠️ Dialog fechado pelo usuário');
               dialogClosed = true; // Marcar como fechado ANTES de cancelar
               eventSub?.cancel();
               return true;
@@ -439,11 +439,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
               actions: [
               TextButton(
                 onPressed: () {
-                  debugPrint('?? Bot�o Fechar clicado');
+                  debugPrint('🔴 Botão Fechar clicado');
                   eventSub?.cancel();
-                  debugPrint('?? EventSub cancelado');
+                  debugPrint('🔌 EventSub cancelado');
                   Navigator.of(ctx).pop();
-                  debugPrint('? Dialog fechado');
+                  debugPrint('✅ Dialog fechado');
                 },
                 child: const Text('Fechar'),
               ),
@@ -453,16 +453,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
       },
       ).whenComplete(() {
         // Cleanup: cancelar subscription de eventos
-        debugPrint('?? whenComplete executado');
+        debugPrint('🧹 whenComplete executado');
         dialogClosed = true; // Marcar como fechado
         eventSub?.cancel();
-        debugPrint('?? Event subscription cancelada no whenComplete');
+        debugPrint('🔌 Event subscription cancelada no whenComplete');
       });
       
-      // Se o result for null, significa que o usu�rio fechou o dialog
-      debugPrint('?? Ap�s showDialog - result: $result');
+      // Se o result for null, significa que o usuário fechou o dialog
+      debugPrint('📍 Após showDialog - result: $result');
       if (result == null && mounted) {
-        debugPrint('?? Dialog fechado sem resultado - garantindo cleanup');
+        debugPrint('⚠️ Dialog fechado sem resultado - garantindo cleanup');
         dialogClosed = true;
         eventSub?.cancel();
       }
@@ -470,10 +470,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
  
 
   void _showBitcoinPaymentOptions(double totalBrl, String sats) {
-    debugPrint('?? _showBitcoinPaymentOptions chamado: totalBrl=$totalBrl, sats=$sats');
-    // sats j� est� em formato correto (satoshis), s� converter para BTC quando necess�rio
+    debugPrint('🔵 _showBitcoinPaymentOptions chamado: totalBrl=$totalBrl, sats=$sats');
+    // sats já está em formato correto (satoshis), só converter para BTC quando necessário
     final btcAmount = int.parse(sats) / 100000000; // Convert sats to BTC for display
-    debugPrint('? Usando apenas Lightning Network (on-chain desabilitado)');
+    debugPrint('⚡ Usando apenas Lightning Network (on-chain desabilitado)');
     
     // Ir direto para Lightning (sem modal de escolha)
     _createPayment(paymentType: 'lightning', totalBrl: totalBrl, sats: sats, btcAmount: btcAmount);
@@ -485,21 +485,21 @@ class _PaymentScreenState extends State<PaymentScreen> {
     required String sats,
     required double btcAmount,
   }) async {
-    debugPrint('?? _createPayment iniciado: $paymentType');
+    debugPrint('🚀 _createPayment iniciado: $paymentType');
     
     // Fechar teclado
     FocusScope.of(context).unfocus();
     
     if (_billData == null || _conversionData == null) {
-      debugPrint('? Dados da conta ausentes');
-      _showError('Dados da conta n�o encontrados');
+      debugPrint('❌ Dados da conta ausentes');
+      _showError('Dados da conta não encontrados');
       return;
     }
 
     final orderProvider = context.read<OrderProvider>();
     final breezProvider = context.read<BreezProvider>();
 
-    debugPrint('?? _createPayment iniciado - _isProcessing antes: $_isProcessing');
+    debugPrint('💳 _createPayment iniciado - _isProcessing antes: $_isProcessing');
     
     // Mostrar popup de loading "Criando invoice"
     showDialog(
@@ -516,7 +516,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               const CircularProgressIndicator(color: Color(0xFFFF6B6B)),
               const SizedBox(height: 20),
               Text(
-                paymentType == 'lightning' ? '? Criando Invoice Lightning...' : '? Gerando Endere�o Bitcoin...',
+                paymentType == 'lightning' ? '⚡ Criando Invoice Lightning...' : '₿ Gerando Endereço Bitcoin...',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 16,
@@ -538,7 +538,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     setState(() {
       _isProcessing = true;
     });
-    debugPrint('?? _isProcessing setado para TRUE em _createPayment');
+    debugPrint('🔒 _isProcessing setado para TRUE em _createPayment');
 
     try {
       final dynamic valueData = _billData!['value'];
@@ -548,13 +548,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final double btcPrice = (priceData is num) ? priceData.toDouble() : 0.0;
       final amountSats = int.parse(sats);
 
-      debugPrint('?? Preparando pagamento: R\$ $billAmount @ R\$ $btcPrice/BTC');
+      debugPrint('💰 Preparando pagamento: R\$ $billAmount @ R\$ $btcPrice/BTC');
 
       if (paymentType == 'lightning') {
-        debugPrint('? Criando invoice Lightning PRIMEIRO...');
+        debugPrint('⚡ Criando invoice Lightning PRIMEIRO...');
         
-        // ?? NOVO FLUXO: Criar invoice ANTES da ordem!
-        // Isso evita criar ordem "fantasma" se usu�rio sair da tela
+        // 🔥 NOVO FLUXO: Criar invoice ANTES da ordem!
+        // Isso evita criar ordem "fantasma" se usuário sair da tela
         // Usa LightningProvider com fallback Spark -> Liquid
         final lightningProvider = context.read<LightningProvider>();
         final invoiceData = await lightningProvider.createInvoice(
@@ -563,22 +563,22 @@ class _PaymentScreenState extends State<PaymentScreen> {
         ).timeout(
           const Duration(seconds: 45), // Timeout maior para fallback
           onTimeout: () {
-            debugPrint('? Timeout ao criar invoice Lightning');
+            debugPrint('⏰ Timeout ao criar invoice Lightning');
             return {'success': false, 'error': 'Timeout ao criar invoice'};
           },
         );
 
-        debugPrint('?? Invoice data: $invoiceData');
+        debugPrint('📨 Invoice data: $invoiceData');
         
         // Log se usou Liquid
         if (invoiceData?['isLiquid'] == true) {
-          debugPrint('?? Invoice criada via LIQUID (fallback)');
+          debugPrint('💧 Invoice criada via LIQUID (fallback)');
         }
 
         if (invoiceData == null || invoiceData['success'] != true) {
           // Fechar popup de loading
           if (mounted) Navigator.of(context).pop();
-          debugPrint('? Erro ao criar invoice');
+          debugPrint('❌ Erro ao criar invoice');
           _showError('Erro ao criar Lightning invoice: ${invoiceData?['error'] ?? 'desconhecido'}');
           return;
         }
@@ -586,13 +586,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
         final inv = (invoiceData['invoice'] ?? '') as String;
         if (inv.isEmpty || !(inv.startsWith('lnbc') || inv.startsWith('lntb') || inv.startsWith('lnbcrt'))) {
           if (mounted) Navigator.of(context).pop();
-          debugPrint('? Invoice inv�lida: $inv');
-          _showError('Invoice inv�lida recebida');
+          debugPrint('❌ Invoice inválida: $inv');
+          _showError('Invoice inválida recebida');
           return;
         }
         
         final paymentHash = (invoiceData['paymentHash'] ?? '') as String;
-        debugPrint('? Invoice criada! N�O criando ordem ainda - s� ap�s pagamento!');
+        debugPrint('✅ Invoice criada! NÃO criando ordem ainda - só após pagamento!');
         
         // Fechar popup de loading
         if (mounted) Navigator.of(context).pop();
@@ -604,8 +604,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
           _isProcessing = false;
         });
         
-        // ?? NOVO FLUXO: N�O criar ordem agora!
-        // Ordem ser� criada SOMENTE quando pagamento for confirmado
+        // 🔥 NOVO FLUXO: NÃO criar ordem agora!
+        // Ordem será criada SOMENTE quando pagamento for confirmado
         // Passar dados da conta para LightningPaymentScreen criar a ordem depois
         Navigator.push(
           context,
@@ -615,9 +615,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
               paymentHash: paymentHash,
               amountSats: amountSats,
               totalBrl: totalBrl,
-              orderId: '', // Ordem ser� criada ap�s pagamento
+              orderId: '', // Ordem será criada após pagamento
               receiver: invoiceData['receiver'] as String?,
-              // Dados para criar ordem ap�s pagamento
+              // Dados para criar ordem após pagamento
               billType: _billData!['billType'] as String,
               billCode: _codeController.text.trim(),
               billAmount: billAmount,
@@ -627,17 +627,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
           ),
         );
       } else {
-        debugPrint('?? Criando endere�o onchain PRIMEIRO...');
+        debugPrint('🔗 Criando endereço onchain PRIMEIRO...');
         
-        // ?? NOVO FLUXO: Criar endere�o ANTES da ordem!
+        // 🔥 NOVO FLUXO: Criar endereço ANTES da ordem!
         final addressData = await breezProvider.createOnchainAddress();
 
-        debugPrint('?? Address data: $addressData');
+        debugPrint('📨 Address data: $addressData');
 
         if (addressData == null || addressData['success'] != true) {
           if (mounted) Navigator.of(context).pop();
-          debugPrint('? Erro ao criar endere�o onchain');
-          _showError('Erro ao criar endere�o Bitcoin: ${addressData?['error'] ?? 'desconhecido'}');
+          debugPrint('❌ Erro ao criar endereço onchain');
+          _showError('Erro ao criar endereço Bitcoin: ${addressData?['error'] ?? 'desconhecido'}');
           return;
         }
         
@@ -645,20 +645,20 @@ class _PaymentScreenState extends State<PaymentScreen> {
         
         if (address.isEmpty) {
           if (mounted) Navigator.of(context).pop();
-          debugPrint('? Endere�o vazio');
-          _showError('Erro ao criar endere�o Bitcoin');
+          debugPrint('❌ Endereço vazio');
+          _showError('Erro ao criar endereço Bitcoin');
           return;
         }
         
-        debugPrint('? Endere�o criado! N�O criando ordem ainda - s� ap�s pagamento!');
+        debugPrint('✅ Endereço criado! NÃO criando ordem ainda - só após pagamento!');
         
         // Fechar popup de loading
         if (mounted) Navigator.of(context).pop();
         
         if (!mounted) return;
         
-        // ?? NOVO FLUXO: N�O criar ordem agora!
-        // Ordem ser� criada SOMENTE quando pagamento for confirmado
+        // 🔥 NOVO FLUXO: NÃO criar ordem agora!
+        // Ordem será criada SOMENTE quando pagamento for confirmado
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -667,8 +667,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
               btcAmount: btcAmount,
               totalBrl: totalBrl,
               amountSats: amountSats,
-              orderId: '', // Ordem ser� criada ap�s pagamento
-              // Dados para criar ordem ap�s pagamento
+              orderId: '', // Ordem será criada após pagamento
+              // Dados para criar ordem após pagamento
               billType: _billData!['billType'] as String,
               billCode: _codeController.text.trim(),
               billAmount: billAmount,
@@ -678,19 +678,19 @@ class _PaymentScreenState extends State<PaymentScreen> {
         );
       }
     } catch (e) {
-      debugPrint('? Exception em _createPayment: $e');
+      debugPrint('❌ Exception em _createPayment: $e');
       // Fechar popup de loading em caso de erro
       if (mounted) Navigator.of(context).pop();
       _showError('Erro ao criar pagamento: $e');
     } finally {
-      debugPrint('?? _createPayment finally - mounted: $mounted');
+      debugPrint('🔓 _createPayment finally - mounted: $mounted');
       if (mounted) {
         setState(() {
           _isProcessing = false;
         });
-        debugPrint('? _isProcessing setado para FALSE em _createPayment');
+        debugPrint('✅ _isProcessing setado para FALSE em _createPayment');
       } else {
-        debugPrint('?? Widget n�o montado, n�o pode resetar _isProcessing');
+        debugPrint('⚠️ Widget não montado, não pode resetar _isProcessing');
       }
     }
   }
@@ -706,7 +706,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint('?? PaymentScreen build - _isProcessing: $_isProcessing');
+    debugPrint('🔄 PaymentScreen build - _isProcessing: $_isProcessing');
     return GestureDetector(
       onTap: () {
         // Retrair teclado ao tocar no fundo da tela
@@ -716,7 +716,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         appBar: AppBar(
           title: const Text('Pagar Conta'),
           actions: [
-            // Bot�o de debug para resetar estado
+            // Botão de debug para resetar estado
             if (_isProcessing)
               IconButton(
                 icon: const Icon(Icons.refresh, color: Colors.orange),
@@ -767,7 +767,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           left: 0,
           right: 0,
           child: Text(
-            'Aponte para o c�digo de barras ou QR Code',
+            'Aponte para o código de barras ou QR Code',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.white,
@@ -793,8 +793,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 child: TextField(
                   controller: _codeController,
                   decoration: const InputDecoration(
-                    labelText: 'C�digo PIX ou Boleto',
-                    hintText: 'Cole ou escaneie o c�digo',
+                    labelText: 'Código PIX ou Boleto',
+                    hintText: 'Cole ou escaneie o código',
                     border: OutlineInputBorder(),
                   ),
                   maxLines: 3,
@@ -813,7 +813,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             ],
           ),
           
-          // Instru��es de como funciona
+          // Instruções de como funciona
           if (_billData == null) ...[
             const SizedBox(height: 24),
             _buildInstructionsCard(),
@@ -856,7 +856,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          _buildInstructionStep('1', 'Cole acima o c�digo PIX ou boleto'),
+          _buildInstructionStep('1', 'Cole acima o código PIX ou boleto'),
           const SizedBox(height: 12),
           _buildInstructionStep('2', 'Confira o valor e as taxas'),
           const SizedBox(height: 12),
@@ -866,7 +866,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           const SizedBox(height: 12),
           _buildInstructionStep('5', 'Confirme que o pagamento foi feito e libere o valor para o Bro'),
           const SizedBox(height: 12),
-          _buildInstructionStep('6', 'Pronto, conta paga de Bro para Bro! ??'),
+          _buildInstructionStep('6', 'Pronto, conta paga de Bro para Bro! 🤝'),
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(12),
@@ -883,7 +883,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Seu pagamento fica em um endere�o aguardando at� que um Bro confirme que pagou sua conta.',
+                        'Seu pagamento fica em um endereço aguardando até que um Bro confirme que pagou sua conta.',
                         style: TextStyle(
                           fontSize: 12,
                           color: Color(0xFF3DE98C),
@@ -894,7 +894,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 ),
                 SizedBox(height: 8),
                 Text(
-                  'Obs: Se voc� n�o confirmar em 24h o pagamento da conta, sua garantia depositada em bitcoin � liberada automaticamente para o Bro que enviou o comprovante.',
+                  'Obs: Se você não confirmar em 24h o pagamento da conta, sua garantia depositada em bitcoin é liberada automaticamente para o Bro que enviou o comprovante.',
                   style: TextStyle(
                     fontSize: 11,
                     color: Color(0xB3FFFFFF),
@@ -951,7 +951,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final valueStr = (value is num) ? value.toStringAsFixed(2) : '0.00';
     
     return [
-      // Alert de sucesso na detec��o
+      // Alert de sucesso na detecção
       Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -968,7 +968,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             SizedBox(width: 12),
             Expanded(
               child: Text(
-                '? Valor detectado automaticamente',
+                '✅ Valor detectado automaticamente',
                 style: TextStyle(
                   color: Color(0xFF4CAF50),
                   fontSize: 13,
@@ -1035,22 +1035,22 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final billValue = _billData!['value'];
     final billValueStr = (billValue is num) ? billValue.toStringAsFixed(2) : '0.00';
     
-    // Calculate fees (provider 3%, platform 0% - n�o cobrando taxa de plataforma por enquanto)
+    // Calculate fees (provider 3%, platform 0% - não cobrando taxa de plataforma por enquanto)
     final accountValue = (billValue is num) ? billValue.toDouble() : 0.0;
     final providerFeePercent = 3.0;  // Taxa do Bro: 3%
     final platformFeePercent = 0.0; // Taxa de plataforma desativada
     final providerFee = accountValue * (providerFeePercent / 100.0);
-    final platformFee = 0.0; // N�o cobrando
+    final platformFee = 0.0; // Não cobrando
     final totalBrl = accountValue + providerFee; // Apenas valor + taxa do Bro
     
     // Calcular sats totais baseado no valor total com taxas
-    // btcAmount � o valor em BTC para pagar APENAS a conta
+    // btcAmount é o valor em BTC para pagar APENAS a conta
     // Precisamos calcular o BTC total (conta + taxas)
     final btcPriceNum = (btcPrice is num) ? btcPrice.toDouble() : 0.0;
     final totalBtc = btcPriceNum > 0 ? totalBrl / btcPriceNum : 0.0;
     final totalSats = (totalBtc * 100000000).round();
     
-    // Calcular taxa de convers�o BRL ? Sats
+    // Calcular taxa de conversão BRL → Sats
     final brlToSatsRate = totalSats > 0 ? totalSats / totalBrl : 0.0;
 
     return [
@@ -1069,7 +1069,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             SizedBox(width: 10),
             Expanded(
               child: Text(
-                '?? Confira abaixo o detalhamento completo das taxas',
+                '💡 Confira abaixo o detalhamento completo das taxas',
                 style: TextStyle(
                   color: Color(0xFF64B5F6),
                   fontSize: 12,
@@ -1121,7 +1121,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 valueColor: Colors.orange.shade900,
               ),
               _InfoRow(
-                label: 'Cota��o BTC',
+                label: 'Cotação BTC',
                 value: '${NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$').format(btcPrice)}/BTC',
               ),
               _InfoRow(

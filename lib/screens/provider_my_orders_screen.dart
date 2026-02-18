@@ -45,10 +45,10 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
   }
 
   List<Order> _getMyOrders(OrderProvider orderProvider) {
-    // Obter pubkey Nostr do usu�rio logado (para comparar com providerId real)
+    // Obter pubkey Nostr do usuário logado (para comparar com providerId real)
     final nostrPubkey = _nostrService.publicKey;
     
-    // Filtrar ordens que este provedor aceitou e ainda n�o completou
+    // Filtrar ordens que este provedor aceitou e ainda não completou
     return orderProvider.orders.where((order) {
       // Aceitar tanto o providerId passado quanto a pubkey Nostr real
       final isMyOrder = order.providerId == widget.providerId || 
@@ -56,7 +56,7 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
       final isActiveStatus = order.status == 'accepted' || 
                             order.status == 'awaiting_confirmation';
       
-      debugPrint('?? Ordem ${_safeSubstring(order.id, 0, 8)}: providerId=${order.providerId}, myId=${widget.providerId}, nostrPubkey=${_safeSubstring(nostrPubkey, 0, 8)}, isMyOrder=$isMyOrder, isActive=$isActiveStatus');
+      debugPrint('🔍 Ordem ${_safeSubstring(order.id, 0, 8)}: providerId=${order.providerId}, myId=${widget.providerId}, nostrPubkey=${_safeSubstring(nostrPubkey, 0, 8)}, isMyOrder=$isMyOrder, isActive=$isActiveStatus');
       
       return isMyOrder && isActiveStatus;
     }).toList();
@@ -79,7 +79,7 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
                 arguments: widget.providerId,
               );
             },
-            tooltip: 'Hist�rico',
+            tooltip: 'Histórico',
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -92,7 +92,7 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
         builder: (context, orderProvider, child) {
           final myOrders = _getMyOrders(orderProvider);
           
-          debugPrint('?? Total de ordens aceitas: ${myOrders.length}');
+          debugPrint('📦 Total de ordens aceitas: ${myOrders.length}');
 
           if (myOrders.isEmpty) {
             return _buildEmptyView();
@@ -134,7 +134,7 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Ordens aceitas aparecer�o aqui at� voc� enviar o comprovante e o usu�rio confirmar.',
+              'Ordens aceitas aparecerão aqui até você enviar o comprovante e o usuário confirmar.',
               style: TextStyle(color: Colors.white70, fontSize: 14),
               textAlign: TextAlign.center,
             ),
@@ -148,7 +148,7 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
                 );
               },
               icon: const Icon(Icons.search),
-              label: const Text('Ver Ordens Dispon�veis'),
+              label: const Text('Ver Ordens Disponíveis'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.orange,
               ),
@@ -186,7 +186,7 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
               ),
             ).then((result) {
               _refreshOrders();
-              // Resultado � tratado aqui, mas j� estamos na tela de "Minhas"
+              // Resultado é tratado aqui, mas já estamos na tela de "Minhas"
             });
           },
           borderRadius: BorderRadius.circular(12),
@@ -339,7 +339,7 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
         return {
           'label': 'AGUARDANDO',
           'title': 'Comprovante Enviado',
-          'description': 'Aguardando usu�rio confirmar o pagamento',
+          'description': 'Aguardando usuário confirmar o pagamento',
           'icon': Icons.hourglass_empty,
           'color': Colors.purple,
         };
@@ -370,11 +370,11 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
     final difference = now.difference(dateTime);
 
     if (difference.inDays > 0) {
-      return '${difference.inDays}d atr�s';
+      return '${difference.inDays}d atrás';
     } else if (difference.inHours > 0) {
-      return '${difference.inHours}h atr�s';
+      return '${difference.inHours}h atrás';
     } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes}min atr�s';
+      return '${difference.inMinutes}min atrás';
     } else {
       return 'Agora';
     }

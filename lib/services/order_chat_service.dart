@@ -3,9 +3,9 @@ import 'package:flutter/foundation.dart';
 import '../services/api_service.dart';
 import '../models/escrow_deposit.dart';
 
-/// Servi�o de chat real-time entre provider e cliente durante uma ordem
+/// Serviço de chat real-time entre provider e cliente durante uma ordem
 /// 
-/// Usa polling para simular real-time (pode ser substitu�do por WebSocket/Nostr DMs)
+/// Usa polling para simular real-time (pode ser substituído por WebSocket/Nostr DMs)
 class OrderChatService {
   static OrderChatService? _instance;
   static OrderChatService get instance => _instance ??= OrderChatService._();
@@ -16,7 +16,7 @@ class OrderChatService {
   final _messageStreamControllers = <String, StreamController<OrderMessage>>{};
   final _pollingTimers = <String, Timer>{};
 
-  /// Stream de mensagens para uma ordem espec�fica
+  /// Stream de mensagens para uma ordem específica
   Stream<OrderMessage> messagesStream(String orderId) {
     if (!_messageStreamControllers.containsKey(orderId)) {
       _messageStreamControllers[orderId] = StreamController<OrderMessage>.broadcast();
@@ -44,7 +44,7 @@ class OrderChatService {
         _messageStreamControllers[orderId]?.add(message);
       }
     } catch (e) {
-      debugPrint('? Erro ao buscar mensagens: $e');
+      debugPrint('❌ Erro ao buscar mensagens: $e');
     }
   }
 
@@ -64,7 +64,7 @@ class OrderChatService {
     required String message,
   }) async {
     try {
-      debugPrint('?? Enviando mensagem...');
+      debugPrint('💬 Enviando mensagem...');
 
       final response = await _api.post('/api/chat/send', {
         'orderId': orderId,
@@ -77,11 +77,11 @@ class OrderChatService {
         throw Exception(response?['error'] ?? 'Erro ao enviar mensagem');
       }
 
-      debugPrint('? Mensagem enviada');
+      debugPrint('✅ Mensagem enviada');
       return true;
 
     } catch (e) {
-      debugPrint('? Erro ao enviar mensagem: $e');
+      debugPrint('❌ Erro ao enviar mensagem: $e');
       return false;
     }
   }
@@ -95,7 +95,7 @@ class OrderChatService {
     String message = 'Comprovante enviado',
   }) async {
     try {
-      debugPrint('?? Enviando comprovante...');
+      debugPrint('📎 Enviando comprovante...');
 
       final response = await _api.post('/api/chat/send-receipt', {
         'orderId': orderId,
@@ -109,11 +109,11 @@ class OrderChatService {
         throw Exception(response?['error'] ?? 'Erro ao enviar comprovante');
       }
 
-      debugPrint('? Comprovante enviado');
+      debugPrint('✅ Comprovante enviado');
       return true;
 
     } catch (e) {
-      debugPrint('? Erro ao enviar comprovante: $e');
+      debugPrint('❌ Erro ao enviar comprovante: $e');
       return false;
     }
   }
@@ -134,7 +134,7 @@ class OrderChatService {
       return messages;
 
     } catch (e) {
-      debugPrint('? Erro ao buscar mensagens: $e');
+      debugPrint('❌ Erro ao buscar mensagens: $e');
       return [];
     }
   }
@@ -150,11 +150,11 @@ class OrderChatService {
         'userId': userId,
       });
     } catch (e) {
-      debugPrint('? Erro ao marcar como lido: $e');
+      debugPrint('❌ Erro ao marcar como lido: $e');
     }
   }
 
-  /// Contar mensagens n�o lidas
+  /// Contar mensagens não lidas
   Future<int> getUnreadCount({
     required String orderId,
     required String userId,
@@ -169,7 +169,7 @@ class OrderChatService {
       return response!['count'] as int? ?? 0;
 
     } catch (e) {
-      debugPrint('? Erro ao contar n�o lidas: $e');
+      debugPrint('❌ Erro ao contar não lidas: $e');
       return 0;
     }
   }

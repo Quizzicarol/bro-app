@@ -44,11 +44,11 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   File? _receiptImage;
   bool _orderAccepted = false;
   
-  // Timer de 24h para auto-liquida��o
+  // Timer de 24h para auto-liquidação
   Duration? _timeRemaining;
   DateTime? _receiptSubmittedAt;
   
-  // Timer para polling autom�tico de updates de status
+  // Timer para polling automático de updates de status
   Timer? _statusPollingTimer;
 
   @override
@@ -68,29 +68,29 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     super.dispose();
   }
   
-  /// Inicia polling autom�tico para verificar updates de status
-  /// Isso permite que o Bro veja quando o usu�rio confirma o pagamento
+  /// Inicia polling automático para verificar updates de status
+  /// Isso permite que o Bro veja quando o usuário confirma o pagamento
   void _startStatusPolling() {
     // Polling a cada 10 segundos quando em awaiting_confirmation
     _statusPollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) async {
       final currentStatus = _orderDetails?['status'] ?? '';
       
-      // S� fazer polling se estiver aguardando confirma��o
+      // Só fazer polling se estiver aguardando confirmação
       if (currentStatus == 'awaiting_confirmation' && mounted) {
-        debugPrint('?? [POLLING] Verificando status da ordem ${widget.orderId.substring(0, 8)}...');
+        debugPrint('🔄 [POLLING] Verificando status da ordem ${widget.orderId.substring(0, 8)}...');
         await _loadOrderDetails();
         
         // Se mudou para completed, parar o polling
         final newStatus = _orderDetails?['status'] ?? '';
         if (newStatus == 'completed') {
-          debugPrint('?? [POLLING] Ordem confirmada! Parando polling.');
+          debugPrint('🎉 [POLLING] Ordem confirmada! Parando polling.');
           timer.cancel();
           
-          // Mostrar notifica��o ao Bro
+          // Mostrar notificação ao Bro
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('?? Pagamento confirmado pelo usu�rio!'),
+                content: Text('🎉 Pagamento confirmado pelo usuário!'),
                 backgroundColor: Colors.green,
                 duration: Duration(seconds: 5),
               ),
@@ -104,7 +104,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   Future<void> _loadOrderDetails({bool forceSync = false}) async {
     if (!mounted) return;
     
-    // N�o mostrar loading se for polling (forceSync = false mantido do caller)
+    // Não mostrar loading se for polling (forceSync = false mantido do caller)
     if (_orderDetails == null) {
       setState(() {
         _isLoading = true;
@@ -116,32 +116,32 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       final orderProvider = context.read<OrderProvider>();
       
       // IMPORTANTE: Fazer sync com Nostr para buscar updates de status
-      // Isso permite que o Bro veja quando o usu�rio confirmou
+      // Isso permite que o Bro veja quando o usuário confirmou
       final currentStatus = _orderDetails?['status'] ?? '';
       if (currentStatus == 'awaiting_confirmation' || forceSync) {
-        debugPrint('?? [SYNC] Sincronizando com Nostr para buscar updates...');
+        debugPrint('🔄 [SYNC] Sincronizando com Nostr para buscar updates...');
         await orderProvider.syncOrdersFromNostr().timeout(
           const Duration(seconds: 5),
           onTimeout: () {
-            debugPrint('?? [SYNC] Timeout - continuando com dados locais');
+            debugPrint('⏱️ [SYNC] Timeout - continuando com dados locais');
           },
         );
       }
       
       final order = await orderProvider.getOrder(widget.orderId);
       
-      debugPrint('?? _loadOrderDetails: ordem carregada = $order');
-      debugPrint('?? _loadOrderDetails: billCode = ${order?['billCode']}');
+      debugPrint('🔍 _loadOrderDetails: ordem carregada = $order');
+      debugPrint('🔍 _loadOrderDetails: billCode = ${order?['billCode']}');
 
       if (mounted) {
         setState(() {
           _orderDetails = order;
-          // Verificar se ordem j� foi aceita (por qualquer provedor ou este provedor)
+          // Verificar se ordem já foi aceita (por qualquer provedor ou este provedor)
           final orderProviderId = order?['providerId'] ?? order?['provider_id'];
           final orderStatus = order?['status'] ?? 'pending';
           
-          // CORRE��O CR�TICA: Ordem foi aceita se:
-          // 1. Status indica aceita��o (accepted/awaiting_confirmation/completed/liquidated)
+          // CORREÇÃO CRÍTICA: Ordem foi aceita se:
+          // 1. Status indica aceitação (accepted/awaiting_confirmation/completed/liquidated)
           // 2. OU tem providerId definido (mesmo se status vier errado do Nostr)
           final hasValidProviderId = orderProviderId != null && 
                                      orderProviderId.isNotEmpty && 
@@ -151,14 +151,14 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                                     orderStatus == 'completed' ||
                                     orderStatus == 'liquidated';
           
-          // Se tem providerId v�lido, a ordem FOI aceita - independente do status
+          // Se tem providerId válido, a ordem FOI aceita - independente do status
           _orderAccepted = hasAdvancedStatus || hasValidProviderId;
           
-          debugPrint('?? _orderAccepted calc: hasAdvancedStatus=$hasAdvancedStatus, hasValidProviderId=$hasValidProviderId, result=$_orderAccepted');
+          debugPrint('🔍 _orderAccepted calc: hasAdvancedStatus=$hasAdvancedStatus, hasValidProviderId=$hasValidProviderId, result=$_orderAccepted');
           
           // Calcular tempo restante se comprovante foi enviado
           final metadata = order?['metadata'] as Map<String, dynamic>?;
-          // CORRE��O: Verificar TODOS os campos poss�veis de timestamp
+          // CORREÇÃO: Verificar TODOS os campos possíveis de timestamp
           final submittedAtStr = metadata?['receipt_submitted_at'] as String? ?? 
                                  metadata?['proofReceivedAt'] as String? ??
                                  metadata?['proofSentAt'] as String? ??
@@ -168,13 +168,13 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             if (_receiptSubmittedAt != null) {
               final deadline = _receiptSubmittedAt!.add(const Duration(hours: 24));
               _timeRemaining = deadline.difference(DateTime.now());
-              debugPrint('?? Timer 24h: prazo=${deadline.toIso8601String()}, restante=${_timeRemaining?.inHours ?? 0}h ${(_timeRemaining?.inMinutes.abs() ?? 0) % 60}m');
+              debugPrint('⏱️ Timer 24h: prazo=${deadline.toIso8601String()}, restante=${_timeRemaining?.inHours ?? 0}h ${(_timeRemaining?.inMinutes.abs() ?? 0) % 60}m');
             }
           } else {
-            debugPrint('?? Nenhum timestamp de comprovante encontrado');
+            debugPrint('⚠️ Nenhum timestamp de comprovante encontrado');
           }
           
-          debugPrint('?? Ordem ${widget.orderId.substring(0, 8)}: status=$orderStatus, providerId=$orderProviderId, _orderAccepted=$_orderAccepted');
+          debugPrint('🔍 Ordem ${widget.orderId.substring(0, 8)}: status=$orderStatus, providerId=$orderProviderId, _orderAccepted=$_orderAccepted');
           _isLoading = false;
         });
       }
@@ -191,15 +191,15 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   Future<void> _acceptOrder() async {
     if (!mounted) return;
     
-    // PROTE��O CR�TICA: Verificar se ordem j� foi aceita
+    // PROTEÇÃO CRÍTICA: Verificar se ordem já foi aceita
     final currentStatus = _orderDetails?['status'] ?? 'pending';
     final currentProviderId = _orderDetails?['providerId'] ?? _orderDetails?['provider_id'];
     
     if (currentStatus != 'pending' && currentStatus != 'payment_received') {
-      debugPrint('?? BLOQUEIO DE SEGURAN�A: Tentativa de aceitar ordem com status=$currentStatus');
+      debugPrint('🚫 BLOQUEIO DE SEGURANÇA: Tentativa de aceitar ordem com status=$currentStatus');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('? Esta ordem j� est� em status "$currentStatus" e n�o pode ser aceita novamente'),
+          content: Text('❌ Esta ordem já está em status "$currentStatus" e não pode ser aceita novamente'),
           backgroundColor: Colors.red,
         ),
       );
@@ -207,10 +207,10 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     }
     
     if (_orderAccepted) {
-      debugPrint('?? BLOQUEIO DE SEGURAN�A: Ordem j� marcada como aceita localmente');
+      debugPrint('🚫 BLOQUEIO DE SEGURANÇA: Ordem já marcada como aceita localmente');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('? Esta ordem j� foi aceita'),
+          content: Text('❌ Esta ordem já foi aceita'),
           backgroundColor: Colors.red,
         ),
       );
@@ -218,10 +218,10 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     }
     
     if (currentProviderId != null && currentProviderId.isNotEmpty) {
-      debugPrint('?? BLOQUEIO DE SEGURAN�A: Ordem j� tem providerId=$currentProviderId');
+      debugPrint('🚫 BLOQUEIO DE SEGURANÇA: Ordem já tem providerId=$currentProviderId');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('? Esta ordem j� foi aceita por outro provedor'),
+          content: Text('❌ Esta ordem já foi aceita por outro provedor'),
           backgroundColor: Colors.red,
         ),
       );
@@ -230,7 +230,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     
     final orderAmount = (_orderDetails!['amount'] as num).toDouble();
     
-    // VALIDA��O: Verificar se ordem n�o � muito antiga (PIX pode ter expirado)
+    // VALIDAÇÃO: Verificar se ordem não é muito antiga (PIX pode ter expirado)
     final createdAtStr = _orderDetails!['createdAt'] as String?;
     if (createdAtStr != null) {
       final createdAt = DateTime.tryParse(createdAtStr);
@@ -250,7 +250,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                 ],
               ),
               content: Text(
-                'Esta ordem foi criada h� ${orderAge.inHours} horas. O c�digo PIX pode ter expirado.\n\nDeseja continuar mesmo assim?',
+                'Esta ordem foi criada há ${orderAge.inHours} horas. O código PIX pode ter expirado.\n\nDeseja continuar mesmo assim?',
                 style: const TextStyle(color: Colors.white70),
               ),
               actions: [
@@ -272,7 +272,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       }
     }
 
-    // Em modo teste, pular verifica��o de garantia
+    // Em modo teste, pular verificação de garantia
     if (!AppConfig.providerTestMode) {
       final collateralProvider = context.read<CollateralProvider>();
       
@@ -289,7 +289,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     });
 
     try {
-      // Em modo produ��o, bloquear garantia
+      // Em modo produção, bloquear garantia
       if (!AppConfig.providerTestMode) {
         final collateralProvider = context.read<CollateralProvider>();
         final tierId = collateralProvider.getCurrentTier()!.id;
@@ -301,12 +301,12 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         );
       }
 
-      // Publicar aceita��o no Nostr E atualizar localmente
+      // Publicar aceitação no Nostr E atualizar localmente
       final orderProvider = context.read<OrderProvider>();
       final success = await orderProvider.acceptOrderAsProvider(widget.orderId);
       
       if (!success) {
-        _showError('Falha ao publicar aceita��o no Nostr');
+        _showError('Falha ao publicar aceitação no Nostr');
         if (mounted) {
           setState(() {
             _isAccepting = false;
@@ -325,7 +325,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('? Ordem aceita! Pague a conta e envie o comprovante.'),
+            content: Text('✅ Ordem aceita! Pague a conta e envie o comprovante.'),
             backgroundColor: Colors.green,
           ),
         );
@@ -381,9 +381,9 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   }
 
   Future<void> _uploadReceipt() async {
-    // Verificar se tem imagem OU c�digo
+    // Verificar se tem imagem OU código
     if (_receiptImage == null && _confirmationCodeController.text.trim().isEmpty) {
-      _showError('Selecione um comprovante ou digite um c�digo de confirma��o');
+      _showError('Selecione um comprovante ou digite um código de confirmação');
       return;
     }
 
@@ -403,41 +403,41 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
 
       // ========== GERAR INVOICE AUTOMATICAMENTE ==========
       // CORRIGIDO: O provedor recebe o VALOR TOTAL menos a taxa da plataforma
-      // Modelo: Usu�rio paga sats -> Provedor paga PIX -> Provedor recebe sats
+      // Modelo: Usuário paga sats -> Provedor paga PIX -> Provedor recebe sats
       final amount = (_orderDetails!['amount'] as num).toDouble();
       final btcAmount = (_orderDetails!['btcAmount'] as num?)?.toDouble() ?? 0;
       
-      // Converter btcAmount para sats (btcAmount est� em BTC, * 100_000_000 = sats)
+      // Converter btcAmount para sats (btcAmount está em BTC, * 100_000_000 = sats)
       final totalSats = (btcAmount * 100000000).round();
       
       // CORRIGIDO: Provedor recebe valor total MENOS taxa da plataforma (2%)
-      // A taxa da plataforma � paga separadamente pelo usu�rio
+      // A taxa da plataforma é paga separadamente pelo usuário
       var providerReceiveSats = totalSats;
       
-      // Taxa m�nima de 1 sat para ordens muito pequenas
+      // Taxa mínima de 1 sat para ordens muito pequenas
       if (providerReceiveSats < 1 && totalSats > 0) {
         providerReceiveSats = 1;
       }
       
-      debugPrint('?? Ordem: R\$ ${amount.toStringAsFixed(2)} = $totalSats sats');
-      debugPrint('?? Provedor vai receber: $providerReceiveSats sats (valor total da ordem)');
+      debugPrint('💰 Ordem: R\$ ${amount.toStringAsFixed(2)} = $totalSats sats');
+      debugPrint('💰 Provedor vai receber: $providerReceiveSats sats (valor total da ordem)');
       
       String? generatedInvoice;
       
       // Gerar invoice Lightning para receber o pagamento (apenas se taxa > 0)
-      // IMPORTANTE: Usar BreezProvider direto pois � o que est� inicializado pelo login
+      // IMPORTANTE: Usar BreezProvider direto pois é o que está inicializado pelo login
       final breezProvider = context.read<BreezProvider>();
       final liquidProvider = context.read<BreezLiquidProvider>();
       
       // DEBUG: Verificar estado das carteiras
-      debugPrint('?? DEBUG INVOICE GENERATION:');
+      debugPrint('🔍 DEBUG INVOICE GENERATION:');
       debugPrint('   breezProvider.isInitialized: ${breezProvider.isInitialized}');
       debugPrint('   liquidProvider.isInitialized: ${liquidProvider.isInitialized}');
       debugPrint('   providerReceiveSats: $providerReceiveSats');
       
-      // S� gerar invoice se o valor for maior que 0
+      // Só gerar invoice se o valor for maior que 0
       if (providerReceiveSats > 0 && breezProvider.isInitialized) {
-        debugPrint('? Gerando invoice de $providerReceiveSats sats via Breez Spark...');
+        debugPrint('⚡ Gerando invoice de $providerReceiveSats sats via Breez Spark...');
         
         final result = await breezProvider.createInvoice(
           amountSats: providerReceiveSats,
@@ -446,12 +446,12 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         
         if (result != null && result['bolt11'] != null) {
           generatedInvoice = result['bolt11'] as String;
-          debugPrint('? Invoice gerado via Spark: ${generatedInvoice.substring(0, 30)}...');
+          debugPrint('✅ Invoice gerado via Spark: ${generatedInvoice.substring(0, 30)}...');
         } else {
-          debugPrint('?? Falha ao gerar invoice via Spark: $result');
+          debugPrint('⚠️ Falha ao gerar invoice via Spark: $result');
         }
       } else if (providerReceiveSats > 0 && liquidProvider.isInitialized) {
-        debugPrint('? Gerando invoice de $providerReceiveSats sats via Liquid (fallback)...');
+        debugPrint('⚡ Gerando invoice de $providerReceiveSats sats via Liquid (fallback)...');
         
         final result = await liquidProvider.createInvoice(
           amountSats: providerReceiveSats,
@@ -460,17 +460,17 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         
         if (result != null && result['bolt11'] != null) {
           generatedInvoice = result['bolt11'] as String;
-          debugPrint('? Invoice gerado via Liquid: ${generatedInvoice.substring(0, 30)}...');
+          debugPrint('✅ Invoice gerado via Liquid: ${generatedInvoice.substring(0, 30)}...');
         } else {
-          debugPrint('?? Falha ao gerar invoice via Liquid: $result');
+          debugPrint('⚠️ Falha ao gerar invoice via Liquid: $result');
         }
       } else if (providerReceiveSats <= 0) {
-        debugPrint('?? providerReceiveSats=$providerReceiveSats (muito baixo), n�o gerando invoice');
+        debugPrint('ℹ️ providerReceiveSats=$providerReceiveSats (muito baixo), não gerando invoice');
       } else {
-        debugPrint('?? NENHUMA CARTEIRA INICIALIZADA! breez=${breezProvider.isInitialized}, liquid=${liquidProvider.isInitialized}');
+        debugPrint('🚨 NENHUMA CARTEIRA INICIALIZADA! breez=${breezProvider.isInitialized}, liquid=${liquidProvider.isInitialized}');
       }
 
-      debugPrint('?? Resumo: providerReceiveSats=$providerReceiveSats, hasInvoice=${generatedInvoice != null}');
+      debugPrint('📋 Resumo: providerReceiveSats=$providerReceiveSats, hasInvoice=${generatedInvoice != null}');
       if (generatedInvoice != null) {
         debugPrint('   Invoice: ${generatedInvoice.substring(0, 50)}...');
       }
@@ -499,7 +499,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         if (generatedInvoice != null) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('? Comprovante enviado! Voc� receber� $providerReceiveSats sats quando o usu�rio confirmar.'),
+              content: Text('✅ Comprovante enviado! Você receberá $providerReceiveSats sats quando o usuário confirmar.'),
               backgroundColor: Colors.green,
               duration: const Duration(seconds: 4),
             ),
@@ -507,7 +507,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('?? Comprovante enviado mas carteira n�o conectada! Configure sua carteira para receber sats automaticamente.'),
+              content: Text('⚠️ Comprovante enviado mas carteira não conectada! Configure sua carteira para receber sats automaticamente.'),
               backgroundColor: Colors.orange,
               duration: Duration(seconds: 6),
             ),
@@ -549,7 +549,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             : _error != null
                 ? _buildErrorView()
                 : _orderDetails == null
-                    ? const Center(child: Text('Ordem n�o encontrada', style: TextStyle(color: Colors.white70)))
+                    ? const Center(child: Text('Ordem não encontrada', style: TextStyle(color: Colors.white70)))
                     : RefreshIndicator(
                         onRefresh: _loadOrderDetails,
                         color: Colors.orange,
@@ -594,8 +594,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     final billCode = _orderDetails!['billCode'] as String? ?? 
                      _orderDetails!['bill_code'] as String? ?? '';
     
-    // DEBUG: Log para verificar se billCode est� presente
-    debugPrint('?? _buildContent: billType=$billType, status=$status, billCode=${billCode.isNotEmpty ? "${billCode.substring(0, billCode.length > 20 ? 20 : billCode.length)}..." : "EMPTY"}');
+    // DEBUG: Log para verificar se billCode está presente
+    debugPrint('🔍 _buildContent: billType=$billType, status=$status, billCode=${billCode.isNotEmpty ? "${billCode.substring(0, billCode.length > 20 ? 20 : billCode.length)}..." : "EMPTY"}');
     
     // SEMPRE construir payment_data a partir do billCode se existir
     Map<String, dynamic>? paymentData;
@@ -611,16 +611,16 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           'barcode': billCode,
         };
       }
-      debugPrint('? paymentData criado: ${paymentData.keys}');
+      debugPrint('✅ paymentData criado: ${paymentData.keys}');
     } else {
       // Fallback: tentar usar payment_data existente
       paymentData = _orderDetails!['payment_data'] as Map<String, dynamic>?;
-      debugPrint('?? billCode vazio, usando payment_data existente: $paymentData');
+      debugPrint('⚠️ billCode vazio, usando payment_data existente: $paymentData');
     }
     
     final providerFee = amount * EscrowService.providerFeePercent / 100;
     
-    // Verificar se ordem est� conclu�da ou aguardando confirma��o
+    // Verificar se ordem está concluída ou aguardando confirmação
     final isCompleted = status == 'completed';
     final isAwaitingConfirmation = status == 'awaiting_confirmation';
     final isAccepted = status == 'accepted';
@@ -632,11 +632,11 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ========== ORDEM CONCLU�DA - Tela de Resumo ==========
+          // ========== ORDEM CONCLUÍDA - Tela de Resumo ==========
           if (isCompleted) ...[
             _buildCompletedOrderView(amount, providerFee, billType),
           ]
-          // ========== AGUARDANDO CONFIRMA��O DO USU�RIO ==========
+          // ========== AGUARDANDO CONFIRMAÇÃO DO USUÁRIO ==========
           else if (isAwaitingConfirmation) ...[
             _buildAmountCard(amount, providerFee),
             const SizedBox(height: 16),
@@ -651,22 +651,22 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             const SizedBox(height: 16),
             _buildStatusCard(),
             const SizedBox(height: 16),
-            // Mostrar c�digo de pagamento APENAS quando Bro precisa pagar
+            // Mostrar código de pagamento APENAS quando Bro precisa pagar
             if (paymentData != null && paymentData.isNotEmpty) ...[
               _buildPaymentDataCard(billType, paymentData),
               const SizedBox(height: 16),
             ],
             _buildReceiptSection(),
           ]
-          // ========== ORDEM DISPON�VEL - PODE ACEITAR ==========
+          // ========== ORDEM DISPONÍVEL - PODE ACEITAR ==========
           else if (isPending) ...[
             _buildAmountCard(amount, providerFee),
             const SizedBox(height: 16),
             _buildStatusCard(),
             const SizedBox(height: 16),
-            // SEGURAN�A: N�O mostrar c�digo PIX/boleto antes de aceitar
+            // SEGURANÇA: NÃO mostrar código PIX/boleto antes de aceitar
             // Evita que dois Bros paguem a mesma conta simultaneamente
-            // O c�digo s� ser� revelado AP�S o Bro aceitar a ordem
+            // O código só será revelado APÓS o Bro aceitar a ordem
             _buildAcceptButton(),
           ]
           // ========== OUTROS STATUS ==========
@@ -676,14 +676,14 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             _buildStatusCard(),
           ],
           
-          // Padding extra para n�o ficar sob a barra de navega��o
+          // Padding extra para não ficar sob a barra de navegação
           const SizedBox(height: 32),
         ],
       ),
     );
   }
   
-  /// Tela de resumo para ordem conclu�da - mostra ganho, timeline, sucesso
+  /// Tela de resumo para ordem concluída - mostra ganho, timeline, sucesso
   Widget _buildCompletedOrderView(double amount, double providerFee, String billType) {
     final totalGanho = providerFee;
     final metadata = _orderDetails?['metadata'] as Map<String, dynamic>?;
@@ -711,7 +711,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               const Icon(Icons.check_circle, color: Colors.green, size: 64),
               const SizedBox(height: 16),
               const Text(
-                '?? Ordem Conclu�da!',
+                '🎉 Ordem Concluída!',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 24,
@@ -720,7 +720,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'O usu�rio confirmou o recebimento',
+                'O usuário confirmou o recebimento',
                 style: TextStyle(color: Colors.white70, fontSize: 14),
               ),
               const SizedBox(height: 24),
@@ -754,7 +754,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                '?? Resumo Financeiro',
+                '💰 Resumo Financeiro',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 18,
@@ -821,7 +821,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '?? Etapas Conclu�das',
+            '📋 Etapas Concluídas',
             style: TextStyle(
               color: Colors.white,
               fontSize: 18,
@@ -829,11 +829,11 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          _buildTimelineStep('Ordem criada pelo usu�rio', true, isFirst: true),
-          _buildTimelineStep('Voc� aceitou a ordem', true),
-          _buildTimelineStep('Conta paga por voc�', true),
+          _buildTimelineStep('Ordem criada pelo usuário', true, isFirst: true),
+          _buildTimelineStep('Você aceitou a ordem', true),
+          _buildTimelineStep('Conta paga por você', true),
           _buildTimelineStep('Comprovante enviado', true),
-          _buildTimelineStep('Usu�rio confirmou recebimento', true, isLast: true),
+          _buildTimelineStep('Usuário confirmou recebimento', true, isLast: true),
         ],
       ),
     );
@@ -925,7 +925,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                     imageBytes,
                     fit: BoxFit.contain,
                     errorBuilder: (_, __, ___) => const Center(
-                      child: Text('N�o foi poss�vel carregar a imagem',
+                      child: Text('Não foi possível carregar a imagem',
                           style: TextStyle(color: Colors.white70)),
                     ),
                   ),
@@ -946,7 +946,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     // Obter btcAmount da ordem para mostrar em sats
     final btcAmount = (_orderDetails?['btcAmount'] as num?)?.toDouble() ?? 0;
     final satsAmount = (btcAmount * 100000000).toInt();
-    // Calcular sats que o provedor vai receber (proporcional � taxa)
+    // Calcular sats que o provedor vai receber (proporcional à taxa)
     final satsToReceive = ((amount + fee) / amount * satsAmount).round();
     
     return Container(
@@ -996,7 +996,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           if (satsAmount > 0) ...[
             const SizedBox(height: 4),
             Text(
-              '? $satsAmount sats',
+              '≈ $satsAmount sats',
               style: TextStyle(
                 color: Colors.orange.withOpacity(0.8),
                 fontSize: 16,
@@ -1032,7 +1032,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   const Text(
-                    'Voc� Recebe',
+                    'Você Recebe',
                     style: TextStyle(color: Colors.white54, fontSize: 12),
                   ),
                   const SizedBox(height: 4),
@@ -1102,26 +1102,26 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     );
   }
 
-  /// Extrai a chave PIX de um c�digo PIX (se poss�vel)
+  /// Extrai a chave PIX de um código PIX (se possível)
   String _extractPixKey(String pixCode) {
-    // Se for um c�digo PIX copia-e-cola longo, tentar extrair a chave
+    // Se for um código PIX copia-e-cola longo, tentar extrair a chave
     if (pixCode.startsWith('00020126')) {
-      // C�digo PIX EMV - retornar "Ver c�digo abaixo"
-      return 'Ver c�digo abaixo';
+      // Código PIX EMV - retornar "Ver código abaixo"
+      return 'Ver código abaixo';
     }
-    // Se for curto, provavelmente � a pr�pria chave
+    // Se for curto, provavelmente é a própria chave
     if (pixCode.length < 50) {
       return pixCode;
     }
-    return 'Ver c�digo abaixo';
+    return 'Ver código abaixo';
   }
 
   Map<String, dynamic> _getStatusInfo(String status) {
     switch (status) {
       case 'pending':
         return {
-          'title': 'Aguardando Aceita��o',
-          'description': 'Ordem dispon�vel para aceitar',
+          'title': 'Aguardando Aceitação',
+          'description': 'Ordem disponível para aceitar',
           'icon': Icons.pending_outlined,
           'color': Colors.orange,
         };
@@ -1136,14 +1136,14 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       case 'awaiting_confirmation':
         return {
           'title': 'Comprovante Enviado',
-          'description': 'Aguardando confirma��o do usu�rio',
+          'description': 'Aguardando confirmação do usuário',
           'icon': Icons.hourglass_empty,
           'color': Colors.purple,
         };
       case 'disputed':
         return {
           'title': 'Em Disputa',
-          'description': 'Aguardando media��o',
+          'description': 'Aguardando mediação',
           'icon': Icons.gavel,
           'color': Colors.orange,
         };
@@ -1185,7 +1185,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  '? PAGAR ESTA CONTA',
+                  '⚡ PAGAR ESTA CONTA',
                   style: const TextStyle(
                     color: Colors.orange,
                     fontSize: 18,
@@ -1197,8 +1197,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            isPix ? 'Copie o c�digo PIX abaixo e pague no seu banco' 
-                  : 'Copie o c�digo de barras abaixo e pague',
+            isPix ? 'Copie o código PIX abaixo e pague no seu banco' 
+                  : 'Copie o código de barras abaixo e pague',
             style: TextStyle(color: Colors.white70, fontSize: 13),
           ),
           const SizedBox(height: 16),
@@ -1206,24 +1206,24 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           const SizedBox(height: 16),
           
           if (isPix) ...[
-            // Mostrar chave PIX se n�o for "Ver c�digo abaixo"
-            if (data['pix_key'] != null && data['pix_key'] != 'Ver c�digo abaixo')
+            // Mostrar chave PIX se não for "Ver código abaixo"
+            if (data['pix_key'] != null && data['pix_key'] != 'Ver código abaixo')
               _buildPaymentField('Chave PIX', data['pix_key'] as String),
             if (data['pix_name'] != null)
               _buildPaymentField('Nome', data['pix_name'] as String),
-            // SEMPRE mostrar o c�digo PIX se existir
+            // SEMPRE mostrar o código PIX se existir
             if (data['pix_code'] != null) ...[
               const SizedBox(height: 12),
-              _buildCopyableField('?? C�digo PIX (Copia e Cola)', data['pix_code'] as String),
+              _buildCopyableField('📋 Código PIX (Copia e Cola)', data['pix_code'] as String),
             ],
           ] else ...[
             // Boleto
             if (data['bank'] != null)
               _buildPaymentField('Banco', data['bank'] as String),
-            // SEMPRE mostrar o c�digo de barras se existir
+            // SEMPRE mostrar o código de barras se existir
             if (data['barcode'] != null) ...[
               const SizedBox(height: 12),
-              _buildCopyableField('?? C�digo de Barras', data['barcode'] as String),
+              _buildCopyableField('📋 Código de Barras', data['barcode'] as String),
             ],
           ],
         ],
@@ -1286,7 +1286,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                 onPressed: () {
                   Clipboard.setData(ClipboardData(text: value));
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('?? Copiado!')),
+                    const SnackBar(content: Text('📋 Copiado!')),
                   );
                 },
                 tooltip: 'Copiar',
@@ -1299,9 +1299,9 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   }
 
   Widget _buildAcceptButton() {
-    // PROTE��O CR�TICA: N�o mostrar bot�o se ordem j� foi aceita
+    // PROTEÇÃO CRÍTICA: Não mostrar botão se ordem já foi aceita
     if (_orderAccepted) {
-      debugPrint('?? _buildAcceptButton: Bot�o oculto porque _orderAccepted=true');
+      debugPrint('🚫 _buildAcceptButton: Botão oculto porque _orderAccepted=true');
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -1315,7 +1315,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             SizedBox(width: 12),
             Expanded(
               child: Text(
-                'Esta ordem j� foi aceita',
+                'Esta ordem já foi aceita',
                 style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
               ),
             ),
@@ -1345,7 +1345,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     );
   }
 
-  /// Se��o exibida quando provedor enviou comprovante e aguarda confirma��o
+  /// Seção exibida quando provedor enviou comprovante e aguarda confirmação
   Widget _buildAwaitingConfirmationSection() {
     final amount = (_orderDetails!['amount'] as num).toDouble();
     final providerFee = amount * EscrowService.providerFeePercent / 100;
@@ -1356,7 +1356,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     final metadata = _orderDetails?['metadata'] as Map<String, dynamic>?;
     final proofImage = metadata?['paymentProof'] as String?;
     
-    // Se o prazo expirou, executar auto-liquida��o
+    // Se o prazo expirou, executar auto-liquidação
     if (isExpired && !_isProcessingAutoLiquidation) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _executeAutoLiquidation();
@@ -1365,7 +1365,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     
     return Column(
       children: [
-        // Card de Status - Esperando Usu�rio
+        // Card de Status - Esperando Usuário
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
@@ -1392,7 +1392,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                '? Aguardando Usu�rio',
+                '⏳ Aguardando Usuário',
                 style: TextStyle(
                   color: isExpiringSoon ? Colors.red : Colors.white,
                   fontSize: 20,
@@ -1401,7 +1401,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'O usu�rio precisa confirmar que recebeu o pagamento para liberar seus ganhos',
+                'O usuário precisa confirmar que recebeu o pagamento para liberar seus ganhos',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.white70, fontSize: 14),
               ),
@@ -1424,7 +1424,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         ),
         const SizedBox(height: 20),
         
-        // Resumo do que voc� vai ganhar
+        // Resumo do que você vai ganhar
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -1436,7 +1436,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                '?? Voc� vai receber',
+                '💰 Você vai receber',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 16,
@@ -1481,7 +1481,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               const SizedBox(width: 8),
               Text(
                 isExpired
-                    ? '?? Auto-liquida��o em andamento...'
+                    ? '🔄 Auto-liquidação em andamento...'
                     : 'Tempo restante: ${hoursRemaining}h ${minutesRemaining}min',
                 style: TextStyle(
                   color: isExpiringSoon ? Colors.red : Colors.white,
@@ -1512,7 +1512,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           const SizedBox(height: 16),
         ],
         
-        // Informa��o sobre auto-liquida��o
+        // Informação sobre auto-liquidação
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -1527,7 +1527,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  '?? Se o usu�rio n�o confirmar em 24 horas, a auto-liquida��o libera seu pagamento automaticamente.',
+                  '💡 Se o usuário não confirmar em 24 horas, a auto-liquidação libera seu pagamento automaticamente.',
                   style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
                 ),
               ),
@@ -1536,7 +1536,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         ),
         const SizedBox(height: 16),
         
-        // Bot�o de disputa
+        // Botão de disputa
         SizedBox(
           width: double.infinity,
           child: OutlinedButton.icon(
@@ -1556,7 +1556,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   
   bool _isProcessingAutoLiquidation = false;
   
-  /// Executa auto-liquida��o quando prazo de 24h expira
+  /// Executa auto-liquidação quando prazo de 24h expira
   Future<void> _executeAutoLiquidation() async {
     if (_isProcessingAutoLiquidation) return;
     
@@ -1565,21 +1565,21 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     });
     
     try {
-      debugPrint('?? Executando auto-liquida��o para ordem ${widget.orderId}');
+      debugPrint('🔄 Executando auto-liquidação para ordem ${widget.orderId}');
       
       final orderProvider = Provider.of<OrderProvider>(context, listen: false);
       
-      // Usar o proof existente ou um placeholder para auto-liquida��o
+      // Usar o proof existente ou um placeholder para auto-liquidação
       final metadata = _orderDetails?['metadata'] as Map<String, dynamic>?;
       final existingProof = metadata?['paymentProof'] as String? ?? 'AUTO_LIQUIDATED';
       final amount = (_orderDetails?['amount'] as num?)?.toDouble() ?? 0.0;
       
-      // Atualizar status para 'liquidated' (auto-liquida��o) em vez de 'completed'
+      // Atualizar status para 'liquidated' (auto-liquidação) em vez de 'completed'
       final success = await orderProvider.autoLiquidateOrder(widget.orderId, existingProof);
       
       if (mounted) {
         if (success) {
-          // Notificar o usu�rio sobre a auto-liquida��o
+          // Notificar o usuário sobre a auto-liquidação
           final notificationService = NotificationService();
           await notificationService.notifyOrderAutoLiquidated(
             orderId: widget.orderId,
@@ -1588,14 +1588,14 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('? Auto-liquida��o conclu�da! Seus ganhos foram liberados.'),
+              content: Text('✅ Auto-liquidação concluída! Seus ganhos foram liberados.'),
               backgroundColor: Colors.green,
             ),
           );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('?? Erro ao processar auto-liquida��o'),
+              content: Text('⚠️ Erro ao processar auto-liquidação'),
               backgroundColor: Colors.orange,
             ),
           );
@@ -1605,10 +1605,10 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         await _loadOrderDetails();
       }
     } catch (e) {
-      debugPrint('? Erro na auto-liquida��o: $e');
+      debugPrint('❌ Erro na auto-liquidação: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro na auto-liquida��o: $e')),
+          SnackBar(content: Text('Erro na auto-liquidação: $e')),
         );
       }
     } finally {
@@ -1648,7 +1648,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '?? Quando abrir uma disputa?',
+                      '⚖️ Quando abrir uma disputa?',
                       style: TextStyle(
                         color: Color(0xFFFF6B6B),
                         fontWeight: FontWeight.bold,
@@ -1657,11 +1657,11 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                     ),
                     SizedBox(height: 8),
                     Text(
-                      'Voc� pode abrir uma disputa se:\n\n'
-                      '. O usu�rio n�o confirma mesmo ap�s receber\n'
-                      '. Houve algum problema com o pagamento\n'
-                      '. O usu�rio alega n�o ter recebido\n'
-                      '. Precisa de media��o para resolver o caso',
+                      'Você pode abrir uma disputa se:\n\n'
+                      '• O usuário não confirma mesmo após receber\n'
+                      '• Houve algum problema com o pagamento\n'
+                      '• O usuário alega não ter recebido\n'
+                      '• Precisa de mediação para resolver o caso',
                       style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 13, height: 1.4),
                     ),
                   ],
@@ -1681,7 +1681,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Lembre-se: ap�s 24h sem confirma��o, a auto-liquida��o ocorre automaticamente.',
+                        'Lembre-se: após 24h sem confirmação, a auto-liquidação ocorre automaticamente.',
                         style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 12),
                       ),
                     ),
@@ -1747,7 +1747,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                 ),
                 const SizedBox(height: 20),
                 const Text(
-                  '?? Formul�rio de Disputa (Provedor)',
+                  '📋 Formulário de Disputa (Provedor)',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 20,
@@ -1766,10 +1766,10 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                 ),
                 const SizedBox(height: 8),
                 ...[
-                  'Usu�rio n�o confirma o recebimento',
-                  'Usu�rio alega n�o ter recebido',
+                  'Usuário não confirma o recebimento',
+                  'Usuário alega não ter recebido',
                   'Problema com o pagamento',
-                  'Usu�rio n�o responde',
+                  'Usuário não responde',
                   'Outro'
                 ].map((reason) => RadioListTile<String>(
                   title: Text(reason, style: const TextStyle(color: Colors.white)),
@@ -1791,7 +1791,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                   maxLines: 4,
                   style: const TextStyle(color: Colors.white),
                   onChanged: (value) {
-                    // Reconstruir o bot�o quando o texto mudar
+                    // Reconstruir o botão quando o texto mudar
                     setModalState(() {});
                   },
                   decoration: InputDecoration(
@@ -1860,7 +1860,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     );
 
     try {
-      // Criar disputa usando o servi�o
+      // Criar disputa usando o serviço
       final disputeService = DisputeService();
       await disputeService.initialize();
       
@@ -1892,7 +1892,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('?? Disputa aberta com sucesso! O suporte foi notificado e ir� analisar o caso.'),
+            content: Text('⚖️ Disputa aberta com sucesso! O suporte foi notificado e irá analisar o caso.'),
             backgroundColor: Color(0xFFFF6B6B),
             duration: Duration(seconds: 4),
           ),
@@ -1935,17 +1935,17 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Ap�s pagar a conta, envie foto/arquivo do comprovante OU digite o c�digo de confirma��o.',
+            'Após pagar a conta, envie foto/arquivo do comprovante OU digite o código de confirmação.',
             style: TextStyle(color: Colors.white70, fontSize: 13),
           ),
           const SizedBox(height: 16),
           
-          // Campo de c�digo de confirma��o
+          // Campo de código de confirmação
           TextField(
             controller: _confirmationCodeController,
             decoration: InputDecoration(
-              labelText: 'C�digo de Confirma��o',
-              hintText: 'Ex: 123456789 ou ID da transa��o',
+              labelText: 'Código de Confirmação',
+              hintText: 'Ex: 123456789 ou ID da transação',
               prefixIcon: const Icon(Icons.confirmation_number, color: Colors.orange),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -1967,7 +1967,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           const Divider(color: Colors.white12),
           const SizedBox(height: 16),
           
-          // Se��o de imagem
+          // Seção de imagem
           if (_receiptImage != null) ...[
             const Text(
               'Comprovante Anexado:',
@@ -2030,7 +2030,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '?? ATEN��O: Oculte dados sens�veis (CPF, nome completo) na imagem do comprovante. Esta imagem � apenas para comprovar o pagamento ao usu�rio. Criptografia NIP-17 em breve.',
+                    '⚠️ ATENÇÃO: Oculte dados sensíveis (CPF, nome completo) na imagem do comprovante. Esta imagem é apenas para comprovar o pagamento ao usuário. Criptografia NIP-17 em breve.',
                     style: TextStyle(color: Colors.orange, fontSize: 12, height: 1.4),
                   ),
                 ),
@@ -2061,7 +2061,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                   child: OutlinedButton.icon(
                     onPressed: _takePhoto,
                     icon: const Icon(Icons.camera_alt, color: Colors.orange),
-                    label: const Text('C�mera'),
+                    label: const Text('Câmera'),
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: Colors.orange),
                       padding: const EdgeInsets.symmetric(vertical: 12),
@@ -2074,7 +2074,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           
           const SizedBox(height: 16),
           
-          // Bot�o de enviar
+          // Botão de enviar
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(

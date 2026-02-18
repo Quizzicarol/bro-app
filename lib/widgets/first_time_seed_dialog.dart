@@ -13,7 +13,7 @@ class FirstTimeSeedDialog extends StatelessWidget {
   static Future<void> showIfNeeded(BuildContext context, String? mnemonic) async {
     if (mnemonic == null) return;
 
-    // Verificar se j� mostrou antes
+    // Verificar se já mostrou antes
     final alreadyShown = await StorageService().isFirstTimeSeedShown();
     if (alreadyShown) return;
 
@@ -34,7 +34,7 @@ class FirstTimeSeedDialog extends StatelessWidget {
     Clipboard.setData(ClipboardData(text: mnemonic));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Seed copiada para a �rea de transfer�ncia!'),
+        content: Text('Seed copiada para a área de transferência!'),
         backgroundColor: Colors.green,
         duration: Duration(seconds: 2),
       ),
@@ -55,7 +55,7 @@ class FirstTimeSeedDialog extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // �cone e T�tulo
+            // Ícone e Título
             Container(
               padding: const EdgeInsets.all(15),
               decoration: BoxDecoration(
@@ -70,7 +70,7 @@ class FirstTimeSeedDialog extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             const Text(
-              '?? IMPORTANTE: Anote sua Seed',
+              '⚠️ IMPORTANTE: Anote sua Seed',
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
@@ -80,7 +80,7 @@ class FirstTimeSeedDialog extends StatelessWidget {
             ),
             const SizedBox(height: 15),
             const Text(
-              'Estas 12 palavras s�o a �NICA forma de recuperar sua carteira Bitcoin.',
+              'Estas 12 palavras são a ÚNICA forma de recuperar sua carteira Bitcoin.',
               style: TextStyle(
                 fontSize: 15,
                 color: Colors.black87,
@@ -174,7 +174,7 @@ class FirstTimeSeedDialog extends StatelessWidget {
                       SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'NUNCA compartilhe com ningu�m',
+                          'NUNCA compartilhe com ninguém',
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.bold,
@@ -191,7 +191,7 @@ class FirstTimeSeedDialog extends StatelessWidget {
                       SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Anote no papel, n�o em foto/print',
+                          'Anote no papel, não em foto/print',
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.bold,
@@ -224,7 +224,7 @@ class FirstTimeSeedDialog extends StatelessWidget {
 
             const SizedBox(height: 25),
 
-            // Bot�es
+            // Botões
             Row(
               children: [
                 Expanded(
@@ -258,7 +258,7 @@ class FirstTimeSeedDialog extends StatelessWidget {
             const SizedBox(height: 15),
 
             Text(
-              'Voc� poder� ver a seed novamente em Configura��es',
+              'Você poderá ver a seed novamente em Configurações',
               style: TextStyle(
                 fontSize: 12,
                 color: Colors.grey.shade600,

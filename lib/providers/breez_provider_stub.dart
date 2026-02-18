@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-/// Stub para web/Windows/Linux - Breez SDK n�o funciona nessas plataformas
+/// Stub para web/Windows/Linux - Breez SDK não funciona nessas plataformas
 class BreezProvider with ChangeNotifier {
   bool get isInitialized => false;
   bool get isLoading => false;
-  String? get error => 'Lightning Network n�o dispon�vel nesta plataforma';
+  String? get error => 'Lightning Network não disponível nesta plataforma';
   String? get mnemonic => null;
   dynamic get sdk => null;
   bool get seedRecoveryNeeded => false;  // Para mostrar alerta de erro
@@ -19,13 +19,13 @@ class BreezProvider with ChangeNotifier {
   
   void clearLastPayment() {}
   
-  /// Reset para novo usu�rio (stub)
+  /// Reset para novo usuário (stub)
   Future<void> resetForNewUser() async {
-    debugPrint('?? resetForNewUser n�o dispon�vel nesta plataforma');
+    debugPrint('⚠️ resetForNewUser não disponível nesta plataforma');
   }
 
   Future<bool> initialize({String? mnemonic}) async {
-    debugPrint('?? Breez SDK n�o dispon�vel nesta plataforma');
+    debugPrint('⚠️ Breez SDK não disponível nesta plataforma');
     return false;
   }
 
@@ -33,18 +33,18 @@ class BreezProvider with ChangeNotifier {
     required int amountSats,
     String? description,
   }) async {
-    return {'success': false, 'error': 'Lightning n�o dispon�vel nesta plataforma'};
+    return {'success': false, 'error': 'Lightning não disponível nesta plataforma'};
   }
 
   Future<Map<String, dynamic>> checkPaymentStatus(String paymentHash) async {
-    return {'paid': false, 'error': 'Lightning n�o dispon�vel nesta plataforma'};
+    return {'paid': false, 'error': 'Lightning não disponível nesta plataforma'};
   }
 
   Future<Map<String, dynamic>> waitForPayment({
     required String paymentHash,
     int timeoutSeconds = 300,
   }) async {
-    return {'paid': false, 'error': 'Lightning n�o dispon�vel nesta plataforma'};
+    return {'paid': false, 'error': 'Lightning não disponível nesta plataforma'};
   }
 
   Future<Map<String, dynamic>> getBalance() async {
@@ -52,15 +52,15 @@ class BreezProvider with ChangeNotifier {
   }
 
   Future<Map<String, dynamic>?> createOnchainAddress() async {
-    return {'success': false, 'error': 'Lightning n�o dispon�vel nesta plataforma'};
+    return {'success': false, 'error': 'Lightning não disponível nesta plataforma'};
   }
 
   Future<Map<String, dynamic>?> payInvoice(String bolt11, {int? amountSats}) async {
-    return {'success': false, 'error': 'Lightning n�o dispon�vel nesta plataforma'};
+    return {'success': false, 'error': 'Lightning não disponível nesta plataforma'};
   }
 
   Future<Map<String, dynamic>?> decodeInvoice(String bolt11) async {
-    return {'success': false, 'error': 'Lightning n�o dispon�vel nesta plataforma'};
+    return {'success': false, 'error': 'Lightning não disponível nesta plataforma'};
   }
 
   Future<List<Map<String, dynamic>>> listPayments() async {
@@ -81,16 +81,16 @@ class BreezProvider with ChangeNotifier {
   Future<void> refreshBalance() async {}
 
   Future<Map<String, dynamic>?> createBitcoinAddress({String? description}) async {
-    return {'success': false, 'error': 'Lightning n�o dispon�vel nesta plataforma'};
+    return {'success': false, 'error': 'Lightning não disponível nesta plataforma'};
   }
 
   Future<Map<String, dynamic>> checkAddressStatus(String address) async {
     return {'received': false, 'amount': 0};
   }
 
-  /// Reinicializar SDK com nova seed (stub - n�o faz nada em plataformas n�o-suportadas)
+  /// Reinicializar SDK com nova seed (stub - não faz nada em plataformas não-suportadas)
   Future<bool> reinitializeWithNewSeed(String mnemonic) async {
-    debugPrint('?? Breez SDK n�o dispon�vel nesta plataforma');
+    debugPrint('⚠️ Breez SDK não disponível nesta plataforma');
     return false;
   }
 
@@ -98,21 +98,21 @@ class BreezProvider with ChangeNotifier {
   
   /// Force sync da carteira (stub)
   Future<void> forceSyncWallet() async {
-    debugPrint('?? forceSyncWallet n�o dispon�vel nesta plataforma');
+    debugPrint('⚠️ forceSyncWallet não disponível nesta plataforma');
   }
   
-  /// Recuperar dep�sitos n�o reclamados (stub)
+  /// Recuperar depósitos não reclamados (stub)
   Future<Map<String, dynamic>> recoverUnclaimedDeposits() async {
-    return {'success': false, 'claimed': 0, 'error': 'Lightning n�o dispon�vel nesta plataforma'};
+    return {'success': false, 'claimed': 0, 'error': 'Lightning não disponível nesta plataforma'};
   }
   
-  /// Diagn�stico completo (stub)
+  /// Diagnóstico completo (stub)
   Future<Map<String, dynamic>> getFullDiagnostics() async {
     return {
       'isInitialized': false,
       'sdkAvailable': false,
       'isNewWallet': false,
-      'error': 'Lightning n�o dispon�vel nesta plataforma',
+      'error': 'Lightning não disponível nesta plataforma',
     };
   }
   

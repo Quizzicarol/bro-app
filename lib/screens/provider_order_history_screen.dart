@@ -3,8 +3,8 @@ import 'package:provider/provider.dart';
 import '../providers/order_provider.dart';
 import '../models/order.dart';
 
-/// Tela de hist�rico de ordens completadas pelo provedor
-/// Mostra todas as ordens finalizadas para verifica��o futura ou disputas
+/// Tela de histórico de ordens completadas pelo provedor
+/// Mostra todas as ordens finalizadas para verificação futura ou disputas
 class ProviderOrderHistoryScreen extends StatefulWidget {
   final String providerId;
 
@@ -47,7 +47,7 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('Hist�rico de Ordens'),
+        title: const Text('Histórico de Ordens'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -64,7 +64,7 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
             return _buildEmptyView();
           }
 
-          // Calcular estat�sticas
+          // Calcular estatísticas
           final totalEarned = completedOrders.fold<double>(
             0.0,
             (sum, order) => sum + (order.amount * 0.03),
@@ -121,7 +121,7 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
               Icon(Icons.analytics, color: Colors.green, size: 24),
               SizedBox(width: 8),
               Text(
-                'Estat�sticas',
+                'Estatísticas',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 18,
@@ -213,7 +213,7 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
             ),
             const SizedBox(height: 8),
             const Text(
-              'Ordens completadas aparecer�o aqui para verifica��o futura ou em caso de disputas.',
+              'Ordens completadas aparecerão aqui para verificação futura ou em caso de disputas.',
               style: TextStyle(color: Colors.white70, fontSize: 14),
               textAlign: TextAlign.center,
             ),
@@ -227,7 +227,7 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
                 );
               },
               icon: const Icon(Icons.search),
-              label: const Text('Ver Ordens Dispon�veis'),
+              label: const Text('Ver Ordens Disponíveis'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.orange,
               ),
@@ -366,6 +366,6 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
     final hour = dateTime.hour.toString().padLeft(2, '0');
     final minute = dateTime.minute.toString().padLeft(2, '0');
     
-    return '$day/$month/$year �s $hour:$minute';
+    return '$day/$month/$year às $hour:$minute';
   }
 }

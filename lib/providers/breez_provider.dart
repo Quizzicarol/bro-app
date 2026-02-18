@@ -696,6 +696,35 @@ class BreezProvider with ChangeNotifier {
     }
   }
   
+  /// Parseia uma invoice BOLT11 e extrai informações como paymentHash
+  Future<Map<String, dynamic>?> parseInvoice(String bolt11) async {
+    if (!_isInitialized || _sdk == null) {
+      debugPrint('⚠️ SDK não inicializado para parsear invoice');
+      return null;
+    }
+
+    try {
+      final parsed = await _sdk!.parse(input: bolt11);
+      
+      if (parsed is spark.InputType_Bolt11Invoice) {
+        return {
+          'paymentHash': parsed.field0.paymentHash,
+          'amountSats': parsed.field0.amountMsat != null 
+              ? (parsed.field0.amountMsat! ~/ BigInt.from(1000)).toInt()
+              : null,
+          'description': parsed.field0.description,
+          'expiry': parsed.field0.expiry,
+        };
+      }
+      
+      debugPrint('⚠️ Input não é uma invoice BOLT11 válida');
+      return null;
+    } catch (e) {
+      debugPrint('⚠️ Erro ao parsear invoice: $e');
+      return null;
+    }
+  }
+  
   /// DIAGNÓSTICO: Lista todos os pagamentos da carteira para verificar quais ordens foram pagas
   Future<List<Map<String, dynamic>>> getAllPayments() async {
     if (!_isInitialized || _sdk == null) {

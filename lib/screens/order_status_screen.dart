@@ -53,10 +53,17 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   String? _error;
   DateTime? _expiresAt;
 
+  bool _autoCompletingInProgress = false; // Prevenir auto-completar múltiplas vezes
+
   @override
   void initState() {
     super.initState();
-    _loadOrderDetails();
+    _loadOrderDetails().then((_) {
+      // Após carregar, verificar se deve auto-completar
+      if (_currentStatus == 'awaiting_confirmation' && !_autoCompletingInProgress) {
+        _checkAndAutoCompleteIfPaid();
+      }
+    });
     _startStatusPolling();
   }
 
@@ -124,6 +131,195 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         _error = e.toString();
         _isLoading = false;
       });
+    }
+  }
+
+  /// AUTO-COMPLETAR: Verifica se a invoice do provedor já foi paga
+  /// Se sim, atualiza status automaticamente para 'completed'
+  /// Isso resolve casos onde a confirmação falhou em publicar no Nostr
+  Future<void> _checkAndAutoCompleteIfPaid() async {
+    if (_currentStatus != 'awaiting_confirmation' || _autoCompletingInProgress) {
+      return;
+    }
+    
+    debugPrint('🔍 AUTO-COMPLETE: Verificando se providerInvoice já foi paga...');
+    
+    try {
+      // 1. Buscar providerInvoice da ordem
+      String? providerInvoice;
+      if (_orderDetails != null) {
+        providerInvoice = _orderDetails!['metadata']?['providerInvoice'] as String?;
+        providerInvoice ??= _orderDetails!['providerInvoice'] as String?;
+      }
+      
+      // Se não encontrou, buscar do Nostr
+      if (providerInvoice == null || providerInvoice.isEmpty) {
+        debugPrint('   Buscando providerInvoice do Nostr...');
+        final nostrService = NostrOrderService();
+        final completeData = await nostrService.fetchOrderCompleteEvent(widget.orderId);
+        if (completeData != null) {
+          providerInvoice = completeData['providerInvoice'] as String?;
+        }
+      }
+      
+      if (providerInvoice == null || providerInvoice.isEmpty) {
+        debugPrint('   ℹ️ Nenhuma providerInvoice encontrada');
+        return;
+      }
+      
+      debugPrint('   📄 ProviderInvoice: ${providerInvoice.substring(0, 30)}...');
+      
+      // 2. Verificar se a invoice foi paga no histórico de pagamentos
+      if (!mounted) return;
+      final breezProvider = context.read<BreezProvider>();
+      final liquidProvider = context.read<BreezLiquidProvider>();
+      
+      bool invoicePaid = false;
+      String? paidVia;
+      
+      // Tentar via Breez Spark
+      if (breezProvider.isInitialized) {
+        invoicePaid = await _checkIfInvoicePaidInHistory(breezProvider, providerInvoice);
+        if (invoicePaid) paidVia = 'Spark';
+      }
+      
+      // Tentar via Liquid
+      if (!invoicePaid && liquidProvider.isInitialized) {
+        invoicePaid = await _checkIfInvoicePaidInLiquid(liquidProvider, providerInvoice);
+        if (invoicePaid) paidVia = 'Liquid';
+      }
+      
+      if (!invoicePaid) {
+        debugPrint('   ❌ Invoice NÃO foi paga - mantendo status awaiting_confirmation');
+        return;
+      }
+      
+      debugPrint('   ✅ Invoice JÁ FOI PAGA via $paidVia! Auto-completando ordem...');
+      
+      // 3. Auto-completar a ordem (publicar no Nostr e atualizar UI)
+      _autoCompletingInProgress = true;
+      await _autoCompleteOrder();
+      
+    } catch (e) {
+      debugPrint('⚠️ Erro ao verificar auto-complete: $e');
+    }
+  }
+  
+  /// Verifica se uma invoice foi paga verificando o histórico de pagamentos do Breez Spark
+  Future<bool> _checkIfInvoicePaidInHistory(BreezProvider breezProvider, String invoice) async {
+    try {
+      // Pegar todos os pagamentos
+      final payments = await breezProvider.getAllPayments();
+      
+      // A invoice pode ser identificada pelo paymentHash ou pelo próprio bolt11
+      // Vamos comparar os primeiros 50 caracteres do bolt11 com a descrição/memo
+      final invoicePrefix = invoice.toLowerCase();
+      
+      for (final payment in payments) {
+        // Verificar se é um pagamento ENVIADO (não recebido) e está completo
+        final direction = payment['direction'] as String?;
+        final status = payment['status'] as String?;
+        
+        if (direction == 'ENVIADO' && status?.contains('completed') == true) {
+          // Verificar se o paymentHash corresponde
+          // O paymentHash pode estar presente nos detalhes
+          final paymentHash = payment['paymentHash'] as String?;
+          
+          // Tentar extrair paymentHash da invoice para comparar
+          // Por simplificação, vamos verificar pelo valor aproximado (não ideal mas funciona)
+          // Ou verificar se o memo/description contém o orderId
+          
+          // Verificar se esse pagamento tem correspondência com a nossa invoice
+          // Nota: Idealmente usaríamos o paymentHash, mas como não temos ele extraído da invoice
+          // vamos verificar pelo orderId na descrição
+          if (paymentHash != null) {
+            // Temos o paymentHash - vamos tentar parsear nossa invoice para comparar
+            final invoiceHash = await _extractPaymentHashFromInvoice(invoice);
+            if (invoiceHash != null && invoiceHash == paymentHash) {
+              debugPrint('   🎯 MATCH! PaymentHash corresponde: ${paymentHash.substring(0, 16)}...');
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    } catch (e) {
+      debugPrint('⚠️ Erro verificando histórico Spark: $e');
+      return false;
+    }
+  }
+  
+  /// Verifica se uma invoice foi paga no Liquid
+  Future<bool> _checkIfInvoicePaidInLiquid(BreezLiquidProvider liquidProvider, String invoice) async {
+    try {
+      // Similar ao Spark, verificar histórico de pagamentos
+      // Por ora, retornar false pois Liquid tem API diferente
+      // TODO: Implementar verificação no Liquid quando necessário
+      return false;
+    } catch (e) {
+      debugPrint('⚠️ Erro verificando histórico Liquid: $e');
+      return false;
+    }
+  }
+  
+  /// Extrai o paymentHash de uma invoice BOLT11 usando o SDK Breez
+  Future<String?> _extractPaymentHashFromInvoice(String invoice) async {
+    try {
+      if (!mounted) return null;
+      final breezProvider = context.read<BreezProvider>();
+      if (!breezProvider.isInitialized) return null;
+      
+      // Usar método de parse do SDK para extrair paymentHash
+      final parseResult = await breezProvider.parseInvoice(invoice);
+      return parseResult?['paymentHash'] as String?;
+    } catch (e) {
+      debugPrint('⚠️ Erro extraindo paymentHash: $e');
+      return null;
+    }
+  }
+  
+  /// Auto-completa a ordem (publica completed no Nostr + atualiza UI)
+  Future<void> _autoCompleteOrder() async {
+    if (!mounted) return;
+    
+    debugPrint('🤖 AUTO-COMPLETE: Publicando status completed no Nostr...');
+    
+    try {
+      final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+      final order = orderProvider.getOrderById(widget.orderId);
+      final providerId = order?.providerId ?? _orderDetails?['providerId'] as String?;
+      
+      // Publicar no Nostr
+      final updateSuccess = await orderProvider.updateOrderStatus(
+        orderId: widget.orderId,
+        status: 'completed',
+        providerId: providerId,
+      );
+      
+      if (updateSuccess) {
+        debugPrint('✅ AUTO-COMPLETE: Ordem ${widget.orderId} marcada como completed');
+        
+        if (mounted) {
+          setState(() {
+            _currentStatus = 'completed';
+            _autoCompletingInProgress = false;
+          });
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Ordem completada automaticamente (pagamento verificado)'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      } else {
+        debugPrint('❌ AUTO-COMPLETE: Falha ao publicar no Nostr');
+        _autoCompletingInProgress = false;
+      }
+    } catch (e) {
+      debugPrint('❌ AUTO-COMPLETE erro: $e');
+      _autoCompletingInProgress = false;
     }
   }
 
@@ -216,6 +412,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       if (_currentStatus == 'awaiting_confirmation' && _expiresAt != null && _orderService.isOrderExpired(_expiresAt!)) {
         timer.cancel();
         _showExpiredDialog();
+      }
+      
+      // AUTO-COMPLETE: Se está em awaiting_confirmation, verificar se invoice já foi paga
+      if (_currentStatus == 'awaiting_confirmation' && !_autoCompletingInProgress) {
+        _checkAndAutoCompleteIfPaid();
       }
     });
   }

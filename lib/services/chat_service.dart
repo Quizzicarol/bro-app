@@ -187,6 +187,16 @@ class ChatService {
       
       if (type == 'EVENT' && data.length >= 3) {
         final eventData = data[2] as Map<String, dynamic>;
+        
+        // SEGURANÇA: Verificar assinatura do evento antes de processar
+        // Impede relay malicioso de forjar mensagens de outro usuário
+        try {
+          Event.fromJson(eventData, verify: true);
+        } catch (e) {
+          debugPrint('⚠️ Chat: REJEITADO evento com assinatura inválida: $e');
+          return;
+        }
+        
         _handleIncomingEvent(eventData);
       } else if (type == 'OK') {
         debugPrint('✅ Chat: Mensagem aceita pelo relay $relayUrl');
@@ -227,7 +237,16 @@ class ChatService {
       }
       
       // Determinar se sou o remetente ou destinatário
+      // SEGURANÇA: pubkey é autêntico (assinatura verificada em _handleMessage)
+      // Se alguém forjar pubkey, a verificação de assinatura já rejeitou
       final isFromMe = pubkey == _publicKey;
+      
+      // SEGURANÇA: Rejeitar eventos que não são para/de mim
+      if (!isFromMe && recipientPubkey != _publicKey) {
+        debugPrint('⚠️ Chat: Evento DM não direcionado a mim, ignorando');
+        return;
+      }
+      
       final otherPubkey = isFromMe ? recipientPubkey : pubkey;
       
       debugPrint('💬 Chat: isFromMe=$isFromMe, otherPubkey=${otherPubkey.substring(0, 8)}...');

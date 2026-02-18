@@ -468,6 +468,15 @@ class NostrOrderService {
               if (response[0] == 'EVENT' && response[1] == subscriptionId) {
                 final eventData = response[2] as Map<String, dynamic>;
                 
+                // SEGURANÇA: Verificar assinatura do evento antes de processar
+                // Impede relay malicioso de injetar eventos forjados
+                try {
+                  Event.fromJson(eventData, verify: true);
+                } catch (e) {
+                  debugPrint('⚠️ REJEITADO evento com assinatura inválida: ${eventData['id']?.toString().substring(0, 8) ?? '?'} - $e');
+                  return; // Ignorar evento inválido
+                }
+                
                 // Parsear conteúdo JSON se possível
                 try {
                   final content = jsonDecode(eventData['content']);
@@ -648,10 +657,18 @@ class NostrOrderService {
             
             if (eventOrderId == orderId) {
               
+              // SEGURANÇA: Usar userPubkey do content, não event.pubkey
+              // event.pubkey pode ser de quem republicou o evento
+              final contentUserPubkey = content['userPubkey'] as String?;
+              if (contentUserPubkey == null || contentUserPubkey.isEmpty) {
+                debugPrint('⚠️ Ordem sem userPubkey no content, rejeitando');
+                continue;
+              }
+              
               orderData = {
                 'id': orderId,
                 'eventId': event['id'],
-                'userPubkey': event['pubkey'],
+                'userPubkey': contentUserPubkey,
                 'billType': content['billType'] ?? 'pix',
                 'billCode': content['billCode'] ?? '',
                 'amount': (content['amount'] as num?)?.toDouble() ?? 0,
@@ -677,10 +694,17 @@ class NostrOrderService {
           final content = event['parsedContent'] ?? jsonDecode(event['content']);
           
           
+          // SEGURANÇA: Usar userPubkey do content, não event.pubkey
+          final fallbackUserPubkey = content['userPubkey'] as String?;
+          if (fallbackUserPubkey == null || fallbackUserPubkey.isEmpty) {
+            debugPrint('⚠️ Evento fallback sem userPubkey, rejeitando');
+            continue;
+          }
+          
           orderData = {
             'id': content['orderId'] ?? orderId,
             'eventId': event['id'],
-            'userPubkey': event['pubkey'],
+            'userPubkey': fallbackUserPubkey,
             'billType': content['billType'] ?? 'pix',
             'billCode': content['billCode'] ?? '',
             'amount': (content['amount'] as num?)?.toDouble() ?? 0,
@@ -1088,6 +1112,25 @@ class NostrOrderService {
             final orderId = content['orderId'] as String?;
             if (orderId == null) continue;
             
+            // SEGURANÇA: Validar papel do pubkey do evento
+            // Após verificação de assinatura (em _fetchFromRelayWithSince),
+            // sabemos que event.pubkey é autêntico. Agora validamos o papel:
+            // - bro_accept: pubkey deve ser o providerId (quem aceita)
+            // - bro_complete: pubkey deve ser o providerId (quem completa)
+            // - bro_order_update: pubkey deve ser providerId OU userPubkey
+            final eventPubkey = event['pubkey'] as String?;
+            final contentProviderId = content['providerId'] as String?;
+            final contentUserPubkey = content['userPubkey'] as String?;
+            
+            if (eventType == 'bro_accept' || eventType == 'bro_complete') {
+              // Apenas o provedor pode aceitar/completar
+              if (contentProviderId != null && eventPubkey != null && 
+                  eventPubkey != contentProviderId) {
+                debugPrint('⚠️ REJEITADO: ${eventType} de pubkey=${ eventPubkey.substring(0, 8)} mas providerId=${contentProviderId.substring(0, 8)}');
+                continue;
+              }
+            }
+            
             final createdAt = event['created_at'] as int? ?? 0;
             
             // Manter apenas o update mais recente para cada ordem
@@ -1394,6 +1437,15 @@ class NostrOrderService {
             
             if (orderId == null) continue;
             
+            // SEGURANÇA: Validar papel - apenas provedor pode aceitar/completar
+            final eventPubkey = event['pubkey'] as String?;
+            final contentProviderId = content['providerId'] as String?;
+            if (contentProviderId != null && eventPubkey != null &&
+                eventPubkey != contentProviderId) {
+              debugPrint('⚠️ fetchOrderUpdatesForUser: pubkey não bate com providerId, rejeitando');
+              continue;
+            }
+            
             // Verificar se este evento é mais recente que o atual
             final existingUpdate = updates[orderId];
             final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
@@ -1413,7 +1465,7 @@ class NostrOrderService {
                 'orderId': orderId,
                 'status': newStatus,
                 'eventKind': eventKind,
-                'providerId': content['providerId'] ?? event['pubkey'],
+                'providerId': content['providerId'] ?? event['pubkey'], // Assinatura já verificada
                 'proofImage': content['proofImage'], // Pode ser null para aceites
                 'created_at': createdAt,
               };

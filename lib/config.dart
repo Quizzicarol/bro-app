@@ -1,4 +1,4 @@
-?/// Configuracao centralizada do Bro App
+/// Configuracao centralizada do Bro App
 ///
 /// Secrets s�o carregados via --dart-define-from-file=env.json
 /// Veja env.example.json para as vari�veis necess�rias.

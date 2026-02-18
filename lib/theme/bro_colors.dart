@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 /// Cores do Design System Bro
 /// Coral como primária, Mint como secundária

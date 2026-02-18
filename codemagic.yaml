@@ -39,14 +39,7 @@ workflows:
       
     scripts:
       - name: Generate env.json from CI variables
-        script: |
-          cat > "$CM_BUILD_DIR/env.json" <<EOF
-          {
-            "BREEZ_API_KEY": "$BREEZ_API_KEY",
-            "PLATFORM_LIGHTNING_ADDRESS": "$PLATFORM_LIGHTNING_ADDRESS",
-            "BACKEND_URL": "$BACKEND_URL"
-          }
-          EOF
+        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" > "$CM_BUILD_DIR/env.json"
 
       - name: Get Flutter packages
         script: flutter pub get
@@ -104,14 +97,7 @@ workflows:
       
     scripts:
       - name: Generate env.json from CI variables
-        script: |
-          cat > "$CM_BUILD_DIR/env.json" <<EOF
-          {
-            "BREEZ_API_KEY": "$BREEZ_API_KEY",
-            "PLATFORM_LIGHTNING_ADDRESS": "$PLATFORM_LIGHTNING_ADDRESS",
-            "BACKEND_URL": "$BACKEND_URL"
-          }
-          EOF
+        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" > "$CM_BUILD_DIR/env.json"
 
       - name: Get Flutter packages
         script: flutter pub get
@@ -162,14 +148,7 @@ workflows:
         script: flutter pub get
         
       - name: Generate env.json from CI variables
-        script: |
-          cat > "$CM_BUILD_DIR/env.json" <<EOF
-          {
-            "BREEZ_API_KEY": "$BREEZ_API_KEY",
-            "PLATFORM_LIGHTNING_ADDRESS": "$PLATFORM_LIGHTNING_ADDRESS",
-            "BACKEND_URL": "$BACKEND_URL"
-          }
-          EOF
+        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" > "$CM_BUILD_DIR/env.json"
 
       - name: Build APK Release
         script: flutter build apk --release --dart-define-from-file=env.json
@@ -224,14 +203,7 @@ workflows:
           pod install
           
       - name: Generate env.json from CI variables
-        script: |
-          cat > "$CM_BUILD_DIR/env.json" <<EOF
-          {
-            "BREEZ_API_KEY": "$BREEZ_API_KEY",
-            "PLATFORM_LIGHTNING_ADDRESS": "$PLATFORM_LIGHTNING_ADDRESS",
-            "BACKEND_URL": "$BACKEND_URL"
-          }
-          EOF
+        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" > "$CM_BUILD_DIR/env.json"
 
       - name: Build iOS
         script: flutter build ipa --release --dart-define-from-file=env.json --export-options-plist=/Users/builder/export_options.plist
@@ -272,14 +244,7 @@ workflows:
           
     scripts:
       - name: Generate env.json from CI variables
-        script: |
-          cat > "$CM_BUILD_DIR/env.json" <<EOF
-          {
-            "BREEZ_API_KEY": "$BREEZ_API_KEY",
-            "PLATFORM_LIGHTNING_ADDRESS": "$PLATFORM_LIGHTNING_ADDRESS",
-            "BACKEND_URL": "$BACKEND_URL"
-          }
-          EOF
+        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" > "$CM_BUILD_DIR/env.json"
 
       - name: Get Flutter packages
         script: flutter pub get

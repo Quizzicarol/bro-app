@@ -3,7 +3,7 @@
 > **Criado:** 2026-02-18  
 > **Versão estável:** v1.0.111-stable (tag)  
 > **Build testers:** v1.0.112+182  
-> **Status:** Fase 1 em andamento
+> **Status:** Fase 2 concluída
 
 ---
 
@@ -12,12 +12,12 @@
 
 | # | Tarefa | Esforço | Status |
 |---|--------|---------|--------|
-| 1.1 | Externalizar Breez API key via `--dart-define` | Pequeno | ⬜ |
-| 1.2 | Externalizar `platformLightningAddress` | Pequeno | ⬜ |
-| 1.3 | Trocar `defaultBackendUrl` para produção ou var ambiente | Pequeno | ⬜ |
-| 1.4 | Sanitizar docs .md (IPs internos, emails, detalhes operacionais) | Pequeno | ⬜ |
-| 1.5 | Remover `check_relay.js`/`check_relay2.js` | Trivial | ⬜ |
-| 1.6 | Criar `.env.example` para o Flutter app | Trivial | ⬜ |
+| 1.1 | Externalizar Breez API key via `--dart-define` | Pequeno | ✅ |
+| 1.2 | Externalizar `platformLightningAddress` | Pequeno | ✅ |
+| 1.3 | Trocar `defaultBackendUrl` para produção ou var ambiente | Pequeno | ✅ |
+| 1.4 | Sanitizar docs .md (IPs internos, emails, detalhes operacionais) | Pequeno | ✅ |
+| 1.5 | Remover `check_relay.js`/`check_relay2.js` | Trivial | ✅ |
+| 1.6 | Criar `.env.example` para o Flutter app | Trivial | ✅ |
 
 **Arquivos afetados:** `lib/config.dart`, `lib/config/breez_config.dart`, docs `.md`, raiz
 
@@ -28,9 +28,9 @@
 
 | # | Tarefa | Esforço | Status |
 |---|--------|---------|--------|
-| 2.1 | Adicionar `Event.verify()` em todo evento recebido no `NostrOrderService` | Pequeno | ⬜ |
-| 2.2 | Adicionar `Event.verify()` no `ChatService._handleIncomingEvent()` | Pequeno | ⬜ |
-| 2.3 | Validar `event.pubkey` vs papel esperado (providerId ou userPubkey) | Médio | ⬜ |
+| 2.1 | Adicionar `Event.verify()` em todo evento recebido no `NostrOrderService` | Pequeno | ✅ |
+| 2.2 | Adicionar `Event.verify()` no `ChatService._handleIncomingEvent()` | Pequeno | ✅ |
+| 2.3 | Validar `event.pubkey` vs papel esperado (providerId ou userPubkey) | Médio | ✅ |
 
 **Arquivos afetados:** `lib/services/nostr_order_service.dart`, `lib/services/chat_service.dart`
 

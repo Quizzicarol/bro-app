@@ -76,6 +76,9 @@ class OrderProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   
+  /// Getter público para a pubkey do usuário atual (usado para verificações externas)
+  String? get currentUserPubkey => _currentUserPubkey;
+  
   /// SEGURANÇA: Getter para ordens que EU CRIEI (modo usuário)
   /// Retorna APENAS ordens onde userPubkey == currentUserPubkey
   /// Usado na tela "Minhas Trocas" do modo usuário

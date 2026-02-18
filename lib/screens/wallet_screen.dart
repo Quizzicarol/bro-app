@@ -60,11 +60,27 @@ class _WalletScreenState extends State<WalletScreen> {
       // Usar apenas pagamentos Lightning reais, FILTRANDO taxas internas da plataforma
       List<Map<String, dynamic>> allPayments = payments.where((p) {
         final description = p['description']?.toString() ?? '';
+        final amount = p['amountSats'] ?? p['amount'] ?? 0;
+        final isReceived = p['type'] == 'received' || 
+                           p['direction'] == 'incoming' ||
+                           p['type'] == 'Receive';
+        
         // OCULTAR: Taxas de plataforma (são internas, não devem aparecer para o usuário)
-        if (description.contains('Platform Fee') || description.contains('Bro Platform Fee')) {
-          debugPrint('🔇 Ocultando taxa da plataforma: $description');
+        // Detectar por descrição OU por valor pequeno enviado
+        if (description.contains('Platform Fee') || 
+            description.contains('Bro Platform Fee') ||
+            description.contains('tutoriais@coinos')) {
+          debugPrint('🔇 Ocultando taxa da plataforma: $description ($amount sats)');
           return false;
         }
+        
+        // OCULTAR: Pagamentos enviados muito pequenos (< 5 sats) são provavelmente taxas
+        // Isso é uma heurística para taxas que não têm descrição clara
+        if (!isReceived && amount > 0 && amount <= 5) {
+          debugPrint('🔇 Ocultando pagamento pequeno (provável taxa): $amount sats');
+          return false;
+        }
+        
         return true;
       }).toList();
       
@@ -2064,14 +2080,37 @@ class _WalletScreenState extends State<WalletScreen> {
     final date = payment['createdAt'] ?? payment['timestamp'];
     final description = payment['description']?.toString() ?? '';
     
-    // CORRIGIDO: Verificar se é um ganho de ordem Bro
-    // Só considerar como ganho Bro se a descrição contém 'Bro - Ordem' (formato do invoice do provedor)
-    // E é um pagamento RECEBIDO (não enviado)
-    // "Bro Payment" legacy também aceito
-    final isBroOrderPayment = isReceived && 
-      (description.contains('Bro - Ordem') || description.contains('Bro Payment')) && 
-      !description.contains('Garantia') &&
-      !description.contains('Platform Fee');
+    // CORREÇÃO CRÍTICA: Verificar se é REALMENTE um ganho como Bro
+    // Só é ganho Bro se:
+    // 1. É um pagamento RECEBIDO
+    // 2. Descrição contém 'Bro - Ordem' (formato do invoice do provedor)
+    // 3. O usuário atual é o PROVEDOR da ordem (NÃO o criador!)
+    bool isBroOrderPayment = false;
+    if (isReceived && 
+        (description.contains('Bro - Ordem') || description.contains('Bro Payment')) && 
+        !description.contains('Garantia') &&
+        !description.contains('Platform Fee')) {
+      // Extrair orderId da descrição (formato: "Bro - Ordem XXXXXXXX")
+      final orderProvider = context.read<OrderProvider>();
+      String? orderIdFromDesc;
+      if (description.contains('Bro - Ordem ')) {
+        orderIdFromDesc = description.split('Bro - Ordem ').last.trim();
+      }
+      
+      // Verificar se o usuário atual é o PROVEDOR desta ordem
+      if (orderIdFromDesc != null && orderIdFromDesc.isNotEmpty) {
+        final order = orderProvider.orders.firstWhere(
+          (o) => o.id.startsWith(orderIdFromDesc!) || orderIdFromDesc!.startsWith(o.id.substring(0, 8)),
+          orElse: () => orderProvider.orders.first, // fallback
+        );
+        final currentPubkey = orderProvider.currentUserPubkey;
+        // Só é ganho Bro se EU sou o provedor (não o criador da ordem)
+        isBroOrderPayment = order.providerId == currentPubkey && order.userPubkey != currentPubkey;
+        if (!isBroOrderPayment) {
+          debugPrint('🚫 Pagamento ${description.substring(0, 20)}... NÃO é ganho Bro - sou o criador, não o provedor');
+        }
+      }
+    }
     
     // Determinar o label e cor baseado no tipo
     String label;

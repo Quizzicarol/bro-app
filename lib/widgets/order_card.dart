@@ -69,7 +69,7 @@ class _OrderCardState extends State<OrderCard> {
       case 'paid':
         return 'Paga';
       case 'completed':
-        return 'Concluída';
+        return 'Conclu�da';
       case 'rejected':
         return 'Rejeitada';
       case 'cancelled':
@@ -113,7 +113,7 @@ class _OrderCardState extends State<OrderCard> {
               // Header
               Row(
                 children: [
-                  // Ícone do tipo de conta
+                  // �cone do tipo de conta
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
@@ -184,7 +184,7 @@ class _OrderCardState extends State<OrderCard> {
               ),
               const SizedBox(height: 16),
               
-              // Informações principais
+              // Informa��es principais
               Row(
                 children: [
                   if (dueDate != null) ...[
@@ -217,14 +217,14 @@ class _OrderCardState extends State<OrderCard> {
                 const Divider(height: 24),
                 _buildDetailRow('ID da Ordem', orderId.substring(0, 8) + '...'),
                 if (widget.order['billCode'] != null)
-                  _buildDetailRow('Código', widget.order['billCode'].substring(0, 20) + '...'),
+                  _buildDetailRow('C�digo', widget.order['billCode'].substring(0, 20) + '...'),
                 if (widget.order['btcAmount'] != null)
                   _buildDetailRow('BTC', '${widget.order['btcAmount']} sats'),
                 if (widget.order['createdAt'] != null)
                   _buildDetailRow('Criado em', _formatDate(widget.order['createdAt'])),
               ],
 
-              // Botões de ação
+              // Bot�es de a��o
               if (widget.showActions) ...[
                 const SizedBox(height: 16),
                 if (!widget.isMyOrder && status.toLowerCase() == 'pending')
@@ -282,7 +282,7 @@ class _OrderCardState extends State<OrderCard> {
                   ),
               ],
 
-              // Indicador de expansão
+              // Indicador de expans�o
               Center(
                 child: Icon(
                   _isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,

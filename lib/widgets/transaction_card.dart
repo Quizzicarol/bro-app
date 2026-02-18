@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Card de transação no estilo Bro (dark + orange)
+/// Card de transa��o no estilo Bro (dark + orange)
 class TransactionCard extends StatelessWidget {
   final String title;
   final String amount;
@@ -163,8 +163,8 @@ class EmptyTransactionState extends StatelessWidget {
 
   const EmptyTransactionState({
     Key? key,
-    this.title = 'Nenhuma transação ainda',
-    this.subtitle = 'Clique em "Nova Transação" para começar',
+    this.title = 'Nenhuma transa��o ainda',
+    this.subtitle = 'Clique em "Nova Transa��o" para come�ar',
     this.onAction,
   }) : super(key: key);
 

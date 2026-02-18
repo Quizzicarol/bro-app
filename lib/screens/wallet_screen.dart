@@ -14,7 +14,7 @@ import '../services/lnaddress_service.dart';
 import '../services/local_collateral_service.dart';
 
 /// Tela de Carteira Lightning - Apenas BOLT11 (invoice)
-/// Funções: Ver saldo, Enviar pagamento, Receber (gerar invoice)
+/// Fun��es: Ver saldo, Enviar pagamento, Receber (gerar invoice)
 class WalletScreen extends StatefulWidget {
   const WalletScreen({Key? key}) : super(key: key);
 
@@ -44,7 +44,7 @@ class _WalletScreenState extends State<WalletScreen> {
       final breezProvider = context.read<BreezProvider>();
       
       if (!breezProvider.isInitialized) {
-        debugPrint('🔄 Inicializando Breez SDK...');
+        debugPrint('?? Inicializando Breez SDK...');
         final success = await breezProvider.initialize();
         if (!success) {
           throw Exception('Falha ao inicializar SDK');
@@ -54,9 +54,9 @@ class _WalletScreenState extends State<WalletScreen> {
       final balance = await breezProvider.getBalance();
       final payments = await breezProvider.listPayments();
       
-      // NOTA: Ganhos como Bro são recebidos via Lightning (invoice pago pelo usuário)
-      // e já aparecem em payments como transações recebidas.
-      // NÃO misturar com ProviderBalanceProvider que é apenas TRACKING LOCAL.
+      // NOTA: Ganhos como Bro s�o recebidos via Lightning (invoice pago pelo usu�rio)
+      // e j� aparecem em payments como transa��es recebidas.
+      // N�O misturar com ProviderBalanceProvider que � apenas TRACKING LOCAL.
       
       // Usar apenas pagamentos Lightning reais, FILTRANDO taxas internas da plataforma
       List<Map<String, dynamic>> allPayments = payments.where((p) {
@@ -66,27 +66,27 @@ class _WalletScreenState extends State<WalletScreen> {
                            p['direction'] == 'incoming' ||
                            p['type'] == 'Receive';
         
-        // OCULTAR: Taxas de plataforma (são internas, não devem aparecer para o usuário)
-        // Detectar por descrição OU por valor pequeno enviado
+        // OCULTAR: Taxas de plataforma (s�o internas, n�o devem aparecer para o usu�rio)
+        // Detectar por descri��o OU por valor pequeno enviado
         if (description.contains('Platform Fee') || 
             description.contains('Bro Platform Fee') ||
             description.contains('tutoriais@coinos')) {
-          debugPrint('🔇 Ocultando taxa da plataforma: $description ($amount sats)');
+          debugPrint('?? Ocultando taxa da plataforma: $description ($amount sats)');
           return false;
         }
         
-        // OCULTAR: Pagamentos enviados muito pequenos (< 5 sats) são provavelmente taxas
-        // Isso é uma heurística para taxas que não têm descrição clara
+        // OCULTAR: Pagamentos enviados muito pequenos (< 5 sats) s�o provavelmente taxas
+        // Isso � uma heur�stica para taxas que n�o t�m descri��o clara
         if (!isReceived && amount > 0 && amount <= 5) {
-          debugPrint('🔇 Ocultando pagamento pequeno (provável taxa): $amount sats');
+          debugPrint('?? Ocultando pagamento pequeno (prov�vel taxa): $amount sats');
           return false;
         }
         
         return true;
       }).toList();
       
-      // REMOVIDO: Não mesclar com ProviderBalanceProvider (era tracking local, não saldo real)
-      // Isso evita confusão entre saldo real (Breez) e tracking local
+      // REMOVIDO: N�o mesclar com ProviderBalanceProvider (era tracking local, n�o saldo real)
+      // Isso evita confus�o entre saldo real (Breez) e tracking local
       
       // Ordenar por data (mais recente primeiro)
       allPayments.sort((a, b) {
@@ -101,8 +101,8 @@ class _WalletScreenState extends State<WalletScreen> {
         return 0;
       });
       
-      debugPrint('💰 Saldo: ${balance?['balance']} sats');
-      debugPrint('📜 Pagamentos: ${allPayments.length} (incluindo ganhos Bro)');
+      debugPrint('?? Saldo: ${balance?['balance']} sats');
+      debugPrint('?? Pagamentos: ${allPayments.length} (incluindo ganhos Bro)');
 
       if (mounted) {
         setState(() {
@@ -111,7 +111,7 @@ class _WalletScreenState extends State<WalletScreen> {
         });
       }
     } catch (e) {
-      debugPrint('❌ Erro ao carregar carteira: $e');
+      debugPrint('? Erro ao carregar carteira: $e');
       if (mounted) {
         setState(() => _error = e.toString());
       }
@@ -147,7 +147,7 @@ class _WalletScreenState extends State<WalletScreen> {
             children: [
               Icon(Icons.bug_report, color: Color(0xFFFF9800)),
               SizedBox(width: 8),
-              Text('Diagnóstico SDK', style: TextStyle(color: Colors.white)),
+              Text('Diagn�stico SDK', style: TextStyle(color: Colors.white)),
             ],
           ),
           content: SingleChildScrollView(
@@ -156,7 +156,7 @@ class _WalletScreenState extends State<WalletScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 _diagRow('Inicializado', '${diagnostics['isInitialized']}'),
-                _diagRow('SDK Disponível', '${diagnostics['sdkAvailable']}'),
+                _diagRow('SDK Dispon�vel', '${diagnostics['sdkAvailable']}'),
                 _diagRow('Carteira Nova', '${diagnostics['isNewWallet']}'),
                 const Divider(color: Colors.grey),
                 _diagRow('Nostr Pubkey', '${diagnostics['nostrPubkey']}...'),
@@ -165,11 +165,11 @@ class _WalletScreenState extends State<WalletScreen> {
                 const Divider(color: Colors.grey),
                 _diagRow('Storage Dir Existe', '${diagnostics['storageDirExists']}'),
                 const Divider(color: Colors.grey),
-                _diagRow('💰 SALDO', '${diagnostics['balanceSats'] ?? '?'} sats', highlight: true),
+                _diagRow('?? SALDO', '${diagnostics['balanceSats'] ?? '?'} sats', highlight: true),
                 _diagRow('Total Pagamentos', '${diagnostics['totalPayments'] ?? '?'}'),
                 if (diagnostics['recentPayments'] != null) ...[
                   const SizedBox(height: 8),
-                  const Text('Últimos pagamentos:', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                  const Text('�ltimos pagamentos:', style: TextStyle(color: Colors.white70, fontSize: 12)),
                   for (var p in (diagnostics['recentPayments'] as List))
                     Text(
                       '  ${p['amount']} sats - ${p['status']}',
@@ -181,7 +181,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 _diagRow('Seeds encontradas', '${diagnostics['totalSeedsFound'] ?? 0}'),
                 if (diagnostics['allSeeds'] != null) ...[
                   const SizedBox(height: 8),
-                  const Text('🔐 TODAS AS SEEDS:', style: TextStyle(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.bold)),
+                  const Text('?? TODAS AS SEEDS:', style: TextStyle(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.bold)),
                   for (var entry in (diagnostics['allSeeds'] as Map).entries)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
@@ -395,7 +395,7 @@ class _WalletScreenState extends State<WalletScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              '≈ ${balanceBtc.toStringAsFixed(8)} BTC',
+              '? ${balanceBtc.toStringAsFixed(8)} BTC',
               style: const TextStyle(
                 color: Colors.white70,
                 fontSize: 13,
@@ -554,7 +554,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           ),
                           if (hasLockedFunds) ...[
                             Text(
-                              'Disponível: $availableSats sats',
+                              'Dispon�vel: $availableSats sats',
                               style: TextStyle(
                                 color: availableSats > 0 ? Colors.green : Colors.orange,
                                 fontSize: 13,
@@ -615,21 +615,21 @@ class _WalletScreenState extends State<WalletScreen> {
                         if (hasTierActive) ...[
                           const SizedBox(height: 4),
                           Text(
-                            '• $tierLockedSats sats no Tier "$tierName"',
+                            '. $tierLockedSats sats no Tier "$tierName"',
                             style: const TextStyle(color: Colors.orange, fontSize: 11),
                           ),
                         ],
                         if (committedSats > 0) ...[
                           const SizedBox(height: 2),
                           Text(
-                            '• $committedSats sats em ordens abertas',
+                            '. $committedSats sats em ordens abertas',
                             style: const TextStyle(color: Colors.orange, fontSize: 11),
                           ),
                         ],
                         if (hasTierActive) ...[
                           const SizedBox(height: 6),
                           Text(
-                            '⚠️ Sacar tudo desativará seu Tier!',
+                            '?? Sacar tudo desativar� seu Tier!',
                             style: TextStyle(color: Colors.red.shade300, fontSize: 11, fontWeight: FontWeight.bold),
                           ),
                         ],
@@ -741,7 +741,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 
                 const SizedBox(height: 12),
                 
-                // Botão Colar
+                // Bot�o Colar
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
@@ -765,8 +765,8 @@ class _WalletScreenState extends State<WalletScreen> {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(needsAmount 
-                                ? '✅ Colado! Digite o valor em sats.'
-                                : '✅ Colado!'),
+                                ? '? Colado! Digite o valor em sats.'
+                                : '? Colado!'),
                               duration: const Duration(seconds: 1),
                             ),
                           );
@@ -774,7 +774,7 @@ class _WalletScreenState extends State<WalletScreen> {
                       }
                     },
                     icon: const Icon(Icons.paste),
-                    label: const Text('Colar da área de transferência'),
+                    label: const Text('Colar da �rea de transfer�ncia'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFFFF9800),
                       side: const BorderSide(color: Color(0xFFFF9800)),
@@ -787,7 +787,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 ),
                 const SizedBox(height: 12),
                 
-                // Botão Scanear QR
+                // Bot�o Scanear QR
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
@@ -813,7 +813,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 ),
                 const SizedBox(height: 16),
                 
-                // Botão Enviar
+                // Bot�o Enviar
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
@@ -826,18 +826,18 @@ class _WalletScreenState extends State<WalletScreen> {
                       
                       final lowerDest = destination.toLowerCase();
                       
-                      // Verificar se é endereço Bitcoin (não suportado)
+                      // Verificar se � endere�o Bitcoin (n�o suportado)
                       if (_isBitcoinAddress(destination)) {
-                        setModalState(() => errorMessage = 'Envio para endereço Bitcoin on-chain não disponível. Use Lightning.');
+                        setModalState(() => errorMessage = 'Envio para endere�o Bitcoin on-chain n�o dispon�vel. Use Lightning.');
                         return;
                       }
                       
-                      // Verificar se é Lightning Address ou LNURL (precisa de valor)
+                      // Verificar se � Lightning Address ou LNURL (precisa de valor)
                       final isLnAddress = destination.contains('@') && destination.contains('.');
                       final isLnurl = lowerDest.startsWith('lnurl');
                       final needsAmountInput = isLnAddress || isLnurl;
                       
-                      // Atualizar UI se necessário
+                      // Atualizar UI se necess�rio
                       if (needsAmountInput != showAmountField) {
                         setModalState(() {
                           showAmountField = needsAmountInput;
@@ -852,17 +852,17 @@ class _WalletScreenState extends State<WalletScreen> {
                         final amountSats = int.tryParse(amountText);
                         
                         if (amountSats == null || amountSats <= 0) {
-                          setModalState(() => errorMessage = 'Digite um valor válido em sats');
+                          setModalState(() => errorMessage = 'Digite um valor v�lido em sats');
                           return;
                         }
                         
                         if (amountSats > availableSats) {
                           if (hasTierActive && amountSats > balanceSats - tierLockedSats) {
-                            setModalState(() => errorMessage = 'Você precisa manter $tierLockedSats sats para o Tier "$tierName". Remova o tier primeiro em Níveis de Garantia.');
+                            setModalState(() => errorMessage = 'Voc� precisa manter $tierLockedSats sats para o Tier "$tierName". Remova o tier primeiro em N�veis de Garantia.');
                           } else if (hasLockedFunds) {
-                            setModalState(() => errorMessage = 'Saldo insuficiente! Disponível: $availableSats sats ($totalLockedSats bloqueados)');
+                            setModalState(() => errorMessage = 'Saldo insuficiente! Dispon�vel: $availableSats sats ($totalLockedSats bloqueados)');
                           } else {
-                            setModalState(() => errorMessage = 'Saldo insuficiente! Você tem $balanceSats sats');
+                            setModalState(() => errorMessage = 'Saldo insuficiente! Voc� tem $balanceSats sats');
                           }
                           return;
                         }
@@ -872,7 +872,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           errorMessage = null;
                         });
                         
-                        debugPrint('💸 Enviando $amountSats sats para $destination...');
+                        debugPrint('?? Enviando $amountSats sats para $destination...');
                         
                         try {
                           final breezProvider = context.read<BreezProvider>();
@@ -887,13 +887,13 @@ class _WalletScreenState extends State<WalletScreen> {
                           if (invoiceResult['success'] != true) {
                             setModalState(() {
                               isSending = false;
-                              errorMessage = invoiceResult['error'] ?? 'Falha ao resolver endereço';
+                              errorMessage = invoiceResult['error'] ?? 'Falha ao resolver endere�o';
                             });
                             return;
                           }
                           
                           final invoice = invoiceResult['invoice'] as String;
-                          debugPrint('📝 Invoice obtida: ${invoice.substring(0, 50)}...');
+                          debugPrint('?? Invoice obtida: ${invoice.substring(0, 50)}...');
                           
                           // Pagar a invoice
                           final result = await breezProvider.payInvoice(invoice);
@@ -903,7 +903,7 @@ class _WalletScreenState extends State<WalletScreen> {
                               Navigator.pop(context);
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                  content: Text('✅ Pagamento enviado com sucesso!'),
+                                  content: Text('? Pagamento enviado com sucesso!'),
                                   backgroundColor: Color(0xFF4CAF50),
                                 ),
                               );
@@ -916,7 +916,7 @@ class _WalletScreenState extends State<WalletScreen> {
                             });
                           }
                         } catch (e) {
-                          debugPrint('❌ Erro ao enviar: $e');
+                          debugPrint('? Erro ao enviar: $e');
                           setModalState(() {
                             isSending = false;
                             errorMessage = 'Erro: $e';
@@ -925,12 +925,12 @@ class _WalletScreenState extends State<WalletScreen> {
                         return;
                       }
                       
-                      // Verificar se é Lightning invoice válida
+                      // Verificar se � Lightning invoice v�lida
                       if (!lowerDest.startsWith('lnbc') && 
                           !lowerDest.startsWith('lntb') &&
                           !lowerDest.startsWith('lnurl') &&
                           !isLnAddress) {
-                        setModalState(() => errorMessage = 'Formato inválido. Use Invoice, Lightning Address ou LNURL.');
+                        setModalState(() => errorMessage = 'Formato inv�lido. Use Invoice, Lightning Address ou LNURL.');
                         return;
                       }
                       
@@ -938,27 +938,27 @@ class _WalletScreenState extends State<WalletScreen> {
                         isSending = true;
                         errorMessage = null;
                       });
-                      debugPrint('💸 Enviando pagamento...');
+                      debugPrint('?? Enviando pagamento...');
                       
                       try {
                         final breezProvider = context.read<BreezProvider>();
                         final result = await breezProvider.payInvoice(destination);
                         
-                        debugPrint('📦 Resultado pagamento: $result');
+                        debugPrint('?? Resultado pagamento: $result');
                         
                         if (result != null && result['success'] == true) {
                           if (context.mounted) {
                             Navigator.pop(context);
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text('✅ Pagamento enviado com sucesso!'),
+                                content: Text('? Pagamento enviado com sucesso!'),
                                 backgroundColor: Color(0xFF4CAF50),
                               ),
                             );
                           }
                           _loadWalletInfo(); // Atualizar saldo
                         } else {
-                          // Erro específico de saldo insuficiente
+                          // Erro espec�fico de saldo insuficiente
                           final errorType = result?['errorType'];
                           final errorMsg = result?['error'] ?? 'Falha ao enviar pagamento';
                           
@@ -966,7 +966,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           
                           if (context.mounted) {
                             if (errorType == 'INSUFFICIENT_FUNDS') {
-                              // Mostrar dialog específico para saldo insuficiente
+                              // Mostrar dialog espec�fico para saldo insuficiente
                               showDialog(
                                 context: context,
                                 builder: (ctx) => AlertDialog(
@@ -1030,7 +1030,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           }
                         }
                       } catch (e) {
-                        debugPrint('❌ Erro ao enviar: $e');
+                        debugPrint('? Erro ao enviar: $e');
                         setModalState(() => isSending = false);
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -1072,22 +1072,22 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
-  // Verifica se é um endereço Bitcoin válido (NÃO Lightning Address)
+  // Verifica se � um endere�o Bitcoin v�lido (N�O Lightning Address)
   bool _isBitcoinAddress(String code) {
     final lowerCode = code.toLowerCase().trim();
     
-    // ⚡ Lightning Address: contém @ e . (ex: user@wallet.com)
-    // NÃO é endereço Bitcoin on-chain!
+    // ? Lightning Address: cont�m @ e . (ex: user@wallet.com)
+    // N�O � endere�o Bitcoin on-chain!
     if (lowerCode.contains('@') && lowerCode.contains('.')) {
       return false;
     }
     
-    // LNURL também NÃO é on-chain
+    // LNURL tamb�m N�O � on-chain
     if (lowerCode.startsWith('lnurl')) {
       return false;
     }
     
-    // Lightning Invoice também NÃO é on-chain
+    // Lightning Invoice tamb�m N�O � on-chain
     if (lowerCode.startsWith('lnbc') || lowerCode.startsWith('lntb') || lowerCode.startsWith('lnbcrt')) {
       return false;
     }
@@ -1097,7 +1097,7 @@ class _WalletScreenState extends State<WalletScreen> {
     if (lowerCode.startsWith('bc1')) return true;
     // tb1 = Bech32 SegWit testnet  
     if (lowerCode.startsWith('tb1')) return true;
-    // 1xxx = Legacy P2PKH (26-35 chars, só números e letras)
+    // 1xxx = Legacy P2PKH (26-35 chars, s� n�meros e letras)
     if (lowerCode.startsWith('1') && lowerCode.length >= 26 && lowerCode.length <= 35) return true;
     // 3xxx = P2SH (26-35 chars)
     if (lowerCode.startsWith('3') && lowerCode.length >= 26 && lowerCode.length <= 35) return true;
@@ -1107,7 +1107,7 @@ class _WalletScreenState extends State<WalletScreen> {
     return false;
   }
 
-  // Mostra dialog informando que envio para endereço Bitcoin não é suportado
+  // Mostra dialog informando que envio para endere�o Bitcoin n�o � suportado
   void _showBitcoinAddressNotSupportedDialog(String address) {
     showDialog(
       context: context,
@@ -1120,7 +1120,7 @@ class _WalletScreenState extends State<WalletScreen> {
             SizedBox(width: 12),
             Expanded(
               child: Text(
-                'Endereço Bitcoin',
+                'Endere�o Bitcoin',
                 style: TextStyle(color: Colors.white, fontSize: 18),
               ),
             ),
@@ -1170,7 +1170,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Pagamentos para endereços Bitcoin on-chain ainda não são suportados.\n\nUse uma Lightning Invoice (lnbc/lntb) para enviar pagamentos.',
+                      'Pagamentos para endere�os Bitcoin on-chain ainda n�o s�o suportados.\n\nUse uma Lightning Invoice (lnbc/lntb) para enviar pagamentos.',
                       style: TextStyle(color: Colors.white70, fontSize: 13),
                     ),
                   ),
@@ -1230,7 +1230,7 @@ class _WalletScreenState extends State<WalletScreen> {
                             ),
                           ),
                           Text(
-                            'Lightning Invoice ou Endereço Bitcoin',
+                            'Lightning Invoice ou Endere�o Bitcoin',
                             style: TextStyle(
                               color: Colors.white54,
                               fontSize: 12,
@@ -1275,11 +1275,11 @@ class _WalletScreenState extends State<WalletScreen> {
                           break;
                         }
                         
-                        // Endereço Bitcoin
+                        // Endere�o Bitcoin
                         if (_isBitcoinAddress(code)) {
                           // Remover prefixo bitcoin: se existir
                           scannedCode = lowerCode.startsWith('bitcoin:') 
-                              ? code.substring(8).split('?')[0]  // Remover parâmetros URI
+                              ? code.substring(8).split('?')[0]  // Remover par�metros URI
                               : code;
                           Navigator.pop(context);
                           break;
@@ -1290,7 +1290,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 ),
               ),
               
-              // Instruções
+              // Instru��es
               Container(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
                 color: const Color(0xFF1A1A1A),
@@ -1299,7 +1299,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     Icon(Icons.lightbulb_outline, color: Colors.amber, size: 24),
                     SizedBox(height: 8),
                     Text(
-                      'Formatos suportados:\n• Lightning Invoice (lnbc, lntb)\n• Endereço Bitcoin (bc1, 1, 3)',
+                      'Formatos suportados:\n. Lightning Invoice (lnbc, lntb)\n. Endere�o Bitcoin (bc1, 1, 3)',
                       style: TextStyle(
                         color: Colors.white54,
                         fontSize: 12,
@@ -1318,17 +1318,17 @@ class _WalletScreenState extends State<WalletScreen> {
     return scannedCode;
   }
 
-  // ==================== ENVIAR COM INVOICE PRÉ-PREENCHIDA ====================
+  // ==================== ENVIAR COM INVOICE PR�-PREENCHIDA ====================
   void _showSendDialogWithInvoice(String invoice) {
-    debugPrint('📤 Abrindo dialog de envio com invoice: ${invoice.substring(0, 50)}...');
+    debugPrint('?? Abrindo dialog de envio com invoice: ${invoice.substring(0, 50)}...');
     
-    // Verificar se é endereço Bitcoin (não suportado)
+    // Verificar se � endere�o Bitcoin (n�o suportado)
     if (_isBitcoinAddress(invoice)) {
       _showBitcoinAddressNotSupportedDialog(invoice);
       return;
     }
     
-    // Verificar se é Lightning Address ou LNURL (precisa de valor manual)
+    // Verificar se � Lightning Address ou LNURL (precisa de valor manual)
     final lowerInvoice = invoice.toLowerCase();
     final isLnAddress = invoice.contains('@') && invoice.contains('.');
     final isLnurl = lowerInvoice.startsWith('lnurl');
@@ -1349,7 +1349,7 @@ class _WalletScreenState extends State<WalletScreen> {
     
     // Tentar decodificar o valor da invoice BOLT11
     if (lowerInvoice.startsWith('lnbc') || lowerInvoice.startsWith('lntb')) {
-      // É uma invoice BOLT11 - tentar extrair o valor
+      // � uma invoice BOLT11 - tentar extrair o valor
       // Formato: lnbc<amount><unit>... onde unit pode ser m (milli), u (micro), n (nano), p (pico)
       try {
         final regex = RegExp(r'^ln[bt]c(\d+)([munp]?)');
@@ -1376,10 +1376,10 @@ class _WalletScreenState extends State<WalletScreen> {
             default: // sem unidade = BTC
               invoiceAmountSats = amount * 100000000;
           }
-          debugPrint('💰 Valor da invoice decodificado: $invoiceAmountSats sats');
+          debugPrint('?? Valor da invoice decodificado: $invoiceAmountSats sats');
         }
       } catch (e) {
-        debugPrint('⚠️ Não foi possível decodificar valor da invoice: $e');
+        debugPrint('?? N�o foi poss�vel decodificar valor da invoice: $e');
       }
     }
     
@@ -1432,7 +1432,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           ),
                           if (hasLockedFunds) ...[
                             Text(
-                              'Disponível: $availableSats sats',
+                              'Dispon�vel: $availableSats sats',
                               style: TextStyle(
                                 color: availableSats > 0 ? Colors.green : Colors.orange,
                                 fontSize: 12,
@@ -1473,7 +1473,7 @@ class _WalletScreenState extends State<WalletScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            '$committedSats sats estão em ordens abertas',
+                            '$committedSats sats est�o em ordens abertas',
                             style: const TextStyle(color: Colors.orange, fontSize: 12),
                           ),
                         ),
@@ -1568,7 +1568,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    '* Este endereço requer que você informe o valor',
+                    '* Este endere�o requer que voc� informe o valor',
                     style: TextStyle(color: Colors.amber, fontSize: 11),
                   ),
                 ],
@@ -1600,14 +1600,14 @@ class _WalletScreenState extends State<WalletScreen> {
                 
                 const SizedBox(height: 20),
                 
-                // Botão Enviar
+                // Bot�o Enviar
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: isSending ? null : () async {
-                      debugPrint('🔘 Botão de envio pressionado!');
+                      debugPrint('?? Bot�o de envio pressionado!');
                       
-                      // Validar valor se necessário
+                      // Validar valor se necess�rio
                       if (needsAmountInput) {
                         final amountStr = amountController.text.trim();
                         if (amountStr.isEmpty) {
@@ -1616,18 +1616,18 @@ class _WalletScreenState extends State<WalletScreen> {
                         }
                         final amount = int.tryParse(amountStr);
                         if (amount == null || amount <= 0) {
-                          setModalState(() => errorMessage = 'Valor inválido');
+                          setModalState(() => errorMessage = 'Valor inv�lido');
                           return;
                         }
                         if (amount > availableSats) {
-                          setModalState(() => errorMessage = 'Saldo insuficiente (disponível: $availableSats sats)');
+                          setModalState(() => errorMessage = 'Saldo insuficiente (dispon�vel: $availableSats sats)');
                           return;
                         }
                       }
                       
                       // Validar saldo para invoice BOLT11 com valor
                       if (invoiceAmountSats != null && invoiceAmountSats! > availableSats) {
-                        setModalState(() => errorMessage = 'Saldo insuficiente! Necessário: $invoiceAmountSats sats, Disponível: $availableSats sats');
+                        setModalState(() => errorMessage = 'Saldo insuficiente! Necess�rio: $invoiceAmountSats sats, Dispon�vel: $availableSats sats');
                         return;
                       }
                       
@@ -1636,7 +1636,7 @@ class _WalletScreenState extends State<WalletScreen> {
                         errorMessage = null;
                       });
                       
-                      debugPrint('💸 Enviando pagamento...');
+                      debugPrint('?? Enviando pagamento...');
                       debugPrint('   Input original: ${invoice.length > 50 ? invoice.substring(0, 50) : invoice}...');
                       if (needsAmountInput) {
                         debugPrint('   Valor: ${amountController.text} sats');
@@ -1648,7 +1648,7 @@ class _WalletScreenState extends State<WalletScreen> {
                         
                         // Para Lightning Address ou LNURL, resolver para BOLT11 primeiro
                         if (isLnAddress || isLnurl) {
-                          debugPrint('🔄 Resolvendo Lightning Address/LNURL...');
+                          debugPrint('?? Resolvendo Lightning Address/LNURL...');
                           setModalState(() => errorMessage = null);
                           
                           final amountSats = int.parse(amountController.text.trim());
@@ -1663,22 +1663,22 @@ class _WalletScreenState extends State<WalletScreen> {
                           if (resolveResult['success'] != true) {
                             setModalState(() {
                               isSending = false;
-                              errorMessage = resolveResult['error'] ?? 'Falha ao resolver endereço';
+                              errorMessage = resolveResult['error'] ?? 'Falha ao resolver endere�o';
                             });
                             return;
                           }
                           
                           finalInvoice = resolveResult['invoice'] as String;
-                          debugPrint('✅ Resolvido para invoice BOLT11: ${finalInvoice.substring(0, 50)}...');
+                          debugPrint('? Resolvido para invoice BOLT11: ${finalInvoice.substring(0, 50)}...');
                         }
                         
                         // Agora pagar a invoice BOLT11
                         final result = await breezProvider.payInvoice(finalInvoice);
                         
-                        debugPrint('📨 Resultado do pagamento: $result');
+                        debugPrint('?? Resultado do pagamento: $result');
                         
                         if (result != null && result['success'] == true) {
-                          debugPrint('✅ Pagamento bem sucedido!');
+                          debugPrint('? Pagamento bem sucedido!');
                           if (context.mounted) {
                             Navigator.pop(context);
                             _loadWalletInfo();
@@ -1688,7 +1688,7 @@ class _WalletScreenState extends State<WalletScreen> {
                                   children: [
                                     Icon(Icons.check_circle, color: Colors.white),
                                     SizedBox(width: 8),
-                                    Text('✅ Pagamento enviado com sucesso!'),
+                                    Text('? Pagamento enviado com sucesso!'),
                                   ],
                                 ),
                                 backgroundColor: Colors.green,
@@ -1697,14 +1697,14 @@ class _WalletScreenState extends State<WalletScreen> {
                             );
                           }
                         } else {
-                          debugPrint('❌ Pagamento falhou: ${result?['error']}');
+                          debugPrint('? Pagamento falhou: ${result?['error']}');
                           setModalState(() {
                             isSending = false;
                             errorMessage = result?['error'] ?? 'Falha ao enviar pagamento';
                           });
                         }
                       } catch (e, stack) {
-                        debugPrint('❌ Exceção ao enviar: $e');
+                        debugPrint('? Exce��o ao enviar: $e');
                         debugPrint('   Stack: $stack');
                         setModalState(() {
                           isSending = false;
@@ -1735,7 +1735,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 ),
                 const SizedBox(height: 12),
                 
-                // Botão Cancelar
+                // Bot�o Cancelar
                 SizedBox(
                   width: double.infinity,
                   child: TextButton(
@@ -1866,7 +1866,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   
                   const SizedBox(height: 16),
                   
-                  // Botão Gerar Invoice
+                  // Bot�o Gerar Invoice
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
@@ -1875,12 +1875,12 @@ class _WalletScreenState extends State<WalletScreen> {
                         final amount = int.tryParse(amountText);
                         
                         if (amount == null || amount <= 0) {
-                          setModalState(() => errorMsg = 'Digite um valor válido');
+                          setModalState(() => errorMsg = 'Digite um valor v�lido');
                           return;
                         }
                         
                         if (amount < 100) {
-                          setModalState(() => errorMsg = 'Mínimo: 100 sats');
+                          setModalState(() => errorMsg = 'M�nimo: 100 sats');
                           return;
                         }
                         
@@ -1889,7 +1889,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           errorMsg = null;
                         });
                         
-                        debugPrint('🎯 Gerando invoice de $amount sats...');
+                        debugPrint('?? Gerando invoice de $amount sats...');
                         
                         try {
                           // Usar LightningProvider com fallback Spark -> Liquid
@@ -1899,16 +1899,16 @@ class _WalletScreenState extends State<WalletScreen> {
                             description: 'Receber $amount sats - Bro App',
                           );
                           
-                          debugPrint('📦 Resultado createInvoice: $result');
+                          debugPrint('?? Resultado createInvoice: $result');
                           
                           // Log se usou Liquid
                           if (result?['isLiquid'] == true) {
-                            debugPrint('💧 Invoice criada via LIQUID (fallback)');
+                            debugPrint('?? Invoice criada via LIQUID (fallback)');
                           }
                           
                           if (result != null && result['bolt11'] != null) {
                             final bolt11 = result['bolt11'] as String;
-                            debugPrint('✅ Invoice: ${bolt11.substring(0, 50)}...');
+                            debugPrint('? Invoice: ${bolt11.substring(0, 50)}...');
                             setModalState(() {
                               generatedInvoice = bolt11;
                               isGenerating = false;
@@ -1917,7 +1917,7 @@ class _WalletScreenState extends State<WalletScreen> {
                             throw Exception(result?['error'] ?? 'Falha ao gerar invoice');
                           }
                         } catch (e) {
-                          debugPrint('❌ Erro ao gerar invoice: $e');
+                          debugPrint('? Erro ao gerar invoice: $e');
                           setModalState(() {
                             isGenerating = false;
                             errorMsg = e.toString();
@@ -1997,7 +1997,7 @@ class _WalletScreenState extends State<WalletScreen> {
                             Clipboard.setData(ClipboardData(text: generatedInvoice!));
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text('✅ Invoice copiada!'),
+                                content: Text('? Invoice copiada!'),
                                 backgroundColor: Color(0xFF4CAF50),
                               ),
                             );
@@ -2008,7 +2008,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   ),
                   const SizedBox(height: 12),
                   
-                  // Botão nova invoice
+                  // Bot�o nova invoice
                   SizedBox(
                     width: double.infinity,
                     child: TextButton.icon(
@@ -2031,13 +2031,13 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
-  // ==================== HISTÓRICO ====================
+  // ==================== HIST�RICO ====================
   Widget _buildPaymentsHistory() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Histórico de Transações',
+          'Hist�rico de Transa��es',
           style: TextStyle(
             color: Colors.white,
             fontSize: 18,
@@ -2059,7 +2059,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 Icon(Icons.history, color: Colors.white.withOpacity(0.3), size: 48),
                 const SizedBox(height: 12),
                 Text(
-                  'Nenhuma transação ainda',
+                  'Nenhuma transa��o ainda',
                   style: TextStyle(color: Colors.white.withOpacity(0.5)),
                 ),
               ],
@@ -2081,15 +2081,15 @@ class _WalletScreenState extends State<WalletScreen> {
     final date = payment['createdAt'] ?? payment['timestamp'];
     final description = payment['description']?.toString() ?? '';
     
-    // Obter OrderProvider para correlações
+    // Obter OrderProvider para correla��es
     final orderProvider = context.read<OrderProvider>();
     final currentPubkey = orderProvider.currentUserPubkey;
     
-    // CORREÇÃO CRÍTICA: Verificar se é REALMENTE um ganho como Bro
-    // Só é ganho Bro se:
-    // 1. É um pagamento RECEBIDO
-    // 2. Descrição contém 'Bro - Ordem' (formato do invoice do provedor)
-    // 3. O usuário atual é o PROVEDOR da ordem (NÃO o criador!)
+    // CORRE��O CR�TICA: Verificar se � REALMENTE um ganho como Bro
+    // S� � ganho Bro se:
+    // 1. � um pagamento RECEBIDO
+    // 2. Descri��o cont�m 'Bro - Ordem' (formato do invoice do provedor)
+    // 3. O usu�rio atual � o PROVEDOR da ordem (N�O o criador!)
     bool isBroOrderPayment = false;
     String? correlatedOrderId;
     
@@ -2097,23 +2097,23 @@ class _WalletScreenState extends State<WalletScreen> {
         (description.contains('Bro - Ordem') || description.contains('Bro Payment')) && 
         !description.contains('Garantia') &&
         !description.contains('Platform Fee')) {
-      // Extrair orderId da descrição (formato: "Bro - Ordem XXXXXXXX")
+      // Extrair orderId da descri��o (formato: "Bro - Ordem XXXXXXXX")
       String? orderIdFromDesc;
       if (description.contains('Bro - Ordem ')) {
         orderIdFromDesc = description.split('Bro - Ordem ').last.trim();
       }
       
-      // Verificar se o usuário atual é o PROVEDOR desta ordem
+      // Verificar se o usu�rio atual � o PROVEDOR desta ordem
       if (orderIdFromDesc != null && orderIdFromDesc.isNotEmpty) {
         final order = orderProvider.orders.firstWhere(
           (o) => o.id.startsWith(orderIdFromDesc!) || orderIdFromDesc!.startsWith(o.id.substring(0, 8)),
           orElse: () => orderProvider.orders.first, // fallback
         );
-        // Só é ganho Bro se EU sou o provedor (não o criador da ordem)
+        // S� � ganho Bro se EU sou o provedor (n�o o criador da ordem)
         isBroOrderPayment = order.providerId == currentPubkey && order.userPubkey != currentPubkey;
         if (!isBroOrderPayment) {
-          debugPrint('🚫 Pagamento ${description.substring(0, 20)}... NÃO é ganho Bro - sou o criador, não o provedor');
-          // Se não é ganho Bro e sou o criador, é um depósito para ordem
+          debugPrint('?? Pagamento ${description.substring(0, 20)}... N�O � ganho Bro - sou o criador, n�o o provedor');
+          // Se n�o � ganho Bro e sou o criador, � um dep�sito para ordem
           if (order.userPubkey == currentPubkey) {
             correlatedOrderId = order.id;
           }
@@ -2121,25 +2121,25 @@ class _WalletScreenState extends State<WalletScreen> {
       }
     }
     
-    // NOVO: Se é um pagamento RECEBIDO genérico ('Bro Payment'), correlacionar com ordens criadas por mim
-    // Correlação por valor aproximado e timing
+    // NOVO: Se � um pagamento RECEBIDO gen�rico ('Bro Payment'), correlacionar com ordens criadas por mim
+    // Correla��o por valor aproximado e timing
     if (isReceived && description == 'Bro Payment' && !isBroOrderPayment && correlatedOrderId == null) {
-      // Buscar ordens que eu criei com valor similar (tolerância de 5%)
+      // Buscar ordens que eu criei com valor similar (toler�ncia de 5%)
       final myOrders = orderProvider.myCreatedOrders;
       final paymentDate = date is DateTime ? date : DateTime.now();
       
       for (final order in myOrders) {
-        // Converter valor da ordem para sats para comparação
+        // Converter valor da ordem para sats para compara��o
         final orderSats = (order.btcAmount * 100000000).round();
-        final tolerance = (orderSats * 0.05).round(); // 5% tolerância
+        final tolerance = (orderSats * 0.05).round(); // 5% toler�ncia
         
         if ((amount - orderSats).abs() <= tolerance) {
-          // Verificar se a data é próxima (dentro de 24h)
+          // Verificar se a data � pr�xima (dentro de 24h)
           final orderDate = order.createdAt;
           final diff = paymentDate.difference(orderDate).abs();
           if (diff.inHours <= 24) {
             correlatedOrderId = order.id;
-            debugPrint('📋 Correlacionado depósito $amount sats com ordem ${order.id.substring(0, 8)}');
+            debugPrint('?? Correlacionado dep�sito $amount sats com ordem ${order.id.substring(0, 8)}');
             break;
           }
         }
@@ -2152,13 +2152,13 @@ class _WalletScreenState extends State<WalletScreen> {
     IconData icon;
     
     if (isBroEarning || isBroOrderPayment) {
-      label = '💪 Ganho como Bro';
+      label = '?? Ganho como Bro';
       iconColor = Colors.green;
       icon = Icons.volunteer_activism;
     } else if (isReceived) {
-      // Se temos uma ordem correlacionada para este depósito
+      // Se temos uma ordem correlacionada para este dep�sito
       if (correlatedOrderId != null) {
-        label = '📄 Depósito para Ordem #${correlatedOrderId.substring(0, 8)}';
+        label = '?? Dep�sito para Ordem #${correlatedOrderId.substring(0, 8)}';
         iconColor = Colors.amber;
         icon = Icons.receipt_long;
       } else {
@@ -2167,9 +2167,9 @@ class _WalletScreenState extends State<WalletScreen> {
         icon = Icons.arrow_downward;
       }
     } else {
-      // Verificar se é pagamento de conta (descrição contém info de ordem)
+      // Verificar se � pagamento de conta (descri��o cont�m info de ordem)
       if (description.contains('Ordem') || description.contains('conta')) {
-        label = '📄 Pagamento de Conta';
+        label = '?? Pagamento de Conta';
       } else {
         label = 'Enviado';
       }
@@ -2273,13 +2273,13 @@ class _WalletScreenState extends State<WalletScreen> {
     final paymentHash = payment['paymentHash']?.toString() ?? '';
     final paymentId = payment['id']?.toString() ?? '';
     
-    // Correlacionar com ordem se possível
+    // Correlacionar com ordem se poss�vel
     final orderProvider = context.read<OrderProvider>();
     final currentPubkey = orderProvider.currentUserPubkey;
     String? correlatedOrderId;
     Order? correlatedOrder;
     
-    // Verificar se é depósito para uma ordem que eu criei
+    // Verificar se � dep�sito para uma ordem que eu criei
     if (isReceived && (description.contains('Bro Payment') || description.contains('Bro - Ordem'))) {
       String? orderIdFromDesc;
       if (description.contains('Bro - Ordem ')) {
@@ -2295,7 +2295,7 @@ class _WalletScreenState extends State<WalletScreen> {
         } catch (_) {}
       }
       
-      // Se não encontrou pelo ID, tentar correlação por valor
+      // Se n�o encontrou pelo ID, tentar correla��o por valor
       if (correlatedOrderId == null) {
         final myOrders = orderProvider.myCreatedOrders;
         final paymentDate = date is DateTime ? date : DateTime.now();
@@ -2317,12 +2317,12 @@ class _WalletScreenState extends State<WalletScreen> {
       }
     }
     
-    // Determinar tipo para exibição
+    // Determinar tipo para exibi��o
     String typeLabel;
     Color typeColor;
     IconData typeIcon;
     
-    // Verificar se é ganho Bro (sou o provedor, não o criador)
+    // Verificar se � ganho Bro (sou o provedor, n�o o criador)
     bool isGanhoBro = isBroEarning;
     if (correlatedOrder != null && correlatedOrder.providerId == currentPubkey && correlatedOrder.userPubkey != currentPubkey) {
       isGanhoBro = true;
@@ -2333,7 +2333,7 @@ class _WalletScreenState extends State<WalletScreen> {
       typeColor = Colors.green;
       typeIcon = Icons.volunteer_activism;
     } else if (isReceived && correlatedOrderId != null) {
-      typeLabel = 'Depósito para Ordem';
+      typeLabel = 'Dep�sito para Ordem';
       typeColor = Colors.amber;
       typeIcon = Icons.receipt_long;
     } else if (isReceived) {
@@ -2409,11 +2409,11 @@ class _WalletScreenState extends State<WalletScreen> {
                 const SizedBox(height: 16),
                 
                 // Detalhes
-                _buildDetailRow('📅 Data/Hora', date != null ? _formatDateFull(date) : 'Não disponível'),
-                _buildDetailRow('📊 Status', status.replaceAll('PaymentStatus.', '').toUpperCase()),
+                _buildDetailRow('?? Data/Hora', date != null ? _formatDateFull(date) : 'N�o dispon�vel'),
+                _buildDetailRow('?? Status', status.replaceAll('PaymentStatus.', '').toUpperCase()),
                 if (description.isNotEmpty)
-                  _buildDetailRow('📝 Descrição', description),
-                _buildDetailRow('⚡ Rede', 'Lightning Network'),
+                  _buildDetailRow('?? Descri��o', description),
+                _buildDetailRow('? Rede', 'Lightning Network'),
                 
                 // NOVO: Mostrar dados da ordem correlacionada
                 if (correlatedOrder != null) ...[
@@ -2431,22 +2431,22 @@ class _WalletScreenState extends State<WalletScreen> {
                   ),
                   const SizedBox(height: 12),
                   
-                  _buildDetailRow('🔢 Nº Ordem', '#${correlatedOrder.id.substring(0, 8).toUpperCase()}'),
-                  _buildDetailRow('📄 Tipo', correlatedOrder.billType),
-                  _buildDetailRow('💰 Valor BRL', 'R\$ ${correlatedOrder.amount.toStringAsFixed(2)}'),
-                  _buildDetailRow('₿ Valor BTC', '${correlatedOrder.btcAmount.toStringAsFixed(8)} BTC'),
-                  _buildDetailRow('📊 Status Ordem', correlatedOrder.status.toUpperCase()),
+                  _buildDetailRow('?? N� Ordem', '#${correlatedOrder.id.substring(0, 8).toUpperCase()}'),
+                  _buildDetailRow('?? Tipo', correlatedOrder.billType),
+                  _buildDetailRow('?? Valor BRL', 'R\$ ${correlatedOrder.amount.toStringAsFixed(2)}'),
+                  _buildDetailRow('? Valor BTC', '${correlatedOrder.btcAmount.toStringAsFixed(8)} BTC'),
+                  _buildDetailRow('?? Status Ordem', correlatedOrder.status.toUpperCase()),
                   if (correlatedOrder.billCode.isNotEmpty)
-                    _buildDetailRow('📋 Código', correlatedOrder.billCode, monospace: true),
+                    _buildDetailRow('?? C�digo', correlatedOrder.billCode, monospace: true),
                 ],
                   
                 const SizedBox(height: 16),
                 const Divider(color: Color(0xFF333333)),
                 const SizedBox(height: 16),
                 
-                // Dados técnicos
+                // Dados t�cnicos
                 const Text(
-                  'Dados Técnicos',
+                  'Dados T�cnicos',
                   style: TextStyle(
                     color: Colors.white70,
                     fontSize: 14,
@@ -2456,13 +2456,13 @@ class _WalletScreenState extends State<WalletScreen> {
                 const SizedBox(height: 12),
                 
                 if (paymentHash.isNotEmpty && paymentHash != 'N/A' && paymentHash != 'null')
-                  _buildDetailRow('🔑 Payment Hash', paymentHash, copyable: true, monospace: true),
+                  _buildDetailRow('?? Payment Hash', paymentHash, copyable: true, monospace: true),
                 if (paymentId.isNotEmpty)
-                  _buildDetailRow('🆔 ID Transação', paymentId, copyable: true, monospace: true),
+                  _buildDetailRow('?? ID Transa��o', paymentId, copyable: true, monospace: true),
                 
                 const SizedBox(height: 24),
                 
-                // Botão de copiar tudo
+                // Bot�o de copiar tudo
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
@@ -2549,15 +2549,15 @@ class _WalletScreenState extends State<WalletScreen> {
     final status = payment['status']?.toString() ?? '';
     
     final buffer = StringBuffer();
-    buffer.writeln('=== Detalhes da Transação ===');
+    buffer.writeln('=== Detalhes da Transa��o ===');
     buffer.writeln('Tipo: ${isReceived ? "Recebido" : "Enviado"}');
     buffer.writeln('Valor: $amount sats');
     if (date != null) buffer.writeln('Data: ${_formatDateFull(date)}');
     buffer.writeln('Status: ${status.replaceAll('PaymentStatus.', '')}');
     buffer.writeln('Rede: Lightning Network');
-    if (description.isNotEmpty) buffer.writeln('Descrição: $description');
+    if (description.isNotEmpty) buffer.writeln('Descri��o: $description');
     buffer.writeln('');
-    buffer.writeln('=== Dados Técnicos ===');
+    buffer.writeln('=== Dados T�cnicos ===');
     if (paymentId.isNotEmpty) buffer.writeln('ID: $paymentId');
     if (paymentHash.isNotEmpty && paymentHash != 'null') buffer.writeln('Payment Hash: $paymentHash');
     
@@ -2592,11 +2592,11 @@ class _WalletScreenState extends State<WalletScreen> {
       final time = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
       
       if (isToday) {
-        return 'Hoje às $time';
+        return 'Hoje �s $time';
       } else if (isYesterday) {
-        return 'Ontem às $time';
+        return 'Ontem �s $time';
       } else {
-        return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} às $time';
+        return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} �s $time';
       }
     } catch (e) {
       return date.toString();

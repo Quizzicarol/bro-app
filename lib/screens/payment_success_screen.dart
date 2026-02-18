@@ -234,7 +234,7 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> with Single
                                     ),
                                     SizedBox(width: 8),
                                     Text(
-                                      'Próximos Passos',
+                                      'Pr�ximos Passos',
                                       style: TextStyle(
                                         color: Color(0xFFFF6B6B),
                                         fontSize: 16,
@@ -245,8 +245,8 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> with Single
                                 ),
                                 const SizedBox(height: 16),
                                 _buildStep('1. Aguarde um provedor aceitar sua ordem'),
-                                _buildStep('2. O provedor realizará o pagamento PIX/Boleto'),
-                                _buildStep('3. Você receberá uma notificação quando concluído'),
+                                _buildStep('2. O provedor realizar� o pagamento PIX/Boleto'),
+                                _buildStep('3. Voc� receber� uma notifica��o quando conclu�do'),
                               ],
                             ),
                           ),
@@ -264,7 +264,7 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> with Single
                                     Navigator.of(context).pop();
                                   },
                                   icon: const Icon(Icons.home),
-                                  label: const Text('Início'),
+                                  label: const Text('In�cio'),
                                   style: OutlinedButton.styleFrom(
                                     foregroundColor: Colors.white,
                                     side: const BorderSide(color: Color(0xFFFF6B6B)),
@@ -319,7 +319,7 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> with Single
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '•  ',
+            '.  ',
             style: TextStyle(color: Color(0xFFFF6B6B), fontSize: 14),
           ),
           Expanded(

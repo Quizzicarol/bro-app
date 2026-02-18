@@ -6,7 +6,7 @@ import '../providers/breez_provider_export.dart';
 import '../models/collateral_tier.dart';
 
 /// Tela para provedor configurar garantia local em Bitcoin
-/// Os fundos ficam na carteira do provedor (não são enviados para escrow)
+/// Os fundos ficam na carteira do provedor (n�o s�o enviados para escrow)
 class ProviderCollateralScreen extends StatefulWidget {
   final String providerId;
 
@@ -38,13 +38,13 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
     int walletBalance = 0;
     try {
       final balanceInfo = await breezProvider.getBalance();
-      debugPrint('📊 Balance info: $balanceInfo');
+      debugPrint('?? Balance info: $balanceInfo');
       // A chave pode ser 'balance' ou 'balanceSat'
       final balanceStr = balanceInfo['balance']?.toString() ?? balanceInfo['balanceSat']?.toString() ?? '0';
       walletBalance = int.tryParse(balanceStr) ?? 0;
-      debugPrint('💳 Saldo da carteira obtido: $walletBalance sats');
+      debugPrint('?? Saldo da carteira obtido: $walletBalance sats');
     } catch (e) {
-      debugPrint('⚠️ Erro ao obter saldo: $e');
+      debugPrint('?? Erro ao obter saldo: $e');
     }
     
     await collateralProvider.initialize(
@@ -122,15 +122,15 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                 _buildCurrentStatus(collateralProvider),
                 const SizedBox(height: 24),
 
-                // Explicação do sistema
+                // Explica��o do sistema
                 _buildExplanationCard(),
                 const SizedBox(height: 24),
 
-                // Tiers disponíveis
+                // Tiers dispon�veis
                 _buildTiersSection(collateralProvider),
                 const SizedBox(height: 24),
 
-                // Botão de depósito ou remover
+                // Bot�o de dep�sito ou remover
                 if (_selectedTier != null && !collateralProvider.hasCollateral)
                   _buildDepositButton(collateralProvider),
                   
@@ -187,7 +187,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                   ),
                 ),
                 Text(
-                  '≈ R\$ ${balanceBrl.toStringAsFixed(2)}',
+                  '? R\$ ${balanceBrl.toStringAsFixed(2)}',
                   style: const TextStyle(color: Colors.orange, fontSize: 14),
                 ),
               ],
@@ -268,7 +268,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
             ),
             const SizedBox(height: 12),
             _buildStatusRow(
-              'Máximo por Ordem',
+              'M�ximo por Ordem',
               'R\$ ${localCollateral.maxOrderBrl.toStringAsFixed(0)}',
               Icons.attach_money,
               Colors.blue,
@@ -305,7 +305,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
           ] else ...[
             const SizedBox(height: 12),
             const Text(
-              'Selecione um nível de garantia para começar a aceitar ordens e ganhar com pagamentos!',
+              'Selecione um n�vel de garantia para come�ar a aceitar ordens e ganhar com pagamentos!',
               style: TextStyle(color: Colors.white70),
             ),
           ],
@@ -361,11 +361,11 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          _buildExplanationPoint('💳', 'Seus sats ficam na SUA carteira (auto-custódia)'),
-          _buildExplanationPoint('🔒', 'Parte do saldo fica "travada" como garantia'),
-          _buildExplanationPoint('📊', 'O nível de garantia define o valor máximo das ordens'),
-          _buildExplanationPoint('✅', 'Ao completar ordens, a garantia continua na sua carteira'),
-          _buildExplanationPoint('💰', 'Você pode sacar quando não tiver ordens em aberto'),
+          _buildExplanationPoint('??', 'Seus sats ficam na SUA carteira (auto-cust�dia)'),
+          _buildExplanationPoint('??', 'Parte do saldo fica "travada" como garantia'),
+          _buildExplanationPoint('??', 'O n�vel de garantia define o valor m�ximo das ordens'),
+          _buildExplanationPoint('?', 'Ao completar ordens, a garantia continua na sua carteira'),
+          _buildExplanationPoint('??', 'Voc� pode sacar quando n�o tiver ordens em aberto'),
           const SizedBox(height: 12),
           const Divider(color: Colors.white12),
           const SizedBox(height: 12),
@@ -425,7 +425,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Níveis de Garantia',
+          'N�veis de Garantia',
           style: TextStyle(
             color: Colors.white,
             fontSize: 20,
@@ -581,7 +581,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Garantia Necessária',
+                        'Garantia Necess�ria',
                         style: TextStyle(color: Colors.white38, fontSize: 11),
                       ),
                       const SizedBox(height: 4),
@@ -603,7 +603,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       const Text(
-                        'Valor Máximo',
+                        'Valor M�ximo',
                         style: TextStyle(color: Colors.white38, fontSize: 11),
                       ),
                       const SizedBox(height: 4),
@@ -660,11 +660,11 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
           onPressed: hasEnoughBalance ? () async {
             if (_selectedTier == null) return;
             
-            // Verificar se tier está disponível
+            // Verificar se tier est� dispon�vel
             if (!_isTierAvailable(_selectedTier!.id)) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('Este nível estará disponível em breve!'),
+                  content: Text('Este n�vel estar� dispon�vel em breve!'),
                   backgroundColor: Colors.orange,
                 ),
               );
@@ -675,14 +675,14 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
             if (!hasEnoughBalance) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('Saldo insuficiente. Você precisa de ${_selectedTier!.requiredCollateralSats} sats.'),
+                  content: Text('Saldo insuficiente. Voc� precisa de ${_selectedTier!.requiredCollateralSats} sats.'),
                   backgroundColor: Colors.red,
                 ),
               );
               return;
             }
 
-            // Mostrar confirmação
+            // Mostrar confirma��o
             _showConfirmDepositDialog(provider);
           } : null,
           style: ElevatedButton.styleFrom(
@@ -704,7 +704,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
               ),
               if (hasEnoughBalance)
                 Text(
-                  '≈ R\$ ${_selectedTier!.requiredCollateralBrl.toStringAsFixed(2)}',
+                  '? R\$ ${_selectedTier!.requiredCollateralBrl.toStringAsFixed(2)}',
                   style: const TextStyle(color: Colors.white70, fontSize: 12),
                 ),
               if (!hasEnoughBalance)
@@ -741,7 +741,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                   ],
                 ),
                 content: const Text(
-                  'Ao remover a garantia, você não poderá mais aceitar novas ordens até configurar uma nova garantia.\n\nSeus sats continuarão na sua carteira.',
+                  'Ao remover a garantia, voc� n�o poder� mais aceitar novas ordens at� configurar uma nova garantia.\n\nSeus sats continuar�o na sua carteira.',
                   style: TextStyle(color: Colors.white70),
                 ),
                 actions: [
@@ -763,7 +763,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
               if (success && mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('✅ Garantia removida! Seus sats estão disponíveis.'),
+                    content: Text('? Garantia removida! Seus sats est�o dispon�veis.'),
                     backgroundColor: Colors.green,
                   ),
                 );
@@ -789,7 +789,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
     );
   }
   
-  /// Mostrar dialog de confirmação para travar garantia
+  /// Mostrar dialog de confirma��o para travar garantia
   void _showConfirmDepositDialog(CollateralProvider provider) {
     showDialog(
       context: context,
@@ -817,7 +817,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
               style: const TextStyle(color: Colors.orange, fontSize: 18, fontWeight: FontWeight.bold),
             ),
             Text(
-              '≈ R\$ ${_selectedTier!.requiredCollateralBrl.toStringAsFixed(2)}',
+              '? R\$ ${_selectedTier!.requiredCollateralBrl.toStringAsFixed(2)}',
               style: const TextStyle(color: Colors.white60, fontSize: 14),
             ),
             const SizedBox(height: 16),
@@ -836,14 +836,14 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                       Icon(Icons.security, color: Colors.green, size: 16),
                       SizedBox(width: 8),
                       Text(
-                        'Auto-custódia',
+                        'Auto-cust�dia',
                         style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
                   const SizedBox(height: 4),
                   const Text(
-                    'Os sats ficam na SUA carteira. Apenas "travados" enquanto você aceita ordens.',
+                    'Os sats ficam na SUA carteira. Apenas "travados" enquanto voc� aceita ordens.',
                     style: TextStyle(color: Colors.white70, fontSize: 12),
                   ),
                 ],
@@ -851,7 +851,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              'Máximo por ordem: R\$ ${_selectedTier!.maxOrderValueBrl.toStringAsFixed(0)}',
+              'M�ximo por ordem: R\$ ${_selectedTier!.maxOrderValueBrl.toStringAsFixed(0)}',
               style: const TextStyle(color: Colors.white54, fontSize: 12),
             ),
           ],
@@ -872,16 +872,16 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                 final balanceInfo = await breezProvider.getBalance();
                 final balanceStr = balanceInfo['balance']?.toString() ?? balanceInfo['balanceSat']?.toString() ?? '0';
                 walletBalance = int.tryParse(balanceStr) ?? 0;
-                debugPrint('💳 Saldo para depósito: $walletBalance sats');
+                debugPrint('?? Saldo para dep�sito: $walletBalance sats');
               } catch (e) {
-                debugPrint('⚠️ Erro ao obter saldo: $e');
+                debugPrint('?? Erro ao obter saldo: $e');
               }
               
               if (walletBalance == 0) {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Carteira não inicializada ou sem saldo.'),
+                      content: Text('Carteira n�o inicializada ou sem saldo.'),
                       backgroundColor: Colors.orange,
                     ),
                   );
@@ -899,7 +899,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('✅ Garantia ${result['tier']} ativada! Máximo R\$ ${(result['max_order_brl'] as double).toStringAsFixed(0)}/ordem'),
+                      content: Text('? Garantia ${result['tier']} ativada! M�ximo R\$ ${(result['max_order_brl'] as double).toStringAsFixed(0)}/ordem'),
                       backgroundColor: Colors.green,
                       duration: const Duration(seconds: 3),
                     ),
@@ -964,9 +964,9 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
     }
   }
   
-  /// Verifica se o tier está disponível para seleção
+  /// Verifica se o tier est� dispon�vel para sele��o
   bool _isTierAvailable(String tierId) {
-    // Tiers disponíveis: trial, starter, basic, pro, elite, ultimate
-    return true; // Todos disponíveis no sistema local
+    // Tiers dispon�veis: trial, starter, basic, pro, elite, ultimate
+    return true; // Todos dispon�veis no sistema local
   }
 }

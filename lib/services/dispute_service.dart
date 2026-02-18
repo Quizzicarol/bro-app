@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+?import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:crypto/crypto.dart';
 import 'storage_service.dart';
@@ -77,8 +77,8 @@ class Dispute {
   }
 }
 
-/// Serviço de Disputas
-/// Gerencia disputas entre usuários e provedores
+/// Servi�o de Disputas
+/// Gerencia disputas entre usu�rios e provedores
 /// Notifica suporte via Nostr e Email
 class DisputeService {
   static final DisputeService _instance = DisputeService._internal();
@@ -88,17 +88,17 @@ class DisputeService {
   final _storage = StorageService();
   final _relayService = RelayService();
 
-  // Pubkey do suporte para notificações Nostr (NIP-01)
+  // Pubkey do suporte para notifica��es Nostr (NIP-01)
   // npub14dkurlx4vkd5qmf7q5fwqh52lh3mn078wms2jetl2l4wnmcxnghqlud5dt
   static const String supportPubkey = 'ab6dc1fcd5659b406d3e0512e05e8afde3b9bfc776e0a9657f57eae9ef069a2e';
   
   // Email do suporte para disputas
   static const String supportEmail = 'brostr@proton.me';
   
-  // Lista local de disputas (em memória + storage)
+  // Lista local de disputas (em mem�ria + storage)
   final List<Dispute> _disputes = [];
 
-  /// Inicializar serviço
+  /// Inicializar servi�o
   Future<void> initialize() async {
     await _loadDisputes();
   }
@@ -127,7 +127,7 @@ class DisputeService {
     required String description,
     Map<String, dynamic>? orderDetails,
   }) async {
-    // Gerar ID único para a disputa
+    // Gerar ID �nico para a disputa
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final idContent = '$orderId-$openedBy-$timestamp';
     final id = sha256.convert(utf8.encode(idContent)).toString().substring(0, 16);
@@ -148,22 +148,22 @@ class DisputeService {
     // Notificar suporte via Nostr
     await _notifySupport(dispute, orderDetails);
 
-    debugPrint('⚖️ Disputa criada: ${dispute.id}');
+    debugPrint('?? Disputa criada: ${dispute.id}');
     return dispute;
   }
 
   /// Notificar suporte via Nostr (DM criptografado - NIP-04/NIP-44)
   Future<void> _notifySupport(Dispute dispute, Map<String, dynamic>? orderDetails) async {
     try {
-      // Criar mensagem de notificação
+      // Criar mensagem de notifica��o
       final message = _buildDisputeMessage(dispute, orderDetails);
       
       // Obter privkey do app para assinar
-      // Em produção, usar chave dedicada do app
+      // Em produ��o, usar chave dedicada do app
       final appPrivkey = await _storage.getNsec();
       
       if (appPrivkey == null) {
-        debugPrint('⚠️ Sem chave privada para enviar notificação');
+        debugPrint('?? Sem chave privada para enviar notifica��o');
         return;
       }
 
@@ -174,60 +174,60 @@ class DisputeService {
       // Publicar nos relays
       await _relayService.publishEvent(event);
       
-      debugPrint('📤 Notificação de disputa enviada ao suporte');
+      debugPrint('?? Notifica��o de disputa enviada ao suporte');
     } catch (e) {
-      debugPrint('❌ Erro ao notificar suporte: $e');
+      debugPrint('? Erro ao notificar suporte: $e');
     }
   }
 
-  /// Getter público para acesso ao email de suporte
+  /// Getter p�blico para acesso ao email de suporte
   String get disputeEmail => supportEmail;
 
   /// Construir mensagem de disputa para suporte
   String _buildDisputeMessage(Dispute dispute, Map<String, dynamic>? orderDetails) {
     final buffer = StringBuffer();
     
-    buffer.writeln('🔔 NOVA DISPUTA ABERTA');
-    buffer.writeln('━━━━━━━━━━━━━━━━━━━━━');
+    buffer.writeln('?? NOVA DISPUTA ABERTA');
+    buffer.writeln('?????????????????????');
     buffer.writeln('');
-    buffer.writeln('📋 ID da Disputa: ${dispute.id}');
-    buffer.writeln('🆔 ID da Ordem: ${dispute.orderId}');
-    buffer.writeln('👤 Aberta por: ${dispute.openedBy == 'user' ? 'Usuário' : 'Provedor'}');
-    buffer.writeln('📅 Data: ${_formatDateTime(dispute.createdAt)}');
+    buffer.writeln('?? ID da Disputa: ${dispute.id}');
+    buffer.writeln('?? ID da Ordem: ${dispute.orderId}');
+    buffer.writeln('?? Aberta por: ${dispute.openedBy == 'user' ? 'Usu�rio' : 'Provedor'}');
+    buffer.writeln('?? Data: ${_formatDateTime(dispute.createdAt)}');
     buffer.writeln('');
-    buffer.writeln('📌 Motivo: ${dispute.reason}');
+    buffer.writeln('?? Motivo: ${dispute.reason}');
     buffer.writeln('');
-    buffer.writeln('📝 Descrição:');
+    buffer.writeln('?? Descri��o:');
     buffer.writeln(dispute.description);
     
     if (orderDetails != null) {
       buffer.writeln('');
-      buffer.writeln('━━━━━━━━━━━━━━━━━━━━━');
-      buffer.writeln('📦 DETALHES DA ORDEM:');
+      buffer.writeln('?????????????????????');
+      buffer.writeln('?? DETALHES DA ORDEM:');
       buffer.writeln('');
       
       if (orderDetails['amount_brl'] != null) {
-        buffer.writeln('💰 Valor: R\$ ${orderDetails['amount_brl'].toStringAsFixed(2)}');
+        buffer.writeln('?? Valor: R\$ ${orderDetails['amount_brl'].toStringAsFixed(2)}');
       }
       if (orderDetails['amount_sats'] != null) {
-        buffer.writeln('₿ Sats: ${orderDetails['amount_sats']}');
+        buffer.writeln('? Sats: ${orderDetails['amount_sats']}');
       }
       if (orderDetails['status'] != null) {
-        buffer.writeln('📊 Status: ${orderDetails['status']}');
+        buffer.writeln('?? Status: ${orderDetails['status']}');
       }
       if (orderDetails['payment_type'] != null) {
-        buffer.writeln('💳 Tipo: ${orderDetails['payment_type']}');
+        buffer.writeln('?? Tipo: ${orderDetails['payment_type']}');
       }
       if (orderDetails['pix_key'] != null) {
-        buffer.writeln('🔑 PIX: ${orderDetails['pix_key']}');
+        buffer.writeln('?? PIX: ${orderDetails['pix_key']}');
       }
     }
     
     buffer.writeln('');
-    buffer.writeln('━━━━━━━━━━━━━━━━━━━━━');
-    buffer.writeln('⚠️ Ação necessária: Revisar disputa e tomar decisão');
+    buffer.writeln('?????????????????????');
+    buffer.writeln('?? A��o necess�ria: Revisar disputa e tomar decis�o');
     buffer.writeln('');
-    buffer.writeln('📧 Email de suporte: $supportEmail');
+    buffer.writeln('?? Email de suporte: $supportEmail');
     
     return buffer.toString();
   }
@@ -238,20 +238,20 @@ class DisputeService {
     final year = dt.year;
     final hour = dt.hour.toString().padLeft(2, '0');
     final minute = dt.minute.toString().padLeft(2, '0');
-    return '$day/$month/$year às $hour:$minute';
+    return '$day/$month/$year �s $hour:$minute';
   }
 
   /// Criar evento Nostr para disputa
   Future<Map<String, dynamic>> _createDisputeEvent(String message, String privkeyHex) async {
     // Criar evento tipo 14 (Chat Message) ou 1 (Note) para visibilidade
-    // Em produção, usar NIP-04/NIP-44 para DM criptografado ao suporte
+    // Em produ��o, usar NIP-04/NIP-44 para DM criptografado ao suporte
     
     final createdAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     
-    // Por simplicidade, criar uma nota pública com tag
-    // Em produção, seria DM criptografado para o pubkey do suporte
+    // Por simplicidade, criar uma nota p�blica com tag
+    // Em produ��o, seria DM criptografado para o pubkey do suporte
     final event = {
-      'kind': 1, // Nota pública (pode mudar para 4 = DM)
+      'kind': 1, // Nota p�blica (pode mudar para 4 = DM)
       'created_at': createdAt,
       'tags': [
         ['t', 'bro-disputa'],
@@ -261,7 +261,7 @@ class DisputeService {
       'content': message,
     };
 
-    // Em produção: assinar evento com a privkey
+    // Em produ��o: assinar evento com a privkey
     // final signedEvent = await _signEvent(event, privkeyHex);
     
     // Gerar pubkey a partir da privkey (simplificado)
@@ -275,7 +275,7 @@ class DisputeService {
   }
 
   String _derivePubkey(String privkeyHex) {
-    // Simplificado - em produção usar lib de crypto real
+    // Simplificado - em produ��o usar lib de crypto real
     return sha256.convert(utf8.encode(privkeyHex)).toString().substring(0, 64);
   }
 
@@ -330,7 +330,7 @@ class DisputeService {
         mediatorNotes: mediatorNotes,
       );
       await _saveDisputes();
-      debugPrint('⚖️ Disputa $disputeId atualizada: $newStatus');
+      debugPrint('?? Disputa $disputeId atualizada: $newStatus');
     }
   }
 

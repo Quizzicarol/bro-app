@@ -49,7 +49,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
     });
 
     try {
-      // Buscar preço do BTC
+      // Buscar pre�o do BTC
       _btcPrice = await BitcoinPriceService.getBitcoinPriceInBRL() ?? 480558;
       
       // Buscar ofertas do Nostr
@@ -73,15 +73,15 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
   Future<void> _loadOffers() async {
     try {
       final myPubkey = _nostrService.publicKey;
-      debugPrint('🔍 Carregando ofertas do marketplace...');
+      debugPrint('?? Carregando ofertas do marketplace...');
       debugPrint('   Minha pubkey: ${myPubkey?.substring(0, 8) ?? "null"}');
       
-      // Carregar dados de moderação
+      // Carregar dados de modera��o
       await _moderationService.loadFromCache();
       
       // Buscar ofertas do Nostr
       final nostrOffers = await _nostrOrderService.fetchMarketplaceOffers();
-      debugPrint('📦 ${nostrOffers.length} ofertas do Nostr');
+      debugPrint('?? ${nostrOffers.length} ofertas do Nostr');
       
       // Converter para MarketplaceOffer
       final allOffers = nostrOffers.map((data) => MarketplaceOffer(
@@ -92,11 +92,11 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
         priceDiscount: 0,
         category: data['category'] ?? 'outros',
         sellerPubkey: data['sellerPubkey'] ?? '',
-        sellerName: 'Usuário ${(data['sellerPubkey'] ?? '').toString().substring(0, 6)}',
+        sellerName: 'Usu�rio ${(data['sellerPubkey'] ?? '').toString().substring(0, 6)}',
         createdAt: DateTime.tryParse(data['createdAt'] ?? '') ?? DateTime.now(),
       )).toList();
       
-      // Filtrar conteúdo proibido/reportado
+      // Filtrar conte�do proibido/reportado
       final filteredOffers = allOffers.where((offer) {
         return !_moderationService.shouldHideOffer(
           title: offer.title,
@@ -105,7 +105,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
         );
       }).toList();
       
-      // Ordenar por Web of Trust (ofertas de pessoas confiáveis primeiro)
+      // Ordenar por Web of Trust (ofertas de pessoas confi�veis primeiro)
       filteredOffers.sort((a, b) {
         final trustA = _moderationService.getTrustScore(a.sellerPubkey);
         final trustB = _moderationService.getTrustScore(b.sellerPubkey);
@@ -113,32 +113,32 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
         return b.createdAt.compareTo(a.createdAt); // Depois por data
       });
       
-      // Se não tem ofertas do Nostr, usar exemplos
+      // Se n�o tem ofertas do Nostr, usar exemplos
       final finalOffers = filteredOffers.isEmpty && allOffers.isEmpty 
           ? _generateSampleOffers() 
           : filteredOffers;
       
       if (mounted) {
         setState(() {
-          // Mostrar todas as ofertas na aba principal (incluindo próprias para facilitar teste)
+          // Mostrar todas as ofertas na aba principal (incluindo pr�prias para facilitar teste)
           _offers = finalOffers.toList();
           _myOffers = finalOffers.where((o) => o.sellerPubkey == myPubkey).toList();
         });
-        debugPrint('✅ ${_offers.length} ofertas (${allOffers.length - filteredOffers.length} filtradas)');
+        debugPrint('? ${_offers.length} ofertas (${allOffers.length - filteredOffers.length} filtradas)');
       }
     } catch (e) {
-      debugPrint('❌ Erro ao carregar ofertas: $e');
+      debugPrint('? Erro ao carregar ofertas: $e');
     }
   }
 
   List<MarketplaceOffer> _generateSampleOffers() {
-    // Ofertas de exemplo para demonstração
-    // Em produção, esses dados virão do Nostr (kind 30019)
+    // Ofertas de exemplo para demonstra��o
+    // Em produ��o, esses dados vir�o do Nostr (kind 30019)
     return [
       MarketplaceOffer(
         id: '1',
         title: 'Consultoria em Bitcoin',
-        description: 'Ofereço consultoria personalizada sobre Bitcoin, carteiras, segurança e DCA. 1 hora de call.',
+        description: 'Ofere�o consultoria personalizada sobre Bitcoin, carteiras, seguran�a e DCA. 1 hora de call.',
         priceSats: 50000,
         priceDiscount: 0,
         category: 'servicos',
@@ -150,7 +150,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
       MarketplaceOffer(
         id: '2',
         title: 'Hardware Wallet Coldcard',
-        description: 'Coldcard MK4 nova lacrada. Melhor segurança para suas chaves Bitcoin.',
+        description: 'Coldcard MK4 nova lacrada. Melhor seguran�a para suas chaves Bitcoin.',
         priceSats: 200000,
         priceDiscount: 0,
         category: 'produtos',
@@ -161,7 +161,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
       ),
       MarketplaceOffer(
         id: '3',
-        title: 'Serviço de Freelance por BTC',
+        title: 'Servi�o de Freelance por BTC',
         description: 'Desenvolvo sites e apps aceitando pagamento em Bitcoin Lightning.',
         priceSats: 50000,
         priceDiscount: 0,
@@ -256,8 +256,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
   Widget _buildMyOffersTab() {
     if (_myOffers.isEmpty) {
       return _buildEmptyView(
-        'Você não tem ofertas',
-        'Crie uma oferta de produto ou serviço!',
+        'Voc� n�o tem ofertas',
+        'Crie uma oferta de produto ou servi�o!',
         Icons.sell_outlined,
       );
     }
@@ -361,7 +361,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                 ),
                 const SizedBox(height: 12),
                 
-                // Descrição
+                // Descri��o
                 Text(
                   offer.description,
                   style: const TextStyle(color: Colors.white70, fontSize: 14),
@@ -370,7 +370,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                 ),
                 const SizedBox(height: 12),
                 
-                // Preço e info
+                // Pre�o e info
                 Row(
                   children: [
                     if (offer.priceSats > 0) ...[
@@ -576,7 +576,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
             ),
             const SizedBox(height: 16),
             
-            // Título
+            // T�tulo
             Text(
               offer.title,
               style: const TextStyle(
@@ -587,9 +587,9 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
             ),
             const SizedBox(height: 16),
             
-            // Descrição
+            // Descri��o
             const Text(
-              'Descrição',
+              'Descri��o',
               style: TextStyle(color: Colors.white54, fontSize: 12),
             ),
             const SizedBox(height: 4),
@@ -599,7 +599,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
             ),
             const SizedBox(height: 20),
             
-            // Preço
+            // Pre�o
             if (offer.priceSats > 0) ...[
               Container(
                 padding: const EdgeInsets.all(16),
@@ -625,7 +625,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                         ),
                         if (priceInBrl > 0)
                           Text(
-                            '≈ R\$ ${priceInBrl.toStringAsFixed(2)}',
+                            '? R\$ ${priceInBrl.toStringAsFixed(2)}',
                             style: const TextStyle(color: Colors.white54, fontSize: 14),
                           ),
                       ],
@@ -657,7 +657,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
               const SizedBox(height: 20),
             ],
             
-            // Site ou Referências
+            // Site ou Refer�ncias
             if (offer.siteUrl != null && offer.siteUrl!.isNotEmpty) ...[
               Container(
                 padding: const EdgeInsets.all(16),
@@ -675,7 +675,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'Site ou Referências',
+                            'Site ou Refer�ncias',
                             style: TextStyle(color: Colors.white54, fontSize: 12),
                           ),
                           const SizedBox(height: 4),
@@ -753,7 +753,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
             ),
             const SizedBox(height: 24),
             
-            // Botões de ação
+            // Bot�es de a��o
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
@@ -774,7 +774,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
               onPressed: () {
                 Clipboard.setData(ClipboardData(
                   text: 'Oferta: ${offer.title}\n'
-                        'Preço: ${_formatSats(offer.priceSats)} sats\n'
+                        'Pre�o: ${_formatSats(offer.priceSats)} sats\n'
                         'Vendedor: ${offer.sellerName}\n'
                         'Pubkey: ${offer.sellerPubkey}${offer.siteUrl != null ? '\nSite: ${offer.siteUrl}' : ''}',
                 ));
@@ -787,7 +787,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
               style: TextButton.styleFrom(foregroundColor: Colors.white70),
             ),
             const SizedBox(height: 8),
-            // Botão de Reportar (NIP-56)
+            // Bot�o de Reportar (NIP-56)
             TextButton.icon(
               onPressed: () => _showReportDialog(offer),
               icon: const Icon(Icons.flag_outlined, color: Colors.red),
@@ -839,7 +839,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Tipo de violação:',
+                  'Tipo de viola��o:',
                   style: TextStyle(color: Colors.white70, fontSize: 14),
                 ),
                 const SizedBox(height: 8),
@@ -884,7 +884,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                       SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Reports são publicados no Nostr (NIP-56) de forma descentralizada.',
+                          'Reports s�o publicados no Nostr (NIP-56) de forma descentralizada.',
                           style: TextStyle(color: Colors.orange, fontSize: 12),
                         ),
                       ),
@@ -920,8 +920,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(success 
-                        ? '✅ Report enviado! Deseja silenciar este vendedor?'
-                        : '❌ Erro ao enviar report'),
+                        ? '? Report enviado! Deseja silenciar este vendedor?'
+                        : '? Erro ao enviar report'),
                       backgroundColor: success ? Colors.green : Colors.red,
                       action: success ? SnackBarAction(
                         label: 'SILENCIAR',
@@ -950,7 +950,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
       case 'servico':
       case 'servicos':
         return {
-          'label': 'SERVIÇO',
+          'label': 'SERVI�O',
           'icon': Icons.business_center, // Maleta
           'color': Colors.orange,
         };
@@ -1007,7 +1007,7 @@ class MarketplaceOffer {
   final String sellerName;
   final DateTime createdAt;
   final String? imageUrl;
-  final String? siteUrl; // Site ou referência externa
+  final String? siteUrl; // Site ou refer�ncia externa
 
   MarketplaceOffer({
     required this.id,

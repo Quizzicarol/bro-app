@@ -22,7 +22,7 @@ class _OfferScreenState extends State<OfferScreen> {
   String _selectedCategory = 'produto';
   bool _acceptsPhotos = true;
   bool _isPublishing = false;
-  double? _btcPriceBrl; // Preço atual do BTC em BRL
+  double? _btcPriceBrl; // Pre�o atual do BTC em BRL
 
   @override
   void initState() {
@@ -41,12 +41,12 @@ class _OfferScreenState extends State<OfferScreen> {
   }
 
   void _onPriceChanged() {
-    setState(() {}); // Rebuild para atualizar o hint de preço
+    setState(() {}); // Rebuild para atualizar o hint de pre�o
   }
 
   final List<Map<String, dynamic>> _categories = [
     {'id': 'produto', 'name': 'Produto', 'icon': Icons.shopping_bag},
-    {'id': 'servico', 'name': 'Serviço', 'icon': Icons.business_center}, // Maleta
+    {'id': 'servico', 'name': 'Servi�o', 'icon': Icons.business_center}, // Maleta
     {'id': 'outro', 'name': 'Outro', 'icon': Icons.more_horiz},
   ];
 
@@ -194,7 +194,7 @@ class _OfferScreenState extends State<OfferScreen> {
 
               // Cidade
               const Text(
-                'Cidade (onde você atende)',
+                'Cidade (onde voc� atende)',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
@@ -206,15 +206,15 @@ class _OfferScreenState extends State<OfferScreen> {
                 controller: _cityController,
                 style: const TextStyle(color: Colors.white),
                 decoration: _buildInputDecoration(
-                  hint: 'Ex: São Paulo, SP ou Brasil inteiro',
+                  hint: 'Ex: S�o Paulo, SP ou Brasil inteiro',
                   icon: Icons.location_city,
                 ),
               ),
               const SizedBox(height: 24),
 
-              // Site ou Referências
+              // Site ou Refer�ncias
               const Text(
-                'Site ou Referências (opcional)',
+                'Site ou Refer�ncias (opcional)',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
@@ -409,7 +409,7 @@ class _OfferScreenState extends State<OfferScreen> {
     final sats = int.tryParse(priceText) ?? 0;
     final btc = sats / 100000000;
     
-    // Calcular valor em reais se tiver preço do BTC
+    // Calcular valor em reais se tiver pre�o do BTC
     String priceInBrl = '';
     if (_btcPriceBrl != null && sats > 0) {
       final brlValue = btc * _btcPriceBrl!;
@@ -588,13 +588,13 @@ class _OfferScreenState extends State<OfferScreen> {
       
       final privateKey = nostrService.privateKey;
       if (privateKey == null) {
-        throw Exception('Faça login para publicar ofertas');
+        throw Exception('Fa�a login para publicar ofertas');
       }
 
-      // Monta descrição com cidade
+      // Monta descri��o com cidade
       String fullDescription = _descriptionController.text;
       if (_cityController.text.isNotEmpty) {
-        fullDescription = '📍 ${_cityController.text}\n\n$fullDescription';
+        fullDescription = '?? ${_cityController.text}\n\n$fullDescription';
       }
 
       final offerId = await nostrOrderService.publishMarketplaceOffer(

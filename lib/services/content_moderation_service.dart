@@ -4,10 +4,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'nostr_service.dart';
 import 'package:nostr/nostr.dart';
 
-/// Serviço de moderação de conteúdo descentralizado
+/// Servi�o de modera��o de conte�do descentralizado
 /// Implementa:
 /// - Filtro local de palavras proibidas
-/// - Web of Trust (WoT) básico
+/// - Web of Trust (WoT) b�sico
 /// - NIP-56 Report System
 class ContentModerationService {
   static final ContentModerationService _instance = ContentModerationService._internal();
@@ -19,28 +19,28 @@ class ContentModerationService {
   // Cache de pubkeys que seguimos
   Set<String> _following = {};
   
-  // Cache de pubkeys seguidas por quem seguimos (WoT nível 2)
+  // Cache de pubkeys seguidas por quem seguimos (WoT n�vel 2)
   Set<String> _webOfTrust = {};
   
   // Pubkeys reportadas (com contagem de reports)
   Map<String, int> _reportedPubkeys = {};
   
-  // Pubkeys mutadas pelo usuário
+  // Pubkeys mutadas pelo usu�rio
   Set<String> _mutedPubkeys = {};
 
   // ============================================
   // LISTA DE PALAVRAS PROIBIDAS
   // ============================================
   
-  /// Lista de palavras/termos que indicam conteúdo proibido
-  /// Isso é filtrado LOCALMENTE, não há censura na rede
+  /// Lista de palavras/termos que indicam conte�do proibido
+  /// Isso � filtrado LOCALMENTE, n�o h� censura na rede
   static const List<String> _bannedTerms = [
-    // Conteúdo ilegal
-    'cp', 'pedo', 'menor', 'criança', 'child',
+    // Conte�do ilegal
+    'cp', 'pedo', 'menor', 'crian�a', 'child',
     'csam', 'underage', 'jailbait',
     // Drogas pesadas (pode ajustar)
     'cocaina', 'heroina', 'crack',
-    // Violência extrema
+    // Viol�ncia extrema
     'gore', 'snuff', 'assassinato',
     // Outros termos ofensivos graves
     'nazista', 'nazi', 'hitler',
@@ -48,12 +48,12 @@ class ContentModerationService {
     'dobrar bitcoin', 'double your btc', 'send btc get back',
   ];
 
-  /// Verifica se um texto contém termos proibidos
+  /// Verifica se um texto cont�m termos proibidos
   bool containsBannedContent(String text) {
     final lowerText = text.toLowerCase();
     for (final term in _bannedTerms) {
       if (lowerText.contains(term)) {
-        debugPrint('⚠️ Conteúdo filtrado: contém "$term"');
+        debugPrint('?? Conte�do filtrado: cont�m "$term"');
         return true;
       }
     }
@@ -71,7 +71,7 @@ class ContentModerationService {
       return true;
     }
     
-    // 2. Verificar se está mutado
+    // 2. Verificar se est� mutado
     if (_mutedPubkeys.contains(sellerPubkey)) {
       return true;
     }
@@ -88,37 +88,37 @@ class ContentModerationService {
   // WEB OF TRUST
   // ============================================
 
-  /// Calcula o score de confiança de uma pubkey
+  /// Calcula o score de confian�a de uma pubkey
   /// 0 = desconhecido, 1 = seguido por seguidos, 2 = seguido diretamente
   int getTrustScore(String pubkey) {
     if (_following.contains(pubkey)) {
       return 2; // Seguido diretamente
     }
     if (_webOfTrust.contains(pubkey)) {
-      return 1; // Seguido por alguém que você segue
+      return 1; // Seguido por algu�m que voc� segue
     }
     return 0; // Desconhecido
   }
 
-  /// Carrega a lista de quem o usuário segue
+  /// Carrega a lista de quem o usu�rio segue
   Future<void> loadFollowing() async {
     try {
       final myPubkey = _nostrService.publicKey;
       if (myPubkey == null) return;
 
-      // Buscar kind 3 (contact list) do usuário
+      // Buscar kind 3 (contact list) do usu�rio
       // Por enquanto, usar SharedPreferences como cache
       final prefs = await SharedPreferences.getInstance();
       final followingJson = prefs.getStringList('following_$myPubkey') ?? [];
       _following = followingJson.toSet();
       
-      debugPrint('📋 Carregado ${_following.length} seguidos');
+      debugPrint('?? Carregado ${_following.length} seguidos');
     } catch (e) {
-      debugPrint('❌ Erro ao carregar following: $e');
+      debugPrint('? Erro ao carregar following: $e');
     }
   }
 
-  /// Adiciona pubkey à lista de seguidos (cache local)
+  /// Adiciona pubkey � lista de seguidos (cache local)
   Future<void> addFollowing(String pubkey) async {
     _following.add(pubkey);
     _webOfTrust.add(pubkey);
@@ -130,10 +130,10 @@ class ContentModerationService {
     }
   }
 
-  /// Verifica se o usuário segue uma pubkey
+  /// Verifica se o usu�rio segue uma pubkey
   bool isFollowing(String pubkey) => _following.contains(pubkey);
 
-  /// Verifica se está no Web of Trust
+  /// Verifica se est� no Web of Trust
   bool isInWebOfTrust(String pubkey) => 
       _following.contains(pubkey) || _webOfTrust.contains(pubkey);
 
@@ -144,11 +144,11 @@ class ContentModerationService {
   /// Tipos de report conforme NIP-56
   static const Map<String, String> reportTypes = {
     'nudity': 'Nudez',
-    'malware': 'Malware/Vírus',
+    'malware': 'Malware/V�rus',
     'profanity': 'Linguagem ofensiva',
-    'illegal': 'Conteúdo ilegal',
+    'illegal': 'Conte�do ilegal',
     'spam': 'Spam',
-    'impersonation': 'Falsidade ideológica',
+    'impersonation': 'Falsidade ideol�gica',
     'other': 'Outro',
   };
 
@@ -162,7 +162,7 @@ class ContentModerationService {
     try {
       final privateKey = _nostrService.privateKey;
       if (privateKey == null) {
-        throw Exception('Faça login para reportar');
+        throw Exception('Fa�a login para reportar');
       }
 
       final keychain = Keychain(privateKey);
@@ -172,7 +172,7 @@ class ContentModerationService {
         ['p', targetPubkey, reportType], // Pubkey reportada com tipo
       ];
       
-      // Se tem evento específico, adicionar tag 'e'
+      // Se tem evento espec�fico, adicionar tag 'e'
       if (targetEventId != null) {
         tags.add(['e', targetEventId, reportType]);
       }
@@ -198,27 +198,27 @@ class ContentModerationService {
           final success = await _publishReport(relay, event);
           if (success) successCount++;
         } catch (e) {
-          debugPrint('⚠️ Falha ao reportar em $relay: $e');
+          debugPrint('?? Falha ao reportar em $relay: $e');
         }
       }
 
-      // Adicionar à contagem local também
+      // Adicionar � contagem local tamb�m
       _reportedPubkeys[targetPubkey] = (_reportedPubkeys[targetPubkey] ?? 0) + 1;
       
       // Salvar reports locais
       await _saveLocalReports();
 
-      debugPrint('✅ Report publicado em $successCount relays');
+      debugPrint('? Report publicado em $successCount relays');
       return successCount > 0;
     } catch (e) {
-      debugPrint('❌ Erro ao reportar: $e');
+      debugPrint('? Erro ao reportar: $e');
       return false;
     }
   }
 
   Future<bool> _publishReport(String relayUrl, Event event) async {
-    // Usar a mesma lógica de publicação do NostrOrderService
-    // Por simplicidade, retornar true (a publicação real está no NostrOrderService)
+    // Usar a mesma l�gica de publica��o do NostrOrderService
+    // Por simplicidade, retornar true (a publica��o real est� no NostrOrderService)
     // TODO: Integrar com NostrOrderService._publishToRelay
     return true;
   }
@@ -233,7 +233,7 @@ class ContentModerationService {
       await prefs.setStringList('muted_$myPubkey', _mutedPubkeys.toList());
     }
     
-    debugPrint('🔇 Pubkey mutada: ${pubkey.substring(0, 8)}...');
+    debugPrint('?? Pubkey mutada: ${pubkey.substring(0, 8)}...');
   }
 
   /// Remove mute de uma pubkey
@@ -247,11 +247,11 @@ class ContentModerationService {
     }
   }
 
-  /// Verifica se uma pubkey está mutada
+  /// Verifica se uma pubkey est� mutada
   bool isMuted(String pubkey) => _mutedPubkeys.contains(pubkey);
 
   // ============================================
-  // PERSISTÊNCIA LOCAL
+  // PERSIST�NCIA LOCAL
   // ============================================
 
   Future<void> _saveLocalReports() async {
@@ -265,7 +265,7 @@ class ContentModerationService {
     }
   }
 
-  /// Carrega dados de moderação do cache local
+  /// Carrega dados de modera��o do cache local
   Future<void> loadFromCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -285,13 +285,13 @@ class ContentModerationService {
         _reportedPubkeys = decoded.map((k, v) => MapEntry(k, v as int));
       }
 
-      debugPrint('📦 Moderação carregada: ${_following.length} seguidos, ${_mutedPubkeys.length} mutados');
+      debugPrint('?? Modera��o carregada: ${_following.length} seguidos, ${_mutedPubkeys.length} mutados');
     } catch (e) {
-      debugPrint('❌ Erro ao carregar moderação: $e');
+      debugPrint('? Erro ao carregar modera��o: $e');
     }
   }
 
-  /// Limpa todo o cache de moderação
+  /// Limpa todo o cache de modera��o
   Future<void> clearCache() async {
     _following.clear();
     _webOfTrust.clear();

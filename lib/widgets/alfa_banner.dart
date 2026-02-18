@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Banner de aviso que o app está em fase Alfa
+/// Banner de aviso que o app est� em fase Alfa
 /// Deve ser mostrado no topo de todas as telas principais
 class AlfaBanner extends StatelessWidget {
   const AlfaBanner({Key? key}) : super(key: key);
@@ -42,7 +42,7 @@ class AlfaBanner extends StatelessWidget {
               const SizedBox(width: 4),
               Flexible(
                 child: const Text(
-                  'App em testes • Bugs podem acontecer',
+                  'App em testes . Bugs podem acontecer',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 11,
@@ -62,7 +62,7 @@ class AlfaBanner extends StatelessWidget {
           ),
           const SizedBox(height: 2),
           const Text(
-            'Não negocie valores altos!',
+            'N�o negocie valores altos!',
             style: TextStyle(
               color: Colors.yellow,
               fontSize: 11,
@@ -77,7 +77,7 @@ class AlfaBanner extends StatelessWidget {
   }
 }
 
-/// Wrapper que adiciona o banner Alfa acima do conteúdo
+/// Wrapper que adiciona o banner Alfa acima do conte�do
 /// Use: AlfaScaffold(body: ..., appBar: ...) em vez de Scaffold
 class AlfaScaffold extends StatelessWidget {
   final Widget body;
@@ -113,7 +113,7 @@ class AlfaScaffold extends StatelessWidget {
           const AlfaBanner(),
           // AppBar customizado
           if (appBar != null) appBar!,
-          // Conteúdo principal
+          // Conte�do principal
           Expanded(child: body),
         ],
       ),

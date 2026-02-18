@@ -14,7 +14,7 @@ class RelayService {
   final Map<String, bool> _relayStatus = {};
   final _storage = StorageService();
 
-  // Relays padrão populares
+  // Relays padr�o populares
   static const List<String> defaultRelays = [
     'wss://relay.damus.io',
     'wss://relay.nostr.band',
@@ -35,7 +35,7 @@ class RelayService {
   List<String> get activeRelays => _activeRelays;
   Map<String, bool> get relayStatus => Map.unmodifiable(_relayStatus);
 
-  /// Inicializar relays salvos ou padrão
+  /// Inicializar relays salvos ou padr�o
   Future<void> initialize() async {
     final saved = await _storage.getRelays();
     _activeRelays = saved ?? defaultRelays.take(3).toList();
@@ -46,14 +46,14 @@ class RelayService {
     }
   }
 
-  /// Conectar a um relay específico
+  /// Conectar a um relay espec�fico
   Future<bool> connectToRelay(String url) async {
     if (_connections.containsKey(url)) {
       return _relayStatus[url] ?? false;
     }
 
     try {
-      debugPrint('🔌 Conectando ao relay: $url');
+      debugPrint('?? Conectando ao relay: $url');
       final channel = WebSocketChannel.connect(Uri.parse(url));
       
       _connections[url] = channel;
@@ -65,20 +65,20 @@ class RelayService {
           _handleMessage(url, message);
         },
         onError: (error) {
-          debugPrint('❌ Erro no relay $url: $error');
+          debugPrint('? Erro no relay $url: $error');
           _relayStatus[url] = false;
         },
         onDone: () {
-          debugPrint('🔌 Desconectado do relay: $url');
+          debugPrint('?? Desconectado do relay: $url');
           _relayStatus[url] = false;
           _connections.remove(url);
         },
       );
 
-      debugPrint('✅ Conectado ao relay: $url');
+      debugPrint('? Conectado ao relay: $url');
       return true;
     } catch (e) {
-      debugPrint('❌ Falha ao conectar ao relay $url: $e');
+      debugPrint('? Falha ao conectar ao relay $url: $e');
       _relayStatus[url] = false;
       return false;
     }
@@ -94,7 +94,7 @@ class RelayService {
     }
   }
 
-  /// Adicionar relay à lista ativa
+  /// Adicionar relay � lista ativa
   Future<void> addRelay(String url) async {
     if (!_activeRelays.contains(url)) {
       _activeRelays.add(url);
@@ -118,9 +118,9 @@ class RelayService {
       if (_relayStatus[entry.key] == true) {
         try {
           entry.value.sink.add(message);
-          debugPrint('📤 Evento enviado para ${entry.key}');
+          debugPrint('?? Evento enviado para ${entry.key}');
         } catch (e) {
-          debugPrint('❌ Erro ao enviar para ${entry.key}: $e');
+          debugPrint('? Erro ao enviar para ${entry.key}: $e');
         }
       }
     }
@@ -171,30 +171,30 @@ class RelayService {
             _handleEvent(relayUrl, data);
             break;
           case 'EOSE':
-            debugPrint('📭 Fim de eventos do relay $relayUrl');
+            debugPrint('?? Fim de eventos do relay $relayUrl');
             break;
           case 'OK':
-            debugPrint('✅ Evento aceito pelo relay $relayUrl');
+            debugPrint('? Evento aceito pelo relay $relayUrl');
             break;
           case 'NOTICE':
-            debugPrint('📢 Aviso do relay $relayUrl: ${data[1]}');
+            debugPrint('?? Aviso do relay $relayUrl: ${data[1]}');
             break;
         }
       }
     } catch (e) {
-      debugPrint('❌ Erro ao processar mensagem: $e');
+      debugPrint('? Erro ao processar mensagem: $e');
     }
   }
 
   void _handleEvent(String relayUrl, List<dynamic> data) {
     if (data.length >= 3) {
       final event = data[2];
-      debugPrint('📨 Evento recebido de $relayUrl: ${event['kind']}');
+      debugPrint('?? Evento recebido de $relayUrl: ${event['kind']}');
       // TODO: Processar diferentes tipos de eventos
     }
   }
 
-  /// Fechar todas as conexões
+  /// Fechar todas as conex�es
   Future<void> dispose() async {
     for (final channel in _connections.values) {
       await channel.sink.close();

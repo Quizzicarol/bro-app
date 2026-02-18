@@ -55,7 +55,7 @@ class Withdrawal {
   String get statusText {
     switch (status) {
       case 'success':
-        return 'Concluído';
+        return 'Conclu�do';
       case 'failed':
         return 'Falhou';
       case 'pending':

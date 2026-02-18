@@ -69,25 +69,25 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
     
     if (pubkey != null) {
       _providerId = pubkey;
-      debugPrint('👤 Provider ID (Nostr pubkey): ${_providerId.length >= 16 ? _providerId.substring(0, 16) : _providerId}...');
+      debugPrint('?? Provider ID (Nostr pubkey): ${_providerId.length >= 16 ? _providerId.substring(0, 16) : _providerId}...');
     } else {
-      // Fallback: gera um ID local se não tiver Nostr configurado
+      // Fallback: gera um ID local se n�o tiver Nostr configurado
       _providerId = await _storageService.getProviderId() ?? _generateProviderId();
       await _storageService.saveProviderId(_providerId);
-      debugPrint('⚠️ Usando provider ID local: $_providerId');
+      debugPrint('?? Usando provider ID local: $_providerId');
     }
     
     await _loadAll();
     await _checkTierStatus();
   }
 
-  /// Verifica o status do tier e se precisa de atenção
+  /// Verifica o status do tier e se precisa de aten��o
   Future<void> _checkTierStatus() async {
     try {
       // Carregar tier atual
       _currentTier = await _collateralService.getCollateral();
       
-      // Atualizar UI mesmo se não tiver tier (para limpar estado)
+      // Atualizar UI mesmo se n�o tiver tier (para limpar estado)
       if (mounted) setState(() {});
       
       if (_currentTier == null) {
@@ -102,12 +102,12 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
         final breezProvider = context.read<BreezProvider>();
         final balanceInfo = await breezProvider.getBalance();
         walletBalance = int.tryParse(balanceInfo['balance']?.toString() ?? '0') ?? 0;
-        debugPrint('🏷️ Saldo da carteira: $walletBalance sats');
+        debugPrint('??? Saldo da carteira: $walletBalance sats');
       } catch (e) {
-        debugPrint('⚠️ Erro ao buscar saldo: $e');
+        debugPrint('?? Erro ao buscar saldo: $e');
       }
       
-      // Carregar preço atual do Bitcoin
+      // Carregar pre�o atual do Bitcoin
       final priceService = BitcoinPriceService();
       _btcPrice = await priceService.getBitcoinPrice();
       
@@ -117,7 +117,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
         return;
       }
       
-      // Verificar se o tier ainda é válido com o preço atual
+      // Verificar se o tier ainda � v�lido com o pre�o atual
       final tiers = CollateralTier.getAvailableTiers(_btcPrice!);
       final currentTierDef = tiers.firstWhere(
         (t) => t.id == _currentTier!.tierId,
@@ -125,20 +125,20 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
       );
       
       final requiredSats = currentTierDef.requiredCollateralSats;
-      // 🔥 Tolerância de 10% para oscilação do Bitcoin
+      // ?? Toler�ncia de 10% para oscila��o do Bitcoin
       final minRequiredWithTolerance = (requiredSats * 0.90).round();
-      debugPrint('🏷️ Tier ${currentTierDef.id}: requer $requiredSats sats (mínimo c/ tolerância: $minRequiredWithTolerance), carteira tem $walletBalance sats');
+      debugPrint('??? Tier ${currentTierDef.id}: requer $requiredSats sats (m�nimo c/ toler�ncia: $minRequiredWithTolerance), carteira tem $walletBalance sats');
       
-      // O tier está em risco se o SALDO DA CARTEIRA for menor que o mínimo com tolerância
+      // O tier est� em risco se o SALDO DA CARTEIRA for menor que o m�nimo com toler�ncia
       if (walletBalance < minRequiredWithTolerance) {
         final deficit = minRequiredWithTolerance - walletBalance;
         setState(() {
           _tierWarning = true;
           _tierWarningMessage = 'Deposite mais $deficit sats para manter o ${_currentTier!.tierName}';
         });
-        debugPrint('⚠️ Tier em risco! Faltam $deficit sats');
+        debugPrint('?? Tier em risco! Faltam $deficit sats');
         
-        // Enviar notificação
+        // Enviar notifica��o
         await _notificationService.notifyTierAtRisk(
           tierName: _currentTier!.tierName,
           missingAmount: deficit,
@@ -148,7 +148,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
           _tierWarning = false;
           _tierWarningMessage = null;
         });
-        debugPrint('✅ Tier ativo! Saldo suficiente');
+        debugPrint('? Tier ativo! Saldo suficiente');
       }
     } catch (e) {
       debugPrint('Erro ao verificar tier: $e');
@@ -232,7 +232,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
               ],
             ),
             content: Text(
-              reason ?? 'Você não pode aceitar esta ordem com seu tier atual.',
+              reason ?? 'Voc� n�o pode aceitar esta ordem com seu tier atual.',
               style: const TextStyle(color: Color(0xB3FFFFFF)),
             ),
             actions: [
@@ -255,8 +255,8 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
       builder: (context) => AlertDialog(
         title: const Text('Aceitar Ordem'),
         content: Text(
-          'Você deseja aceitar esta ordem de ${_formatCurrency(orderAmount)}?\n\n'
-          'Você será responsável por pagar a conta e receberá 7% de taxa.',
+          'Voc� deseja aceitar esta ordem de ${_formatCurrency(orderAmount)}?\n\n'
+          'Voc� ser� respons�vel por pagar a conta e receber� 7% de taxa.',
         ),
         actions: [
           TextButton(
@@ -306,7 +306,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Por que você está rejeitando esta ordem?'),
+              const Text('Por que voc� est� rejeitando esta ordem?'),
               const SizedBox(height: 16),
               TextField(
                 controller: controller,
@@ -429,7 +429,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
         ),
         elevation: 0,
         actions: [
-          // Botão para voltar ao Dashboard principal
+          // Bot�o para voltar ao Dashboard principal
           IconButton(
             icon: const Icon(Icons.home, color: Colors.white),
             onPressed: () {
@@ -440,7 +440,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
             },
             tooltip: 'Voltar ao Dashboard',
           ),
-          // Botão da Carteira Lightning (ícone preenchido como antes)
+          // Bot�o da Carteira Lightning (�cone preenchido como antes)
           IconButton(
             icon: const Icon(Icons.account_balance_wallet, color: Colors.orange),
             onPressed: () {
@@ -452,24 +452,24 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
             IconButton(
               icon: const Icon(Icons.warning_amber, color: Colors.orange),
               onPressed: _showTierWarningDialog,
-              tooltip: 'Atenção: Garantia',
+              tooltip: 'Aten��o: Garantia',
             ),
-          // Removido botão refresh - pull-to-refresh já funciona
+          // Removido bot�o refresh - pull-to-refresh j� funciona
         ],
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
-            Tab(text: 'Disponíveis', icon: Icon(Icons.list_alt)),
+            Tab(text: 'Dispon�veis', icon: Icon(Icons.list_alt)),
             Tab(text: 'Minhas Ordens', icon: Icon(Icons.assignment_ind)),
-            Tab(text: 'Histórico', icon: Icon(Icons.history)),
+            Tab(text: 'Hist�rico', icon: Icon(Icons.history)),
           ],
         ),
       ),
       body: Column(
         children: [
-          // Warning banner só na aba Disponíveis (controlado pelo TabBarView)
+          // Warning banner s� na aba Dispon�veis (controlado pelo TabBarView)
           
-          // Card de estatísticas
+          // Card de estat�sticas
           _buildStatsCard(),
           
           // Lista de ordens com tabs
@@ -490,11 +490,11 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
 
   /// Badge compacto do tier - TEXTO CLARO: Ativo ou Inativo
   Widget _buildTierBadge() {
-    debugPrint('🏷️ _buildTierBadge chamado: _currentTier=${_currentTier?.tierName ?? "null"}, warning=$_tierWarning');
+    debugPrint('??? _buildTierBadge chamado: _currentTier=${_currentTier?.tierName ?? "null"}, warning=$_tierWarning');
     
-    // Se não tem tier, mostra "Sem Tier"
+    // Se n�o tem tier, mostra "Sem Tier"
     if (_currentTier == null) {
-      debugPrint('🏷️ Mostrando badge "Sem Tier"');
+      debugPrint('??? Mostrando badge "Sem Tier"');
       return GestureDetector(
         onTap: _showTierDetailsDialog,
         child: Container(
@@ -516,7 +516,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
       );
     }
     
-    // Calcular déficit se houver
+    // Calcular d�ficit se houver
     int? deficit;
     if (_tierWarning && _tierWarningMessage != null) {
       final match = RegExp(r'(\d+)\s*sats').firstMatch(_tierWarningMessage!);
@@ -530,7 +530,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
     final statusText = isActive ? 'Tier Ativo' : 'Tier Inativo';
     final statusColor = isActive ? Colors.green : Colors.orange;
     
-    debugPrint('🏷️ Mostrando badge: $statusText (deficit=$deficit)');
+    debugPrint('??? Mostrando badge: $statusText (deficit=$deficit)');
     
     return GestureDetector(
       onTap: () => _showTierStatusExplanation(isActive, deficit),
@@ -597,7 +597,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      '⚠️ Bitcoin oscilou de preço',
+                      '?? Bitcoin oscilou de pre�o',
                       style: TextStyle(
                         color: Colors.orange,
                         fontWeight: FontWeight.bold,
@@ -614,7 +614,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
               ),
             ] else
               const Text(
-                '✅ Seu tier está ativo e você pode aceitar ordens normalmente.',
+                '? Seu tier est� ativo e voc� pode aceitar ordens normalmente.',
                 style: TextStyle(color: Colors.white70, fontSize: 13),
               ),
           ],
@@ -645,7 +645,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
     final tierName = _currentTier?.tierName ?? 'Nenhum';
     final maxTransaction = _currentTier?.maxOrderBrl ?? 0;
     
-    // Calcular déficit se houver
+    // Calcular d�ficit se houver
     int deficit = 0;
     if (_tierWarning && _tierWarningMessage != null) {
       final match = RegExp(r'(\d+)\s*sats').firstMatch(_tierWarningMessage!);
@@ -715,14 +715,14 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
               Icons.lock,
             ),
             
-            // Limite de transação
+            // Limite de transa��o
             _buildDetailRow(
-              'Limite por transação',
+              'Limite por transa��o',
               'R\$ ${maxTransaction.toStringAsFixed(0)}',
               Icons.attach_money,
             ),
             
-            // Déficit se houver
+            // D�ficit se houver
             if (deficit > 0) ...[
               const Divider(color: Colors.white24),
               Container(
@@ -808,7 +808,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
     );
   }
 
-  /// Banner de aviso quando tier está em risco
+  /// Banner de aviso quando tier est� em risco
   Widget _buildTierWarningBanner() {
     return Container(
       width: double.infinity,
@@ -824,7 +824,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              _tierWarningMessage ?? 'Sua garantia precisa de atenção',
+              _tierWarningMessage ?? 'Sua garantia precisa de aten��o',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 12,
@@ -863,7 +863,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'O preço do Bitcoin caiu e sua garantia atual não cobre mais o requisito mínimo do seu tier.',
+              'O pre�o do Bitcoin caiu e sua garantia atual n�o cobre mais o requisito m�nimo do seu tier.',
               style: TextStyle(color: Color(0xB3FFFFFF)),
             ),
             const SizedBox(height: 16),
@@ -891,7 +891,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
             ),
             const SizedBox(height: 16),
             const Text(
-              'Se você não aumentar a garantia, poderá perder acesso a ordens de valores mais altos.',
+              'Se voc� n�o aumentar a garantia, poder� perder acesso a ordens de valores mais altos.',
               style: TextStyle(color: Color(0x99FFFFFF), fontSize: 12),
             ),
           ],
@@ -966,7 +966,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
                 Icon(Icons.analytics, color: Colors.blue[700]),
                 const SizedBox(width: 8),
                 const Text(
-                  'Estatísticas',
+                  'Estat�sticas',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -1059,15 +1059,15 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
     );
   }
 
-  /// Aba de ordens disponíveis com banner de warning se necessário
+  /// Aba de ordens dispon�veis com banner de warning se necess�rio
   Widget _buildAvailableOrdersTab() {
     return Column(
       children: [
-        // Banner de warning só aparece aqui na aba Disponíveis
+        // Banner de warning s� aparece aqui na aba Dispon�veis
         if (_tierWarning)
           _buildTierWarningBanner(),
         
-        // Lista de ordens disponíveis
+        // Lista de ordens dispon�veis
         Expanded(child: _buildAvailableOrdersList()),
       ],
     );
@@ -1086,7 +1086,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
             Icon(Icons.inbox, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
             Text(
-              'Nenhuma ordem disponível no momento',
+              'Nenhuma ordem dispon�vel no momento',
               style: TextStyle(fontSize: 16, color: Colors.grey[600]),
             ),
             const SizedBox(height: 8),
@@ -1132,7 +1132,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
             Icon(Icons.assignment, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
             Text(
-              'Você ainda não aceitou nenhuma ordem',
+              'Voc� ainda n�o aceitou nenhuma ordem',
               style: TextStyle(fontSize: 16, color: Colors.grey[600]),
             ),
             const SizedBox(height: 8),
@@ -1177,7 +1177,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
             Icon(Icons.history, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
             Text(
-              'Nenhuma ordem concluída ainda',
+              'Nenhuma ordem conclu�da ainda',
               style: TextStyle(fontSize: 16, color: Colors.grey[600]),
             ),
             const SizedBox(height: 8),

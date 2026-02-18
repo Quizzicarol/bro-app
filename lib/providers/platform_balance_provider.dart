@@ -30,9 +30,9 @@ class PlatformBalanceProvider with ChangeNotifier {
       }
       
       notifyListeners();
-      debugPrint('💼 Saldo da plataforma carregado: $_balanceSats sats');
+      debugPrint('?? Saldo da plataforma carregado: $_balanceSats sats');
     } catch (e) {
-      debugPrint('❌ Erro ao carregar saldo da plataforma: $e');
+      debugPrint('? Erro ao carregar saldo da plataforma: $e');
     }
   }
 
@@ -44,13 +44,13 @@ class PlatformBalanceProvider with ChangeNotifier {
       await prefs.setDouble('platform_total_earnings', _totalEarnings);
       await prefs.setString('platform_transactions', json.encode(_transactions));
       
-      debugPrint('💾 Saldo da plataforma salvo: $_balanceSats sats');
+      debugPrint('?? Saldo da plataforma salvo: $_balanceSats sats');
     } catch (e) {
-      debugPrint('❌ Erro ao salvar saldo da plataforma: $e');
+      debugPrint('? Erro ao salvar saldo da plataforma: $e');
     }
   }
 
-  /// Adicionar taxa da plataforma (2% de cada transação)
+  /// Adicionar taxa da plataforma (2% de cada transa��o)
   Future<void> addPlatformFee({
     required String orderId,
     required double amountSats,
@@ -72,10 +72,10 @@ class PlatformBalanceProvider with ChangeNotifier {
     await _saveBalance();
     notifyListeners();
 
-    debugPrint('💰 Taxa da plataforma adicionada: $amountSats sats (Ordem: ${orderId.substring(0, 8)})');
+    debugPrint('?? Taxa da plataforma adicionada: $amountSats sats (Ordem: ${orderId.substring(0, 8)})');
   }
 
-  /// Simular saque da plataforma (apenas para teste/gestão)
+  /// Simular saque da plataforma (apenas para teste/gest�o)
   Future<void> withdraw({
     required double amountSats,
     required String destination,
@@ -100,10 +100,10 @@ class PlatformBalanceProvider with ChangeNotifier {
     await _saveBalance();
     notifyListeners();
 
-    debugPrint('💸 Saque da plataforma: $amountSats sats via $type');
+    debugPrint('?? Saque da plataforma: $amountSats sats via $type');
   }
 
-  /// Limpar histórico (apenas para testes)
+  /// Limpar hist�rico (apenas para testes)
   Future<void> clearHistory() async {
     _transactions.clear();
     _balanceSats = 0.0;

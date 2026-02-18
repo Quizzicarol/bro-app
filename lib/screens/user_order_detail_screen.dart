@@ -4,7 +4,7 @@ import 'dart:convert';
 import '../providers/order_provider.dart';
 import '../models/order.dart';
 
-/// Tela de detalhes de uma ordem completada (histórico do usuário)
+/// Tela de detalhes de uma ordem completada (hist�rico do usu�rio)
 class UserOrderDetailScreen extends StatefulWidget {
   final String orderId;
 
@@ -39,11 +39,11 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
     try {
       final orderProvider = context.read<OrderProvider>();
       
-      // Forçar sincronização com Nostr para pegar dados mais recentes
+      // For�ar sincroniza��o com Nostr para pegar dados mais recentes
       try {
         await orderProvider.syncOrdersFromNostr();
       } catch (e) {
-        debugPrint('⚠️ Erro ao sincronizar Nostr: $e');
+        debugPrint('?? Erro ao sincronizar Nostr: $e');
       }
       
       // Buscar ordem do provider
@@ -56,7 +56,7 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
         });
       }
     } catch (e) {
-      debugPrint('❌ Erro ao carregar ordem: $e');
+      debugPrint('? Erro ao carregar ordem: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -93,7 +93,7 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
           const Icon(Icons.error_outline, size: 64, color: Colors.red),
           const SizedBox(height: 16),
           const Text(
-            'Ordem não encontrada',
+            'Ordem n�o encontrada',
             style: TextStyle(color: Colors.white, fontSize: 18),
           ),
           const SizedBox(height: 24),
@@ -107,8 +107,8 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
   }
 
   Widget _buildContent() {
-    // Debug: verificar se metadata está presente
-    debugPrint('📋 UserOrderDetailScreen: ordem ${_order!.id.substring(0, 8)}');
+    // Debug: verificar se metadata est� presente
+    debugPrint('?? UserOrderDetailScreen: ordem ${_order!.id.substring(0, 8)}');
     debugPrint('   status: ${_order!.status}');
     debugPrint('   metadata: ${_order!.metadata}');
     if (_order!.metadata != null) {
@@ -130,7 +130,7 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
           _buildDetailsCard(),
           const SizedBox(height: 16),
           if (_order!.metadata != null) _buildReceiptCard(),
-          // Padding extra para navegação
+          // Padding extra para navega��o
           const SizedBox(height: 32),
         ],
       ),
@@ -182,14 +182,14 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
     switch (status) {
       case 'completed':
         return {
-          'title': 'Pagamento Concluído',
+          'title': 'Pagamento Conclu�do',
           'subtitle': 'Conta paga com sucesso',
           'icon': Icons.check_circle,
           'color': Colors.green,
         };
       case 'awaiting_confirmation':
         return {
-          'title': 'Aguardando Confirmação',
+          'title': 'Aguardando Confirma��o',
           'subtitle': 'Verifique o comprovante',
           'icon': Icons.hourglass_empty,
           'color': Colors.orange,
@@ -307,7 +307,7 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Informações',
+            'Informa��es',
             style: TextStyle(
               color: Colors.white,
               fontSize: 18,
@@ -319,10 +319,10 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
           const SizedBox(height: 12),
           _buildDetailRow('ID da Ordem', _order!.id.substring(0, 16) + '...'),
           const SizedBox(height: 12),
-          _buildDetailRow('Data de Criação', _formatDate(_order!.createdAt)),
+          _buildDetailRow('Data de Cria��o', _formatDate(_order!.createdAt)),
           const SizedBox(height: 12),
           if (_order!.completedAt != null)
-            _buildDetailRow('Data de Conclusão', _formatDate(_order!.completedAt!)),
+            _buildDetailRow('Data de Conclus�o', _formatDate(_order!.completedAt!)),
         ],
       ),
     );
@@ -394,7 +394,7 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Código de Confirmação:',
+                    'C�digo de Confirma��o:',
                     style: TextStyle(
                       color: Colors.white70,
                       fontSize: 12,
@@ -496,7 +496,7 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
           bytes,
           fit: BoxFit.contain,
           errorBuilder: (context, error, stackTrace) {
-            debugPrint('❌ Erro ao exibir imagem: $error');
+            debugPrint('? Erro ao exibir imagem: $error');
             return Container(
               padding: const EdgeInsets.all(16),
               color: Colors.red.withOpacity(0.2),
@@ -515,7 +515,7 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
         ),
       );
     } catch (e) {
-      debugPrint('❌ Erro ao decodificar base64: $e');
+      debugPrint('? Erro ao decodificar base64: $e');
       return Container(
         padding: const EdgeInsets.all(16),
         color: Colors.orange.withOpacity(0.2),
@@ -524,7 +524,7 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
             Icon(Icons.warning_amber, color: Colors.orange),
             SizedBox(width: 8),
             Text(
-              'Formato de imagem inválido',
+              'Formato de imagem inv�lido',
               style: TextStyle(color: Colors.orange),
             ),
           ],
@@ -574,7 +574,7 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
         ),
       );
     } catch (e) {
-      debugPrint('❌ Erro ao mostrar imagem fullscreen: $e');
+      debugPrint('? Erro ao mostrar imagem fullscreen: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Erro ao abrir imagem'),
@@ -591,6 +591,6 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
     final hour = dateTime.hour.toString().padLeft(2, '0');
     final minute = dateTime.minute.toString().padLeft(2, '0');
     
-    return '$day/$month/$year às $hour:$minute';
+    return '$day/$month/$year �s $hour:$minute';
   }
 }

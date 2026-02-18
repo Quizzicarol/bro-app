@@ -12,8 +12,8 @@ import '../services/secure_storage_service.dart';
 import '../services/nostr_service.dart';
 import 'provider_orders_screen.dart';
 
-/// Tela para depositar garantia para um tier específico
-/// VERSÃO LIGHTNING-ONLY (sem on-chain para evitar taxas altas)
+/// Tela para depositar garantia para um tier espec�fico
+/// VERS�O LIGHTNING-ONLY (sem on-chain para evitar taxas altas)
 class TierDepositScreen extends StatefulWidget {
   final CollateralTier tier;
   final String providerId;
@@ -34,10 +34,10 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
   bool _isLoading = true;
   String? _error;
   int _currentBalance = 0;
-  int _initialBalance = 0; // CRÍTICO: Saldo inicial ao entrar na tela
+  int _initialBalance = 0; // CR�TICO: Saldo inicial ao entrar na tela
   int _committedSats = 0; // Sats comprometidos com ordens pendentes
   bool _depositCompleted = false;
-  int _amountNeededSats = 0; // Valor líquido necessário (colateral)
+  int _amountNeededSats = 0; // Valor l�quido necess�rio (colateral)
   PaymentMonitorService? _paymentMonitor;
 
   @override
@@ -62,30 +62,30 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
       final totalBalance = int.tryParse(balanceStr) ?? 0;
       
       // IMPORTANTE: Em modo Bro (provedor), o saldo existente pode estar comprometido
-      // com ordens pendentes do modo cliente. Portanto, NÃO descontamos o saldo existente.
+      // com ordens pendentes do modo cliente. Portanto, N�O descontamos o saldo existente.
       // O provedor precisa depositar o valor COMPLETO do tier.
       final committedSats = orderProvider.committedSats;
       _currentBalance = totalBalance;
       _committedSats = committedSats;
       
-      debugPrint('💰 Saldo total: $totalBalance sats');
-      debugPrint('💰 Sats comprometidos com ordens: $committedSats sats');
-      debugPrint('💰 MODO BRO: Valor completo do tier é necessário');
+      debugPrint('?? Saldo total: $totalBalance sats');
+      debugPrint('?? Sats comprometidos com ordens: $committedSats sats');
+      debugPrint('?? MODO BRO: Valor completo do tier � necess�rio');
       
-      // Em modo Bro: só considera depósito completo se tiver saldo ALÉM do comprometido
+      // Em modo Bro: s� considera dep�sito completo se tiver saldo AL�M do comprometido
       final availableForCollateral = (totalBalance - committedSats).clamp(0, totalBalance);
       
-      // CRÍTICO: Salvar saldo inicial para detectar NOVOS depósitos
+      // CR�TICO: Salvar saldo inicial para detectar NOVOS dep�sitos
       _initialBalance = totalBalance;
       _currentBalance = totalBalance;
-      debugPrint('💰 Saldo INICIAL salvo: $_initialBalance sats');
+      debugPrint('?? Saldo INICIAL salvo: $_initialBalance sats');
       
       if (availableForCollateral >= widget.tier.requiredCollateralSats) {
-        // ✅ IMPORTANTE: Ativar o tier antes de marcar como completo!
-        debugPrint('✅ Saldo suficiente detectado, ativando tier automaticamente...');
+        // ? IMPORTANTE: Ativar o tier antes de marcar como completo!
+        debugPrint('? Saldo suficiente detectado, ativando tier automaticamente...');
         await _activateTier(availableForCollateral);
         
-        // ✅ NAVEGAR DIRETAMENTE PARA A TELA DE ORDENS
+        // ? NAVEGAR DIRETAMENTE PARA A TELA DE ORDENS
         if (mounted) {
           Navigator.pushReplacement(
             context,
@@ -97,12 +97,12 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
         return;
       }
 
-      // Calcular quanto falta (valor completo do tier, não descontar saldo comprometido)
-      // O valor necessário é: requiredCollateralSats - (saldo disponível livre)
+      // Calcular quanto falta (valor completo do tier, n�o descontar saldo comprometido)
+      // O valor necess�rio �: requiredCollateralSats - (saldo dispon�vel livre)
       final amountNeeded = widget.tier.requiredCollateralSats - availableForCollateral;
       _amountNeededSats = amountNeeded;
       
-      // Gerar invoice Lightning (única opção agora)
+      // Gerar invoice Lightning (�nica op��o agora)
       final invoiceResult = await breezProvider.createInvoice(
         amountSats: amountNeeded,
         description: 'Garantia Bro - Tier ${widget.tier.name}',
@@ -137,25 +137,25 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
     final breezProvider = context.read<BreezProvider>();
     _paymentMonitor = PaymentMonitorService(breezProvider);
     
-    debugPrint('🔍 Iniciando monitoramento de depósito: $expectedAmount sats');
+    debugPrint('?? Iniciando monitoramento de dep�sito: $expectedAmount sats');
     
-    // Monitorar Lightning (se invoice disponível)
+    // Monitorar Lightning (se invoice dispon�vel)
     if (_lightningInvoice != null && _lightningPaymentHash != null) {
-      debugPrint('⚡ Monitorando pagamento Lightning...');
+      debugPrint('? Monitorando pagamento Lightning...');
       _paymentMonitor!.monitorPayment(
         paymentId: 'tier_deposit_lightning',
         paymentHash: _lightningPaymentHash!,
         checkInterval: const Duration(seconds: 3),
         onStatusChange: (status, data) async {
           if (status == PaymentStatus.confirmed && mounted) {
-            debugPrint('✅ Pagamento Lightning confirmado para tier!');
+            debugPrint('? Pagamento Lightning confirmado para tier!');
             await _onPaymentReceived();
           }
         },
       );
     }
     
-    // Também fazer polling de saldo como fallback
+    // Tamb�m fazer polling de saldo como fallback
     _listenForBalanceChange();
   }
 
@@ -171,33 +171,33 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
       final balanceStr = balanceInfo['balance']?.toString() ?? '0';
       final totalBalance = int.tryParse(balanceStr) ?? 0;
       
-      // Calcular saldo disponível (total - comprometido)
+      // Calcular saldo dispon�vel (total - comprometido)
       final committedSats = orderProvider.committedSats;
       final availableBalance = (totalBalance - committedSats).clamp(0, totalBalance);
       
-      // 🔥 CRÍTICO: Verificar se houve AUMENTO REAL de saldo desde entrada na tela
-      // Isso evita ativação falsa por flutuações ou estado inicial
+      // ?? CR�TICO: Verificar se houve AUMENTO REAL de saldo desde entrada na tela
+      // Isso evita ativa��o falsa por flutua��es ou estado inicial
       final balanceIncrease = totalBalance - _initialBalance;
       final minRequired = (widget.tier.requiredCollateralSats * 0.90).round();
       
-      debugPrint('🔍 Polling: saldo=$totalBalance, inicial=$_initialBalance, aumento=$balanceIncrease, necessário=$_amountNeededSats');
+      debugPrint('?? Polling: saldo=$totalBalance, inicial=$_initialBalance, aumento=$balanceIncrease, necess�rio=$_amountNeededSats');
       
-      // CONDIÇÃO CORRIGIDA: Só ativa se:
-      // 1. O saldo disponível é suficiente para o tier E
-      // 2. Houve um aumento real de saldo (depósito ocorreu)
+      // CONDI��O CORRIGIDA: S� ativa se:
+      // 1. O saldo dispon�vel � suficiente para o tier E
+      // 2. Houve um aumento real de saldo (dep�sito ocorreu)
       if (availableBalance >= minRequired && balanceIncrease >= (_amountNeededSats * 0.90).round()) {
         // Pagamento recebido! Ativar tier
-        debugPrint('✅ Depósito detectado! Aumento de $balanceIncrease sats');
+        debugPrint('? Dep�sito detectado! Aumento de $balanceIncrease sats');
         await _onPaymentReceived();
       } else if (totalBalance > _currentBalance) {
-        // Recebeu algo mas ainda não é suficiente - mostrar progresso
+        // Recebeu algo mas ainda n�o � suficiente - mostrar progresso
         if (mounted) {
           setState(() {
             _currentBalance = totalBalance;
           });
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('💰 Pagamento detectado! Saldo: $totalBalance sats'),
+              content: Text('?? Pagamento detectado! Saldo: $totalBalance sats'),
               backgroundColor: Colors.blue,
               duration: const Duration(seconds: 3),
             ),
@@ -216,7 +216,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
     final breezProvider = context.read<BreezProvider>();
     final orderProvider = context.read<OrderProvider>();
     
-    // Forçar sync para garantir saldo atualizado
+    // For�ar sync para garantir saldo atualizado
     await breezProvider.forceSyncWallet();
     
     // Obter saldo atualizado
@@ -224,25 +224,25 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
     final balanceStr = balanceInfo['balance']?.toString() ?? '0';
     final totalBalance = int.tryParse(balanceStr) ?? 0;
     
-    // Calcular saldo disponível
+    // Calcular saldo dispon�vel
     final committedSats = orderProvider.committedSats;
     final availableBalance = (totalBalance - committedSats).clamp(0, totalBalance);
     
-    // CRÍTICO: Verificar aumento real de saldo
+    // CR�TICO: Verificar aumento real de saldo
     final balanceIncrease = totalBalance - _initialBalance;
-    debugPrint('💰 Pagamento detectado! Saldo total: $totalBalance, disponível: $availableBalance, aumento: $balanceIncrease');
+    debugPrint('?? Pagamento detectado! Saldo total: $totalBalance, dispon�vel: $availableBalance, aumento: $balanceIncrease');
     
-    // 🔥 Tolerância de 10% para oscilação do Bitcoin
+    // ?? Toler�ncia de 10% para oscila��o do Bitcoin
     final minRequired = (widget.tier.requiredCollateralSats * 0.90).round();
     final minDeposit = (_amountNeededSats * 0.90).round();
     
-    // CONDIÇÃO CORRIGIDA: Verificar saldo suficiente E aumento real
+    // CONDI��O CORRIGIDA: Verificar saldo suficiente E aumento real
     if (availableBalance >= minRequired && balanceIncrease >= minDeposit) {
       // Ativar o tier
-      debugPrint('✅ Condições atendidas: disponível=$availableBalance >= $minRequired, aumento=$balanceIncrease >= $minDeposit');
+      debugPrint('? Condi��es atendidas: dispon�vel=$availableBalance >= $minRequired, aumento=$balanceIncrease >= $minDeposit');
       await _activateTier(availableBalance);
     } else {
-      debugPrint('⚠️ Ainda não atende: disponível=$availableBalance, minRequired=$minRequired, aumento=$balanceIncrease, minDeposit=$minDeposit');
+      debugPrint('?? Ainda n�o atende: dispon�vel=$availableBalance, minRequired=$minRequired, aumento=$balanceIncrease, minDeposit=$minDeposit');
       // Atualizar UI e continuar esperando
       if (mounted) {
         setState(() {
@@ -253,35 +253,35 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
   }
 
   Future<void> _activateTier(int balance) async {
-    debugPrint('🎯 Ativando tier ${widget.tier.name} com saldo disponível: $balance sats');
+    debugPrint('?? Ativando tier ${widget.tier.name} com saldo dispon�vel: $balance sats');
     
-    // ✅ IMPORTANTE: Obter pubkey ANTES de salvar o tier
+    // ? IMPORTANTE: Obter pubkey ANTES de salvar o tier
     final nostrService = NostrService();
     final pubkey = nostrService.publicKey;
-    debugPrint('🔑 Salvando tier para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
+    debugPrint('?? Salvando tier para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
     
     // Usar LocalCollateralService instance COM pubkey
     final localCollateralService = LocalCollateralService();
-    localCollateralService.setCurrentUser(pubkey); // CRÍTICO: Setar usuário antes de salvar
+    localCollateralService.setCurrentUser(pubkey); // CR�TICO: Setar usu�rio antes de salvar
     await localCollateralService.setCollateral(
       tierId: widget.tier.id,
       tierName: widget.tier.name,
       requiredSats: widget.tier.requiredCollateralSats,
       maxOrderBrl: widget.tier.maxOrderValueBrl,
-      userPubkey: pubkey, // CRÍTICO: Passar pubkey
+      userPubkey: pubkey, // CR�TICO: Passar pubkey
     );
     
-    debugPrint('✅ Tier salvo localmente para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
+    debugPrint('? Tier salvo localmente para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
 
-    // ✅ IMPORTANTE: Marcar como modo provedor para persistir entre sessões COM PUBKEY
+    // ? IMPORTANTE: Marcar como modo provedor para persistir entre sess�es COM PUBKEY
     await SecureStorageService.setProviderMode(true, userPubkey: pubkey);
-    debugPrint('✅ Provider mode ativado e persistido para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
+    debugPrint('? Provider mode ativado e persistido para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
 
-    // ✅ IMPORTANTE: Atualizar o CollateralProvider para refletir a mudança
+    // ? IMPORTANTE: Atualizar o CollateralProvider para refletir a mudan�a
     if (mounted) {
       final collateralProvider = context.read<CollateralProvider>();
       await collateralProvider.refreshCollateral('', walletBalance: balance);
-      debugPrint('✅ CollateralProvider atualizado após ativação do tier ${widget.tier.name}');
+      debugPrint('? CollateralProvider atualizado ap�s ativa��o do tier ${widget.tier.name}');
     }
 
     setState(() {
@@ -292,7 +292,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('✅ Tier ${widget.tier.name} ativado com sucesso!'),
+          content: Text('? Tier ${widget.tier.name} ativado com sucesso!'),
           backgroundColor: Colors.green,
         ),
       );
@@ -373,7 +373,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              'Você pode aceitar ordens de até R\$ ${widget.tier.maxOrderValueBrl.toStringAsFixed(0)}',
+              'Voc� pode aceitar ordens de at� R\$ ${widget.tier.maxOrderValueBrl.toStringAsFixed(0)}',
               style: const TextStyle(color: Colors.white70, fontSize: 16),
               textAlign: TextAlign.center,
             ),
@@ -385,7 +385,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
             const SizedBox(height: 32),
             ElevatedButton(
               onPressed: () {
-                // Navegar diretamente para a tela de ordens disponíveis
+                // Navegar diretamente para a tela de ordens dispon�veis
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
@@ -397,7 +397,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
                 backgroundColor: Colors.green,
                 padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
               ),
-              child: const Text('Começar a Aceitar Ordens'),
+              child: const Text('Come�ar a Aceitar Ordens'),
             ),
           ],
         ),
@@ -406,7 +406,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
   }
 
   Widget _buildDepositView() {
-    // Usar o valor já calculado que considera sats comprometidos
+    // Usar o valor j� calculado que considera sats comprometidos
     final amountNeeded = _amountNeededSats;
     
     return SingleChildScrollView(
@@ -434,7 +434,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Máximo por ordem: R\$ ${widget.tier.maxOrderValueBrl.toStringAsFixed(0)}',
+                  'M�ximo por ordem: R\$ ${widget.tier.maxOrderValueBrl.toStringAsFixed(0)}',
                   style: const TextStyle(color: Colors.white70),
                 ),
               ],
@@ -471,7 +471,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Disponível:', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                      const Text('Dispon�vel:', style: TextStyle(color: Colors.white70, fontSize: 12)),
                       Text('${(_currentBalance - _committedSats).clamp(0, _currentBalance)} sats', 
                            style: const TextStyle(color: Colors.white54, fontSize: 12)),
                     ],
@@ -481,7 +481,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Garantia necessária:', style: TextStyle(color: Colors.white70)),
+                    const Text('Garantia necess�ria:', style: TextStyle(color: Colors.white70)),
                     Text('${widget.tier.requiredCollateralSats} sats', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
                   ],
                 ),
@@ -494,7 +494,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
                   ],
                 ),
                 Text(
-                  '≈ R\$ ${(amountNeeded / 100000000 * 475000).toStringAsFixed(2)}',
+                  '? R\$ ${(amountNeeded / 100000000 * 475000).toStringAsFixed(2)}',
                   style: const TextStyle(color: Colors.white54, fontSize: 12),
                 ),
               ],
@@ -550,7 +550,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
                 Icon(Icons.flash_on, color: Colors.orange),
                 SizedBox(width: 8),
                 Text(
-                  '⚡ Lightning Network',
+                  '? Lightning Network',
                   style: TextStyle(
                     color: Colors.orange,
                     fontWeight: FontWeight.bold,
@@ -578,7 +578,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
           const SizedBox(height: 16),
           
           const Text(
-            'Pagamento instantâneo',
+            'Pagamento instant�neo',
             style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 6),

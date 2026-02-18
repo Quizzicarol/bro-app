@@ -4,14 +4,14 @@ import 'package:bip39/bip39.dart' as bip39;
 import 'package:pointycastle/export.dart';
 import 'package:convert/convert.dart';
 
-/// Serviço NIP-06: Derivação de chaves Nostr a partir de seed BIP-39
-/// Permite usar uma única seed para Bitcoin e Nostr
+/// Servi�o NIP-06: Deriva��o de chaves Nostr a partir de seed BIP-39
+/// Permite usar uma �nica seed para Bitcoin e Nostr
 class Nip06Service {
   static final Nip06Service _instance = Nip06Service._internal();
   factory Nip06Service() => _instance;
   Nip06Service._internal();
 
-  /// Path de derivação para Nostr conforme NIP-06
+  /// Path de deriva��o para Nostr conforme NIP-06
   /// m/44'/1237'/0'/0/0
   static const String nostrDerivationPath = "m/44'/1237'/0'/0/0";
 
@@ -35,7 +35,7 @@ class Nip06Service {
   /// Seguindo NIP-06: m/44'/1237'/0'/0/0
   String deriveNostrPrivateKey(String mnemonic, {String passphrase = ''}) {
     if (!validateMnemonic(mnemonic)) {
-      throw Exception('Mnemonic inválido');
+      throw Exception('Mnemonic inv�lido');
     }
 
     final seed = mnemonicToSeed(mnemonic, passphrase: passphrase);
@@ -43,7 +43,7 @@ class Nip06Service {
     // Derivar master key usando HMAC-SHA512
     final masterKey = _deriveMasterKey(seed);
     
-    // Seguir path de derivação m/44'/1237'/0'/0/0
+    // Seguir path de deriva��o m/44'/1237'/0'/0/0
     var key = masterKey;
     
     // 44' (purpose - BIP44)
@@ -64,7 +64,7 @@ class Nip06Service {
     return hex.encode(key.privateKey);
   }
 
-  /// Derivar chave pública a partir da privada
+  /// Derivar chave p�blica a partir da privada
   String derivePublicKey(String privateKeyHex) {
     final privateKeyBytes = Uint8List.fromList(hex.decode(privateKeyHex));
     final privateKeyInt = BigInt.parse(privateKeyHex, radix: 16);
@@ -73,7 +73,7 @@ class Nip06Service {
     final publicKeyPoint = ecDomain.G * privateKeyInt;
     
     if (publicKeyPoint == null) {
-      throw Exception('Falha ao derivar chave pública');
+      throw Exception('Falha ao derivar chave p�blica');
     }
     
     // Retornar apenas coordenada X (32 bytes)
@@ -178,9 +178,9 @@ class Nip06Service {
     return Uint8List.fromList(hex.decode(hexStr));
   }
   
-  /// CRÍTICO: Deriva uma seed BIP-39 DETERMINÍSTICA da chave privada Nostr
+  /// CR�TICO: Deriva uma seed BIP-39 DETERMIN�STICA da chave privada Nostr
   /// Isso permite que: mesma chave Nostr = mesma seed Breez = SEMPRE
-  /// Mesmo após desinstalar e reinstalar o app!
+  /// Mesmo ap�s desinstalar e reinstalar o app!
   /// 
   /// Processo:
   /// 1. Faz HMAC-SHA512 da chave com salt "bro-wallet-seed"
@@ -189,13 +189,13 @@ class Nip06Service {
   String deriveSeedFromNostrKey(String privateKeyHex) {
     // Validar chave
     if (privateKeyHex.length != 64) {
-      throw Exception('Chave privada inválida: deve ter 64 caracteres hex');
+      throw Exception('Chave privada inv�lida: deve ter 64 caracteres hex');
     }
     
     final privateKeyBytes = Uint8List.fromList(hex.decode(privateKeyHex));
     
-    // Usar HMAC-SHA512 com salt específico para gerar entropia determinística
-    // O salt garante que não colidamos com outras derivações
+    // Usar HMAC-SHA512 com salt espec�fico para gerar entropia determin�stica
+    // O salt garante que n�o colidamos com outras deriva��es
     final hmac = HMac(SHA512Digest(), 128);
     final salt = utf8.encode('bro-wallet-seed-v1') as Uint8List;
     hmac.init(KeyParameter(salt));
@@ -214,7 +214,7 @@ class Nip06Service {
   }
   
   /// Verifica se uma seed foi derivada de uma chave Nostr
-  /// Útil para confirmar que a seed correta está sendo usada
+  /// �til para confirmar que a seed correta est� sendo usada
   bool verifySeedMatchesKey(String privateKeyHex, String mnemonic) {
     try {
       final derivedMnemonic = deriveSeedFromNostrKey(privateKeyHex);

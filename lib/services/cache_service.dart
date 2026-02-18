@@ -3,8 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/order.dart';
 
-/// Serviço de cache para dados offline
-/// Permite acessar histórico e dados mesmo sem internet
+/// Servi�o de cache para dados offline
+/// Permite acessar hist�rico e dados mesmo sem internet
 class CacheService {
   static final CacheService _instance = CacheService._internal();
   factory CacheService() => _instance;
@@ -20,7 +20,7 @@ class CacheService {
   static const String _keyUserProfile = 'cache_user_profile';
   static const String _keyNostrProfiles = 'cache_nostr_profiles';
   
-  // Tempos de expiração (em minutos)
+  // Tempos de expira��o (em minutos)
   static const int _btcPriceExpiry = 5; // 5 minutos
   static const int _ordersExpiry = 60; // 1 hora
   static const int _profileExpiry = 1440; // 24 horas
@@ -35,18 +35,18 @@ class CacheService {
   }
 
   // ============================================
-  // PREÇO DO BITCOIN
+  // PRE�O DO BITCOIN
   // ============================================
   
-  /// Salva preço do Bitcoin no cache
+  /// Salva pre�o do Bitcoin no cache
   Future<void> cacheBtcPrice(double price) async {
     final p = await prefs;
     await p.setDouble(_keyBtcPrice, price);
     await p.setInt(_keyBtcPriceTime, DateTime.now().millisecondsSinceEpoch);
-    debugPrint('💾 BTC price cached: R\$ ${price.toStringAsFixed(2)}');
+    debugPrint('?? BTC price cached: R\$ ${price.toStringAsFixed(2)}');
   }
   
-  /// Obtém preço do Bitcoin do cache (se não expirado)
+  /// Obt�m pre�o do Bitcoin do cache (se n�o expirado)
   Future<double?> getCachedBtcPrice() async {
     final p = await prefs;
     final cacheTime = p.getInt(_keyBtcPriceTime);
@@ -57,17 +57,17 @@ class CacheService {
     final isExpired = DateTime.now().difference(cacheDate).inMinutes > _btcPriceExpiry;
     
     if (isExpired) {
-      debugPrint('⏰ BTC price cache expired');
+      debugPrint('? BTC price cache expired');
       return null;
     }
     
     final price = p.getDouble(_keyBtcPrice);
-    debugPrint('📦 BTC price from cache: R\$ ${price?.toStringAsFixed(2)}');
+    debugPrint('?? BTC price from cache: R\$ ${price?.toStringAsFixed(2)}');
     return price;
   }
 
   // ============================================
-  // HISTÓRICO DE ORDENS
+  // HIST�RICO DE ORDENS
   // ============================================
   
   /// Salva ordens no cache para acesso offline
@@ -76,10 +76,10 @@ class CacheService {
     final ordersJson = orders.map((o) => o.toJson()).toList();
     await p.setString(_keyOrders, jsonEncode(ordersJson));
     await p.setInt(_keyOrdersTime, DateTime.now().millisecondsSinceEpoch);
-    debugPrint('💾 ${orders.length} orders cached');
+    debugPrint('?? ${orders.length} orders cached');
   }
   
-  /// Obtém ordens do cache
+  /// Obt�m ordens do cache
   Future<List<Order>?> getCachedOrders({bool ignoreExpiry = false}) async {
     final p = await prefs;
     final cacheTime = p.getInt(_keyOrdersTime);
@@ -91,7 +91,7 @@ class CacheService {
       final isExpired = DateTime.now().difference(cacheDate).inMinutes > _ordersExpiry;
       
       if (isExpired) {
-        debugPrint('⏰ Orders cache expired');
+        debugPrint('? Orders cache expired');
         return null;
       }
     }
@@ -102,10 +102,10 @@ class CacheService {
     try {
       final ordersJson = jsonDecode(ordersString) as List;
       final orders = ordersJson.map((json) => Order.fromJson(json)).toList();
-      debugPrint('📦 ${orders.length} orders from cache');
+      debugPrint('?? ${orders.length} orders from cache');
       return orders;
     } catch (e) {
-      debugPrint('❌ Error parsing cached orders: $e');
+      debugPrint('? Error parsing cached orders: $e');
       return null;
     }
   }
@@ -117,16 +117,16 @@ class CacheService {
     // Remove ordem existente com mesmo ID (se houver)
     cachedOrders.removeWhere((o) => o.id == order.id);
     
-    // Adiciona nova ordem no início
+    // Adiciona nova ordem no in�cio
     cachedOrders.insert(0, order);
     
-    // Mantém apenas as últimas 100 ordens
+    // Mant�m apenas as �ltimas 100 ordens
     final trimmedOrders = cachedOrders.take(100).toList();
     
     await cacheOrders(trimmedOrders);
   }
   
-  /// Atualiza uma ordem específica no cache
+  /// Atualiza uma ordem espec�fica no cache
   Future<void> updateOrderInCache(String orderId, String newStatus) async {
     final cachedOrders = await getCachedOrders(ignoreExpiry: true);
     if (cachedOrders == null) return;
@@ -151,7 +151,7 @@ class CacheService {
     
     cachedOrders[index] = updatedOrder;
     await cacheOrders(cachedOrders);
-    debugPrint('📝 Order $orderId updated in cache to $newStatus');
+    debugPrint('?? Order $orderId updated in cache to $newStatus');
   }
 
   // ============================================
@@ -167,10 +167,10 @@ class CacheService {
       'cachedAt': DateTime.now().millisecondsSinceEpoch,
     };
     await p.setString(_keyNostrProfiles, jsonEncode(profiles));
-    debugPrint('💾 Nostr profile cached: ${pubkey.substring(0, 8)}...');
+    debugPrint('?? Nostr profile cached: ${pubkey.substring(0, 8)}...');
   }
   
-  /// Obtém perfil Nostr do cache
+  /// Obt�m perfil Nostr do cache
   Future<Map<String, dynamic>?> getCachedNostrProfile(String pubkey) async {
     final profiles = await _getNostrProfilesMap();
     final entry = profiles[pubkey];
@@ -182,7 +182,7 @@ class CacheService {
     final isExpired = DateTime.now().difference(cacheDate).inMinutes > _profileExpiry;
     
     if (isExpired) {
-      debugPrint('⏰ Nostr profile cache expired: ${pubkey.substring(0, 8)}...');
+      debugPrint('? Nostr profile cache expired: ${pubkey.substring(0, 8)}...');
       return null;
     }
     
@@ -214,10 +214,10 @@ class CacheService {
     await p.remove(_keyOrdersTime);
     await p.remove(_keyUserProfile);
     await p.remove(_keyNostrProfiles);
-    debugPrint('🗑️ All cache cleared');
+    debugPrint('??? All cache cleared');
   }
   
-  /// Obtém tamanho estimado do cache
+  /// Obt�m tamanho estimado do cache
   Future<String> getCacheSize() async {
     final p = await prefs;
     int totalBytes = 0;
@@ -240,7 +240,7 @@ class CacheService {
     }
   }
   
-  /// Retorna data/hora do último cache de ordens
+  /// Retorna data/hora do �ltimo cache de ordens
   Future<DateTime?> getOrdersCacheTime() async {
     final p = await prefs;
     final cacheTime = p.getInt(_keyOrdersTime);

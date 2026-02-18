@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// Tipografia oficial do Bro
-/// Display: Fredoka (títulos, headers)
+/// Display: Fredoka (t�tulos, headers)
 /// Body: Inter (corpo de texto, UI)
 class BroTypography {
   BroTypography._();
@@ -10,7 +10,7 @@ class BroTypography {
   // FONT FAMILIES
   // ============================================
   
-  /// Font para títulos e headers
+  /// Font para t�tulos e headers
   static const String displayFont = 'Fredoka';
   
   /// Font para corpo de texto
@@ -20,7 +20,7 @@ class BroTypography {
   // DISPLAY STYLES (Fredoka)
   // ============================================
   
-  /// Display Large - Títulos principais
+  /// Display Large - T�tulos principais
   static const TextStyle displayLarge = TextStyle(
     fontFamily: displayFont,
     fontSize: 57,
@@ -175,7 +175,7 @@ class BroTypography {
   // CUSTOM STYLES
   // ============================================
   
-  /// Estilo para valores monetários
+  /// Estilo para valores monet�rios
   static const TextStyle money = TextStyle(
     fontFamily: bodyFont,
     fontSize: 32,
@@ -193,7 +193,7 @@ class BroTypography {
     height: 1.2,
   );
   
-  /// Estilo para botões
+  /// Estilo para bot�es
   static const TextStyle button = TextStyle(
     fontFamily: bodyFont,
     fontSize: 16,

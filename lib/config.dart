@@ -1,7 +1,7 @@
-﻿/// Configuracao centralizada do Bro App
+?/// Configuracao centralizada do Bro App
 ///
-/// Secrets são carregados via --dart-define-from-file=env.json
-/// Veja env.example.json para as variáveis necessárias.
+/// Secrets s�o carregados via --dart-define-from-file=env.json
+/// Veja env.example.json para as vari�veis necess�rias.
 ///
 /// Build local:  flutter run --dart-define-from-file=env.json
 /// Build CI:     gerado automaticamente pelo script pre-build
@@ -10,30 +10,30 @@ class AppConfig {
   // ============================================
   // MODO DE DESENVOLVIMENTO
   // ============================================
-  // ⚠️ SEGURANÇA: Em produção, ambos DEVEM ser FALSE!
+  // ?? SEGURAN�A: Em produ��o, ambos DEVEM ser FALSE!
   //
   // Para desenvolvimento local, crie um arquivo config_dev.dart
-  // e faça override dessas constantes
+  // e fa�a override dessas constantes
   // ============================================
   
   /// Modo de teste - usa dados mockados, sem backend real
-  /// ⚠️ PRODUÇÃO: DEVE SER FALSE
+  /// ?? PRODU��O: DEVE SER FALSE
   static const bool testMode = false; // DESATIVADO para teste de garantias
   
   /// Permite provedores sem garantia depositada
-  /// ⚠️ PRODUÇÃO: DEVE SER FALSE
-  static const bool providerTestMode = false; // DESATIVADO - corrigir persistência!
+  /// ?? PRODU��O: DEVE SER FALSE
+  static const bool providerTestMode = false; // DESATIVADO - corrigir persist�ncia!
 
   // ============================================
   // BACKEND API
   // ============================================
   
-  /// URL do backend — definido via env.json (BACKEND_URL)
-  /// Fallback: https://api.bro.app (produção)
+  /// URL do backend - definido via env.json (BACKEND_URL)
+  /// Fallback: https://api.bro.app (produ��o)
   ///
   /// Valores comuns para desenvolvimento:
   ///   Emulador Android: http://10.0.2.2:3002
-  ///   Dispositivo físico: http://<SEU_IP>:3002
+  ///   Dispositivo f�sico: http://<SEU_IP>:3002
   static const String defaultBackendUrl = String.fromEnvironment(
     'BACKEND_URL',
     defaultValue: 'https://api.bro.app',
@@ -43,7 +43,7 @@ class AppConfig {
   // BREEZ SDK (Lightning Network)
   // ============================================
   
-  /// API Key do Breez SDK — definido via env.json (BREEZ_API_KEY)
+  /// API Key do Breez SDK - definido via env.json (BREEZ_API_KEY)
   /// Obtenha seu certificado em https://breez.technology
   static const String breezApiKey = String.fromEnvironment('BREEZ_API_KEY');
 
@@ -84,13 +84,13 @@ class AppConfig {
   /// Taxa do provedor Bro (3% - vai para a carteira Lightning do Bro)
   static const double providerFeePercent = 0.03;
   
-  /// Taxa da plataforma (2% - vai para manutenção da plataforma)
+  /// Taxa da plataforma (2% - vai para manuten��o da plataforma)
   static const double platformFeePercent = 0.02;
   
-  /// Taxa total cobrada do usuário (5%)
+  /// Taxa total cobrada do usu�rio (5%)
   static const double totalFeePercent = providerFeePercent + platformFeePercent;
   
-  /// Endereço Lightning da plataforma para receber taxas (2%)
+  /// Endere�o Lightning da plataforma para receber taxas (2%)
   /// Definido via env.json (PLATFORM_LIGHTNING_ADDRESS)
   static const String platformLightningAddress = String.fromEnvironment(
     'PLATFORM_LIGHTNING_ADDRESS',
@@ -106,13 +106,13 @@ class AppConfig {
   /// Taxa fixa base do Boltz em sats (claim + lockup)
   static const int liquidSwapFeeBaseSats = 200; // ~200 sats fixo
   
-  /// Taxa da rede Liquid para transações
+  /// Taxa da rede Liquid para transa��es
   static const int liquidNetworkFeeSats = 50; // ~50 sats
   
   /// Taxa total fixa do Liquid em sats
   static const int liquidTotalFixedFeeSats = liquidSwapFeeBaseSats + liquidNetworkFeeSats;
   
-  /// Valor mínimo para usar Liquid (abaixo disso a taxa é muito alta proporcionalmente)
+  /// Valor m�nimo para usar Liquid (abaixo disso a taxa � muito alta proporcionalmente)
   static const int liquidMinAmountSats = 1000;
   
   /// Indica se deve usar Liquid como fallback quando Spark falha

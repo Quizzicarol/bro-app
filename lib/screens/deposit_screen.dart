@@ -26,7 +26,7 @@ class _DepositScreenState extends State<DepositScreen> {
   
   // Fees - centralizados no AppConfig
   // Taxa Bro: 3% (vai para o provedor)
-  // Taxa Plataforma: 2% (manutenção)
+  // Taxa Plataforma: 2% (manuten��o)
   // Total: 5%
   final double _providerFeePercent = AppConfig.providerFeePercent * 100; // 3%
   final double _platformFeePercent = AppConfig.platformFeePercent * 100; // 2%
@@ -81,7 +81,7 @@ class _DepositScreenState extends State<DepositScreen> {
   
   Future<void> _generateLightningInvoice() async {
     if (_amountBrl <= 0) {
-      _showError('Por favor, insira um valor válido');
+      _showError('Por favor, insira um valor v�lido');
       return;
     }
     
@@ -92,13 +92,13 @@ class _DepositScreenState extends State<DepositScreen> {
     });
     
     try {
-      // Usar LightningProvider com fallback automático Spark -> Liquid
+      // Usar LightningProvider com fallback autom�tico Spark -> Liquid
       final lightningProvider = context.read<LightningProvider>();
       
       // Create invoice via LightningProvider (tenta Spark, depois Liquid)
       final response = await lightningProvider.createInvoice(
         amountSats: _totalSats,
-        description: 'Depósito Bro - R\$ ${_totalBrl.toStringAsFixed(2)}',
+        description: 'Dep�sito Bro - R\$ ${_totalBrl.toStringAsFixed(2)}',
       );
 
       if (response == null) {
@@ -111,7 +111,7 @@ class _DepositScreenState extends State<DepositScreen> {
 
       // Log se usou Liquid
       if (response['isLiquid'] == true) {
-        debugPrint('💧 Invoice de depósito criada via LIQUID (fallback)');
+        debugPrint('?? Invoice de dep�sito criada via LIQUID (fallback)');
       }
 
       if (response['invoice'] is String) {
@@ -242,7 +242,7 @@ class _DepositScreenState extends State<DepositScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '⚡ Lightning Network',
+                          '? Lightning Network',
                           style: TextStyle(
                             color: Colors.orange,
                             fontWeight: FontWeight.bold,
@@ -251,7 +251,7 @@ class _DepositScreenState extends State<DepositScreen> {
                         ),
                         SizedBox(height: 4),
                         Text(
-                          'Pagamento instantâneo e taxas baixas',
+                          'Pagamento instant�neo e taxas baixas',
                           style: TextStyle(color: Colors.white70, fontSize: 12),
                         ),
                       ],
@@ -271,7 +271,7 @@ class _DepositScreenState extends State<DepositScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Valor do Depósito',
+                      'Valor do Dep�sito',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -305,7 +305,7 @@ class _DepositScreenState extends State<DepositScreen> {
                     const SizedBox(height: 8),
                     if (_amountBrl > 0)
                       Text(
-                        '≈ ${_amountSats.toStringAsFixed(0)} sats',
+                        '? ${_amountSats.toStringAsFixed(0)} sats',
                         style: const TextStyle(
                           color: Colors.orange,
                           fontSize: 14,

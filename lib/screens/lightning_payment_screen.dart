@@ -12,11 +12,11 @@ class LightningPaymentScreen extends StatefulWidget {
   final String invoice;
   final int amountSats;
   final double totalBrl;
-  final String orderId; // Pode ser vazio se ordem ainda não foi criada
+  final String orderId; // Pode ser vazio se ordem ainda n�o foi criada
   final String paymentHash;
   final String? receiver;
   
-  // 🔥 NOVOS CAMPOS: Dados para criar ordem APÓS pagamento
+  // ?? NOVOS CAMPOS: Dados para criar ordem AP�S pagamento
   final String? billType;
   final String? billCode;
   final double? billAmount;
@@ -48,7 +48,7 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
   StreamSubscription? _eventSubscription;
   bool _isPaid = false;
   bool _isChecking = false;
-  String? _createdOrderId; // ID da ordem criada após pagamento
+  String? _createdOrderId; // ID da ordem criada ap�s pagamento
 
   @override
   void initState() {
@@ -69,22 +69,22 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
     super.dispose();
   }
 
-  /// Escuta eventos do SDK em tempo real (mais rápido que polling)
+  /// Escuta eventos do SDK em tempo real (mais r�pido que polling)
   void _startEventListener() {
     final breezProvider = context.read<BreezProvider>();
     _eventSubscription = breezProvider.sdk?.addEventListener().listen((event) {
       if (_isPaid) return;
       
-      debugPrint('📡 Evento SDK: ${event.runtimeType}');
+      debugPrint('?? Evento SDK: ${event.runtimeType}');
       
       // Detectar pagamento recebido instantaneamente
       if (event.toString().contains('PaymentSucceeded') || 
           event.toString().contains('InvoicePaid')) {
-        debugPrint('⚡ Evento de pagamento detectado!');
+        debugPrint('? Evento de pagamento detectado!');
         _checkPayment(); // Verificar imediatamente
       }
     });
-    debugPrint('🎧 Escutando eventos do SDK em tempo real');
+    debugPrint('?? Escutando eventos do SDK em tempo real');
   }
 
   void _startPaymentCheck() {
@@ -125,12 +125,12 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
     if (mounted) {
       final orderProvider = context.read<OrderProvider>();
       
-      // 🔥 NOVO FLUXO: Criar ordem SOMENTE AGORA que o pagamento foi confirmado!
-      // Isso evita criar ordens "fantasma" que não foram pagas
+      // ?? NOVO FLUXO: Criar ordem SOMENTE AGORA que o pagamento foi confirmado!
+      // Isso evita criar ordens "fantasma" que n�o foram pagas
       String orderId = widget.orderId;
       
       if (orderId.isEmpty && widget.billType != null) {
-        debugPrint('🚀 Pagamento confirmado! CRIANDO ORDEM AGORA...');
+        debugPrint('?? Pagamento confirmado! CRIANDO ORDEM AGORA...');
         
         final order = await orderProvider.createOrder(
           billType: widget.billType!,
@@ -143,18 +143,18 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
         if (order != null) {
           orderId = order.id;
           _createdOrderId = orderId;
-          debugPrint('✅ Ordem CRIADA após pagamento: $orderId');
+          debugPrint('? Ordem CRIADA ap�s pagamento: $orderId');
           
           // Salvar paymentHash na ordem
           if (widget.paymentHash.isNotEmpty) {
             await orderProvider.setOrderPaymentHash(orderId, widget.paymentHash, widget.invoice);
-            debugPrint('✅ PaymentHash salvo na ordem: ${widget.paymentHash}');
+            debugPrint('? PaymentHash salvo na ordem: ${widget.paymentHash}');
           }
         } else {
-          debugPrint('❌ Falha ao criar ordem após pagamento!');
+          debugPrint('? Falha ao criar ordem ap�s pagamento!');
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Erro ao criar ordem. Pagamento recebido mas ordem não foi criada.'),
+              content: Text('Erro ao criar ordem. Pagamento recebido mas ordem n�o foi criada.'),
               backgroundColor: Colors.orange,
               duration: Duration(seconds: 5),
             ),
@@ -162,22 +162,22 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
           return;
         }
       } else {
-        // Ordem já existe (fluxo antigo) - apenas publicar
-        debugPrint('🚀 Pagamento confirmado! Publicando ordem existente...');
+        // Ordem j� existe (fluxo antigo) - apenas publicar
+        debugPrint('?? Pagamento confirmado! Publicando ordem existente...');
         final published = await orderProvider.publishOrderAfterPayment(orderId);
         if (published) {
-          debugPrint('✅ Ordem publicada no Nostr - Bros agora podem vê-la!');
+          debugPrint('? Ordem publicada no Nostr - Bros agora podem v�-la!');
         } else {
-          debugPrint('⚠️ Falha ao publicar ordem no Nostr');
+          debugPrint('?? Falha ao publicar ordem no Nostr');
         }
       }
       
-      // Status payment_received = usuário pagou via Lightning, aguardando Bro aceitar
+      // Status payment_received = usu�rio pagou via Lightning, aguardando Bro aceitar
       await orderProvider.updateOrderStatus(
         orderId: orderId,
         status: 'payment_received',
       );
-      debugPrint('✅ Ordem $orderId atualizada para payment_received');
+      debugPrint('? Ordem $orderId atualizada para payment_received');
 
       // Registrar taxa da plataforma (2%)
       try {
@@ -193,7 +193,7 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
         debugPrint('Erro ao registrar taxa: $e');
       }
 
-      // Mostrar mensagem e navegar para Minhas Ordens após 2 segundos
+      // Mostrar mensagem e navegar para Minhas Ordens ap�s 2 segundos
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Pagamento recebido! Agora aguarde um Bro aceitar sua ordem.'),
@@ -202,12 +202,12 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
         ),
       );
 
-      debugPrint('🔄 Aguardando 2 segundos para navegar... orderId=$orderId');
+      debugPrint('?? Aguardando 2 segundos para navegar... orderId=$orderId');
       
       // Aguardar 2 segundos e navegar para Detalhes da Ordem
       await Future.delayed(const Duration(seconds: 2));
       if (mounted && orderId.isNotEmpty) {
-        debugPrint('🚀 Navegando para /order-status com orderId=$orderId');
+        debugPrint('?? Navegando para /order-status com orderId=$orderId');
         Navigator.of(context).pushNamedAndRemoveUntil(
           '/order-status',
           (route) => route.isFirst,
@@ -219,7 +219,7 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
         );
       } else if (mounted) {
         // Fallback: voltar para o dashboard
-        debugPrint('⚠️ orderId vazio, voltando para dashboard');
+        debugPrint('?? orderId vazio, voltando para dashboard');
         Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
       }
     }
@@ -333,7 +333,7 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
                         ),
                         SizedBox(height: 4),
                         Text(
-                          'Agora é só aguardar um Bro aceitar sua ordem.',
+                          'Agora � s� aguardar um Bro aceitar sua ordem.',
                           style: TextStyle(color: Colors.white70, fontSize: 13),
                           textAlign: TextAlign.center,
                         ),

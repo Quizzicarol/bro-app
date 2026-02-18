@@ -2,16 +2,16 @@ import 'package:flutter/foundation.dart';
 import '../services/escrow_service.dart';
 import '../services/api_service.dart';
 
-/// Serviço para validação de comprovantes e liberação de fundos
+/// Servi�o para valida��o de comprovantes e libera��o de fundos
 class PaymentValidationService {
   final EscrowService _escrowService = EscrowService();
   final ApiService _apiService = ApiService();
 
-  /// Validar comprovante de pagamento (pode ser automático ou manual)
+  /// Validar comprovante de pagamento (pode ser autom�tico ou manual)
   /// 
   /// Fluxo:
   /// 1. Verificar se comprovante foi enviado
-  /// 2. Validação automática (OCR, análise de imagem) - opcional
+  /// 2. Valida��o autom�tica (OCR, an�lise de imagem) - opcional
   /// 3. Se aprovado: liberar escrow
   /// 4. Se rejeitado: permitir disputa
   Future<Map<String, dynamic>> validateReceipt({
@@ -20,49 +20,49 @@ class PaymentValidationService {
     bool autoApprove = false, // Para desenvolvimento/testes
   }) async {
     try {
-      debugPrint('🔍 Validando comprovante para ordem $orderId');
+      debugPrint('?? Validando comprovante para ordem $orderId');
 
       // Buscar detalhes da ordem
       final orderResponse = await _apiService.get('/api/orders/$orderId');
       if (orderResponse?['success'] != true) {
-        throw Exception('Ordem não encontrada');
+        throw Exception('Ordem n�o encontrada');
       }
 
       final order = orderResponse!['order'] as Map<String, dynamic>;
       final escrowId = order['escrow_id'] as String?;
       
       if (escrowId == null) {
-        throw Exception('Escrow não encontrado para esta ordem');
+        throw Exception('Escrow n�o encontrado para esta ordem');
       }
 
-      // Validação automática (simplificada por enquanto)
+      // Valida��o autom�tica (simplificada por enquanto)
       bool isValid = autoApprove;
       
       if (!autoApprove) {
-        // TODO: Implementar validação real
-        // - Análise OCR do comprovante
-        // - Verificação de dados (valor, destinatário, data)
+        // TODO: Implementar valida��o real
+        // - An�lise OCR do comprovante
+        // - Verifica��o de dados (valor, destinat�rio, data)
         // - Machine Learning para detectar fraudes
         
-        // Por enquanto, marcar para revisão manual
+        // Por enquanto, marcar para revis�o manual
         await _apiService.post('/api/orders/$orderId/review', {
           'receipt_url': receiptUrl,
           'status': 'pending_review',
           'submitted_at': DateTime.now().toIso8601String(),
         });
 
-        debugPrint('📋 Comprovante enviado para revisão manual');
+        debugPrint('?? Comprovante enviado para revis�o manual');
         
         return {
           'success': true,
           'status': 'pending_review',
-          'message': 'Comprovante enviado para revisão. Você será notificado quando for aprovado.',
+          'message': 'Comprovante enviado para revis�o. Voc� ser� notificado quando for aprovado.',
         };
       }
 
-      // Se auto-aprovado (ou após validação manual)
+      // Se auto-aprovado (ou ap�s valida��o manual)
       if (isValid) {
-        debugPrint('✅ Comprovante aprovado! Liberando fundos...');
+        debugPrint('? Comprovante aprovado! Liberando fundos...');
         
         // Marcar como aprovado
         await _apiService.post('/api/orders/$orderId/approve', {
@@ -73,14 +73,14 @@ class PaymentValidationService {
         return {
           'success': true,
           'status': 'approved',
-          'message': 'Comprovante aprovado! Fundos serão liberados.',
+          'message': 'Comprovante aprovado! Fundos ser�o liberados.',
         };
       } else {
-        debugPrint('❌ Comprovante rejeitado');
+        debugPrint('? Comprovante rejeitado');
         
         await _apiService.post('/api/orders/$orderId/reject', {
           'rejected_at': DateTime.now().toIso8601String(),
-          'reason': 'Comprovante inválido ou ilegível',
+          'reason': 'Comprovante inv�lido ou ileg�vel',
         });
 
         return {
@@ -90,7 +90,7 @@ class PaymentValidationService {
         };
       }
     } catch (e) {
-      debugPrint('❌ Erro ao validar comprovante: $e');
+      debugPrint('? Erro ao validar comprovante: $e');
       return {
         'success': false,
         'error': e.toString(),
@@ -98,7 +98,7 @@ class PaymentValidationService {
     }
   }
 
-  /// Liberar fundos após comprovante aprovado
+  /// Liberar fundos ap�s comprovante aprovado
   /// 
   /// Distribui:
   /// - Provedor: valor da conta + 3% de taxa
@@ -110,7 +110,7 @@ class PaymentValidationService {
     required String providerId,
   }) async {
     try {
-      debugPrint('💸 Liberando fundos para ordem $orderId');
+      debugPrint('?? Liberando fundos para ordem $orderId');
 
       // Liberar escrow via API
       await _escrowService.releaseEscrow(
@@ -119,7 +119,7 @@ class PaymentValidationService {
         providerId: providerId,
       );
 
-      debugPrint('✅ Fundos liberados com sucesso!');
+      debugPrint('? Fundos liberados com sucesso!');
       
       // Atualizar status da ordem
       await _apiService.post('/api/orders/$orderId/complete', {
@@ -129,14 +129,14 @@ class PaymentValidationService {
 
       return true;
     } catch (e) {
-      debugPrint('❌ Erro ao liberar fundos: $e');
+      debugPrint('? Erro ao liberar fundos: $e');
       return false;
     }
   }
 
   /// Processar ordem completa (validar + liberar)
   /// 
-  /// Usado quando comprovante é aprovado manualmente
+  /// Usado quando comprovante � aprovado manualmente
   Future<bool> processApprovedOrder({
     required String orderId,
   }) async {
@@ -144,7 +144,7 @@ class PaymentValidationService {
       // Buscar detalhes da ordem
       final orderResponse = await _apiService.get('/api/orders/$orderId');
       if (orderResponse?['success'] != true) {
-        throw Exception('Ordem não encontrada');
+        throw Exception('Ordem n�o encontrada');
       }
 
       final order = orderResponse!['order'] as Map<String, dynamic>;
@@ -158,24 +158,24 @@ class PaymentValidationService {
         providerId: providerId,
       );
     } catch (e) {
-      debugPrint('❌ Erro ao processar ordem: $e');
+      debugPrint('? Erro ao processar ordem: $e');
       return false;
     }
   }
 
-  /// Auto-aprovar após timeout (para desenvolvimento)
+  /// Auto-aprovar ap�s timeout (para desenvolvimento)
   /// 
-  /// Em produção, isso seria feito por um worker backend
+  /// Em produ��o, isso seria feito por um worker backend
   Future<void> scheduleAutoApproval({
     required String orderId,
     required Duration timeout,
   }) async {
-    debugPrint('⏰ Agendando auto-aprovação para ordem $orderId em ${timeout.inMinutes}min');
+    debugPrint('? Agendando auto-aprova��o para ordem $orderId em ${timeout.inMinutes}min');
     
     // Aguardar timeout
     await Future.delayed(timeout);
     
-    // Verificar se ainda está pendente
+    // Verificar se ainda est� pendente
     final orderResponse = await _apiService.get('/api/orders/$orderId');
     if (orderResponse?['success'] != true) return;
 
@@ -183,7 +183,7 @@ class PaymentValidationService {
     final status = order['status'] as String;
 
     if (status == 'payment_submitted') {
-      debugPrint('⏰ Timeout atingido! Auto-aprovando ordem $orderId');
+      debugPrint('? Timeout atingido! Auto-aprovando ordem $orderId');
       
       await validateReceipt(
         orderId: orderId,
@@ -200,7 +200,7 @@ class PaymentValidationService {
     required String rejectedBy, // 'admin' ou 'user'
   }) async {
     try {
-      debugPrint('⚠️ Rejeitando comprovante e abrindo disputa');
+      debugPrint('?? Rejeitando comprovante e abrindo disputa');
 
       // Rejeitar comprovante via API
       await _apiService.post('/api/orders/$orderId/reject', {
@@ -210,15 +210,15 @@ class PaymentValidationService {
         'status': 'disputed',
       });
 
-      debugPrint('✅ Disputa aberta');
+      debugPrint('? Disputa aberta');
       return true;
     } catch (e) {
-      debugPrint('❌ Erro ao rejeitar e abrir disputa: $e');
+      debugPrint('? Erro ao rejeitar e abrir disputa: $e');
       return false;
     }
   }
 
-  /// Consultar status de validação
+  /// Consultar status de valida��o
   Future<Map<String, dynamic>?> getValidationStatus(String orderId) async {
     try {
       final response = await _apiService.get('/api/orders/$orderId/validation');
@@ -229,7 +229,7 @@ class PaymentValidationService {
       
       return null;
     } catch (e) {
-      debugPrint('❌ Erro ao consultar status de validação: $e');
+      debugPrint('? Erro ao consultar status de valida��o: $e');
       return null;
     }
   }

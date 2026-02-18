@@ -16,7 +16,7 @@ String _safeSubstring(String? str, int length) {
   return str.substring(0, length);
 }
 
-/// Tela para visualizar todas as ordens do usuário
+/// Tela para visualizar todas as ordens do usu�rio
 class UserOrdersScreen extends StatefulWidget {
   final String userId;
 
@@ -47,37 +47,37 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
   }
 
   /// Reconcilia automaticamente ordens com pagamentos da carteira
-  /// Usa o método autoReconcileWithBreezPayments do OrderProvider que verifica:
-  /// 1. Pagamentos RECEBIDOS → ordens pending → payment_received
-  /// 2. Pagamentos ENVIADOS → ordens awaiting_confirmation → completed
+  /// Usa o m�todo autoReconcileWithBreezPayments do OrderProvider que verifica:
+  /// 1. Pagamentos RECEBIDOS ? ordens pending ? payment_received
+  /// 2. Pagamentos ENVIADOS ? ordens awaiting_confirmation ? completed
   Future<void> _autoReconcileOrders(OrderProvider orderProvider, BreezProvider breezProvider) async {
     try {
-      debugPrint('🔄 Iniciando reconciliação automática de ordens...');
+      debugPrint('?? Iniciando reconcilia��o autom�tica de ordens...');
       
       // Buscar todos os pagamentos da carteira (recebidos E enviados)
       final payments = await breezProvider.getAllPayments();
       
       if (payments.isEmpty) {
-        debugPrint('📭 Nenhum pagamento na carteira para reconciliar');
+        debugPrint('?? Nenhum pagamento na carteira para reconciliar');
         return;
       }
       
-      // Usar o novo método completo de reconciliação
+      // Usar o novo m�todo completo de reconcilia��o
       final result = await orderProvider.autoReconcileWithBreezPayments(payments);
       
       final pendingReconciled = result['pendingReconciled'] ?? 0;
       final completedReconciled = result['completedReconciled'] ?? 0;
       
       if (pendingReconciled > 0 || completedReconciled > 0) {
-        debugPrint('🎉 Reconciliação concluída: $pendingReconciled pending→paid, $completedReconciled awaiting→completed');
-        // Recarregar ordens para refletir mudanças
+        debugPrint('?? Reconcilia��o conclu�da: $pendingReconciled pending?paid, $completedReconciled awaiting?completed');
+        // Recarregar ordens para refletir mudan�as
         await orderProvider.fetchOrders();
       } else {
-        debugPrint('✅ Nenhuma ordem precisou ser reconciliada');
+        debugPrint('? Nenhuma ordem precisou ser reconciliada');
       }
       
     } catch (e) {
-      debugPrint('⚠️ Erro na reconciliação automática: $e');
+      debugPrint('?? Erro na reconcilia��o autom�tica: $e');
     }
   }
 
@@ -95,10 +95,10 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
       final orderProvider = Provider.of<OrderProvider>(context, listen: false);
       final breezProvider = Provider.of<BreezProvider>(context, listen: false);
       
-      // SEGURANÇA CRÍTICA: Garantir que NÃO estamos em modo provedor
+      // SEGURAN�A CR�TICA: Garantir que N�O estamos em modo provedor
       // Isso previne vazamento de dados se o exitProviderMode falhou
       if (orderProvider.isProviderMode) {
-        debugPrint('⚠️ [MINHAS TROCAS] Detectado modo provedor ativo! Forçando reset...');
+        debugPrint('?? [MINHAS TROCAS] Detectado modo provedor ativo! For�ando reset...');
         orderProvider.exitProviderMode();
       }
       
@@ -111,20 +111,20 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
         });
       }
       
-      // RECONCILIAÇÃO AUTOMÁTICA COMPLETA
+      // RECONCILIA��O AUTOM�TICA COMPLETA
       if (breezProvider.isInitialized) {
         await _autoReconcileOrders(orderProvider, breezProvider);
       }
       
-      debugPrint('📱 OrderProvider tem ${orderProvider.orders.length} ordens no total');
+      debugPrint('?? OrderProvider tem ${orderProvider.orders.length} ordens no total');
       
-      // SEGURANÇA: Usar getter específico para ordens que EU CRIEI
+      // SEGURAN�A: Usar getter espec�fico para ordens que EU CRIEI
       // Isso evita vazamento de ordens aceitas como provedor
       final currentUserPubkey = widget.userId;
-      debugPrint('🔐 Carregando ordens CRIADAS pelo usuário: ${_safeSubstring(currentUserPubkey, 8)}...');
+      debugPrint('?? Carregando ordens CRIADAS pelo usu�rio: ${_safeSubstring(currentUserPubkey, 8)}...');
       
-      // CORREÇÃO VAZAMENTO: Usar myCreatedOrders em vez de orders
-      // orders inclui ordens aceitas como provedor, myCreatedOrders não!
+      // CORRE��O VAZAMENTO: Usar myCreatedOrders em vez de orders
+      // orders inclui ordens aceitas como provedor, myCreatedOrders n�o!
       final localOrders = orderProvider.myCreatedOrders
         .map((order) => {
           'id': order.id,
@@ -145,9 +145,9 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
           _isLoading = false;
         });
       }
-      debugPrint('📱 ${_orders.length} ordens carregadas');
+      debugPrint('?? ${_orders.length} ordens carregadas');
     } catch (e) {
-      debugPrint('❌ Erro ao carregar ordens: $e');
+      debugPrint('? Erro ao carregar ordens: $e');
       if (mounted) {
         setState(() {
           _error = e.toString();
@@ -157,10 +157,10 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
     }
   }
 
-  /// Alias para _loadOrdersWithAutoReconcile (mantém compatibilidade)
+  /// Alias para _loadOrdersWithAutoReconcile (mant�m compatibilidade)
   Future<void> _loadOrders() => _loadOrdersWithAutoReconcile();
 
-  /// RECONCILIAÇÃO FORÇADA - Verifica TODOS os pagamentos e atualiza TODAS as ordens
+  /// RECONCILIA��O FOR�ADA - Verifica TODOS os pagamentos e atualiza TODAS as ordens
   Future<void> _forceReconcileAllOrders() async {
     if (!mounted) return;
     
@@ -187,7 +187,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('⚠️ Carteira não inicializada. Aguarde...'),
+            content: Text('?? Carteira n�o inicializada. Aguarde...'),
             backgroundColor: Colors.orange,
           ),
         );
@@ -201,14 +201,14 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('📭 Nenhum pagamento encontrado na carteira'),
+            content: Text('?? Nenhum pagamento encontrado na carteira'),
             backgroundColor: Colors.orange,
           ),
         );
         return;
       }
       
-      // Usar reconciliação FORÇADA
+      // Usar reconcilia��o FOR�ADA
       final result = await orderProvider.forceReconcileAllOrders(payments);
       
       Navigator.pop(context);
@@ -218,7 +218,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
       if (updated > 0) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✅ $updated ordem(s) atualizada(s) automaticamente!'),
+            content: Text('? $updated ordem(s) atualizada(s) automaticamente!'),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 4),
           ),
@@ -227,7 +227,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('ℹ️ Nenhuma ordem precisou ser atualizada'),
+            content: Text('?? Nenhuma ordem precisou ser atualizada'),
             backgroundColor: Colors.blue,
           ),
         );
@@ -236,20 +236,20 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('❌ Erro: $e'),
+          content: Text('? Erro: $e'),
           backgroundColor: Colors.red,
         ),
       );
     }
   }
 
-  /// Verificar se há pagamentos recebidos que não foram associados a ordens pendentes
+  /// Verificar se h� pagamentos recebidos que n�o foram associados a ordens pendentes
   Future<void> _checkPendingPayments() async {
-    // Redirecionar para reconciliação forçada
+    // Redirecionar para reconcilia��o for�ada
     await _forceReconcileAllOrders();
   }
 
-  /// Mostra diagnóstico completo de pagamentos da carteira vs ordens
+  /// Mostra diagn�stico completo de pagamentos da carteira vs ordens
   Future<void> _showPaymentDiagnostic() async {
     final breezProvider = context.read<BreezProvider>();
     final orderProvider = context.read<OrderProvider>();
@@ -257,7 +257,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
     if (!breezProvider.isInitialized) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('⚠️ Carteira não inicializada'),
+          content: Text('?? Carteira n�o inicializada'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -295,7 +295,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
       // Fechar loading
       if (mounted) Navigator.pop(context);
       
-      // Criar relatório
+      // Criar relat�rio
       final paymentsReceived = payments.where((p) => 
         p['status'] == 'PaymentStatus.completed' && 
         (p['direction'] == 'RECEBIDO' || p['type']?.toString().contains('receive') == true)
@@ -323,13 +323,13 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
         }
       }
       
-      // Mostrar diálogo com resultado
+      // Mostrar di�logo com resultado
       if (mounted) {
         showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
             backgroundColor: const Color(0xFF1E1E1E),
-            title: const Text('🔍 Diagnóstico de Pagamentos', style: TextStyle(color: Colors.white)),
+            title: const Text('?? Diagn�stico de Pagamentos', style: TextStyle(color: Colors.white)),
             content: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -357,14 +357,14 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                   
                   // Pagamentos na carteira
                   Text(
-                    '💰 Pagamentos recebidos: ${paymentsReceived.length}',
+                    '?? Pagamentos recebidos: ${paymentsReceived.length}',
                     style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 8),
                   
                   // Ordens
                   Text(
-                    '📋 Ordens com invoice: ${ordersWithHash.length}',
+                    '?? Ordens com invoice: ${ordersWithHash.length}',
                     style: const TextStyle(color: Colors.white70),
                   ),
                   const SizedBox(height: 16),
@@ -372,7 +372,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                   // Ordens PAGAS
                   if (ordersPaid.isNotEmpty) ...[
                     const Text(
-                      '✅ ORDENS PAGAS (confirmado na carteira):',
+                      '? ORDENS PAGAS (confirmado na carteira):',
                       style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12),
                     ),
                     const SizedBox(height: 4),
@@ -383,10 +383,10 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                     const SizedBox(height: 12),
                   ],
                   
-                  // Ordens NÃO PAGAS
+                  // Ordens N�O PAGAS
                   if (ordersNotPaid.isNotEmpty) ...[
                     const Text(
-                      '❌ ORDENS NÃO PAGAS (não encontrado na carteira):',
+                      '? ORDENS N�O PAGAS (n�o encontrado na carteira):',
                       style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12),
                     ),
                     const SizedBox(height: 4),
@@ -417,7 +417,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
       if (mounted) Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('❌ Erro: $e'),
+          content: Text('? Erro: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -450,12 +450,12 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
         title: const Text('Cancelar Ordem?'),
         content: const Text(
           'Tem certeza que deseja cancelar esta ordem?\n\n'
-          'Seus sats permanecerão na sua carteira do app.',
+          'Seus sats permanecer�o na sua carteira do app.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Não'),
+            child: const Text('N�o'),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
@@ -472,7 +472,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
       bool success = false;
       
       // SEMPRE usar OrderProvider para atualizar status (inclui Nostr)
-      // Isso garante que o cancelamento seja publicado nos relays para outros usuários verem
+      // Isso garante que o cancelamento seja publicado nos relays para outros usu�rios verem
       try {
         final orderProvider = Provider.of<OrderProvider>(context, listen: false);
         
@@ -483,20 +483,20 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
         );
         
         if (success) {
-          debugPrint('✅ Ordem $orderId cancelada e publicada no Nostr');
+          debugPrint('? Ordem $orderId cancelada e publicada no Nostr');
         }
       } catch (e) {
-        debugPrint('❌ Erro ao cancelar ordem: $e');
+        debugPrint('? Erro ao cancelar ordem: $e');
       }
 
       if (success) {
         _loadOrders(); // Recarregar lista
-        // Mostrar confirmação simples
+        // Mostrar confirma��o simples
         _showCancelConfirmation();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('❌ Erro ao cancelar ordem'),
+            content: Text('? Erro ao cancelar ordem'),
             backgroundColor: Colors.red,
           ),
         );
@@ -544,7 +544,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
             ),
             const SizedBox(height: 16),
             const Text(
-              'Nenhum Bro poderá mais aceitar esta ordem.',
+              'Nenhum Bro poder� mais aceitar esta ordem.',
               style: TextStyle(fontSize: 14),
             ),
             const SizedBox(height: 8),
@@ -779,7 +779,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                 ),
                 const SizedBox(height: 20),
                 
-                // Mostrar valor se disponível
+                // Mostrar valor se dispon�vel
                 if (amountSats != null && amountSats > 0) ...[
                   Container(
                     padding: const EdgeInsets.all(12),
@@ -834,7 +834,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                 ),
                 const SizedBox(height: 12),
                 
-                // Botões Colar e Escanear lado a lado
+                // Bot�es Colar e Escanear lado a lado
                 Row(
                   children: [
                     Expanded(
@@ -845,7 +845,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                             invoiceController.text = data!.text!.trim();
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text('✅ Colado!'),
+                                content: Text('? Colado!'),
                                 duration: Duration(seconds: 1),
                               ),
                             );
@@ -889,7 +889,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                 ),
                 const SizedBox(height: 16),
                 
-                // Botão Enviar
+                // Bot�o Enviar
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
@@ -909,7 +909,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                         resolveError = null;
                       });
                       
-                      // Verificar se é um Lightning Address ou LNURL
+                      // Verificar se � um Lightning Address ou LNURL
                       if (LnAddressService.isLightningAddress(input) || 
                           LnAddressService.isLnurl(input)) {
                         // Precisa ter valor para LN Address/LNURL
@@ -947,11 +947,11 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                         return;
                       }
                       
-                      // É uma invoice BOLT11
+                      // � uma invoice BOLT11
                       if (!input.toLowerCase().startsWith('lnbc') && 
                           !input.toLowerCase().startsWith('lntb')) {
                         setModalState(() {
-                          resolveError = 'Destino inválido. Use invoice (lnbc...), LNURL ou user@wallet.com';
+                          resolveError = 'Destino inv�lido. Use invoice (lnbc...), LNURL ou user@wallet.com';
                         });
                         return;
                       }
@@ -990,7 +990,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
     );
   }
 
-  // ==================== SAQUE COM INVOICE PRÉ-PREENCHIDA ====================
+  // ==================== SAQUE COM INVOICE PR�-PREENCHIDA ====================
   void _showWithdrawWithInvoice(String invoice) {
     final invoiceController = TextEditingController(text: invoice);
     bool isSending = false;
@@ -1097,7 +1097,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                 ),
                 const SizedBox(height: 20),
                 
-                // Botão Enviar
+                // Bot�o Enviar
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
@@ -1147,7 +1147,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('✅ Saque enviado com sucesso!'),
+              content: Text('? Saque enviado com sucesso!'),
               backgroundColor: Colors.green,
             ),
           );
@@ -1158,7 +1158,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
         if (dialogContext.mounted) {
           ScaffoldMessenger.of(dialogContext).showSnackBar(
             SnackBar(
-              content: Text('❌ $errorMsg'),
+              content: Text('? $errorMsg'),
               backgroundColor: Colors.red,
             ),
           );
@@ -1169,7 +1169,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
       if (dialogContext.mounted) {
         ScaffoldMessenger.of(dialogContext).showSnackBar(
           SnackBar(
-            content: Text('❌ Erro: $e'),
+            content: Text('? Erro: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -1238,11 +1238,11 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
               child: MobileScanner(
                 onDetect: (capture) {
                   final List<Barcode> barcodes = capture.barcodes;
-                  debugPrint('📷 QR Scanner detectou ${barcodes.length} códigos');
+                  debugPrint('?? QR Scanner detectou ${barcodes.length} c�digos');
                   
                   for (final barcode in barcodes) {
                     final code = barcode.rawValue;
-                    debugPrint('📷 Código raw: $code');
+                    debugPrint('?? C�digo raw: $code');
                     
                     if (code != null && code.isNotEmpty) {
                       String cleaned = code.trim();
@@ -1257,19 +1257,19 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                         cleaned = cleaned.substring(6);
                       }
                       
-                      // Remover parâmetros de query string se houver
+                      // Remover par�metros de query string se houver
                       if (cleaned.contains('?')) {
                         cleaned = cleaned.split('?')[0];
                       }
                       
-                      debugPrint('📷 Código após limpeza: $cleaned');
+                      debugPrint('?? C�digo ap�s limpeza: $cleaned');
                       
                       // BOLT11 Invoice
                       if (cleaned.toLowerCase().startsWith('lnbc') || 
                           cleaned.toLowerCase().startsWith('lntb') ||
                           cleaned.toLowerCase().startsWith('lnurl')) {
                         scannedCode = cleaned;
-                        debugPrint('✅ Invoice detectada: $scannedCode');
+                        debugPrint('? Invoice detectada: $scannedCode');
                         Navigator.pop(context);
                         return;
                       }
@@ -1279,16 +1279,16 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                         final cleanedAddress = LnAddressService.cleanAddress(cleaned);
                         if (LnAddressService.isLightningAddress(cleanedAddress)) {
                           scannedCode = cleanedAddress;
-                          debugPrint('✅ LN Address detectado: $scannedCode');
+                          debugPrint('? LN Address detectado: $scannedCode');
                           Navigator.pop(context);
                           return;
                         }
                       }
                       
-                      // Se não reconheceu mas tem conteúdo, aceitar mesmo assim
+                      // Se n�o reconheceu mas tem conte�do, aceitar mesmo assim
                       if (cleaned.length > 10) {
                         scannedCode = cleaned;
-                        debugPrint('⚠️ Código não reconhecido, aceitando: $scannedCode');
+                        debugPrint('?? C�digo n�o reconhecido, aceitando: $scannedCode');
                         Navigator.pop(context);
                         return;
                       }
@@ -1298,7 +1298,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
               ),
             ),
             
-            // Instruções
+            // Instru��es
             Container(
               padding: const EdgeInsets.all(20),
               color: const Color(0xFF1A1A1A),
@@ -1363,7 +1363,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                 const SizedBox(width: 6),
                 Expanded(
                   child: _buildFilterChip(
-                    'Concluídas',
+                    'Conclu�das',
                     'completed',
                     _orders.where((o) => o['status'] == 'completed').length,
                   ),
@@ -1390,7 +1390,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                         const SizedBox(height: 16),
                         Text(
                           _isSyncingNostr 
-                              ? '🔄 Sincronizando com Nostr...'
+                              ? '?? Sincronizando com Nostr...'
                               : 'Carregando ordens...',
                           style: const TextStyle(color: Colors.white70, fontSize: 14),
                         ),
@@ -1398,7 +1398,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                           const Padding(
                             padding: EdgeInsets.only(top: 8),
                             child: Text(
-                              'Buscando em múltiplos relays',
+                              'Buscando em m�ltiplos relays',
                               style: TextStyle(color: Colors.white38, fontSize: 12),
                             ),
                           ),
@@ -1498,11 +1498,11 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
       case 'active':
         return 'Nenhuma ordem ativa';
       case 'completed':
-        return 'Nenhuma ordem concluída';
+        return 'Nenhuma ordem conclu�da';
       case 'cancelled':
         return 'Nenhuma ordem cancelada';
       default:
-        return 'Você ainda não criou nenhuma ordem';
+        return 'Voc� ainda n�o criou nenhuma ordem';
     }
   }
 
@@ -1521,7 +1521,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
       margin: const EdgeInsets.only(bottom: 16),
       child: InkWell(
         onTap: () {
-          // Se ordem está completada, mostrar detalhes. Senão, mostrar status
+          // Se ordem est� completada, mostrar detalhes. Sen�o, mostrar status
           if (status == 'completed') {
             Navigator.push(
               context,
@@ -1639,7 +1639,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                   ),
                 ),
               ],
-              // Botão de saque para ordens canceladas
+              // Bot�o de saque para ordens canceladas
               if (status == 'cancelled') ...[
                 const SizedBox(height: 12),
                 Container(
@@ -1655,7 +1655,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Seus sats estão na sua carteira${order['amount_sats'] != null ? ' (${order['amount_sats']} sats)' : ''}',
+                          'Seus sats est�o na sua carteira${order['amount_sats'] != null ? ' (${order['amount_sats']} sats)' : ''}',
                           style: const TextStyle(
                             color: Colors.blue,
                             fontSize: 13,
@@ -1711,7 +1711,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
         };
       case 'completed':
         return {
-          'label': 'Concluída ✓',
+          'label': 'Conclu�da ?',
           'color': Colors.green,
           'icon': Icons.celebration,
         };
@@ -1741,11 +1741,11 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
     final difference = now.difference(date);
 
     if (difference.inDays == 0) {
-      return 'Hoje às ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+      return 'Hoje �s ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
     } else if (difference.inDays == 1) {
       return 'Ontem';
     } else if (difference.inDays < 7) {
-      return '${difference.inDays} dias atrás';
+      return '${difference.inDays} dias atr�s';
     } else {
       return '${date.day}/${date.month}/${date.year}';
     }

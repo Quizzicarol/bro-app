@@ -8,10 +8,10 @@ import '../extensions/breez_extensions.dart';
 
 /// Carteira Master da Plataforma para Escrow e Split de Taxas
 /// 
-/// Esta carteira é controlada APENAS pelo administrador da plataforma.
+/// Esta carteira � controlada APENAS pelo administrador da plataforma.
 /// Fluxo:
 /// 1. Cliente paga para esta carteira (via invoice gerada aqui)
-/// 2. Plataforma retém 2% de taxa
+/// 2. Plataforma ret�m 2% de taxa
 /// 3. Plataforma envia 98% para o provedor automaticamente
 class PlatformWalletService {
   static PlatformWalletService? _instance;
@@ -46,7 +46,7 @@ class PlatformWalletService {
     _isLoading = true;
     _error = null;
     
-    debugPrint('🏦 Inicializando Carteira Master da Plataforma...');
+    debugPrint('?? Inicializando Carteira Master da Plataforma...');
     
     try {
       if (!_rustLibInitialized) {
@@ -56,11 +56,11 @@ class PlatformWalletService {
       
       if (mnemonic != null && mnemonic.isNotEmpty) {
         _mnemonic = mnemonic;
-        debugPrint('🔑 Usando mnemonic existente');
+        debugPrint('?? Usando mnemonic existente');
       } else {
         _mnemonic = bip39.generateMnemonic();
-        debugPrint('🆕 Nova carteira master gerada');
-        // SEGURANÇA: NUNCA imprimir mnemonic em logs!
+        debugPrint('?? Nova carteira master gerada');
+        // SEGURAN�A: NUNCA imprimir mnemonic em logs!
         // O mnemonic deve ser mostrado apenas na UI para backup
       }
       
@@ -73,7 +73,7 @@ class PlatformWalletService {
         apiKey: BreezConfig.apiKey,
       );
       
-      debugPrint('🔗 Conectando carteira master ($network)...');
+      debugPrint('?? Conectando carteira master ($network)...');
       
       _sdk = await spark.connect(
         request: spark.ConnectRequest(
@@ -84,14 +84,14 @@ class PlatformWalletService {
       );
       
       _isInitialized = true;
-      debugPrint('✅ Carteira Master inicializada!');
+      debugPrint('? Carteira Master inicializada!');
       
       _syncInBackground();
       
       return true;
     } catch (e) {
       _error = 'Erro ao inicializar carteira master: $e';
-      debugPrint('❌ $_error');
+      debugPrint('? $_error');
       return false;
     } finally {
       _isLoading = false;
@@ -103,9 +103,9 @@ class PlatformWalletService {
     try {
       await _sdk!.syncWallet(request: spark.SyncWalletRequest());
       final info = await _sdk!.getInfo(request: spark.GetInfoRequest());
-      debugPrint('🏦 Saldo Master: ${info.balanceSats} sats');
+      debugPrint('?? Saldo Master: ${info.balanceSats} sats');
     } catch (e) {
-      debugPrint('⚠️ Erro sync: $e');
+      debugPrint('?? Erro sync: $e');
     }
   }
 
@@ -117,10 +117,10 @@ class PlatformWalletService {
     String? description,
   }) async {
     if (!_isInitialized || _sdk == null) {
-      return {'success': false, 'error': 'Carteira master não inicializada'};
+      return {'success': false, 'error': 'Carteira master n�o inicializada'};
     }
     
-    debugPrint('📥 Criando invoice escrow de $amountSats sats...');
+    debugPrint('?? Criando invoice escrow de $amountSats sats...');
     
     try {
       final resp = await _sdk!.receivePayment(
@@ -142,7 +142,7 @@ class PlatformWalletService {
         }
       } catch (_) {}
       
-      debugPrint('✅ Invoice escrow criada');
+      debugPrint('? Invoice escrow criada');
       
       return {
         'success': true,
@@ -153,7 +153,7 @@ class PlatformWalletService {
         'providerAddress': providerLightningAddress,
       };
     } catch (e) {
-      debugPrint('❌ Erro criando invoice escrow: $e');
+      debugPrint('? Erro criando invoice escrow: $e');
       return {'success': false, 'error': e.toString()};
     }
   }
@@ -164,13 +164,13 @@ class PlatformWalletService {
     required String providerInvoice, // BOLT11 invoice do provedor
   }) async {
     if (!_isInitialized || _sdk == null) {
-      return {'success': false, 'error': 'Carteira master não inicializada'};
+      return {'success': false, 'error': 'Carteira master n�o inicializada'};
     }
     
     final platformFeeSats = (totalSats * platformFeePercent).round();
     final providerAmountSats = totalSats - platformFeeSats;
     
-    debugPrint('💰 Processando split:');
+    debugPrint('?? Processando split:');
     debugPrint('   Total recebido: $totalSats sats');
     debugPrint('   Taxa plataforma (2%): $platformFeeSats sats');
     debugPrint('   Para provedor: $providerAmountSats sats');
@@ -193,7 +193,7 @@ class PlatformWalletService {
         ),
       );
       
-      debugPrint('✅ Pagamento enviado para provedor');
+      debugPrint('? Pagamento enviado para provedor');
       return {
         'success': true,
         'providerAmount': providerAmountSats,
@@ -205,7 +205,7 @@ class PlatformWalletService {
         },
       };
     } catch (e) {
-      debugPrint('❌ Erro no split: $e');
+      debugPrint('? Erro no split: $e');
       return {'success': false, 'error': e.toString()};
     }
   }
@@ -213,7 +213,7 @@ class PlatformWalletService {
   /// Verifica se um pagamento foi recebido
   Future<Map<String, dynamic>> checkPaymentReceived(String paymentHash) async {
     if (!_isInitialized || _sdk == null) {
-      return {'received': false, 'error': 'Não inicializado'};
+      return {'received': false, 'error': 'N�o inicializado'};
     }
     
     try {
@@ -242,10 +242,10 @@ class PlatformWalletService {
     }
   }
 
-  /// Obtém saldo da carteira master
+  /// Obt�m saldo da carteira master
   Future<Map<String, dynamic>> getBalance() async {
     if (!_isInitialized || _sdk == null) {
-      return {'balance': 0, 'error': 'Não inicializado'};
+      return {'balance': 0, 'error': 'N�o inicializado'};
     }
     
     try {
@@ -280,7 +280,7 @@ class PlatformWalletService {
     }
   }
 
-  /// Gera endereço Bitcoin on-chain
+  /// Gera endere�o Bitcoin on-chain
   Future<String?> generateBitcoinAddress() async {
     if (!_isInitialized || _sdk == null) return null;
     
@@ -292,7 +292,7 @@ class PlatformWalletService {
       );
       return resp.paymentRequest;
     } catch (e) {
-      debugPrint('Erro gerando endereço: $e');
+      debugPrint('Erro gerando endere�o: $e');
       return null;
     }
   }

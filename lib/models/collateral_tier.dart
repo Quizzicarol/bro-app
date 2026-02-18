@@ -1,10 +1,10 @@
-/// Modelo de níveis de garantia (collateral) para provedores
+/// Modelo de n�veis de garantia (collateral) para provedores
 class CollateralTier {
   final String id;
   final String name;
-  final double maxOrderValueBrl; // Valor máximo de ordem que pode aceitar
-  final double requiredCollateralBrl; // Garantia necessária em BRL
-  final int requiredCollateralSats; // Garantia necessária em sats (calculado)
+  final double maxOrderValueBrl; // Valor m�ximo de ordem que pode aceitar
+  final double requiredCollateralBrl; // Garantia necess�ria em BRL
+  final int requiredCollateralSats; // Garantia necess�ria em sats (calculado)
   final String description;
   final List<String> benefits;
 
@@ -42,89 +42,89 @@ class CollateralTier {
     };
   }
 
-  /// Define os tiers disponíveis baseado no preço atual do Bitcoin
+  /// Define os tiers dispon�veis baseado no pre�o atual do Bitcoin
   static List<CollateralTier> getAvailableTiers(double btcPriceBrl) {
     final satsPerBrl = 100000000 / btcPriceBrl; // 1 BTC = 100M sats
 
     return [
-      // 🧪 Tier Trial - para testar o app
+      // ?? Tier Trial - para testar o app
       CollateralTier(
         id: 'trial',
-        name: '🧪 Trial',
+        name: '?? Trial',
         maxOrderValueBrl: 10,
         requiredCollateralBrl: 10,
         requiredCollateralSats: (10 * satsPerBrl).round(),
-        description: 'Tier de teste - contas até R\$ 10',
+        description: 'Tier de teste - contas at� R\$ 10',
         benefits: [
-          'Contas até R\$ 10',
+          'Contas at� R\$ 10',
           'Garantia: R\$ 10',
-          'Taxa: 5% por transação',
+          'Taxa: 5% por transa��o',
           'Perfeito para testar o app',
         ],
       ),
-      // 🥉 Tier Iniciante
+      // ?? Tier Iniciante
       CollateralTier(
         id: 'starter',
-        name: '🥉 Iniciante',
+        name: '?? Iniciante',
         maxOrderValueBrl: 50,
         requiredCollateralBrl: 50,
         requiredCollateralSats: (50 * satsPerBrl).round(),
-        description: 'Ideal para começar - contas até R\$ 50',
+        description: 'Ideal para come�ar - contas at� R\$ 50',
         benefits: [
-          'Contas até R\$ 50',
+          'Contas at� R\$ 50',
           'Garantia: R\$ 50',
-          'Taxa: 5% por transação',
+          'Taxa: 5% por transa��o',
           'Perfeito para iniciantes',
         ],
       ),
-      // 🥈 Tier Básico
+      // ?? Tier B�sico
       CollateralTier(
         id: 'basic',
-        name: '🥈 Básico',
+        name: '?? B�sico',
         maxOrderValueBrl: 200,
         requiredCollateralBrl: 200,
         requiredCollateralSats: (200 * satsPerBrl).round(),
-        description: 'Aceite contas até R\$ 200',
+        description: 'Aceite contas at� R\$ 200',
         benefits: [
-          'Contas até R\$ 200',
+          'Contas at� R\$ 200',
           'Garantia: R\$ 200',
-          'Taxa: 5% por transação',
+          'Taxa: 5% por transa��o',
         ],
       ),
-      // 🥇 Tier Intermediário
+      // ?? Tier Intermedi�rio
       CollateralTier(
         id: 'intermediate',
-        name: '🥇 Intermediário',
+        name: '?? Intermedi�rio',
         maxOrderValueBrl: 500,
         requiredCollateralBrl: 500,
         requiredCollateralSats: (500 * satsPerBrl).round(),
-        description: 'Aceite contas até R\$ 500',
+        description: 'Aceite contas at� R\$ 500',
         benefits: [
-          'Contas até R\$ 500',
+          'Contas at� R\$ 500',
           'Garantia: R\$ 500',
-          'Taxa: 5% por transação',
-          'Prioridade em ordens médias',
+          'Taxa: 5% por transa��o',
+          'Prioridade em ordens m�dias',
         ],
       ),
-      // 💎 Tier Avançado
+      // ?? Tier Avan�ado
       CollateralTier(
         id: 'advanced',
-        name: '💎 Avançado',
+        name: '?? Avan�ado',
         maxOrderValueBrl: 1000,
         requiredCollateralBrl: 1000,
         requiredCollateralSats: (1000 * satsPerBrl).round(),
-        description: 'Aceite contas até R\$ 1.000',
+        description: 'Aceite contas at� R\$ 1.000',
         benefits: [
-          'Contas até R\$ 1.000',
+          'Contas at� R\$ 1.000',
           'Garantia: R\$ 1.000',
-          'Taxa: 5% por transação',
+          'Taxa: 5% por transa��o',
           'Prioridade alta',
         ],
       ),
-      // 👑 Tier Master
+      // ?? Tier Master
       CollateralTier(
         id: 'master',
-        name: '👑 Master',
+        name: '?? Master',
         maxOrderValueBrl: double.infinity,
         requiredCollateralBrl: 3000,
         requiredCollateralSats: (3000 * satsPerBrl).round(),
@@ -132,9 +132,9 @@ class CollateralTier {
         benefits: [
           'Contas ilimitadas',
           'Garantia: R\$ 3.000',
-          'Taxa: 5% por transação',
-          'Prioridade máxima',
-          'Suporte prioritário',
+          'Taxa: 5% por transa��o',
+          'Prioridade m�xima',
+          'Suporte priorit�rio',
         ],
       ),
     ];
@@ -161,7 +161,7 @@ class CollateralTier {
 class ProviderCollateral {
   final String providerId;
   final int lockedSats; // Total em garantia
-  final int availableSats; // Disponível para aceitar novas ordens
+  final int availableSats; // Dispon�vel para aceitar novas ordens
   final String currentTierId; // Tier atual baseado na garantia
   final DateTime lastUpdated;
   final List<CollateralLock> activeLocks; // Garantias bloqueadas em ordens
@@ -208,12 +208,12 @@ class ProviderCollateral {
     final tier = CollateralTier.getTierForOrderValue(orderValueBrl, btcPriceBrl);
     if (tier == null) return false;
 
-    // Verifica se o tier atual suporta e se tem sats disponíveis
+    // Verifica se o tier atual suporta e se tem sats dispon�veis
     return currentTierId == tier.id && availableSats >= tier.requiredCollateralSats;
   }
 }
 
-/// Modelo de garantia bloqueada em uma ordem específica
+/// Modelo de garantia bloqueada em uma ordem espec�fica
 class CollateralLock {
   final String lockId;
   final String orderId;

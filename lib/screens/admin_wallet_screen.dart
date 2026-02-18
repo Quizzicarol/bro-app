@@ -7,8 +7,8 @@ import '../services/storage_service.dart';
 import '../services/platform_fee_service.dart';
 import '../config.dart';
 
-/// Tela de administração da carteira Lightning
-/// Permite ver saldo, gerar endereços e gerenciar fundos
+/// Tela de administra��o da carteira Lightning
+/// Permite ver saldo, gerar endere�os e gerenciar fundos
 class AdminWalletScreen extends StatefulWidget {
   const AdminWalletScreen({Key? key}) : super(key: key);
 
@@ -45,7 +45,7 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
     try {
       final breezProvider = context.read<BreezProvider>();
       
-      // Garantir que SDK está inicializado
+      // Garantir que SDK est� inicializado
       if (!breezProvider.isInitialized) {
         await breezProvider.initialize();
       }
@@ -53,7 +53,7 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
       // Carregar saldo
       final balance = await breezProvider.getBalance();
       
-      // Carregar histórico de pagamentos
+      // Carregar hist�rico de pagamentos
       final payments = await breezProvider.listPayments();
 
       // Carregar mnemonic
@@ -91,7 +91,7 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
         throw Exception(result?['error'] ?? 'Erro desconhecido');
       }
     } catch (e) {
-      debugPrint('Erro ao gerar endereço Bitcoin: $e');
+      debugPrint('Erro ao gerar endere�o Bitcoin: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),
@@ -173,37 +173,37 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // SALDO
-                  _buildSectionTitle('💰 Saldo da Carteira'),
+                  _buildSectionTitle('?? Saldo da Carteira'),
                   _buildBalanceCard(),
                   const SizedBox(height: 24),
 
-                  // ENDEREÇO BITCOIN
-                  _buildSectionTitle('₿ Endereço Bitcoin (On-Chain)'),
+                  // ENDERE�O BITCOIN
+                  _buildSectionTitle('? Endere�o Bitcoin (On-Chain)'),
                   _buildBitcoinAddressCard(),
                   const SizedBox(height: 24),
 
                   // INVOICE LIGHTNING
-                  _buildSectionTitle('⚡ Invoice Lightning'),
+                  _buildSectionTitle('? Invoice Lightning'),
                   _buildLightningInvoiceCard(),
                   const SizedBox(height: 24),
 
-                  // HISTÓRICO DE PAGAMENTOS
-                  _buildSectionTitle('📜 Histórico de Pagamentos'),
+                  // HIST�RICO DE PAGAMENTOS
+                  _buildSectionTitle('?? Hist�rico de Pagamentos'),
                   _buildPaymentsHistory(),
                   const SizedBox(height: 24),
 
                   // MNEMONIC (BACKUP)
-                  _buildSectionTitle('🔑 Backup da Carteira'),
+                  _buildSectionTitle('?? Backup da Carteira'),
                   _buildMnemonicCard(),
                   const SizedBox(height: 24),
                   
                   // SUPORTE - RESTAURAR SEED
-                  _buildSectionTitle('🛠️ Ferramentas de Suporte'),
+                  _buildSectionTitle('??? Ferramentas de Suporte'),
                   _buildSupportToolsCard(),
                   const SizedBox(height: 24),
                   
                   // TAXAS DA PLATAFORMA (2%)
-                  _buildSectionTitle('💼 Taxas da Plataforma (2%)'),
+                  _buildSectionTitle('?? Taxas da Plataforma (2%)'),
                   _buildPlatformFeesCard(),
                   const SizedBox(height: 32),
                 ],
@@ -284,7 +284,7 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
         children: [
           if (_bitcoinAddress == null) ...[
             const Text(
-              'Gere um endereço Bitcoin para receber fundos on-chain.\nDepósitos são convertidos automaticamente para Lightning.',
+              'Gere um endere�o Bitcoin para receber fundos on-chain.\nDep�sitos s�o convertidos automaticamente para Lightning.',
               style: TextStyle(color: Colors.white70, fontSize: 14),
               textAlign: TextAlign.center,
             ),
@@ -292,7 +292,7 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
             ElevatedButton.icon(
               onPressed: _generateBitcoinAddress,
               icon: const Icon(Icons.add, color: Colors.white),
-              label: const Text('Gerar Endereço Bitcoin', style: TextStyle(color: Colors.white)),
+              label: const Text('Gerar Endere�o Bitcoin', style: TextStyle(color: Colors.white)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFF7931A),
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
@@ -341,7 +341,7 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 ElevatedButton.icon(
-                  onPressed: () => _copyToClipboard(_bitcoinAddress!, 'Endereço'),
+                  onPressed: () => _copyToClipboard(_bitcoinAddress!, 'Endere�o'),
                   icon: const Icon(Icons.copy, size: 16, color: Colors.white),
                   label: const Text('Copiar', style: TextStyle(color: Colors.white)),
                   style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF7931A)),
@@ -349,7 +349,7 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
                 const SizedBox(width: 12),
                 TextButton(
                   onPressed: () => setState(() => _bitcoinAddress = null),
-                  child: const Text('Novo Endereço', style: TextStyle(color: Colors.white70)),
+                  child: const Text('Novo Endere�o', style: TextStyle(color: Colors.white70)),
                 ),
               ],
             ),
@@ -372,7 +372,7 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
         children: [
           if (_lightningInvoice == null) ...[
             const Text(
-              'Gere uma invoice Lightning para receber pagamentos instantâneos.',
+              'Gere uma invoice Lightning para receber pagamentos instant�neos.',
               style: TextStyle(color: Colors.white70, fontSize: 14),
               textAlign: TextAlign.center,
             ),
@@ -596,7 +596,7 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
                 border: Border.all(color: Colors.red.withOpacity(0.3)),
               ),
               child: SelectableText(
-                _mnemonic ?? 'Mnemonic não encontrado',
+                _mnemonic ?? 'Mnemonic n�o encontrado',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 14,
@@ -658,13 +658,13 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
           ),
           const SizedBox(height: 16),
           
-          // Botão Restaurar Seed
+          // Bot�o Restaurar Seed
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: _showRestoreSeedDialog,
               icon: const Icon(Icons.restore, color: Colors.white),
-              label: const Text('Restaurar Seed de Usuário', style: TextStyle(color: Colors.white)),
+              label: const Text('Restaurar Seed de Usu�rio', style: TextStyle(color: Colors.white)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.orange.shade700,
                 padding: const EdgeInsets.symmetric(vertical: 14),
@@ -673,13 +673,13 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
           ),
           const SizedBox(height: 12),
           
-          // Botão Forçar Sync
+          // Bot�o For�ar Sync
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: _forceSyncWallet,
               icon: const Icon(Icons.sync, color: Colors.white),
-              label: const Text('Forçar Sync da Carteira', style: TextStyle(color: Colors.white)),
+              label: const Text('For�ar Sync da Carteira', style: TextStyle(color: Colors.white)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blue.shade700,
                 padding: const EdgeInsets.symmetric(vertical: 14),
@@ -707,7 +707,7 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
                       child: Text(
                         owner != null 
                           ? 'Seed vinculada: ${owner.substring(0, 16)}...'
-                          : 'Seed não vinculada a usuário',
+                          : 'Seed n�o vinculada a usu�rio',
                         style: const TextStyle(color: Colors.white54, fontSize: 12),
                       ),
                     ),
@@ -739,7 +739,7 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
-                'ATENÇÃO: Isso substituirá a carteira atual!\n\nDigite as 12 palavras:',
+                'ATEN��O: Isso substituir� a carteira atual!\n\nDigite as 12 palavras:',
                 style: TextStyle(color: Colors.white70, fontSize: 14),
               ),
               const SizedBox(height: 15),
@@ -781,17 +781,17 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
               setState(() => _isLoading = true);
               
               try {
-                // USAR NOVA FUNÇÃO DE REINICIALIZAÇÃO FORÇADA!
+                // USAR NOVA FUN��O DE REINICIALIZA��O FOR�ADA!
                 final breezProvider = context.read<BreezProvider>();
                 final success = await breezProvider.reinitializeWithNewSeed(seed);
                 
                 if (success) {
-                  // Recarregar informações
+                  // Recarregar informa��es
                   await _loadWalletInfo();
                   
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('✅ Carteira restaurada com sucesso!'), backgroundColor: Colors.green),
+                      const SnackBar(content: Text('? Carteira restaurada com sucesso!'), backgroundColor: Colors.green),
                     );
                   }
                 } else {
@@ -800,7 +800,7 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
               } catch (e) {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('❌ Erro: $e'), backgroundColor: Colors.red),
+                    SnackBar(content: Text('? Erro: $e'), backgroundColor: Colors.red),
                   );
                 }
               } finally {
@@ -823,7 +823,7 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
     try {
       final breezProvider = context.read<BreezProvider>();
       
-      // Usar nova função de force sync
+      // Usar nova fun��o de force sync
       await breezProvider.forceSyncWallet();
       
       // Recarregar info
@@ -831,13 +831,13 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ Carteira sincronizada!'), backgroundColor: Colors.green),
+          const SnackBar(content: Text('? Carteira sincronizada!'), backgroundColor: Colors.green),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ Erro: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('? Erro: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -896,7 +896,7 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
           ),
           const SizedBox(height: 16),
           
-          // Botão para ver histórico de taxas
+          // Bot�o para ver hist�rico de taxas
           FutureBuilder<Map<String, dynamic>>(
             future: PlatformFeeService.getHistoricalTotals(),
             builder: (context, snapshot) {
@@ -922,7 +922,7 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Total de transações: $totalTx',
+                    'Total de transa��es: $totalTx',
                     style: const TextStyle(color: Colors.white54, fontSize: 12),
                   ),
                 ],
@@ -932,7 +932,7 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
           
           const SizedBox(height: 16),
           
-          // Botão de teste de envio
+          // Bot�o de teste de envio
           ElevatedButton.icon(
             onPressed: () => _testPlatformFeePayment(),
             icon: const Icon(Icons.send, size: 18),
@@ -961,12 +961,12 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
     
     try {
       debugPrint('');
-      debugPrint('🧪 ════════════════════════════════════════════════');
-      debugPrint('🧪 TESTE DE ENVIO DE TAXA DA PLATAFORMA');
-      debugPrint('🧪 ════════════════════════════════════════════════');
+      debugPrint('?? ????????????????????????????????????????????????');
+      debugPrint('?? TESTE DE ENVIO DE TAXA DA PLATAFORMA');
+      debugPrint('?? ????????????????????????????????????????????????');
       debugPrint('');
       
-      // Testar envio de 1 sat (mínimo)
+      // Testar envio de 1 sat (m�nimo)
       final result = await PlatformFeeService.sendPlatformFee(
         orderId: 'test_${DateTime.now().millisecondsSinceEpoch}',
         totalSats: 50, // 2% de 50 = 1 sat
@@ -975,7 +975,7 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(result ? '✅ Teste bem-sucedido!' : '❌ Falha no teste - verifique logs'),
+            content: Text(result ? '? Teste bem-sucedido!' : '? Falha no teste - verifique logs'),
             backgroundColor: result ? Colors.green : Colors.red,
           ),
         );
@@ -984,10 +984,10 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
         setState(() {});
       }
     } catch (e) {
-      debugPrint('❌ Erro no teste: $e');
+      debugPrint('? Erro no teste: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ Erro: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('? Erro: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {

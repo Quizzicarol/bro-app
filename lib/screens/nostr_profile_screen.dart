@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+?import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/storage_service.dart';
 
@@ -34,7 +34,7 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
       _publicKey = publicKey;
       _privateKey = privateKey;
       _npub = publicKey != null ? _toNpub(publicKey) : null;
-      _lightningAddress = null; // Removido - será implementado no futuro
+      _lightningAddress = null; // Removido - ser� implementado no futuro
       _isLoading = false;
     });
     
@@ -50,7 +50,7 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('📋 $label copiado!'),
+        content: Text('?? $label copiado!'),
         backgroundColor: const Color(0xFF9C27B0),
         duration: const Duration(seconds: 2),
       ),
@@ -135,7 +135,7 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
                 controller: nameController,
                 style: const TextStyle(color: Colors.white),
                 decoration: InputDecoration(
-                  labelText: 'Nome de exibição',
+                  labelText: 'Nome de exibi��o',
                   labelStyle: const TextStyle(color: Colors.grey),
                   hintText: 'Seu nome ou apelido',
                   hintStyle: const TextStyle(color: Colors.grey),
@@ -154,9 +154,9 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
                 style: const TextStyle(color: Colors.white),
                 maxLines: 3,
                 decoration: InputDecoration(
-                  labelText: 'Sobre você',
+                  labelText: 'Sobre voc�',
                   labelStyle: const TextStyle(color: Colors.grey),
-                  hintText: 'Uma breve descrição...',
+                  hintText: 'Uma breve descri��o...',
                   hintStyle: const TextStyle(color: Colors.grey),
                   filled: true,
                   fillColor: const Color(0xFF2A2A2A),
@@ -183,7 +183,7 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'O perfil será publicado nos relays Nostr',
+                        'O perfil ser� publicado nos relays Nostr',
                         style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 12),
                       ),
                     ),
@@ -204,7 +204,7 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('⚠️ Publicação de perfil será implementada em breve'),
+                  content: Text('?? Publica��o de perfil ser� implementada em breve'),
                   backgroundColor: Color(0xFFFF6B6B),
                 ),
               );
@@ -259,7 +259,7 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
                   
                   // Public Key
                   _buildKeyCard(
-                    title: 'Chave Pública (npub)',
+                    title: 'Chave P�blica (npub)',
                     value: _npub ?? '',
                     icon: Icons.public,
                     color: const Color(0xFF9C27B0),
@@ -361,8 +361,8 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _buildStat('Verificado', '✓', const Color(0xFF00FF00)),
-              _buildStat('NIP-05', '❌', Colors.grey),
+              _buildStat('Verificado', '?', const Color(0xFF00FF00)),
+              _buildStat('NIP-05', '?', Colors.grey),
               _buildStat('Relays', '3', const Color(0xFFFF6B6B)),
             ],
           ),
@@ -532,7 +532,7 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            // Botão de copiar chave privada
+            // Bot�o de copiar chave privada
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
@@ -548,7 +548,7 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              '⚠️ Qualquer pessoa com essa chave pode acessar sua conta e seus fundos!',
+              '?? Qualquer pessoa com essa chave pode acessar sua conta e seus fundos!',
               style: TextStyle(color: Color(0xFFFF6B6B), fontSize: 11),
             ),
           ],
@@ -567,14 +567,14 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
           children: [
             Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
             SizedBox(width: 12),
-            Text('ATENÇÃO!', style: TextStyle(color: Colors.red)),
+            Text('ATEN��O!', style: TextStyle(color: Colors.red)),
           ],
         ),
         content: const Text(
-          'Sua chave privada dá acesso TOTAL à sua identidade Nostr e carteira Lightning.\n\n'
-          '❌ NUNCA compartilhe com ninguém\n'
-          '❌ NUNCA cole em sites suspeitos\n'
-          '❌ NUNCA envie por mensagem\n\n'
+          'Sua chave privada d� acesso TOTAL � sua identidade Nostr e carteira Lightning.\n\n'
+          '? NUNCA compartilhe com ningu�m\n'
+          '? NUNCA cole em sites suspeitos\n'
+          '? NUNCA envie por mensagem\n\n'
           'Deseja mostrar a chave privada?',
           style: TextStyle(color: Color(0xB3FFFFFF)),
         ),

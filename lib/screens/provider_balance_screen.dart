@@ -6,7 +6,7 @@ import '../providers/breez_provider_export.dart';
 import '../models/provider_balance.dart';
 import '../services/nostr_service.dart';
 
-/// Tela para visualizar saldo e histórico do provedor
+/// Tela para visualizar saldo e hist�rico do provedor
 class ProviderBalanceScreen extends StatefulWidget {
   const ProviderBalanceScreen({Key? key}) : super(key: key);
 
@@ -45,7 +45,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
         setState(() => _loadingBreez = false);
       }
     } catch (e) {
-      debugPrint('❌ Erro ao carregar saldo Breez: $e');
+      debugPrint('? Erro ao carregar saldo Breez: $e');
       if (mounted) setState(() => _loadingBreez = false);
     }
   }
@@ -84,7 +84,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
                   // Card do saldo REAL (Breez Lightning)
                   _buildRealBalanceCard(),
                   const SizedBox(height: 16),
-                  // Card do saldo contábil do provedor
+                  // Card do saldo cont�bil do provedor
                   _buildBalanceCard(balance),
                   const SizedBox(height: 16),
                   _buildStatsCard(balance),
@@ -140,7 +140,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '≈ ${_satsToReais(_breezBalanceSats.toDouble())}',
+                    '? ${_satsToReais(_breezBalanceSats.toDouble())}',
                     style: const TextStyle(
                       color: Colors.white70,
                       fontSize: 14,
@@ -150,7 +150,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
               ),
             const SizedBox(height: 12),
             const Text(
-              '⚡ Saldo real na rede Lightning',
+              '? Saldo real na rede Lightning',
               style: TextStyle(
                 color: Colors.white60,
                 fontSize: 12,
@@ -171,7 +171,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
         child: Column(
           children: [
             const Text(
-              'Ganhos como Bro (Contábil)',
+              'Ganhos como Bro (Cont�bil)',
               style: TextStyle(
                 color: Colors.white70,
                 fontSize: 16,
@@ -199,7 +199,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              '≈ ${_satsToReais(balance.availableBalanceSats)}',
+              '? ${_satsToReais(balance.availableBalanceSats)}',
               style: const TextStyle(
                 color: Colors.white70,
                 fontSize: 14,
@@ -207,7 +207,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              '💡 Ganhos das ordens completadas',
+              '?? Ganhos das ordens completadas',
               style: TextStyle(
                 color: Colors.white60,
                 fontSize: 12,
@@ -234,7 +234,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
             ),
             const Divider(),
             _buildStatRow(
-              'Transações',
+              'Transa��es',
               balance.transactions.length.toString(),
               Icons.receipt_long,
               Colors.blue,
@@ -318,7 +318,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
               ),
               const SizedBox(height: 16),
               Text(
-                'Nenhuma transação ainda',
+                'Nenhuma transa��o ainda',
                 style: TextStyle(
                   color: Colors.grey[600],
                   fontSize: 16,
@@ -334,7 +334,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Histórico',
+          'Hist�rico',
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
@@ -425,7 +425,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Detalhes da Transação'),
+        title: const Text('Detalhes da Transa��o'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -434,7 +434,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
             _buildDetailRow('Valor', '${tx.amountSats} sats'),
             _buildDetailRow('Data/Hora', _formatDateTimeFull(tx.createdAt)),
             if (tx.orderDescription != null)
-              _buildDetailRow('Descrição', tx.orderDescription!),
+              _buildDetailRow('Descri��o', tx.orderDescription!),
             if (tx.txHash != null) ...[
               const SizedBox(height: 8),
               const Text(
@@ -529,7 +529,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Saldo disponível: ${_formatSats(availableBalance)} sats'),
+            Text('Saldo dispon�vel: ${_formatSats(availableBalance)} sats'),
             const SizedBox(height: 16),
             TextField(
               controller: amountController,
@@ -564,7 +564,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
 
               if (amount == null || amount <= 0) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Valor inválido')),
+                  const SnackBar(content: Text('Valor inv�lido')),
                 );
                 return;
               }
@@ -594,7 +594,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('✅ Saque realizado!'),
+                      content: Text('? Saque realizado!'),
                       backgroundColor: Colors.green,
                     ),
                   );
@@ -639,7 +639,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Saldo disponível: ${_formatSats(availableBalance)} sats'),
+            Text('Saldo dispon�vel: ${_formatSats(availableBalance)} sats'),
             const SizedBox(height: 16),
             TextField(
               controller: amountController,
@@ -654,7 +654,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
             TextField(
               controller: addressController,
               decoration: const InputDecoration(
-                labelText: 'Endereço Bitcoin',
+                labelText: 'Endere�o Bitcoin',
                 hintText: 'bc1...',
                 border: OutlineInputBorder(),
               ),
@@ -679,7 +679,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
 
               if (amount == null || amount <= 0) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Valor inválido')),
+                  const SnackBar(content: Text('Valor inv�lido')),
                 );
                 return;
               }
@@ -693,7 +693,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
 
               if (address.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Informe o endereço')),
+                  const SnackBar(content: Text('Informe o endere�o')),
                 );
                 return;
               }
@@ -709,7 +709,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('✅ Saque enviado!'),
+                      content: Text('? Saque enviado!'),
                       backgroundColor: Colors.green,
                     ),
                   );
@@ -746,7 +746,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
   }
 
   String _satsToReais(double sats) {
-    // Cotação exemplo: 1 BTC = R$ 300.000
+    // Cota��o exemplo: 1 BTC = R$ 300.000
     final btc = sats / 100000000;
     final reais = btc * 300000;
     return 'R\$ ${reais.toStringAsFixed(2)}';
@@ -757,11 +757,11 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
     final difference = now.difference(date);
 
     if (difference.inDays == 0) {
-      return 'Hoje às ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+      return 'Hoje �s ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
     } else if (difference.inDays == 1) {
       return 'Ontem';
     } else if (difference.inDays < 7) {
-      return '${difference.inDays} dias atrás';
+      return '${difference.inDays} dias atr�s';
     } else {
       return '${date.day}/${date.month}/${date.year}';
     }
@@ -775,6 +775,6 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
     final minute = date.minute.toString().padLeft(2, '0');
     final second = date.second.toString().padLeft(2, '0');
     
-    return '$day/$month/$year às $hour:$minute:$second';
+    return '$day/$month/$year �s $hour:$minute:$second';
   }
 }

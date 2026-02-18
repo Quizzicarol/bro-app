@@ -1,11 +1,11 @@
-﻿import 'package:flutter/material.dart';
+?import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Provider para gerenciar tema Dark/Light
 class ThemeProvider extends ChangeNotifier {
   static const String _keyThemeMode = 'theme_mode';
   
-  ThemeMode _themeMode = ThemeMode.dark; // PadrÃ£o: dark (como estÃ¡ no app)
+  ThemeMode _themeMode = ThemeMode.dark; // Padrão: dark (como está no app)
   bool _isLoading = true;
   
   ThemeMode get themeMode => _themeMode;
@@ -44,7 +44,7 @@ class ThemeProvider extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_keyThemeMode, mode.name);
-      debugPrint('ðŸŽ¨ Theme changed to: ${mode.name}');
+      debugPrint('�YZ� Theme changed to: ${mode.name}');
     } catch (e) {
       debugPrint('Error saving theme: $e');
     }
@@ -71,7 +71,7 @@ class BroThemes {
   static const Color accentPurple = Color(0xFF9C27B0);
   static const Color accentBlue = Color(0xFF4A90E2);
   
-  /// Tema escuro (padrÃ£o)
+  /// Tema escuro (padrão)
   static ThemeData get darkTheme {
     return ThemeData(
       useMaterial3: true,

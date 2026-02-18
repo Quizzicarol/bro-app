@@ -29,7 +29,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
   bool _isLoading = true;
   String? _error;
 
-  /// Saldo efetivamente disponível para garantia
+  /// Saldo efetivamente dispon�vel para garantia
   int get _availableBalance => (_walletBalance - _committedSats).clamp(0, _walletBalance);
 
   @override
@@ -45,12 +45,12 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
     });
 
     try {
-      // Obter preço do Bitcoin
+      // Obter pre�o do Bitcoin
       final priceService = BitcoinPriceService();
       _btcPrice = await priceService.getBitcoinPrice();
       
       if (_btcPrice == null) {
-        throw Exception('Não foi possível obter preço do Bitcoin');
+        throw Exception('N�o foi poss�vel obter pre�o do Bitcoin');
       }
 
       // Carregar tiers
@@ -63,13 +63,13 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
       _walletBalance = int.tryParse(balanceStr) ?? 0;
 
       // IMPORTANTE: Obter sats comprometidos com ordens pendentes (modo cliente)
-      // Isso evita que o usuário use os mesmos sats como garantia E para pagar ordens
+      // Isso evita que o usu�rio use os mesmos sats como garantia E para pagar ordens
       final orderProvider = context.read<OrderProvider>();
       _committedSats = orderProvider.committedSats;
       
-      debugPrint('💰 Saldo total: $_walletBalance sats');
-      debugPrint('🔒 Sats comprometidos: $_committedSats sats');
-      debugPrint('💰 Saldo disponível para garantia: $_availableBalance sats');
+      debugPrint('?? Saldo total: $_walletBalance sats');
+      debugPrint('?? Sats comprometidos: $_committedSats sats');
+      debugPrint('?? Saldo dispon�vel para garantia: $_availableBalance sats');
 
       // Carregar collateral atual
       final collateralService = LocalCollateralService();
@@ -92,7 +92,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('Níveis de Garantia'),
+        title: const Text('N�veis de Garantia'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
@@ -133,16 +133,16 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
   }
 
   Widget _buildContent() {
-    // 🔐 SEGURANÇA: Se saldo é 0, NÃO mostrar valores comprometidos
-    // Isso evita mostrar dados inconsistentes de sessões anteriores
+    // ?? SEGURAN�A: Se saldo � 0, N�O mostrar valores comprometidos
+    // Isso evita mostrar dados inconsistentes de sess�es anteriores
     final effectiveWalletBalance = _walletBalance;
     
-    // Se saldo é 0, tier não pode estar ativo
+    // Se saldo � 0, tier n�o pode estar ativo
     final effectiveTierLocked = effectiveWalletBalance > 0 
         ? (_currentCollateral?.lockedSats ?? 0) 
         : 0;
     
-    // Se saldo é 0, não há sats comprometidos
+    // Se saldo � 0, n�o h� sats comprometidos
     final effectiveCommittedSats = effectiveWalletBalance > 0 
         ? _committedSats 
         : 0;
@@ -220,7 +220,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
               
               // Breakdown detalhado
               const Text(
-                'DISTRIBUIÇÃO',
+                'DISTRIBUI��O',
                 style: TextStyle(
                   color: Colors.white54, 
                   fontSize: 10,
@@ -238,7 +238,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                 value: effectiveTierLocked,
                 subtitle: effectiveTierLocked > 0 
                     ? _currentCollateral?.tierName ?? 'Nenhum'
-                    : (_currentCollateral != null ? '⚠️ INATIVO' : 'Nenhum'),
+                    : (_currentCollateral != null ? '?? INATIVO' : 'Nenhum'),
               ),
               
               const SizedBox(height: 8),
@@ -254,11 +254,11 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
               
               const SizedBox(height: 8),
               
-              // 3. Disponível
+              // 3. Dispon�vel
               _buildBreakdownRow(
                 icon: Icons.check_circle,
                 iconColor: freeBalance > 0 ? Colors.green : Colors.grey,
-                label: 'Disponível',
+                label: 'Dispon�vel',
                 value: freeBalance,
                 subtitle: 'Para uso livre',
                 highlight: true,
@@ -281,7 +281,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                       Expanded(
                         child: Text(
                           'Garantia e ordens usam o mesmo saldo. '
-                          'O tier permanece ativo enquanto você tiver saldo suficiente.',
+                          'O tier permanece ativo enquanto voc� tiver saldo suficiente.',
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.7),
                             fontSize: 11,
@@ -298,22 +298,22 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
 
         // Tier atual (se houver)
         if (_currentCollateral != null) ...[
-          // 🔥 RECALCULAR valor do tier com preço ATUAL do Bitcoin
-          // Isso evita que oscilações de preço desativem o tier indevidamente
+          // ?? RECALCULAR valor do tier com pre�o ATUAL do Bitcoin
+          // Isso evita que oscila��es de pre�o desativem o tier indevidamente
           Builder(
             builder: (context) {
-              // Buscar o tier atual na lista atualizada (com preço atual do BTC)
+              // Buscar o tier atual na lista atualizada (com pre�o atual do BTC)
               final currentTierDef = _tiers?.firstWhere(
                 (t) => t.id == _currentCollateral!.tierId,
                 orElse: () => _tiers!.first,
               );
               
-              // Usar o valor ATUALIZADO do tier, não o valor salvo
+              // Usar o valor ATUALIZADO do tier, n�o o valor salvo
               final requiredSatsNow = currentTierDef?.requiredCollateralSats ?? _currentCollateral!.lockedSats;
-              final minRequiredWithTolerance = (requiredSatsNow * 0.90).round(); // 10% tolerância
+              final minRequiredWithTolerance = (requiredSatsNow * 0.90).round(); // 10% toler�ncia
               final showWarning = _walletBalance < minRequiredWithTolerance;
               
-              debugPrint('📊 Tier ${_currentCollateral!.tierName}: salvo=${_currentCollateral!.lockedSats}, atualizado=$requiredSatsNow, mínimo=$minRequiredWithTolerance, saldo=$_walletBalance');
+              debugPrint('?? Tier ${_currentCollateral!.tierName}: salvo=${_currentCollateral!.lockedSats}, atualizado=$requiredSatsNow, m�nimo=$minRequiredWithTolerance, saldo=$_walletBalance');
               
               if (!showWarning) return const SizedBox.shrink();
               
@@ -334,13 +334,13 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            '⚠️ SALDO INSUFICIENTE!',
+                            '?? SALDO INSUFICIENTE!',
                             style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 14),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Seu tier requer $requiredSatsNow sats (mínimo com tolerância: $minRequiredWithTolerance sats), mas você só tem $_walletBalance sats.\n'
-                            'O tier será desativado automaticamente se você não depositar mais saldo.',
+                            'Seu tier requer $requiredSatsNow sats (m�nimo com toler�ncia: $minRequiredWithTolerance sats), mas voc� s� tem $_walletBalance sats.\n'
+                            'O tier ser� desativado automaticamente se voc� n�o depositar mais saldo.',
                             style: const TextStyle(color: Colors.white70, fontSize: 12),
                           ),
                         ],
@@ -354,18 +354,18 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
           const SizedBox(height: 12),
           
           // Status do tier atual - considerar saldo zero como INATIVO
-          // 🔥 Com tolerância de 10% + preço ATUALIZADO do Bitcoin
+          // ?? Com toler�ncia de 10% + pre�o ATUALIZADO do Bitcoin
           Builder(
             builder: (context) {
-              // Buscar o tier atual na lista atualizada (com preço atual do BTC)
+              // Buscar o tier atual na lista atualizada (com pre�o atual do BTC)
               final currentTierDef = _tiers?.firstWhere(
                 (t) => t.id == _currentCollateral!.tierId,
                 orElse: () => _tiers!.first,
               );
               
-              // Usar o valor ATUALIZADO do tier, não o valor salvo
+              // Usar o valor ATUALIZADO do tier, n�o o valor salvo
               final requiredSatsNow = currentTierDef?.requiredCollateralSats ?? _currentCollateral!.lockedSats;
-              final minRequired = (requiredSatsNow * 0.90).round(); // 10% tolerância
+              final minRequired = (requiredSatsNow * 0.90).round(); // 10% toler�ncia
               final isTierActive = _walletBalance > 0 && _walletBalance >= minRequired;
               final isTierAtRisk = _walletBalance > 0 && _walletBalance < minRequired;
               final isTierInactive = _walletBalance == 0;
@@ -425,7 +425,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                           Text(
                             isTierInactive 
                                 ? 'Deposite sats para reativar'
-                                : 'Máximo R\$ ${_currentCollateral!.maxOrderBrl.toStringAsFixed(0)}/ordem',
+                                : 'M�ximo R\$ ${_currentCollateral!.maxOrderBrl.toStringAsFixed(0)}/ordem',
                             style: const TextStyle(color: Colors.white70, fontSize: 12),
                           ),
                         ],
@@ -444,7 +444,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
 
         const SizedBox(height: 16),
 
-        // Título
+        // T�tulo
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
@@ -471,7 +471,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
             itemBuilder: (context, index) {
               final tier = _tiers![index];
               final isCurrentTier = _currentCollateral?.tierId == tier.id;
-              // 🔥 Tolerância de 10% para oscilação do Bitcoin
+              // ?? Toler�ncia de 10% para oscila��o do Bitcoin
               final minRequired = (tier.requiredCollateralSats * 0.90).round();
               final hasEnoughBalance = _walletBalance >= minRequired;
               
@@ -570,7 +570,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                       ),
                     ),
                     Text(
-                      '≈ R\$ ${tier.requiredCollateralBrl.toStringAsFixed(2)}',
+                      '? R\$ ${tier.requiredCollateralBrl.toStringAsFixed(2)}',
                       style: const TextStyle(color: Colors.white54, fontSize: 11),
                     ),
                   ],
@@ -578,7 +578,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    const Text('Máx. por Ordem', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                    const Text('M�x. por Ordem', style: TextStyle(color: Colors.white38, fontSize: 11)),
                     Text(
                       'R\$ ${tier.maxOrderValueBrl.toStringAsFixed(0)}',
                       style: const TextStyle(
@@ -623,7 +623,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
     );
 
     if (result == true) {
-      _loadData(); // Recarregar dados se houve depósito
+      _loadData(); // Recarregar dados se houve dep�sito
     }
   }
 
@@ -700,7 +700,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
         backgroundColor: const Color(0xFF1E1E1E),
         title: const Text('Remover Tier?', style: TextStyle(color: Colors.white)),
         content: const Text(
-          'Você poderá selecionar outro tier depois.',
+          'Voc� poder� selecionar outro tier depois.',
           style: TextStyle(color: Colors.white70),
         ),
         actions: [

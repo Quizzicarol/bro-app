@@ -12,52 +12,52 @@ class ProviderService {
   final ApiService _apiService = ApiService();
   final NostrOrderService _nostrOrderService = NostrOrderService();
 
-  /// Busca ordens disponíveis para aceitar (status=pending)
-  /// SEGURANÇA: Retorna APENAS ordens de OUTROS usuários que estão disponíveis
-  /// CORREÇÃO: SEMPRE usa Nostr, não mais condicional ao testMode
+  /// Busca ordens dispon�veis para aceitar (status=pending)
+  /// SEGURAN�A: Retorna APENAS ordens de OUTROS usu�rios que est�o dispon�veis
+  /// CORRE��O: SEMPRE usa Nostr, n�o mais condicional ao testMode
   Future<List<Map<String, dynamic>>> fetchAvailableOrders() async {
     try {
-      // CORREÇÃO: SEMPRE buscar do Nostr - API REST não funciona para P2P
-      debugPrint('🔍 Buscando ordens disponíveis do Nostr...');
+      // CORRE��O: SEMPRE buscar do Nostr - API REST n�o funciona para P2P
+      debugPrint('?? Buscando ordens dispon�veis do Nostr...');
       final orders = await _nostrOrderService.fetchPendingOrders();
       
-      // SEGURANÇA: Filtrar apenas ordens pendentes (sem providerId ainda)
+      // SEGURAN�A: Filtrar apenas ordens pendentes (sem providerId ainda)
       final availableOrders = orders.where((order) {
-        // Ordem pendente = disponível para aceitar
+        // Ordem pendente = dispon�vel para aceitar
         if (order.status != 'pending' && order.status != 'payment_received') return false;
-        // Ordem já aceita por alguém = não disponível
+        // Ordem j� aceita por algu�m = n�o dispon�vel
         if (order.providerId != null && order.providerId!.isNotEmpty) return false;
         return true;
       }).toList();
       
-      debugPrint('📋 ${availableOrders.length} ordens disponíveis para aceitar');
+      debugPrint('?? ${availableOrders.length} ordens dispon�veis para aceitar');
       return availableOrders.map((order) => order.toJson()).toList();
     } catch (e) {
-      debugPrint('❌ Erro ao buscar ordens disponíveis: $e');
+      debugPrint('? Erro ao buscar ordens dispon�veis: $e');
       return [];
     }
   }
 
-  /// Busca ordens do provedor específico (usando Nostr)
+  /// Busca ordens do provedor espec�fico (usando Nostr)
   Future<List<Map<String, dynamic>>> fetchMyOrders(String providerId) async {
     try {
-      debugPrint('🔍 Buscando ordens do provedor via Nostr...');
+      debugPrint('?? Buscando ordens do provedor via Nostr...');
       
       // Buscar do Nostr - precisa do pubkey do provedor
       final orders = await _nostrOrderService.fetchProviderOrders(providerId);
-      debugPrint('📋 Encontradas ${orders.length} ordens do provedor no Nostr');
+      debugPrint('?? Encontradas ${orders.length} ordens do provedor no Nostr');
       
-      // Filtrar apenas ordens ativas (não completed, não cancelled)
+      // Filtrar apenas ordens ativas (n�o completed, n�o cancelled)
       final activeOrders = orders.where((order) {
         final status = order.status;
         return status != 'completed' && status != 'cancelled';
       }).toList();
       
-      debugPrint('📋 ${activeOrders.length} ordens ativas após filtro');
+      debugPrint('?? ${activeOrders.length} ordens ativas ap�s filtro');
       
       return activeOrders.map((order) => order.toJson()).toList();
     } catch (e) {
-      debugPrint('❌ Erro ao buscar minhas ordens: $e');
+      debugPrint('? Erro ao buscar minhas ordens: $e');
       return [];
     }
   }
@@ -67,7 +67,7 @@ class ProviderService {
     try {
       return await _apiService.acceptOrder(orderId, providerId);
     } catch (e) {
-      debugPrint('❌ Erro ao aceitar ordem: $e');
+      debugPrint('? Erro ao aceitar ordem: $e');
       return false;
     }
   }
@@ -81,17 +81,17 @@ class ProviderService {
         metadata: {'rejectionReason': reason},
       );
     } catch (e) {
-      debugPrint('❌ Erro ao rejeitar ordem: $e');
+      debugPrint('? Erro ao rejeitar ordem: $e');
       return false;
     }
   }
 
-  /// Busca estatísticas do provedor
+  /// Busca estat�sticas do provedor
   Future<Map<String, dynamic>?> getStats(String providerId) async {
     try {
       return await _apiService.getProviderStats(providerId);
     } catch (e) {
-      debugPrint('❌ Erro ao buscar estatísticas: $e');
+      debugPrint('? Erro ao buscar estat�sticas: $e');
       return null;
     }
   }
@@ -119,7 +119,7 @@ class ProviderService {
 
       return response.data['success'] ?? false;
     } catch (e) {
-      debugPrint('❌ Erro ao fazer upload do comprovante: $e');
+      debugPrint('? Erro ao fazer upload do comprovante: $e');
       return false;
     }
   }
@@ -132,15 +132,15 @@ class ProviderService {
         status: 'paid',
       );
     } catch (e) {
-      debugPrint('❌ Erro ao marcar como paga: $e');
+      debugPrint('? Erro ao marcar como paga: $e');
       return false;
     }
   }
 
-  /// Busca histórico de ordens completadas (usando Nostr)
+  /// Busca hist�rico de ordens completadas (usando Nostr)
   Future<List<Map<String, dynamic>>> fetchHistory(String providerId) async {
     try {
-      debugPrint('🔍 Buscando histórico do provedor via Nostr...');
+      debugPrint('?? Buscando hist�rico do provedor via Nostr...');
       
       // Buscar do Nostr
       final orders = await _nostrOrderService.fetchProviderOrders(providerId);
@@ -151,11 +151,11 @@ class ProviderService {
         return status == 'completed';
       }).toList();
       
-      debugPrint('📋 ${completedOrders.length} ordens completadas no histórico');
+      debugPrint('?? ${completedOrders.length} ordens completadas no hist�rico');
       
       return completedOrders.map((order) => order.toJson()).toList();
     } catch (e) {
-      debugPrint('❌ Erro ao buscar histórico: $e');
+      debugPrint('? Erro ao buscar hist�rico: $e');
       return [];
     }
   }

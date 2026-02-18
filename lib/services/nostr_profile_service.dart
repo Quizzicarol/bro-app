@@ -26,7 +26,7 @@ class NostrProfile {
   });
 
   factory NostrProfile.fromJson(String pubkey, Map<String, dynamic> json) {
-    // Função helper para converter seguramente para String?
+    // Fun��o helper para converter seguramente para String?
     String? safeString(dynamic value) {
       if (value == null) return null;
       if (value is String) return value.isEmpty ? null : value;

@@ -29,7 +29,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
     // TODO: Save to storage
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('✅ Configuração salva'),
+        content: Text('? Configura��o salva'),
         backgroundColor: Colors.green,
         duration: const Duration(seconds: 1),
       ),
@@ -48,7 +48,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
-          'Privacidade & Segurança',
+          'Privacidade & Seguran�a',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
         ),
         bottom: PreferredSize(
@@ -80,7 +80,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                   const SizedBox(height: 24),
                   
                   // Display section
-                  _buildSectionTitle('Exibição', Icons.visibility),
+                  _buildSectionTitle('Exibi��o', Icons.visibility),
                   const SizedBox(height: 12),
                   _buildHideBalanceSetting(),
                   const SizedBox(height: 24),
@@ -88,7 +88,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                   // Relays
                   _buildRelaysButton(),
                   
-                  // Espaço para safe area (botões de navegação)
+                  // Espa�o para safe area (bot�es de navega��o)
                   SizedBox(height: MediaQuery.of(context).padding.bottom + 24),
                 ],
               ),
@@ -169,7 +169,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Pontuação de Privacidade',
+                  'Pontua��o de Privacidade',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 16,
@@ -188,8 +188,8 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                 const SizedBox(height: 8),
                 Text(
                   _torEnabled 
-                      ? '🧅 Tor ativo - IP oculto'
-                      : '💡 Ative o Tor para maior privacidade',
+                      ? '?? Tor ativo - IP oculto'
+                      : '?? Ative o Tor para maior privacidade',
                   style: const TextStyle(
                     color: Color(0x99FFFFFF),
                     fontSize: 12,
@@ -244,7 +244,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                   shape: BoxShape.circle,
                 ),
                 child: Text(
-                  '🧅',
+                  '??',
                   style: TextStyle(fontSize: _torEnabled ? 24 : 20),
                 ),
               ),
@@ -254,7 +254,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Conexão via Tor',
+                      'Conex�o via Tor',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 16,
@@ -264,8 +264,8 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                     const SizedBox(height: 4),
                     Text(
                       _torEnabled 
-                          ? 'Seu IP está oculto'
-                          : 'Oculta seu endereço IP real',
+                          ? 'Seu IP est� oculto'
+                          : 'Oculta seu endere�o IP real',
                       style: TextStyle(
                         color: _torEnabled ? Colors.green : const Color(0x99FFFFFF),
                         fontSize: 13,
@@ -302,7 +302,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Conexões serão mais lentas mas muito mais privadas',
+                      'Conex�es ser�o mais lentas mas muito mais privadas',
                       style: TextStyle(color: Color(0xFFBA68C8), fontSize: 12),
                     ),
                   ),
@@ -323,18 +323,18 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Row(
           children: [
-            Text('🧅', style: TextStyle(fontSize: 28)),
+            Text('??', style: TextStyle(fontSize: 28)),
             SizedBox(width: 12),
             Text('Tor Ativado', style: TextStyle(color: Colors.white)),
           ],
         ),
         content: const Text(
-          'A conexão Tor roteia seu tráfego através de múltiplos servidores '
-          'ao redor do mundo, tornando muito difícil rastrear sua atividade.\n\n'
-          '✅ IP real oculto\n'
-          '✅ Localização protegida\n'
-          '✅ Resistente a censura\n\n'
-          '⚠️ A conexão será mais lenta',
+          'A conex�o Tor roteia seu tr�fego atrav�s de m�ltiplos servidores '
+          'ao redor do mundo, tornando muito dif�cil rastrear sua atividade.\n\n'
+          '? IP real oculto\n'
+          '? Localiza��o protegida\n'
+          '? Resistente a censura\n\n'
+          '?? A conex�o ser� mais lenta',
           style: TextStyle(color: Color(0xB3FFFFFF)),
         ),
         actions: [
@@ -511,7 +511,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                     ),
                     SizedBox(height: 4),
                     Text(
-                      'Compartilha comprovantes como notas públicas',
+                      'Compartilha comprovantes como notas p�blicas',
                       style: TextStyle(color: Color(0x99FFFFFF), fontSize: 13),
                     ),
                   ],
@@ -541,7 +541,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Seus pagamentos serão visíveis para seus seguidores',
+                      'Seus pagamentos ser�o vis�veis para seus seguidores',
                       style: TextStyle(color: Color(0xFFBA68C8), fontSize: 12),
                     ),
                   ),

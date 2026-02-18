@@ -42,17 +42,17 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
         await _storageService.saveProviderId(_providerId!);
       }
 
-      // Buscar ordens disponíveis
+      // Buscar ordens dispon�veis
       _availableOrders = await _providerService.fetchAvailableOrders();
 
       // Buscar minhas ordens
       _myOrders = await _providerService.fetchMyOrders(_providerId!);
 
-      // Buscar estatísticas
+      // Buscar estat�sticas
       _stats = await _providerService.getStats(_providerId!);
 
     } catch (e) {
-      debugPrint('❌ Erro ao carregar dados do provedor: $e');
+      debugPrint('? Erro ao carregar dados do provedor: $e');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -94,15 +94,15 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                     _buildProviderBanner(),
                     const SizedBox(height: 24),
 
-                    // Estatísticas em Grid 2x2
+                    // Estat�sticas em Grid 2x2
                     _buildStatsGrid(),
                     const SizedBox(height: 24),
 
-                    // Botões de Ação
+                    // Bot�es de A��o
                     _buildActionButtons(),
                     const SizedBox(height: 32),
 
-                    // Ordens Disponíveis
+                    // Ordens Dispon�veis
                     _buildAvailableOrdersSection(),
                     const SizedBox(height: 24),
 
@@ -131,7 +131,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
           Icon(Icons.construction, size: 48, color: Colors.white),
           SizedBox(height: 12),
           Text(
-            '🔧 Modo Provedor Ativo',
+            '?? Modo Provedor Ativo',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
@@ -140,7 +140,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
           ),
           SizedBox(height: 8),
           Text(
-            'Aceite ordens e ajude usuários a pagar contas em troca de Bitcoin',
+            'Aceite ordens e ajude usu�rios a pagar contas em troca de Bitcoin',
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.white70, fontSize: 14),
           ),
@@ -164,10 +164,10 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
       crossAxisSpacing: 16,
       childAspectRatio: 1.2,
       children: [
-        _buildStatCard('📦', '$availableCount', 'Ordens Disponíveis'),
-        _buildStatCard('🤝', '$acceptedCount', 'Ordens Aceitas'),
-        _buildStatCard('✅', '$completedCount', 'Ordens Completas'),
-        _buildStatCard('💰', 'R\$ ${totalEarned.toStringAsFixed(2)}', 'Total Ganho'),
+        _buildStatCard('??', '$availableCount', 'Ordens Dispon�veis'),
+        _buildStatCard('??', '$acceptedCount', 'Ordens Aceitas'),
+        _buildStatCard('?', '$completedCount', 'Ordens Completas'),
+        _buildStatCard('??', 'R\$ ${totalEarned.toStringAsFixed(2)}', 'Total Ganho'),
       ],
     );
   }
@@ -234,7 +234,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const Text(
-              '📝 Ordens Disponíveis',
+              '?? Ordens Dispon�veis',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -256,7 +256,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
         ),
         const SizedBox(height: 16),
         _availableOrders.isEmpty
-            ? _buildEmptyState('Nenhuma ordem disponível no momento')
+            ? _buildEmptyState('Nenhuma ordem dispon�vel no momento')
             : ListView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
@@ -275,7 +275,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          '✓ Minhas Ordens Aceitas',
+          '? Minhas Ordens Aceitas',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
@@ -284,7 +284,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
         ),
         const SizedBox(height: 16),
         _myOrders.isEmpty
-            ? _buildEmptyState('Você ainda não aceitou nenhuma ordem')
+            ? _buildEmptyState('Voc� ainda n�o aceitou nenhuma ordem')
             : ListView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
@@ -395,7 +395,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
           ),
           const SizedBox(height: 16),
 
-          // Botões de Ação
+          // Bot�es de A��o
           if (isAvailable)
             Row(
               children: [
@@ -467,12 +467,12 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
         break;
       case 'payment_received':
         color = const Color(0xFF009688);
-        text = 'Pago ✓';
+        text = 'Pago ?';
         icon = Icons.check;
         break;
       case 'confirmed':
         color = const Color(0xFF1E88E5);
-        text = 'Disponível';
+        text = 'Dispon�vel';
         icon = Icons.hourglass_empty;
         break;
       case 'accepted':
@@ -488,7 +488,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
         break;
       case 'completed':
         color = const Color(0xFF4CAF50);
-        text = 'Completo ✓';
+        text = 'Completo ?';
         icon = Icons.check_circle;
         break;
       case 'cancelled':
@@ -537,9 +537,9 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
       final date = timestamp is DateTime ? timestamp : DateTime.parse(timestamp.toString());
       final diff = DateTime.now().difference(date);
 
-      if (diff.inDays > 0) return '${diff.inDays}d atrás';
-      if (diff.inHours > 0) return '${diff.inHours}h atrás';
-      if (diff.inMinutes > 0) return '${diff.inMinutes}min atrás';
+      if (diff.inDays > 0) return '${diff.inDays}d atr�s';
+      if (diff.inHours > 0) return '${diff.inHours}h atr�s';
+      if (diff.inMinutes > 0) return '${diff.inMinutes}min atr�s';
       return 'agora';
     } catch (e) {
       return '';
@@ -553,7 +553,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
         backgroundColor: const Color(0xFF1A1A1A),
         title: const Text('Aceitar Ordem', style: TextStyle(color: Colors.white)),
         content: const Text(
-          'Você confirma que vai processar esta ordem e realizar o pagamento PIX/Boleto?',
+          'Voc� confirma que vai processar esta ordem e realizar o pagamento PIX/Boleto?',
           style: TextStyle(color: Colors.white70),
         ),
         actions: [
@@ -575,7 +575,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
       if (success && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✅ Ordem aceita com sucesso!'),
+            content: Text('? Ordem aceita com sucesso!'),
             backgroundColor: Color(0xFF4CAF50),
           ),
         );
@@ -587,7 +587,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
   Future<void> _completeOrder(String orderId) async {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('🚧 Funcionalidade de upload de comprovante em desenvolvimento'),
+        content: Text('?? Funcionalidade de upload de comprovante em desenvolvimento'),
         backgroundColor: Color(0xFFFF6B6B),
       ),
     );
@@ -595,10 +595,10 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
 
   void _showOrderDetails(Map<String, dynamic> order) {
     // Debug: mostrar todos os campos da ordem
-    debugPrint('📦 Order data: $order');
-    debugPrint('📦 Order keys: ${order.keys.toList()}');
+    debugPrint('?? Order data: $order');
+    debugPrint('?? Order keys: ${order.keys.toList()}');
     
-    // Tentar pegar billCode de várias fontes possíveis
+    // Tentar pegar billCode de v�rias fontes poss�veis
     String billCode = order['billCode'] ?? 
                       order['bill_code'] ?? 
                       order['pixCode'] ?? 
@@ -611,7 +611,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
     
     final status = order['status'] ?? '';
     
-    // Tentar pegar userPubkey de várias fontes
+    // Tentar pegar userPubkey de v�rias fontes
     String userPubkey = order['userPubkey'] ?? 
                         order['user_pubkey'] ?? 
                         order['pubkey'] ?? 
@@ -620,8 +620,8 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                         (order['metadata']?['pubkey']) ?? 
                         '';
     
-    debugPrint('📋 billCode encontrado: ${billCode.isNotEmpty ? billCode.substring(0, min(20, billCode.length)) + "..." : "VAZIO"}');
-    debugPrint('👤 userPubkey encontrado: ${userPubkey.isNotEmpty ? userPubkey.substring(0, min(16, userPubkey.length)) + "..." : "VAZIO"}');
+    debugPrint('?? billCode encontrado: ${billCode.isNotEmpty ? billCode.substring(0, min(20, billCode.length)) + "..." : "VAZIO"}');
+    debugPrint('?? userPubkey encontrado: ${userPubkey.isNotEmpty ? userPubkey.substring(0, min(16, userPubkey.length)) + "..." : "VAZIO"}');
     
     showDialog(
       context: context,
@@ -639,11 +639,11 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
               _buildDetailRow('Status', status),
               _buildDetailRow('Bitcoin', '${order['btcAmount'] ?? 0} BTC'),
               
-              // Código da conta - CRÍTICO para o provedor
+              // C�digo da conta - CR�TICO para o provedor
               if (billCode.isNotEmpty) ...[  
                 const SizedBox(height: 16),
                 const Text(
-                  '📋 Código da Conta (copie para pagar):',
+                  '?? C�digo da Conta (copie para pagar):',
                   style: TextStyle(
                     color: Color(0xFFFF6B35),
                     fontWeight: FontWeight.bold,
@@ -677,13 +677,13 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                             Clipboard.setData(ClipboardData(text: billCode));
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text('✅ Código copiado!'),
+                                content: Text('? C�digo copiado!'),
                                 backgroundColor: Color(0xFF4CAF50),
                               ),
                             );
                           },
                           icon: const Icon(Icons.copy, size: 18),
-                          label: const Text('Copiar Código'),
+                          label: const Text('Copiar C�digo'),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFFF6B35),
                             foregroundColor: Colors.white,
@@ -694,7 +694,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                   ),
                 ),
               ] else ...[
-                // Mostrar aviso se não houver código
+                // Mostrar aviso se n�o houver c�digo
                 const SizedBox(height: 16),
                 Container(
                   width: double.infinity,
@@ -705,7 +705,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                     border: Border.all(color: Colors.orange.withOpacity(0.3)),
                   ),
                   child: const Text(
-                    '⚠️ Código da conta não disponível para esta ordem',
+                    '?? C�digo da conta n�o dispon�vel para esta ordem',
                     style: TextStyle(
                       color: Colors.orange,
                       fontSize: 12,
@@ -715,7 +715,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                 ),
               ],
               
-              // Botão para falar com usuário - disponível em qualquer ordem com userPubkey
+              // Bot�o para falar com usu�rio - dispon�vel em qualquer ordem com userPubkey
               if (userPubkey.isNotEmpty) ...[  
                 const SizedBox(height: 16),
                 SizedBox(
@@ -730,7 +730,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                       );
                     },
                     icon: const Icon(Icons.chat, size: 18),
-                    label: const Text('Falar com Usuário'),
+                    label: const Text('Falar com Usu�rio'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF2196F3),
                       foregroundColor: Colors.white,
@@ -787,7 +787,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('💰 Ganhos Totais', style: TextStyle(color: Colors.white)),
+        title: const Text('?? Ganhos Totais', style: TextStyle(color: Colors.white)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

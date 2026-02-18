@@ -10,12 +10,12 @@ import '../config/breez_config.dart';
 import '../services/storage_service.dart';
 
 /// Self-custodial Lightning provider using Breez SDK Liquid (Nodeless)
-/// Usado como FALLBACK quando Spark não está funcionando
+/// Usado como FALLBACK quando Spark n�o est� funcionando
 /// 
-/// Diferenças do Spark:
+/// Diferen�as do Spark:
 /// - Saldo fica em L-BTC (Liquid Network) 
-/// - Swaps Lightning são feitos via Boltz (não-custodial)
-/// - Taxas são maiores (~0.25% + 200 sats fixo)
+/// - Swaps Lightning s�o feitos via Boltz (n�o-custodial)
+/// - Taxas s�o maiores (~0.25% + 200 sats fixo)
 class BreezLiquidProvider with ChangeNotifier {
   liquid.BreezSdkLiquid? _sdk;
   bool _isInitialized = false;
@@ -64,7 +64,7 @@ class BreezLiquidProvider with ChangeNotifier {
   }
 
   /// Calcula a taxa total do Liquid em sats para um determinado valor
-  /// Usado para embutir no spread da cotação
+  /// Usado para embutir no spread da cota��o
   static int calculateLiquidFee(int amountSats) {
     // Taxa percentual (0.25%)
     final percentFee = (amountSats * AppConfig.liquidSwapFeePercent).round();
@@ -81,12 +81,12 @@ class BreezLiquidProvider with ChangeNotifier {
     return fee / amountSats;
   }
   
-  /// Calcula o valor em sats que o usuário deve pagar considerando taxas Liquid
-  /// amountSats = valor líquido que quer receber
-  /// retorna valor bruto que o usuário precisa enviar
+  /// Calcula o valor em sats que o usu�rio deve pagar considerando taxas Liquid
+  /// amountSats = valor l�quido que quer receber
+  /// retorna valor bruto que o usu�rio precisa enviar
   static int calculateGrossAmount(int netAmountSats) {
-    // Fórmula: gross = net + fee(net)
-    // Como fee depende do valor, fazemos iteração
+    // F�rmula: gross = net + fee(net)
+    // Como fee depende do valor, fazemos itera��o
     int gross = netAmountSats;
     for (int i = 0; i < 3; i++) {
       gross = netAmountSats + calculateLiquidFee(gross);
@@ -97,19 +97,19 @@ class BreezLiquidProvider with ChangeNotifier {
   /// Initialize Breez SDK Liquid with mnemonic
   Future<bool> initialize({String? mnemonic}) async {
     if (kIsWeb || (!Platform.isAndroid && !Platform.isIOS)) {
-      debugPrint('🚫 Breez SDK Liquid não suportado nesta plataforma');
+      debugPrint('?? Breez SDK Liquid n�o suportado nesta plataforma');
       _isInitialized = false;
       _setLoading(false);
       return false;
     }
     
     if (_isInitialized) {
-      debugPrint('✅ SDK Liquid já inicializado');
+      debugPrint('? SDK Liquid j� inicializado');
       return true;
     }
     
     if (_isLoading) {
-      debugPrint('⏳ SDK Liquid já está sendo inicializado...');
+      debugPrint('? SDK Liquid j� est� sendo inicializado...');
       int waitCount = 0;
       const maxWait = 300;
       await Future.doWhile(() async {
@@ -128,35 +128,35 @@ class BreezLiquidProvider with ChangeNotifier {
     _setLoading(true);
     _setError(null);
     
-    debugPrint('💧 Iniciando Breez SDK Liquid...');
+    debugPrint('?? Iniciando Breez SDK Liquid...');
 
     try {
       // Determinar mnemonic
       if (mnemonic != null) {
         _mnemonic = mnemonic;
         await StorageService().saveBreezMnemonic(_mnemonic!);
-        debugPrint('🔑 Usando seed fornecida para Liquid');
+        debugPrint('?? Usando seed fornecida para Liquid');
       } else {
         final savedMnemonic = await StorageService().getBreezMnemonic();
         if (savedMnemonic != null) {
           _mnemonic = savedMnemonic;
-          debugPrint('🔑 Usando seed salva para Liquid');
+          debugPrint('?? Usando seed salva para Liquid');
         } else {
           _mnemonic = bip39.generateMnemonic(strength: 128);
           await StorageService().saveBreezMnemonic(_mnemonic!);
-          debugPrint('🔑 Nova seed gerada para Liquid');
+          debugPrint('?? Nova seed gerada para Liquid');
         }
       }
       
-      // Configurar diretório de trabalho
+      // Configurar diret�rio de trabalho
       final appDir = await getApplicationDocumentsDirectory();
       final pubkey = await StorageService().getNostrPublicKey();
       final userDirSuffix = pubkey != null ? '_${pubkey.substring(0, 8)}' : '';
       final workingDir = '${appDir.path}/breez_liquid$userDirSuffix';
       
-      debugPrint('📁 Liquid working dir: $workingDir');
+      debugPrint('?? Liquid working dir: $workingDir');
 
-      // Criar config - defaultConfig já inclui workingDir adequado
+      // Criar config - defaultConfig j� inclui workingDir adequado
       final network = BreezConfig.useMainnet 
           ? liquid.LiquidNetwork.mainnet 
           : liquid.LiquidNetwork.testnet;
@@ -170,7 +170,7 @@ class BreezLiquidProvider with ChangeNotifier {
       final config = liquid.Config(
         liquidExplorer: defaultCfg.liquidExplorer,
         bitcoinExplorer: defaultCfg.bitcoinExplorer,
-        workingDir: workingDir, // Custom workingDir por usuário
+        workingDir: workingDir, // Custom workingDir por usu�rio
         network: defaultCfg.network,
         paymentTimeoutSec: defaultCfg.paymentTimeoutSec,
         syncServiceUrl: defaultCfg.syncServiceUrl,
@@ -186,7 +186,7 @@ class BreezLiquidProvider with ChangeNotifier {
         onchainSyncRequestTimeoutSec: defaultCfg.onchainSyncRequestTimeoutSec,
       );
 
-      debugPrint('💧 Conectando ao Breez SDK Liquid ($network)...');
+      debugPrint('?? Conectando ao Breez SDK Liquid ($network)...');
       
       // Conectar
       final connectRequest = liquid.ConnectRequest(
@@ -197,7 +197,7 @@ class BreezLiquidProvider with ChangeNotifier {
       _sdk = await liquid.connect(req: connectRequest);
 
       _isInitialized = true;
-      debugPrint('✅ Breez SDK Liquid inicializado com sucesso!');
+      debugPrint('? Breez SDK Liquid inicializado com sucesso!');
       
       // Ouvir eventos
       _eventsSub = _sdk!.addEventListener().listen(_handleSdkEvent);
@@ -208,7 +208,7 @@ class BreezLiquidProvider with ChangeNotifier {
       return true;
     } catch (e) {
       _setError('Erro ao inicializar Breez SDK Liquid: $e');
-      debugPrint('❌ Erro inicializando Breez SDK Liquid: $e');
+      debugPrint('? Erro inicializando Breez SDK Liquid: $e');
       return false;
     } finally {
       _setLoading(false);
@@ -226,27 +226,27 @@ class BreezLiquidProvider with ChangeNotifier {
       _minSendSats = limits.send.minSat.toInt();
       _maxSendSats = limits.send.maxSat.toInt();
       
-      debugPrint('📊 Limites Liquid Lightning:');
+      debugPrint('?? Limites Liquid Lightning:');
       debugPrint('   Receber: $_minReceiveSats - $_maxReceiveSats sats');
       debugPrint('   Enviar: $_minSendSats - $_maxSendSats sats');
     } catch (e) {
-      debugPrint('⚠️ Erro ao buscar limites: $e');
+      debugPrint('?? Erro ao buscar limites: $e');
     }
   }
 
   /// Handle SDK events
   void _handleSdkEvent(liquid.SdkEvent event) {
-    debugPrint('🔔 Evento Liquid SDK: ${event.runtimeType}');
+    debugPrint('?? Evento Liquid SDK: ${event.runtimeType}');
     
     if (event is liquid.SdkEvent_PaymentSucceeded) {
       final payment = event.details;
       final txId = payment.txId ?? 'unknown';
-      debugPrint('💰 PAGAMENTO LIQUID SUCESSO! TxID: $txId');
+      debugPrint('?? PAGAMENTO LIQUID SUCESSO! TxID: $txId');
       
       _lastPaymentId = txId;
       _lastPaymentAmount = payment.amountSat.toInt();
       
-      // Determinar se é envio ou recebimento
+      // Determinar se � envio ou recebimento
       if (payment.paymentType == liquid.PaymentType.receive) {
         if (onPaymentReceived != null) {
           onPaymentReceived!(txId, payment.amountSat.toInt(), null);
@@ -260,13 +260,13 @@ class BreezLiquidProvider with ChangeNotifier {
       notifyListeners();
     } else if (event is liquid.SdkEvent_PaymentFailed) {
       final txId = event.details.txId ?? 'unknown';
-      debugPrint('❌ PAGAMENTO LIQUID FALHOU! TxID: $txId');
+      debugPrint('? PAGAMENTO LIQUID FALHOU! TxID: $txId');
     } else if (event is liquid.SdkEvent_PaymentPending) {
-      debugPrint('⏳ Pagamento Liquid pendente...');
+      debugPrint('? Pagamento Liquid pendente...');
     } else if (event is liquid.SdkEvent_PaymentWaitingConfirmation) {
-      debugPrint('⏳ Pagamento Liquid aguardando confirmação...');
+      debugPrint('? Pagamento Liquid aguardando confirma��o...');
     } else if (event is liquid.SdkEvent_Synced) {
-      debugPrint('🔄 Liquid wallet sincronizada');
+      debugPrint('?? Liquid wallet sincronizada');
     }
   }
 
@@ -279,24 +279,24 @@ class BreezLiquidProvider with ChangeNotifier {
     try {
       final info = await _sdk!.getInfo();
       final balance = info.walletInfo.balanceSat.toInt();
-      debugPrint('💰 Saldo Liquid: $balance sats');
+      debugPrint('?? Saldo Liquid: $balance sats');
       return balance;
     } catch (e) {
-      debugPrint('❌ Erro ao obter saldo Liquid: $e');
+      debugPrint('? Erro ao obter saldo Liquid: $e');
       return 0;
     }
   }
 
   /// Create a Lightning invoice (via Boltz swap)
   /// 
-  /// IMPORTANTE: O valor do invoice já deve incluir as taxas embutidas!
+  /// IMPORTANTE: O valor do invoice j� deve incluir as taxas embutidas!
   /// Use calculateGrossAmount() para calcular o valor bruto.
   Future<Map<String, dynamic>?> createInvoice({
     required int amountSats,
     String? description,
   }) async {
     if (!_isInitialized) {
-      debugPrint('⚠️ SDK Liquid não inicializado, tentando inicializar...');
+      debugPrint('?? SDK Liquid n�o inicializado, tentando inicializar...');
       final success = await initialize();
       if (!success) {
         _setError('Falha ao inicializar SDK Liquid');
@@ -305,29 +305,29 @@ class BreezLiquidProvider with ChangeNotifier {
     }
     
     if (_sdk == null) {
-      _setError('SDK Liquid não disponível');
-      return {'success': false, 'error': 'SDK Liquid não disponível'};
+      _setError('SDK Liquid n�o dispon�vel');
+      return {'success': false, 'error': 'SDK Liquid n�o dispon�vel'};
     }
 
     // Verificar limites
     if (amountSats < _minReceiveSats) {
       return {
         'success': false, 
-        'error': 'Valor mínimo para Liquid: $_minReceiveSats sats'
+        'error': 'Valor m�nimo para Liquid: $_minReceiveSats sats'
       };
     }
     
     if (amountSats > _maxReceiveSats) {
       return {
         'success': false, 
-        'error': 'Valor máximo para Liquid: $_maxReceiveSats sats'
+        'error': 'Valor m�ximo para Liquid: $_maxReceiveSats sats'
       };
     }
 
     _setLoading(true);
     _setError(null);
     
-    debugPrint('💧 Criando invoice Liquid de $amountSats sats...');
+    debugPrint('?? Criando invoice Liquid de $amountSats sats...');
 
     try {
       // Preparar pagamento
@@ -339,7 +339,7 @@ class BreezLiquidProvider with ChangeNotifier {
       final prepareResponse = await _sdk!.prepareReceivePayment(req: prepareRequest);
       final fees = prepareResponse.feesSat.toInt();
       
-      debugPrint('📊 Taxas Boltz: $fees sats');
+      debugPrint('?? Taxas Boltz: $fees sats');
 
       // Criar invoice
       final receiveRequest = liquid.ReceivePaymentRequest(
@@ -350,7 +350,7 @@ class BreezLiquidProvider with ChangeNotifier {
       final receiveResponse = await _sdk!.receivePayment(req: receiveRequest);
       final bolt11 = receiveResponse.destination;
       
-      debugPrint('✅ Invoice Liquid BOLT11 criado: ${bolt11.substring(0, 50)}...');
+      debugPrint('? Invoice Liquid BOLT11 criado: ${bolt11.substring(0, 50)}...');
 
       _setLoading(false);
       return {
@@ -364,7 +364,7 @@ class BreezLiquidProvider with ChangeNotifier {
     } catch (e) {
       final errMsg = 'Erro ao criar invoice Liquid: $e';
       _setError(errMsg);
-      debugPrint('❌ $errMsg');
+      debugPrint('? $errMsg');
       _setLoading(false);
       return {'success': false, 'error': errMsg};
     }
@@ -373,13 +373,13 @@ class BreezLiquidProvider with ChangeNotifier {
   /// Pay a Lightning invoice (via Boltz swap)
   Future<Map<String, dynamic>?> payInvoice(String bolt11) async {
     if (!_isInitialized || _sdk == null) {
-      return {'success': false, 'error': 'SDK Liquid não inicializado'};
+      return {'success': false, 'error': 'SDK Liquid n�o inicializado'};
     }
 
     _setLoading(true);
     _setError(null);
     
-    debugPrint('💧 Pagando invoice via Liquid...');
+    debugPrint('?? Pagando invoice via Liquid...');
 
     try {
       // Preparar pagamento
@@ -390,7 +390,7 @@ class BreezLiquidProvider with ChangeNotifier {
       final prepareResponse = await _sdk!.prepareSendPayment(req: prepareRequest);
       final fees = prepareResponse.feesSat?.toInt() ?? 0;
       
-      debugPrint('📊 Taxas para envio: $fees sats');
+      debugPrint('?? Taxas para envio: $fees sats');
 
       // Enviar pagamento
       final sendRequest = liquid.SendPaymentRequest(
@@ -401,7 +401,7 @@ class BreezLiquidProvider with ChangeNotifier {
       final payment = sendResponse.payment;
       final txId = payment.txId ?? 'unknown';
       
-      debugPrint('✅ Pagamento Liquid enviado! TxID: $txId');
+      debugPrint('? Pagamento Liquid enviado! TxID: $txId');
 
       _setLoading(false);
       return {
@@ -413,7 +413,7 @@ class BreezLiquidProvider with ChangeNotifier {
     } catch (e) {
       final errMsg = 'Erro ao pagar invoice via Liquid: $e';
       _setError(errMsg);
-      debugPrint('❌ $errMsg');
+      debugPrint('? $errMsg');
       _setLoading(false);
       return {'success': false, 'error': errMsg};
     }
@@ -429,9 +429,9 @@ class BreezLiquidProvider with ChangeNotifier {
     if (_sdk != null) {
       try {
         await _sdk!.disconnect();
-        debugPrint('✅ SDK Liquid desconectado');
+        debugPrint('? SDK Liquid desconectado');
       } catch (e) {
-        debugPrint('⚠️ Erro ao desconectar SDK Liquid: $e');
+        debugPrint('?? Erro ao desconectar SDK Liquid: $e');
       }
       _sdk = null;
     }

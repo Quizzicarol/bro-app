@@ -194,7 +194,7 @@ class BitcoinPaymentModal extends StatelessWidget {
                 
                 // Address
                 const Text(
-                  'Endereço Bitcoin:',
+                  'Endere�o Bitcoin:',
                   style: TextStyle(
                     fontSize: 12,
                     color: Color(0x99FFFFFF),
@@ -247,7 +247,7 @@ class BitcoinPaymentModal extends StatelessWidget {
                       SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Confirmação em ~10 minutos',
+                          'Confirma��o em ~10 minutos',
                           style: TextStyle(
                             fontSize: 12,
                             color: Color(0xFF2196F3),
@@ -387,7 +387,7 @@ class BitcoinPaymentModal extends StatelessWidget {
                       SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Pagamento instantâneo!',
+                          'Pagamento instant�neo!',
                           style: TextStyle(
                             fontSize: 12,
                             color: Color(0xFF4CAF50),
@@ -462,7 +462,7 @@ class BitcoinPaymentModal extends StatelessWidget {
                 ),
               ),
               Text(
-                '₿ ${btcTotal.toStringAsFixed(8)}',
+                '? ${btcTotal.toStringAsFixed(8)}',
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,

@@ -123,7 +123,7 @@ class BitcoinPaymentDialog extends StatelessWidget {
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '⚡ Lightning Network - Rápido e com taxas baixas',
+                    '? Lightning Network - R�pido e com taxas baixas',
                     style: TextStyle(
                       color: Color(0xFFFFEB3B),
                       fontSize: 13,
@@ -244,7 +244,7 @@ class BitcoinPaymentDialog extends StatelessWidget {
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '⛓️ Bitcoin On-chain - Mais seguro para valores altos',
+                    '?? Bitcoin On-chain - Mais seguro para valores altos',
                     style: TextStyle(
                       color: Color(0xFF1E88E5),
                       fontSize: 13,
@@ -322,14 +322,14 @@ class BitcoinPaymentDialog extends StatelessWidget {
                 Clipboard.setData(ClipboardData(text: onchainAddress ?? ''));
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Endereço copiado!'),
+                    content: Text('Endere�o copiado!'),
                     backgroundColor: Color(0xFF4CAF50),
                     duration: Duration(seconds: 2),
                   ),
                 );
               },
               icon: const Icon(Icons.copy, size: 18),
-              label: const Text('Copiar Endereço'),
+              label: const Text('Copiar Endere�o'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFFF6B6B),
                 foregroundColor: Colors.white,
@@ -346,7 +346,7 @@ class BitcoinPaymentDialog extends StatelessWidget {
   }
 }
 
-/// Helper function para mostrar o diálogo
+/// Helper function para mostrar o di�logo
 void showBitcoinPaymentDialog(
   BuildContext context, {
   String? lightningInvoice,

@@ -39,10 +39,10 @@ class ApiService {
       },
     ));
 
-    // Interceptor para adicionar autenticação Nostr (JWT)
+    // Interceptor para adicionar autentica��o Nostr (JWT)
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
-        // Adicionar header de autenticação Nostr
+        // Adicionar header de autentica��o Nostr
         final privateKey = _nostrService.privateKey;
         if (privateKey != null) {
           final publicKey = _nostrService.publicKey!;
@@ -59,7 +59,7 @@ class ApiService {
             ],
           );
           
-          // Adicionar header de autenticação
+          // Adicionar header de autentica��o
           options.headers['Authorization'] = 'Nostr ${authEvent['id']}';
           options.headers['X-Nostr-Signature'] = authEvent['sig'];
           options.headers['X-Nostr-Pubkey'] = publicKey;
@@ -77,29 +77,29 @@ class ApiService {
   }
 
   // ===== BREEZ SDK ENDPOINTS =====
-  // Backend gerencia a API key do Breez, não o frontend
+  // Backend gerencia a API key do Breez, n�o o frontend
 
   /// POST /api/breez/initialize
   /// Inicializa Breez SDK no backend
   Future<Map<String, dynamic>?> breezInitialize() async {
     try {
-      print('🔧 Inicializando Breez SDK via backend...');
+      print('?? Inicializando Breez SDK via backend...');
       final response = await _dio.post('/api/breez/initialize');
       return response.data;
     } catch (e) {
-      print('❌ Erro ao inicializar Breez: $e');
+      print('? Erro ao inicializar Breez: $e');
       return null;
     }
   }
 
   /// GET /api/breez/balance
-  /// Obtém saldo Lightning
+  /// Obt�m saldo Lightning
   Future<Map<String, dynamic>?> breezGetBalance() async {
     try {
       final response = await _dio.get('/api/breez/balance');
       return response.data;
     } catch (e) {
-      print('❌ Erro ao buscar saldo Breez: $e');
+      print('? Erro ao buscar saldo Breez: $e');
       return null;
     }
   }
@@ -112,7 +112,7 @@ class ApiService {
     String? orderId,
   }) async {
     try {
-      print('⚡ Criando invoice de $amountSats sats...');
+      print('? Criando invoice de $amountSats sats...');
       final response = await _dio.post('/api/breez/create-invoice', data: {
         'amountSats': amountSats,
         'description': description,
@@ -120,7 +120,7 @@ class ApiService {
       });
       return response.data;
     } catch (e) {
-      print('❌ Erro ao criar invoice: $e');
+      print('? Erro ao criar invoice: $e');
       return null;
     }
   }
@@ -132,14 +132,14 @@ class ApiService {
     int? amountSats,
   }) async {
     try {
-      print('⚡ Pagando invoice...');
+      print('? Pagando invoice...');
       final response = await _dio.post('/api/breez/pay-invoice', data: {
         'bolt11': bolt11,
         if (amountSats != null) 'amountSats': amountSats,
       });
       return response.data;
     } catch (e) {
-      print('❌ Erro ao pagar invoice: $e');
+      print('? Erro ao pagar invoice: $e');
       return null;
     }
   }
@@ -151,7 +151,7 @@ class ApiService {
       final response = await _dio.get('/api/breez/check-payment/$paymentHash');
       return response.data;
     } catch (e) {
-      print('❌ Erro ao verificar status: $e');
+      print('? Erro ao verificar status: $e');
       return null;
     }
   }
@@ -163,7 +163,7 @@ class ApiService {
       final response = await _dio.post('/api/breez/mark-paid/$paymentHash');
       return response.data;
     } catch (e) {
-      print('❌ Erro ao marcar como pago: $e');
+      print('? Erro ao marcar como pago: $e');
       return null;
     }
   }
@@ -175,7 +175,7 @@ class ApiService {
       final response = await _dio.get('/api/breez/check-payment/$paymentHash');
       return response.data;
     } catch (e) {
-      print('❌ Erro ao verificar pagamento: $e');
+      print('? Erro ao verificar pagamento: $e');
       return null;
     }
   }
@@ -184,38 +184,38 @@ class ApiService {
   /// Simula pagamento (apenas para testes/debug)
   Future<Map<String, dynamic>?> breezSimulatePay(String paymentHash) async {
     try {
-      print('🧪 Simulando pagamento: $paymentHash');
+      print('?? Simulando pagamento: $paymentHash');
       final response = await _dio.post('/api/breez/simulate-pay', data: {
         'paymentHash': paymentHash,
       });
       return response.data;
     } catch (e) {
-      print('❌ Erro ao simular pagamento: $e');
+      print('? Erro ao simular pagamento: $e');
       return null;
     }
   }
 
   /// GET /api/breez/payments
-  /// Lista histórico de pagamentos
+  /// Lista hist�rico de pagamentos
   Future<List<dynamic>> breezListPayments() async {
     try {
       final response = await _dio.get('/api/breez/payments');
       return response.data['payments'] ?? [];
     } catch (e) {
-      print('❌ Erro ao listar pagamentos: $e');
+      print('? Erro ao listar pagamentos: $e');
       return [];
     }
   }
 
   /// POST /api/breez/create-onchain-address
-  /// Cria endereço Bitcoin on-chain para swap
+  /// Cria endere�o Bitcoin on-chain para swap
   Future<Map<String, dynamic>?> breezCreateOnchainAddress() async {
     try {
-      print('🔗 Criando endereço Bitcoin on-chain...');
+      print('?? Criando endere�o Bitcoin on-chain...');
       final response = await _dio.post('/api/breez/create-onchain-address');
       return response.data;
     } catch (e) {
-      print('❌ Erro ao criar endereço on-chain: $e');
+      print('? Erro ao criar endere�o on-chain: $e');
       return null;
     }
   }
@@ -224,32 +224,32 @@ class ApiService {
 
   Future<Map<String, dynamic>?> validateBoleto(String code) async {
     try {
-      print('🔍 validateBoleto chamado com código: ${code.length} dígitos');
-      print('🔍 Código (primeiros 20 chars): ${code.substring(0, code.length > 20 ? 20 : code.length)}...');
+      print('?? validateBoleto chamado com c�digo: ${code.length} d�gitos');
+      print('?? C�digo (primeiros 20 chars): ${code.substring(0, code.length > 20 ? 20 : code.length)}...');
       
       // Usar decodificador local sempre (funciona com ou sem backend)
       final result = BoletoDecoderService.decodeBoleto(code);
       
       if (result != null) {
-        print('✅ Boleto decodificado localmente: ${result['merchantName']}, R\$ ${result['value']}');
+        print('? Boleto decodificado localmente: ${result['merchantName']}, R\$ ${result['value']}');
         return result;
       }
       
-      print('⚠️ Decodificador local retornou null');
+      print('?? Decodificador local retornou null');
       
-      // Se decodificação local falhar e não estiver em test mode, tenta backend
+      // Se decodifica��o local falhar e n�o estiver em test mode, tenta backend
       if (!AppConfig.testMode) {
-        print('📡 Tentando backend...');
+        print('?? Tentando backend...');
         return await post('/api/validate-boleto', {'code': code});
       }
       
-      print('❌ Não foi possível decodificar o boleto (test mode, sem backend)');
+      print('? N�o foi poss�vel decodificar o boleto (test mode, sem backend)');
       return {
         'success': false,
-        'error': 'Código de boleto inválido. Deve ter 44, 47 ou 48 dígitos.',
+        'error': 'C�digo de boleto inv�lido. Deve ter 44, 47 ou 48 d�gitos.',
       };
     } catch (e) {
-      print('❌ Erro ao validar boleto: $e');
+      print('? Erro ao validar boleto: $e');
       return {
         'success': false,
         'error': 'Erro ao processar boleto: $e',
@@ -264,19 +264,19 @@ class ApiService {
       // Usar decodificador local sempre (funciona com ou sem backend)
       final result = PixDecoderService.decodePix(code);
       if (result != null) {
-        print('✅ PIX decodificado localmente: ${result['merchantName']}, R\$ ${result['value']}');
+        print('? PIX decodificado localmente: ${result['merchantName']}, R\$ ${result['value']}');
         return result;
       }
       
-      // Se decodificação local falhar e não estiver em test mode, tenta backend
+      // Se decodifica��o local falhar e n�o estiver em test mode, tenta backend
       if (!AppConfig.testMode) {
         return await post('/api/decode-pix', {'code': code});
       }
       
-      print('❌ Não foi possível decodificar o código PIX');
+      print('? N�o foi poss�vel decodificar o c�digo PIX');
       return null;
     } catch (e) {
-      print('❌ Erro ao decodificar PIX: $e');
+      print('? Erro ao decodificar PIX: $e');
       return null;
     }
   }
@@ -285,31 +285,31 @@ class ApiService {
 
   Future<double?> getBitcoinPrice() async {
     try {
-      print('📡 Buscando preço real do Bitcoin...');
+      print('?? Buscando pre�o real do Bitcoin...');
       
-      // Buscar preço real de APIs públicas
+      // Buscar pre�o real de APIs p�blicas
       final realPrice = await BitcoinPriceService.getBitcoinPriceWithCache();
       
       if (realPrice != null) {
-        print('✅ Preço real do Bitcoin: R\$ ${realPrice.toStringAsFixed(2)}');
+        print('? Pre�o real do Bitcoin: R\$ ${realPrice.toStringAsFixed(2)}');
         return realPrice;
       }
       
-      // Se falhar e não estiver em test mode, tenta backend
+      // Se falhar e n�o estiver em test mode, tenta backend
       if (!AppConfig.testMode) {
         final result = await get('/api/bitcoin/price');
         final price = result?['price'];
         if (price != null) {
           final priceDouble = (price is num) ? price.toDouble() : double.tryParse(price.toString());
-          print('✅ Preço do backend: $priceDouble');
+          print('? Pre�o do backend: $priceDouble');
           return priceDouble;
         }
       }
       
-      print('⚠️ Usando preço fallback: R\$ 480.558,00');
+      print('?? Usando pre�o fallback: R\$ 480.558,00');
       return 480558.0; // Fallback
     } catch (e) {
-      print('❌ Erro ao buscar preço Bitcoin: $e');
+      print('? Erro ao buscar pre�o Bitcoin: $e');
       return 480558.0; // Fallback
     }
   }
@@ -319,19 +319,19 @@ class ApiService {
     String currency = 'BRL',
   }) async {
     try {
-      // Sempre calcular localmente usando preço real do Bitcoin
+      // Sempre calcular localmente usando pre�o real do Bitcoin
       final btcPrice = await getBitcoinPrice();
       if (btcPrice == null || btcPrice <= 0) {
-        print('❌ Preço do Bitcoin inválido: $btcPrice');
+        print('? Pre�o do Bitcoin inv�lido: $btcPrice');
         return null;
       }
       
-      // Calcular conversão
-      // amount está em BRL, converter para BTC e sats
+      // Calcular convers�o
+      // amount est� em BRL, converter para BTC e sats
       final btcAmount = amount / btcPrice;
       final satsAmount = (btcAmount * 100000000).round();
       
-      // Taxas (ajustáveis)
+      // Taxas (ajust�veis)
       const platformFeePercent = 0.02; // 2% taxa da plataforma
       const providerFeePercent = 0.01; // 1% taxa do provedor
       
@@ -344,7 +344,7 @@ class ApiService {
       final platformFeeSats = (platformFeeBrl / btcPrice * 100000000).round();
       final providerFeeSats = (providerFeeBrl / btcPrice * 100000000).round();
       
-      print('💱 Conversão local: R\$ $amount → $satsAmount sats @ R\$ ${btcPrice.toStringAsFixed(2)}/BTC');
+      print('?? Convers�o local: R\$ $amount ? $satsAmount sats @ R\$ ${btcPrice.toStringAsFixed(2)}/BTC');
       
       return {
         'success': true,
@@ -362,7 +362,7 @@ class ApiService {
         'totalFee': totalFeeBrl,
       };
     } catch (e) {
-      print('❌ Erro ao converter preço: $e');
+      print('? Erro ao converter pre�o: $e');
       return null;
     }
   }
@@ -386,7 +386,7 @@ class ApiService {
       });
       return response.data;
     } catch (e) {
-      print('❌ Erro ao criar ordem: $e');
+      print('? Erro ao criar ordem: $e');
       return null;
     }
   }
@@ -399,7 +399,7 @@ class ApiService {
       });
       return response.data['orders'] ?? [];
     } catch (e) {
-      print('❌ Erro ao listar ordens: $e');
+      print('? Erro ao listar ordens: $e');
       return [];
     }
   }
@@ -409,7 +409,7 @@ class ApiService {
       final response = await _dio.get('/api/orders/$orderId');
       return response.data['order'];
     } catch (e) {
-      print('❌ Erro ao buscar ordem: $e');
+      print('? Erro ao buscar ordem: $e');
       return null;
     }
   }
@@ -421,7 +421,7 @@ class ApiService {
       });
       return response.data['success'] ?? false;
     } catch (e) {
-      print('❌ Erro ao aceitar ordem: $e');
+      print('? Erro ao aceitar ordem: $e');
       return false;
     }
   }
@@ -442,7 +442,7 @@ class ApiService {
       });
       return response.data['success'] ?? false;
     } catch (e) {
-      print('❌ Erro ao atualizar status: $e');
+      print('? Erro ao atualizar status: $e');
       return false;
     }
   }
@@ -462,7 +462,7 @@ class ApiService {
       });
       return response.data;
     } catch (e) {
-      print('❌ Erro ao criar escrow: $e');
+      print('? Erro ao criar escrow: $e');
       return null;
     }
   }
@@ -472,7 +472,7 @@ class ApiService {
       final response = await _dio.get('/api/escrow/$escrowId');
       return response.data['escrow'];
     } catch (e) {
-      print('❌ Erro ao buscar escrow: $e');
+      print('? Erro ao buscar escrow: $e');
       return null;
     }
   }
@@ -482,7 +482,7 @@ class ApiService {
       final response = await _dio.get('/api/escrow/order/$orderId');
       return response.data['escrow'];
     } catch (e) {
-      print('❌ Erro ao buscar escrow da ordem: $e');
+      print('? Erro ao buscar escrow da ordem: $e');
       return null;
     }
   }
@@ -492,7 +492,7 @@ class ApiService {
       final response = await _dio.post('/api/escrow/fund/$escrowId');
       return response.data['success'] ?? false;
     } catch (e) {
-      print('❌ Erro ao financiar escrow: $e');
+      print('? Erro ao financiar escrow: $e');
       return false;
     }
   }
@@ -502,7 +502,7 @@ class ApiService {
       final response = await _dio.post('/api/escrow/release/$escrowId');
       return response.data['success'] ?? false;
     } catch (e) {
-      print('❌ Erro ao liberar escrow: $e');
+      print('? Erro ao liberar escrow: $e');
       return false;
     }
   }
@@ -526,7 +526,7 @@ class ApiService {
       });
       return response.data;
     } catch (e) {
-      print('❌ Erro ao enviar mensagem: $e');
+      print('? Erro ao enviar mensagem: $e');
       return null;
     }
   }
@@ -536,7 +536,7 @@ class ApiService {
       final response = await _dio.get('/api/messages/$orderId');
       return response.data['messages'] ?? [];
     } catch (e) {
-      print('❌ Erro ao buscar mensagens: $e');
+      print('? Erro ao buscar mensagens: $e');
       return [];
     }
   }
@@ -550,7 +550,7 @@ class ApiService {
       });
       return response.data['stats'];
     } catch (e) {
-      print('❌ Erro ao buscar stats: $e');
+      print('? Erro ao buscar stats: $e');
       return null;
     }
   }
@@ -562,14 +562,14 @@ class ApiService {
       final response = await _dio.get('/api/health').timeout(
         const Duration(seconds: 3),
         onTimeout: () {
-          throw TimeoutException('Backend não está respondendo');
+          throw TimeoutException('Backend n�o est� respondendo');
         },
       );
       return response.data;
     } catch (e) {
-      print('❌ Erro no health check: $e');
+      print('? Erro no health check: $e');
       if (e is TimeoutException) {
-        throw Exception('O servidor não está respondendo. Verifique se o backend está rodando em $baseUrl');
+        throw Exception('O servidor n�o est� respondendo. Verifique se o backend est� rodando em $baseUrl');
       }
       return null;
     }
@@ -577,19 +577,19 @@ class ApiService {
 
   // ===== PIX =====
 
-  /// Decodifica código PIX
+  /// Decodifica c�digo PIX
   Future<Map<String, dynamic>?> decodePixCode(String pixCode) async {
     try {
-      print('📡 Decodificando código PIX...');
+      print('?? Decodificando c�digo PIX...');
       final response = await _dio.post('/api/pix/decode', data: {
         'pixCode': pixCode,
       });
-      print('📨 Resposta da API: ${response.data}');
+      print('?? Resposta da API: ${response.data}');
       return response.data;
     } catch (e) {
-      print('❌ Erro ao decodificar PIX: $e');
-      print('📨 Resposta da API: null');
-      print('❌ Resultado inválido: null');
+      print('? Erro ao decodificar PIX: $e');
+      print('?? Resposta da API: null');
+      print('? Resultado inv�lido: null');
       return null;
     }
   }
@@ -601,7 +601,7 @@ class ApiService {
     double amount,
   ) async {
     try {
-      print('📡 Processando pagamento PIX...');
+      print('?? Processando pagamento PIX...');
       final response = await _dio.post('/api/pix/pay', data: {
         'orderId': orderId,
         'pixCode': pixCode,
@@ -609,7 +609,7 @@ class ApiService {
       });
       return response.data;
     } catch (e) {
-      print('❌ Erro ao processar pagamento PIX: $e');
+      print('? Erro ao processar pagamento PIX: $e');
       return {'success': false, 'error': e.toString()};
     }
   }
@@ -623,7 +623,7 @@ class ApiService {
       });
       return response.data['success'] ?? false;
     } catch (e) {
-      print('❌ Erro ao sincronizar ordens: $e');
+      print('? Erro ao sincronizar ordens: $e');
       return false;
     }
   }
@@ -663,7 +663,7 @@ class ApiService {
       final response = await _dio.get(path);
       return response.data as Map<String, dynamic>?;
     } catch (e) {
-      print('❌ Erro no GET $path: $e');
+      print('? Erro no GET $path: $e');
       return null;
     }
   }
@@ -679,20 +679,20 @@ class ApiService {
       final response = await _dio.post(path, data: data);
       return response.data as Map<String, dynamic>?;
     } catch (e) {
-      print('❌ Erro no POST $path: $e');
+      print('? Erro no POST $path: $e');
       return null;
     }
   }
 
   /// Mock responses para test mode
   Future<Map<String, dynamic>> _getMockResponse(String path, {Map<String, dynamic>? data}) async {
-    print('🧪 TEST MODE: Mock response para $path');
+    print('?? TEST MODE: Mock response para $path');
 
     // PIX decode
     if (path.contains('/api/decode-pix')) {
       final pixCode = data?['code'] ?? '';
       final codeLength = pixCode.toString().length;
-      print('🔍 Mock: Decodificando PIX: ${pixCode.toString().substring(0, min<int>(50, codeLength))}');
+      print('?? Mock: Decodificando PIX: ${pixCode.toString().substring(0, min<int>(50, codeLength))}');
       return {
         'success': true,
         'billType': 'pix',
@@ -704,14 +704,14 @@ class ApiService {
       };
     }
 
-    // Boleto validate - NÃO usar mock, sempre decodificar localmente
+    // Boleto validate - N�O usar mock, sempre decodificar localmente
     if (path.contains('/api/validate-boleto')) {
       final boletoCode = data?['code'] ?? '';
-      print('⚠️ Mock de boleto chamado - decodificação local falhou para: $boletoCode');
-      // Retornar erro para forçar uso do decodificador local
+      print('?? Mock de boleto chamado - decodifica��o local falhou para: $boletoCode');
+      // Retornar erro para for�ar uso do decodificador local
       return {
         'success': false,
-        'error': 'Decodificação local falhou - código inválido',
+        'error': 'Decodifica��o local falhou - c�digo inv�lido',
       };
     }
 
@@ -786,7 +786,7 @@ class ApiService {
     }
 
     if (path.contains('/api/escrow/release')) {
-      return {'success': true, 'message': 'Depósito liberado (mock)'};
+      return {'success': true, 'message': 'Dep�sito liberado (mock)'};
     }
 
     // Default mock response

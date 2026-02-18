@@ -1,7 +1,7 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/foundation.dart';
 
-/// Serviço de armazenamento seguro para dados sensíveis
+/// Servi�o de armazenamento seguro para dados sens�veis
 /// 
 /// USA CRIPTOGRAFIA AES-256:
 /// - iOS: Keychain
@@ -10,8 +10,8 @@ import 'package:flutter/foundation.dart';
 /// NUNCA armazene em SharedPreferences:
 /// - Chaves privadas
 /// - Mnemonics/Seeds
-/// - Tokens de autenticação
-/// - Dados financeiros sensíveis
+/// - Tokens de autentica��o
+/// - Dados financeiros sens�veis
 class SecureStorageService {
   static const _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(
@@ -39,9 +39,9 @@ class SecureStorageService {
     try {
       await _storage.write(key: _nostrPrivateKey, value: privateKey);
       await _storage.write(key: _nostrPublicKey, value: publicKey);
-      debugPrint('🔐 Chaves Nostr salvas com segurança');
+      debugPrint('?? Chaves Nostr salvas com seguran�a');
     } catch (e) {
-      debugPrint('❌ Erro ao salvar chaves Nostr: $e');
+      debugPrint('? Erro ao salvar chaves Nostr: $e');
       rethrow;
     }
   }
@@ -51,17 +51,17 @@ class SecureStorageService {
     try {
       return await _storage.read(key: _nostrPrivateKey);
     } catch (e) {
-      debugPrint('❌ Erro ao ler chave privada Nostr: $e');
+      debugPrint('? Erro ao ler chave privada Nostr: $e');
       return null;
     }
   }
 
-  /// Recupera chave pública Nostr
+  /// Recupera chave p�blica Nostr
   static Future<String?> getNostrPublicKey() async {
     try {
       return await _storage.read(key: _nostrPublicKey);
     } catch (e) {
-      debugPrint('❌ Erro ao ler chave pública Nostr: $e');
+      debugPrint('? Erro ao ler chave p�blica Nostr: $e');
       return null;
     }
   }
@@ -79,9 +79,9 @@ class SecureStorageService {
   static Future<void> saveBreezMnemonic(String mnemonic) async {
     try {
       await _storage.write(key: _breezMnemonic, value: mnemonic);
-      debugPrint('🔐 Mnemonic Breez salvo com segurança');
+      debugPrint('?? Mnemonic Breez salvo com seguran�a');
     } catch (e) {
-      debugPrint('❌ Erro ao salvar mnemonic Breez: $e');
+      debugPrint('? Erro ao salvar mnemonic Breez: $e');
       rethrow;
     }
   }
@@ -91,7 +91,7 @@ class SecureStorageService {
     try {
       return await _storage.read(key: _breezMnemonic);
     } catch (e) {
-      debugPrint('❌ Erro ao ler mnemonic Breez: $e');
+      debugPrint('? Erro ao ler mnemonic Breez: $e');
       return null;
     }
   }
@@ -103,10 +103,10 @@ class SecureStorageService {
   }
 
   // =============== PROVIDER MODE ===============
-  // ⚠️ IMPORTANTE: isProviderMode é POR USUÁRIO (usando pubkey)
-  // Isso evita que um usuário veja modo provedor de outro
+  // ?? IMPORTANTE: isProviderMode � POR USU�RIO (usando pubkey)
+  // Isso evita que um usu�rio veja modo provedor de outro
 
-  /// Gera a chave de provider mode para um usuário específico
+  /// Gera a chave de provider mode para um usu�rio espec�fico
   static String _getProviderModeKey(String? pubkey) {
     if (pubkey == null || pubkey.isEmpty) {
       return _legacyProviderModeKey;
@@ -115,24 +115,24 @@ class SecureStorageService {
     return '${_isProviderModeBase}_$shortKey';
   }
 
-  /// Salva flag de modo provedor PARA UM USUÁRIO ESPECÍFICO
+  /// Salva flag de modo provedor PARA UM USU�RIO ESPEC�FICO
   static Future<void> setProviderMode(bool isProvider, {String? userPubkey}) async {
     try {
       final key = _getProviderModeKey(userPubkey);
       await _storage.write(key: key, value: isProvider.toString());
-      debugPrint('🔐 setProviderMode($isProvider) para key=$key');
+      debugPrint('?? setProviderMode($isProvider) para key=$key');
     } catch (e) {
-      debugPrint('❌ Erro ao salvar modo provedor: $e');
+      debugPrint('? Erro ao salvar modo provedor: $e');
     }
   }
 
-  /// Recupera flag de modo provedor PARA UM USUÁRIO ESPECÍFICO
+  /// Recupera flag de modo provedor PARA UM USU�RIO ESPEC�FICO
   static Future<bool> isProviderMode({String? userPubkey}) async {
     try {
       final key = _getProviderModeKey(userPubkey);
       final value = await _storage.read(key: key);
       final result = value == 'true';
-      debugPrint('🔍 isProviderMode: key=$key, value=$result');
+      debugPrint('?? isProviderMode: key=$key, value=$result');
       return result;
     } catch (e) {
       return false;
@@ -144,11 +144,11 @@ class SecureStorageService {
     try {
       final key = _getProviderModeKey(userPubkey);
       await _storage.delete(key: key);
-      // Também limpar chave legada
+      // Tamb�m limpar chave legada
       await _storage.delete(key: _legacyProviderModeKey);
-      debugPrint('🗑️ Provider mode removido para key=$key');
+      debugPrint('??? Provider mode removido para key=$key');
     } catch (e) {
-      debugPrint('❌ Erro ao limpar modo provedor: $e');
+      debugPrint('? Erro ao limpar modo provedor: $e');
     }
   }
 
@@ -159,9 +159,9 @@ class SecureStorageService {
     try {
       await _storage.delete(key: _nostrPrivateKey);
       await _storage.delete(key: _nostrPublicKey);
-      debugPrint('🗑️ Chaves Nostr removidas');
+      debugPrint('??? Chaves Nostr removidas');
     } catch (e) {
-      debugPrint('❌ Erro ao limpar chaves Nostr: $e');
+      debugPrint('? Erro ao limpar chaves Nostr: $e');
     }
   }
 
@@ -169,33 +169,33 @@ class SecureStorageService {
   static Future<void> clearBreezMnemonic() async {
     try {
       await _storage.delete(key: _breezMnemonic);
-      debugPrint('🗑️ Mnemonic Breez removido');
+      debugPrint('??? Mnemonic Breez removido');
     } catch (e) {
-      debugPrint('❌ Erro ao limpar mnemonic Breez: $e');
+      debugPrint('? Erro ao limpar mnemonic Breez: $e');
     }
   }
 
-  /// Limpa TODOS os dados sensíveis (logout completo)
+  /// Limpa TODOS os dados sens�veis (logout completo)
   static Future<void> clearAll() async {
     try {
       await _storage.deleteAll();
-      debugPrint('🗑️ Todos os dados sensíveis removidos');
+      debugPrint('??? Todos os dados sens�veis removidos');
     } catch (e) {
-      debugPrint('❌ Erro ao limpar dados: $e');
+      debugPrint('? Erro ao limpar dados: $e');
     }
   }
 
-  // =============== MIGRAÇÃO ===============
+  // =============== MIGRA��O ===============
 
   /// Migra dados de SharedPreferences para SecureStorage
-  /// Chamar uma vez durante atualização do app
+  /// Chamar uma vez durante atualiza��o do app
   static Future<void> migrateFromSharedPreferences() async {
     try {
-      // A migração será feita pelos providers individualmente
+      // A migra��o ser� feita pelos providers individualmente
       // quando detectarem dados no SharedPreferences
-      debugPrint('🔄 Verificando migração de dados sensíveis...');
+      debugPrint('?? Verificando migra��o de dados sens�veis...');
     } catch (e) {
-      debugPrint('❌ Erro na migração: $e');
+      debugPrint('? Erro na migra��o: $e');
     }
   }
 }

@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
-/// Serviço para resolver Lightning Addresses e LNURL (LNURL-pay)
+/// Servi�o para resolver Lightning Addresses e LNURL (LNURL-pay)
 /// Lightning Address: user@domain.com
 /// LNURL: lnurl1dp68gurn8ghj7...
 /// Resolve para uma invoice BOLT11 que pode ser paga
@@ -11,7 +11,7 @@ class LnAddressService {
   factory LnAddressService() => _instance;
   LnAddressService._internal();
 
-  /// Verifica se é um Lightning Address válido
+  /// Verifica se � um Lightning Address v�lido
   static bool isLightningAddress(String input) {
     final cleaned = input.trim().toLowerCase();
     // Remove prefixos comuns
@@ -23,7 +23,7 @@ class LnAddressService {
     return RegExp(r'^[\w\.-]+@[\w\.-]+\.\w{2,}$').hasMatch(address);
   }
 
-  /// Verifica se é um LNURL (bech32 encoded)
+  /// Verifica se � um LNURL (bech32 encoded)
   static bool isLnurl(String input) {
     final cleaned = input.trim().toLowerCase();
     return cleaned.startsWith('lnurl1') || cleaned.startsWith('lnurl:');
@@ -86,10 +86,10 @@ class LnAddressService {
       
       // Convert bytes to string (URL)
       final url = utf8.decode(bytes);
-      debugPrint('🔓 LNURL decodificado: $url');
+      debugPrint('?? LNURL decodificado: $url');
       return url;
     } catch (e) {
-      debugPrint('❌ Erro ao decodificar LNURL: $e');
+      debugPrint('? Erro ao decodificar LNURL: $e');
       return null;
     }
   }
@@ -99,11 +99,11 @@ class LnAddressService {
     try {
       final url = decodeLnurl(lnurl);
       if (url == null) {
-        return {'success': false, 'error': 'LNURL inválido'};
+        return {'success': false, 'error': 'LNURL inv�lido'};
       }
 
-      debugPrint('🔍 Resolvendo LNURL...');
-      debugPrint('🌐 URL: $url');
+      debugPrint('?? Resolvendo LNURL...');
+      debugPrint('?? URL: $url');
 
       final response = await http.get(
         Uri.parse(url),
@@ -113,31 +113,31 @@ class LnAddressService {
       ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode != 200) {
-        debugPrint('❌ Erro HTTP ${response.statusCode}: ${response.body}');
+        debugPrint('? Erro HTTP ${response.statusCode}: ${response.body}');
         return {
           'success': false,
-          'error': 'Não foi possível resolver LNURL (HTTP ${response.statusCode})'
+          'error': 'N�o foi poss�vel resolver LNURL (HTTP ${response.statusCode})'
         };
       }
 
       final data = json.decode(response.body);
       
-      // Verificar se é um LNURL-pay válido
+      // Verificar se � um LNURL-pay v�lido
       if (data['tag'] != 'payRequest') {
         return {
           'success': false,
-          'error': 'LNURL não suporta pagamentos (tag: ${data['tag']})'
+          'error': 'LNURL n�o suporta pagamentos (tag: ${data['tag']})'
         };
       }
 
-      // Extrair informações
+      // Extrair informa��es
       final minSendable = data['minSendable'] as int? ?? 1000;
       final maxSendable = data['maxSendable'] as int? ?? 100000000000;
       final callback = data['callback'] as String?;
       final metadata = data['metadata'] as String?;
       final commentAllowed = data['commentAllowed'] as int? ?? 0;
 
-      debugPrint('✅ LNURL resolvido!');
+      debugPrint('? LNURL resolvido!');
       debugPrint('   Min: ${minSendable ~/ 1000} sats');
       debugPrint('   Max: ${maxSendable ~/ 1000} sats');
       debugPrint('   Callback: $callback');
@@ -152,7 +152,7 @@ class LnAddressService {
         'isLnurl': true,
       };
     } catch (e) {
-      debugPrint('❌ Erro ao resolver LNURL: $e');
+      debugPrint('? Erro ao resolver LNURL: $e');
       return {
         'success': false,
         'error': 'Erro ao resolver LNURL: $e'
@@ -168,7 +168,7 @@ class LnAddressService {
       final parts = cleaned.split('@');
       
       if (parts.length != 2) {
-        return {'success': false, 'error': 'Lightning Address inválido'};
+        return {'success': false, 'error': 'Lightning Address inv�lido'};
       }
 
       final username = parts[0];
@@ -177,8 +177,8 @@ class LnAddressService {
       // LNURL-pay endpoint: https://domain.com/.well-known/lnurlp/username
       final url = 'https://$domain/.well-known/lnurlp/$username';
       
-      debugPrint('🔍 Resolvendo LN Address: $lnAddress');
-      debugPrint('🌐 URL: $url');
+      debugPrint('?? Resolvendo LN Address: $lnAddress');
+      debugPrint('?? URL: $url');
 
       final response = await http.get(
         Uri.parse(url),
@@ -188,31 +188,31 @@ class LnAddressService {
       ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode != 200) {
-        debugPrint('❌ Erro HTTP ${response.statusCode}: ${response.body}');
+        debugPrint('? Erro HTTP ${response.statusCode}: ${response.body}');
         return {
           'success': false, 
-          'error': 'Não foi possível resolver o Lightning Address (HTTP ${response.statusCode})'
+          'error': 'N�o foi poss�vel resolver o Lightning Address (HTTP ${response.statusCode})'
         };
       }
 
       final data = json.decode(response.body);
       
-      // Verificar se é um LNURL-pay válido
+      // Verificar se � um LNURL-pay v�lido
       if (data['tag'] != 'payRequest') {
         return {
           'success': false,
-          'error': 'Lightning Address não suporta pagamentos'
+          'error': 'Lightning Address n�o suporta pagamentos'
         };
       }
 
-      // Extrair informações
+      // Extrair informa��es
       final minSendable = data['minSendable'] as int? ?? 1000; // em millisats
       final maxSendable = data['maxSendable'] as int? ?? 100000000000; // em millisats
       final callback = data['callback'] as String?;
       final metadata = data['metadata'] as String?;
       final commentAllowed = data['commentAllowed'] as int? ?? 0;
 
-      debugPrint('✅ LN Address resolvido!');
+      debugPrint('? LN Address resolvido!');
       debugPrint('   Min: ${minSendable ~/ 1000} sats');
       debugPrint('   Max: ${maxSendable ~/ 1000} sats');
       debugPrint('   Callback: $callback');
@@ -227,7 +227,7 @@ class LnAddressService {
         'lnAddress': cleaned,
       };
     } catch (e) {
-      debugPrint('❌ Erro ao resolver LN Address: $e');
+      debugPrint('? Erro ao resolver LN Address: $e');
       return {
         'success': false,
         'error': 'Erro ao resolver Lightning Address: $e'
@@ -235,10 +235,10 @@ class LnAddressService {
     }
   }
 
-  /// Obtém uma invoice BOLT11 do Lightning Address ou LNURL para um valor específico
+  /// Obt�m uma invoice BOLT11 do Lightning Address ou LNURL para um valor espec�fico
   /// destination: LN Address (user@domain) ou LNURL (lnurl1...)
   /// amountSats: valor em satoshis
-  /// comment: comentário opcional (se suportado)
+  /// comment: coment�rio opcional (se suportado)
   Future<Map<String, dynamic>> getInvoice({
     required String lnAddress,
     required int amountSats,
@@ -247,7 +247,7 @@ class LnAddressService {
     try {
       Map<String, dynamic> resolved;
       
-      // Verificar se é LNURL ou Lightning Address
+      // Verificar se � LNURL ou Lightning Address
       if (isLnurl(lnAddress)) {
         resolved = await resolveLnurl(lnAddress);
       } else {
@@ -264,21 +264,21 @@ class LnAddressService {
       final commentAllowed = resolved['commentAllowed'] as int;
 
       if (callback == null) {
-        return {'success': false, 'error': 'Callback não encontrado'};
+        return {'success': false, 'error': 'Callback n�o encontrado'};
       }
 
       // Validar valor
       if (amountSats < minSats) {
         return {
           'success': false,
-          'error': 'Valor mínimo: $minSats sats'
+          'error': 'Valor m�nimo: $minSats sats'
         };
       }
 
       if (amountSats > maxSats) {
         return {
           'success': false,
-          'error': 'Valor máximo: $maxSats sats'
+          'error': 'Valor m�ximo: $maxSats sats'
         };
       }
 
@@ -286,7 +286,7 @@ class LnAddressService {
       final amountMsat = amountSats * 1000;
       var invoiceUrl = '$callback${callback.contains('?') ? '&' : '?'}amount=$amountMsat';
       
-      // Adicionar comentário se permitido
+      // Adicionar coment�rio se permitido
       if (comment != null && comment.isNotEmpty && commentAllowed > 0) {
         final truncatedComment = comment.length > commentAllowed 
             ? comment.substring(0, commentAllowed) 
@@ -294,8 +294,8 @@ class LnAddressService {
         invoiceUrl += '&comment=${Uri.encodeComponent(truncatedComment)}';
       }
 
-      debugPrint('💸 Obtendo invoice para $amountSats sats...');
-      debugPrint('🌐 URL: $invoiceUrl');
+      debugPrint('?? Obtendo invoice para $amountSats sats...');
+      debugPrint('?? URL: $invoiceUrl');
 
       final response = await http.get(
         Uri.parse(invoiceUrl),
@@ -305,7 +305,7 @@ class LnAddressService {
       ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode != 200) {
-        debugPrint('❌ Erro HTTP ${response.statusCode}: ${response.body}');
+        debugPrint('? Erro HTTP ${response.statusCode}: ${response.body}');
         return {
           'success': false,
           'error': 'Erro ao obter invoice (HTTP ${response.statusCode})'
@@ -323,10 +323,10 @@ class LnAddressService {
       final pr = data['pr'] as String?; // payment request (invoice BOLT11)
       
       if (pr == null || pr.isEmpty) {
-        return {'success': false, 'error': 'Invoice não recebida'};
+        return {'success': false, 'error': 'Invoice n�o recebida'};
       }
 
-      debugPrint('✅ Invoice obtida: ${pr.substring(0, 50)}...');
+      debugPrint('? Invoice obtida: ${pr.substring(0, 50)}...');
 
       return {
         'success': true,
@@ -335,7 +335,7 @@ class LnAddressService {
         'lnAddress': lnAddress,
       };
     } catch (e) {
-      debugPrint('❌ Erro ao obter invoice: $e');
+      debugPrint('? Erro ao obter invoice: $e');
       return {
         'success': false,
         'error': 'Erro ao obter invoice: $e'

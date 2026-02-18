@@ -20,7 +20,7 @@ class ProviderBalanceProvider with ChangeNotifier {
   String? get error => _error;
   bool get hasBalance => _balance != null;
 
-  /// Definir BreezProvider para integração de pagamentos
+  /// Definir BreezProvider para integra��o de pagamentos
   void setBreezProvider(BreezProvider breezProvider) {
     _breezProvider = breezProvider;
   }
@@ -33,7 +33,7 @@ class ProviderBalanceProvider with ChangeNotifier {
     try {
       await _loadSavedBalance();
       
-      // Se não tem saldo, criar um novo vazio
+      // Se n�o tem saldo, criar um novo vazio
       if (_balance == null || _balance!.providerId != providerId) {
         _balance = ProviderBalance(
           providerId: providerId,
@@ -43,15 +43,15 @@ class ProviderBalanceProvider with ChangeNotifier {
           updatedAt: DateTime.now(),
         );
         await _saveBalance();
-        debugPrint('💰 Novo saldo criado para provedor $providerId');
+        debugPrint('?? Novo saldo criado para provedor $providerId');
       } else {
-        debugPrint('💰 Saldo carregado: ${_balance!.availableBalanceSats} sats');
+        debugPrint('?? Saldo carregado: ${_balance!.availableBalanceSats} sats');
       }
 
       _isLoading = false;
       notifyListeners();
     } catch (e) {
-      debugPrint('❌ Erro ao inicializar saldo: $e');
+      debugPrint('? Erro ao inicializar saldo: $e');
       _error = e.toString();
       _isLoading = false;
       notifyListeners();
@@ -67,10 +67,10 @@ class ProviderBalanceProvider with ChangeNotifier {
       if (balanceJson != null) {
         final data = json.decode(balanceJson) as Map<String, dynamic>;
         _balance = ProviderBalance.fromJson(data);
-        debugPrint('💰 Saldo carregado do storage');
+        debugPrint('?? Saldo carregado do storage');
       }
     } catch (e) {
-      debugPrint('❌ Erro ao carregar saldo: $e');
+      debugPrint('? Erro ao carregar saldo: $e');
     }
   }
 
@@ -82,38 +82,38 @@ class ProviderBalanceProvider with ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final balanceJson = json.encode(_balance!.toJson());
       await prefs.setString(_balanceKey, balanceJson);
-      debugPrint('💾 Saldo salvo: ${_balance!.availableBalanceSats} sats');
+      debugPrint('?? Saldo salvo: ${_balance!.availableBalanceSats} sats');
     } catch (e) {
-      debugPrint('❌ Erro ao salvar saldo: $e');
+      debugPrint('? Erro ao salvar saldo: $e');
     }
   }
 
   /// Adicionar ganho (earning) ao saldo
-  /// Retorna false se já foi registrado para este orderId (evita duplicação)
+  /// Retorna false se j� foi registrado para este orderId (evita duplica��o)
   Future<bool> addEarning({
     required String orderId,
     required String orderDescription,
     required double amountSats,
   }) async {
-    // Auto-inicializar se necessário
+    // Auto-inicializar se necess�rio
     if (_balance == null) {
-      debugPrint('⚠️ ProviderBalanceProvider não inicializado, usando providerId passado ou padrão...');
-      // Será inicializado pelo chamador com providerId correto
+      debugPrint('?? ProviderBalanceProvider n�o inicializado, usando providerId passado ou padr�o...');
+      // Ser� inicializado pelo chamador com providerId correto
       return false;
     }
     
     if (_balance == null) {
-      debugPrint('❌ Falha ao inicializar ProviderBalanceProvider');
+      debugPrint('? Falha ao inicializar ProviderBalanceProvider');
       return false;
     }
     
-    // VERIFICAÇÃO DE DUPLICAÇÃO: Não registrar se já existe transação para este orderId
+    // VERIFICA��O DE DUPLICA��O: N�o registrar se j� existe transa��o para este orderId
     final existingTransaction = _balance!.transactions.where(
       (t) => t.type == 'earning' && t.orderId == orderId
     ).toList();
     
     if (existingTransaction.isNotEmpty) {
-      debugPrint('ℹ️ Ganho já registrado para ordem $orderId - ignorando');
+      debugPrint('?? Ganho j� registrado para ordem $orderId - ignorando');
       return false;
     }
 
@@ -139,10 +139,10 @@ class ProviderBalanceProvider with ChangeNotifier {
       await _saveBalance();
       notifyListeners();
 
-      debugPrint('✅ Ganho adicionado: +$amountSats sats ($orderDescription)');
+      debugPrint('? Ganho adicionado: +$amountSats sats ($orderDescription)');
       return true;
     } catch (e) {
-      debugPrint('❌ Erro ao adicionar ganho: $e');
+      debugPrint('? Erro ao adicionar ganho: $e');
       _error = e.toString();
       return false;
     }
@@ -154,7 +154,7 @@ class ProviderBalanceProvider with ChangeNotifier {
     required String invoice,
   }) async {
     if (_balance == null) {
-      _error = 'Saldo não inicializado';
+      _error = 'Saldo n�o inicializado';
       return false;
     }
     
@@ -169,9 +169,9 @@ class ProviderBalanceProvider with ChangeNotifier {
     try {
       String? paymentHash;
       
-      // Em produção: usar Breez SDK para pagar a invoice
+      // Em produ��o: usar Breez SDK para pagar a invoice
       if (!AppConfig.testMode && _breezProvider != null) {
-        debugPrint('⚡ Tentando saque Lightning via Breez SDK...');
+        debugPrint('? Tentando saque Lightning via Breez SDK...');
         
         final result = await _breezProvider!.payInvoice(invoice);
         
@@ -180,15 +180,15 @@ class ProviderBalanceProvider with ChangeNotifier {
         }
         
         paymentHash = result['payment']?['paymentHash'];
-        debugPrint('✅ Invoice paga! Hash: $paymentHash');
+        debugPrint('? Invoice paga! Hash: $paymentHash');
       } else {
         // Modo teste: simular pagamento
-        debugPrint('🧪 Saque Lightning simulado (modo teste)');
+        debugPrint('?? Saque Lightning simulado (modo teste)');
         await Future.delayed(const Duration(seconds: 1));
         paymentHash = 'test_${DateTime.now().millisecondsSinceEpoch}';
       }
 
-      // Registrar transação no saldo
+      // Registrar transa��o no saldo
       final transaction = BalanceTransaction(
         id: const Uuid().v4(),
         type: 'withdrawal_lightning',
@@ -211,10 +211,10 @@ class ProviderBalanceProvider with ChangeNotifier {
       _isLoading = false;
       notifyListeners();
 
-      debugPrint('✅ Saque Lightning registrado: -$amountSats sats');
+      debugPrint('? Saque Lightning registrado: -$amountSats sats');
       return true;
     } catch (e) {
-      debugPrint('❌ Erro ao sacar Lightning: $e');
+      debugPrint('? Erro ao sacar Lightning: $e');
       _error = e.toString();
       _isLoading = false;
       notifyListeners();
@@ -223,15 +223,15 @@ class ProviderBalanceProvider with ChangeNotifier {
   }
 
   /// Saque Onchain 
-  /// NOTA: Breez SDK Spark é Lightning-only. Para onchain real, usar:
-  /// 1. Swap out via submarine swap (Lightning → Onchain)
+  /// NOTA: Breez SDK Spark � Lightning-only. Para onchain real, usar:
+  /// 1. Swap out via submarine swap (Lightning ? Onchain)
   /// 2. Ou integrar com outra wallet onchain
   Future<bool> withdrawOnchain({
     required double amountSats,
     required String address,
   }) async {
     if (_balance == null) {
-      _error = 'Saldo não inicializado';
+      _error = 'Saldo n�o inicializado';
       return false;
     }
     
@@ -246,18 +246,18 @@ class ProviderBalanceProvider with ChangeNotifier {
     try {
       String txHash;
       
-      // Modo teste: simular transação onchain
+      // Modo teste: simular transa��o onchain
       if (AppConfig.testMode) {
-        debugPrint('🧪 Saque Onchain simulado (modo teste)');
+        debugPrint('?? Saque Onchain simulado (modo teste)');
         await Future.delayed(const Duration(seconds: 2));
         txHash = 'onchain_test_${DateTime.now().millisecondsSinceEpoch}';
       } else {
-        // TODO: Implementar submarine swap ou integração com wallet onchain
-        // Por enquanto, retornar erro em produção
-        throw Exception('Saque onchain não disponível ainda. Use Lightning.');
+        // TODO: Implementar submarine swap ou integra��o com wallet onchain
+        // Por enquanto, retornar erro em produ��o
+        throw Exception('Saque onchain n�o dispon�vel ainda. Use Lightning.');
       }
 
-      // Registrar transação no saldo
+      // Registrar transa��o no saldo
       final transaction = BalanceTransaction(
         id: const Uuid().v4(),
         type: 'withdrawal_onchain',
@@ -279,10 +279,10 @@ class ProviderBalanceProvider with ChangeNotifier {
       _isLoading = false;
       notifyListeners();
 
-      debugPrint('✅ Saque Onchain registrado: -$amountSats sats');
+      debugPrint('? Saque Onchain registrado: -$amountSats sats');
       return true;
     } catch (e) {
-      debugPrint('❌ Erro ao sacar Onchain: $e');
+      debugPrint('? Erro ao sacar Onchain: $e');
       _error = e.toString();
       _isLoading = false;
       notifyListeners();

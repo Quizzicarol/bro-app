@@ -1,4 +1,4 @@
-// Serviço Lightning Simplificado (Mock - substitua com Breez SDK real)
+// Servi�o Lightning Simplificado (Mock - substitua com Breez SDK real)
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
@@ -16,12 +16,12 @@ class BreezServiceSimple {
 
   // Inicializar
   Future<bool> initialize({required String apiKey, String? mnemonic}) async {
-    debugPrint('🔧 Inicializando Breez (Mock)...');
+    debugPrint('?? Inicializando Breez (Mock)...');
     await Future.delayed(const Duration(seconds: 1));
     
     _isInitialized = true;
     
-    debugPrint('✅ Breez inicializado (Mock)!');
+    debugPrint('? Breez inicializado (Mock)!');
     return true;
   }
 
@@ -32,7 +32,7 @@ class BreezServiceSimple {
   }) async {
     if (!_isInitialized) return null;
     
-    debugPrint('⚡ Criando invoice: $amountSats sats');
+    debugPrint('? Criando invoice: $amountSats sats');
     
     final paymentHash = _generateHash();
     final invoice = _generateMockInvoice(amountSats);
@@ -52,7 +52,7 @@ class BreezServiceSimple {
   }) async {
     if (!_isInitialized) return null;
     
-    debugPrint('⚡ Pagando invoice (Mock)...');
+    debugPrint('? Pagando invoice (Mock)...');
     await Future.delayed(const Duration(seconds: 1));
     
     final amount = amountSats ?? 1000;
@@ -65,11 +65,11 @@ class BreezServiceSimple {
     };
   }
 
-  // Gerar Endereço On-chain  
+  // Gerar Endere�o On-chain  
   Future<Map<String, dynamic>?> createOnchainAddress() async {
     if (!_isInitialized) return null;
     
-    debugPrint('₿ Gerando endereço on-chain (Mock)...');
+    debugPrint('? Gerando endere�o on-chain (Mock)...');
     
     return {
       'address': 'bc1q${_generateHash().substring(0, 38)}',
@@ -111,7 +111,7 @@ class BreezServiceSimple {
   // Desconectar
   Future<void> disconnect() async {
     _isInitialized = false;
-    debugPrint('🔌 Breez desconectado');
+    debugPrint('?? Breez desconectado');
   }
 
   // Helpers

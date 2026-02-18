@@ -54,30 +54,30 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
     
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('🔑 Nova seed gerada! Guarde em local seguro.'),
+        content: Text('?? Nova seed gerada! Guarde em local seguro.'),
         backgroundColor: Color(0xFFFF6B6B),
       ),
     );
   }
 
   Future<void> _deriveKeys() async {
-    debugPrint('🔑 [NIP06] _deriveKeys() chamado');
+    debugPrint('?? [NIP06] _deriveKeys() chamado');
     final mnemonic = _mnemonicController.text.trim();
     final passphrase = _passphraseController.text;
     
-    debugPrint('🔑 [NIP06] Mnemonic: ${mnemonic.split(' ').length} palavras');
+    debugPrint('?? [NIP06] Mnemonic: ${mnemonic.split(' ').length} palavras');
     
     if (mnemonic.isEmpty) {
-      debugPrint('❌ [NIP06] Mnemonic vazio!');
+      debugPrint('? [NIP06] Mnemonic vazio!');
       setState(() => _error = 'Digite ou gere uma seed');
       return;
     }
     
     final isValid = _nip06.validateMnemonic(mnemonic);
-    debugPrint('🔑 [NIP06] Mnemonic válido: $isValid');
+    debugPrint('?? [NIP06] Mnemonic v�lido: $isValid');
     
     if (!isValid) {
-      setState(() => _error = 'Seed inválida. Verifique as palavras.');
+      setState(() => _error = 'Seed inv�lida. Verifique as palavras.');
       return;
     }
     
@@ -87,9 +87,9 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
     });
     
     try {
-      debugPrint('🔑 [NIP06] Derivando chaves...');
+      debugPrint('?? [NIP06] Derivando chaves...');
       final keys = _nip06.deriveNostrKeys(mnemonic, passphrase: passphrase);
-      debugPrint('✅ [NIP06] Chaves derivadas! PubKey: ${keys['publicKey']?.substring(0, 16)}...');
+      debugPrint('? [NIP06] Chaves derivadas! PubKey: ${keys['publicKey']?.substring(0, 16)}...');
       
       setState(() {
         _derivedPublicKey = keys['publicKey'];
@@ -97,7 +97,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      debugPrint('❌ [NIP06] Erro ao derivar: $e');
+      debugPrint('? [NIP06] Erro ao derivar: $e');
       setState(() {
         _error = 'Erro ao derivar chaves: $e';
         _isLoading = false;
@@ -115,7 +115,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Confirmar', style: TextStyle(color: Colors.white)),
         content: const Text(
-          'Isso substituirá suas chaves Nostr atuais.\n\n'
+          'Isso substituir� suas chaves Nostr atuais.\n\n'
           'Certifique-se de ter backup das chaves anteriores antes de continuar.',
           style: TextStyle(color: Color(0xB3FFFFFF)),
         ),
@@ -139,7 +139,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
         publicKey: _derivedPublicKey!,
       );
       
-      // FORÇAR atualização da seed (usuário escolheu restaurar)
+      // FOR�AR atualiza��o da seed (usu�rio escolheu restaurar)
       final newMnemonic = _mnemonicController.text.trim();
       await _storage.forceUpdateBreezMnemonic(newMnemonic, ownerPubkey: _derivedPublicKey!);
       
@@ -148,16 +148,16 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
         try {
           final breezProvider = context.read<BreezProvider>();
           await breezProvider.reinitializeWithNewSeed(newMnemonic);
-          debugPrint('✅ Carteira Lightning reinicializada com nova seed');
+          debugPrint('? Carteira Lightning reinicializada com nova seed');
         } catch (e) {
-          debugPrint('⚠️ Erro ao reinicializar carteira: $e');
+          debugPrint('?? Erro ao reinicializar carteira: $e');
         }
       }
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✅ Chaves e carteira restauradas com sucesso!'),
+            content: Text('? Chaves e carteira restauradas com sucesso!'),
             backgroundColor: Colors.green,
           ),
         );
@@ -170,7 +170,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('📋 $label copiado!'),
+        content: Text('?? $label copiado!'),
         backgroundColor: const Color(0xFF9C27B0),
       ),
     );
@@ -286,7 +286,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
               Icon(Icons.info_outline, color: Color(0xFFFF6B6B)),
               SizedBox(width: 8),
               Text(
-                'O que é NIP-06?',
+                'O que � NIP-06?',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 16,
@@ -329,10 +329,10 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
                 ),
                 SizedBox(height: 8),
                 Text(
-                  '🔐 SEED = Sua frase secreta de 12 ou 24 palavras\n\n'
-                  '🟣 Chaves Nostr = Sua identidade no protocolo Nostr (npub/nsec)\n\n'
-                  '🟠 Chaves Bitcoin = Suas carteiras para guardar/enviar sats\n\n'
-                  '💡 Uma ÚNICA seed pode gerar ambas as chaves, facilitando o backup!',
+                  '?? SEED = Sua frase secreta de 12 ou 24 palavras\n\n'
+                  '?? Chaves Nostr = Sua identidade no protocolo Nostr (npub/nsec)\n\n'
+                  '?? Chaves Bitcoin = Suas carteiras para guardar/enviar sats\n\n'
+                  '?? Uma �NICA seed pode gerar ambas as chaves, facilitando o backup!',
                   style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 12, height: 1.5),
                 ),
               ],
@@ -340,9 +340,9 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
           ),
           const SizedBox(height: 16),
           const Text(
-            '✅ Um único backup para Bitcoin e Nostr\n'
-            '✅ Chaves determinísticas e recuperáveis\n'
-            '✅ Passphrase opcional para maior segurança',
+            '? Um �nico backup para Bitcoin e Nostr\n'
+            '? Chaves determin�sticas e recuper�veis\n'
+            '? Passphrase opcional para maior seguran�a',
             style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 13, height: 1.5),
           ),
           const SizedBox(height: 12),
@@ -397,8 +397,8 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
           ],
         ),
         const SizedBox(height: 8),
-        // Seed é exibida como texto normal (palavras visíveis) ou oculta (asteriscos)
-        // Não pode usar obscureText com maxLines > 1, então usamos um workaround
+        // Seed � exibida como texto normal (palavras vis�veis) ou oculta (asteriscos)
+        // N�o pode usar obscureText com maxLines > 1, ent�o usamos um workaround
         if (_showMnemonic) ...[
           TextField(
             controller: _mnemonicController,
@@ -424,7 +424,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
             ),
           ),
         ] else ...[
-          // Quando oculto, mostra asteriscos em campo não editável
+          // Quando oculto, mostra asteriscos em campo n�o edit�vel
           GestureDetector(
             onTap: () => setState(() => _showMnemonic = true),
             child: Container(
@@ -438,7 +438,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
               child: Text(
                 _mnemonicController.text.isEmpty
                     ? 'Toque para inserir sua seed...'
-                    : '• ' * (_mnemonicController.text.split(' ').length) + '(${_mnemonicController.text.split(' ').length} palavras)',
+                    : '. ' * (_mnemonicController.text.split(' ').length) + '(${_mnemonicController.text.split(' ').length} palavras)',
                 style: TextStyle(
                   color: _mnemonicController.text.isEmpty
                       ? const Color(0x66FFFFFF)
@@ -499,7 +499,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Text(
-                'Avançado',
+                'Avan�ado',
                 style: TextStyle(
                   color: Color(0xFFFF6B6B),
                   fontSize: 10,
@@ -511,7 +511,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
         ),
         const SizedBox(height: 4),
         const Text(
-          'Adiciona uma camada extra de segurança. Se usar, lembre-se dela!',
+          'Adiciona uma camada extra de seguran�a. Se usar, lembre-se dela!',
           style: TextStyle(color: Color(0x99FFFFFF), fontSize: 12),
         ),
         const SizedBox(height: 8),
@@ -589,7 +589,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
           ],
         ),
         const SizedBox(height: 16),
-        // Segunda linha: Botão de restaurar carteira Lightning (destacado)
+        // Segunda linha: Bot�o de restaurar carteira Lightning (destacado)
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
@@ -600,7 +600,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                   )
                 : const Icon(Icons.account_balance_wallet),
-            label: const Text('💰 RESTAURAR CARTEIRA LIGHTNING'),
+            label: const Text('?? RESTAURAR CARTEIRA LIGHTNING'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.orange,
               foregroundColor: Colors.white,
@@ -622,7 +622,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
     }
     
     if (!_nip06.validateMnemonic(mnemonic)) {
-      setState(() => _error = 'Seed inválida. Verifique as palavras.');
+      setState(() => _error = 'Seed inv�lida. Verifique as palavras.');
       return;
     }
     
@@ -639,8 +639,8 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
           ],
         ),
         content: const Text(
-          '⚠️ ATENÇÃO: Isso irá substituir a carteira Lightning atual pela nova seed.\n\n'
-          'O saldo da carteira antiga será PERDIDO se você não tiver backup.\n\n'
+          '?? ATEN��O: Isso ir� substituir a carteira Lightning atual pela nova seed.\n\n'
+          'O saldo da carteira antiga ser� PERDIDO se voc� n�o tiver backup.\n\n'
           'Tem certeza que deseja continuar?',
           style: TextStyle(color: Color(0xB3FFFFFF)),
         ),
@@ -666,10 +666,10 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
     });
     
     try {
-      debugPrint('🔄 [NIP06] Restaurando carteira Lightning...');
+      debugPrint('?? [NIP06] Restaurando carteira Lightning...');
       
-      // FORÇAR atualização de seed (usuário escolheu explicitamente restaurar)
-      // Igual ao login avançado - usa forceOverwrite para substituir a seed atual
+      // FOR�AR atualiza��o de seed (usu�rio escolheu explicitamente restaurar)
+      // Igual ao login avan�ado - usa forceOverwrite para substituir a seed atual
       await _storage.forceUpdateBreezMnemonic(mnemonic);
       
       // Reinicializar SDK com a seed
@@ -678,12 +678,12 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
         final success = await breezProvider.reinitializeWithNewSeed(mnemonic);
         
         if (success) {
-          debugPrint('✅ [NIP06] Carteira restaurada com sucesso!');
+          debugPrint('? [NIP06] Carteira restaurada com sucesso!');
           
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('✅ Carteira Lightning restaurada com sucesso!'),
+                content: Text('? Carteira Lightning restaurada com sucesso!'),
                 backgroundColor: Colors.green,
               ),
             );
@@ -695,7 +695,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
       
       setState(() => _isLoading = false);
     } catch (e) {
-      debugPrint('❌ [NIP06] Erro ao restaurar: $e');
+      debugPrint('? [NIP06] Erro ao restaurar: $e');
       setState(() {
         _error = 'Erro ao restaurar carteira: $e';
         _isLoading = false;
@@ -732,7 +732,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
           
           // Public Key
           _buildKeyDisplay(
-            'Chave Pública',
+            'Chave P�blica',
             _derivedPublicKey!,
             const Color(0xFF9C27B0),
           ),
@@ -740,7 +740,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
           
           // Private Key (warning)
           _buildKeyDisplay(
-            'Chave Privada (⚠️ secreta)',
+            'Chave Privada (?? secreta)',
             _derivedPrivateKey!,
             Colors.orange,
           ),

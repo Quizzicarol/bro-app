@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:convert/convert.dart';
 import 'package:pointycastle/export.dart';
 
-/// Implementação do NIP-04 para mensagens criptografadas Nostr
+/// Implementa��o do NIP-04 para mensagens criptografadas Nostr
 /// https://github.com/nostr-protocol/nips/blob/master/04.md
 class Nip04Service {
   static final Nip04Service _instance = Nip04Service._internal();
@@ -17,10 +17,10 @@ class Nip04Service {
     
     // Parse private key
     final privateKeyInt = BigInt.parse(privateKeyHex, radix: 16);
-    // ignore: unused_local_variable - usado para validação
+    // ignore: unused_local_variable - usado para valida��o
     final _ = ECPrivateKey(privateKeyInt, domain);
     
-    // Parse public key (adiciona 02 prefix se necessário para compressed key)
+    // Parse public key (adiciona 02 prefix se necess�rio para compressed key)
     String pubHex = publicKeyHex;
     if (pubHex.length == 64) {
       // Compressed public key - precisa calcular Y
@@ -45,7 +45,7 @@ class Nip04Service {
   String encrypt(String plaintext, String privateKeyHex, String publicKeyHex) {
     final sharedSecret = getSharedSecret(privateKeyHex, publicKeyHex);
     
-    // Gerar IV aleatório de 16 bytes
+    // Gerar IV aleat�rio de 16 bytes
     final random = Random.secure();
     final iv = Uint8List.fromList(
       List<int>.generate(16, (_) => random.nextInt(256)),

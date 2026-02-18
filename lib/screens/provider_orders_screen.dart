@@ -23,7 +23,7 @@ String _safeSubstring(String? s, int start, int end) {
   return s.substring(start, s.length < end ? s.length : end);
 }
 
-/// Tela de ordens do provedor com abas: DisponÃ­veis, Minhas Ordens, EstatÃ­sticas
+/// Tela de ordens do provedor com abas: Disponíveis, Minhas Ordens, Estatísticas
 class ProviderOrdersScreen extends StatefulWidget {
   final String providerId;
 
@@ -53,9 +53,9 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   String? _error;
   int _lastOrderCount = 0;
   String? _currentPubkey;
-  int _lastTabIndex = 0; // Para detectar mudanÃ§a de aba
+  int _lastTabIndex = 0; // Para detectar mudança de aba
   
-  // SEGURANÃ‡A: ReferÃªncia para cleanup no dispose
+  // SEGURAN�?A: Referência para cleanup no dispose
   OrderProvider? _orderProviderRef;
 
   @override
@@ -67,7 +67,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     _tabController.addListener(_onTabChanged);
     
     
-    // Salvar modo provedor com pubkey do usuÃ¡rio
+    // Salvar modo provedor com pubkey do usuário
     SecureStorageService.setProviderMode(true, userPubkey: widget.providerId);
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -77,10 +77,10 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
   
   void _startOrdersPolling() {
-    // CORREÃ‡ÃƒO: Intervalo aumentado para 45s para dar tempo da sincronizaÃ§Ã£o completa
-    // A busca de ordens do provedor pode demorar atÃ© 60s devido Ã s mÃºltiplas consultas Nostr
+    // CORRE�?�fO: Intervalo aumentado para 45s para dar tempo da sincronização completa
+    // A busca de ordens do provedor pode demorar até 60s devido às múltiplas consultas Nostr
     _ordersUpdateTimer = Timer.periodic(const Duration(seconds: 45), (_) async {
-      // Verificar mounted ANTES de qualquer operaÃ§Ã£o
+      // Verificar mounted ANTES de qualquer operação
       if (!mounted) {
         _ordersUpdateTimer?.cancel();
         return;
@@ -95,12 +95,12 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         final orderProvider = context.read<OrderProvider>();
         await orderProvider.fetchOrders(forProvider: true);
         
-        // Verificar mounted novamente apÃ³s operaÃ§Ã£o async
+        // Verificar mounted novamente após operação async
         if (mounted) {
           _loadOrdersFromProvider();
         }
       } catch (e) {
-        // NÃ£o travar a UI - apenas logar o erro
+        // Não travar a UI - apenas logar o erro
       }
     });
   }
@@ -127,7 +127,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     }
   }
   
-  /// Handler para mudança de aba - usa dados locais (sem resync Nostr)
+  /// Handler para mudan�a de aba - usa dados locais (sem resync Nostr)
   void _onTabChanged() {
     if (_tabController.indexIsChanging) return;
     
@@ -144,14 +144,14 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   void dispose() {
     _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
-    _ordersUpdateTimer?.cancel(); // Cancelar timer de atualizaÃ§Ã£o
+    _ordersUpdateTimer?.cancel(); // Cancelar timer de atualização
     
-    // CRÃTICO: Limpar modo provedor E ordens de outros usuÃ¡rios
-    // Isso Ã© ESSENCIAL para evitar vazamento de dados!
+    // CRÍTICO: Limpar modo provedor E ordens de outros usuários
+    // Isso é ESSENCIAL para evitar vazamento de dados!
     SecureStorageService.setProviderMode(false, userPubkey: widget.providerId);
     
-    // SEGURANÃ‡A: Chamar exitProviderMode usando a referÃªncia salva
-    // Isso GARANTE que ordens de outros usuÃ¡rios sejam removidas da memÃ³ria
+    // SEGURAN�?A: Chamar exitProviderMode usando a referência salva
+    // Isso GARANTE que ordens de outros usuários sejam removidas da memória
     try {
       _orderProviderRef?.exitProviderMode();
     } catch (e) {
@@ -164,8 +164,8 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   void didChangeDependencies() {
     super.didChangeDependencies();
     
-    // SEGURANÃ‡A CRÃTICA: Capturar referÃªncia ao OrderProvider para uso no dispose
-    // Isso garante que podemos limpar ordens mesmo quando o contexto estÃ¡ invÃ¡lido
+    // SEGURAN�?A CRÍTICA: Capturar referência ao OrderProvider para uso no dispose
+    // Isso garante que podemos limpar ordens mesmo quando o contexto está inválido
     _orderProviderRef = Provider.of<OrderProvider>(context, listen: false);
     
     if (AppConfig.testMode && mounted) {
@@ -228,10 +228,10 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       final nostrService = NostrService();
       _currentPubkey = nostrService.publicKey;
       
-      // CORREÃ‡ÃƒO VAZAMENTO: Separar ordens corretamente!
+      // CORRE�?�fO VAZAMENTO: Separar ordens corretamente!
       // - myAcceptedOrders: Ordens que EU ACEITEI como Bro (providerId == minha pubkey)
-      // - availableOrdersForProvider: Ordens de OUTROS disponÃ­veis para aceitar
-      // NUNCA usar 'orders' que inclui ordens criadas pelo usuÃ¡rio!
+      // - availableOrdersForProvider: Ordens de OUTROS disponíveis para aceitar
+      // NUNCA usar 'orders' que inclui ordens criadas pelo usuário!
       final myOrdersFromProvider = orderProvider.myAcceptedOrders;
       final availableFromProvider = orderProvider.availableOrdersForProvider;
       List<Map<String, dynamic>> available = [];
@@ -243,14 +243,14 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         orderMap['amount'] = order.amount;
         orderMap['payment_type'] = order.billType;
         orderMap['created_at'] = order.createdAt.toIso8601String();
-        orderMap['user_name'] = 'UsuÃ¡rio ${order.userPubkey?.substring(0, 6) ?? "anon"}';
+        orderMap['user_name'] = 'Usuário ${order.userPubkey?.substring(0, 6) ?? "anon"}';
         myOrders.add(orderMap);
       }
       
-      // Processar ordens disponÃ­veis para aceitar (de outros usuÃ¡rios)
-      // FILTRO CRÃTICO: SÃ³ mostrar ordens realmente pendentes
+      // Processar ordens disponíveis para aceitar (de outros usuários)
+      // FILTRO CRÍTICO: Só mostrar ordens realmente pendentes
       for (final order in availableFromProvider) {
-        // SEGURANÃ‡A: SÃ³ adicionar ordens que ainda estÃ£o pending
+        // SEGURAN�?A: Só adicionar ordens que ainda estão pending
         if (order.status != 'pending') {
           continue;
         }
@@ -259,11 +259,11 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         orderMap['amount'] = order.amount;
         orderMap['payment_type'] = order.billType;
         orderMap['created_at'] = order.createdAt.toIso8601String();
-        orderMap['user_name'] = 'UsuÃ¡rio ${order.userPubkey?.substring(0, 6) ?? "anon"}';
+        orderMap['user_name'] = 'Usuário ${order.userPubkey?.substring(0, 6) ?? "anon"}';
         available.add(orderMap);
       }
       
-      // Notificar sobre novas ordens disponÃ­veis
+      // Notificar sobre novas ordens disponíveis
       for (final order in available) {
         final orderId = order['id'] as String? ?? '';
         if (orderId.isEmpty) continue; // Pular ordens sem ID
@@ -280,7 +280,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       }
       
       // ========== REGISTRAR GANHOS DE ORDENS COMPLETADAS ==========
-      // Verificar ordens completadas e registrar ganhos que ainda nÃ£o foram registrados
+      // Verificar ordens completadas e registrar ganhos que ainda não foram registrados
       final providerBalanceProvider = context.read<ProviderBalanceProvider>();
       for (final order in myOrders) {
         final status = order['status'] as String?;
@@ -295,7 +295,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           var providerFeeSats = (totalSats * EscrowService.providerFeePercent / 100).round();
           if (providerFeeSats < 1 && totalSats > 0) providerFeeSats = 1;
           
-          // Tentar registrar ganho (mÃ©todo verifica se jÃ¡ foi registrado para evitar duplicaÃ§Ã£o)
+          // Tentar registrar ganho (método verifica se já foi registrado para evitar duplicação)
           final registered = await providerBalanceProvider.addEarning(
             orderId: orderId,
             amountSats: providerFeeSats.toDouble(),
@@ -330,7 +330,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     return PopScope(
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) {
-          // CRÃTICO: Limpar modo provedor ao sair
+          // CRÍTICO: Limpar modo provedor ao sair
           SecureStorageService.setProviderMode(false, userPubkey: widget.providerId);
           try {
             final orderProvider = context.read<OrderProvider>();
@@ -346,7 +346,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: () {
-              // CRÃTICO: Limpar modo provedor ao sair
+              // CRÍTICO: Limpar modo provedor ao sair
               SecureStorageService.setProviderMode(false, userPubkey: widget.providerId);
               try {
                 final orderProvider = context.read<OrderProvider>();
@@ -365,7 +365,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
             ],
           ),
           actions: [
-            // BotÃ£o para voltar ao Dashboard principal
+            // Botão para voltar ao Dashboard principal
             IconButton(
               icon: const Icon(Icons.home, color: Colors.white),
               onPressed: () {
@@ -376,18 +376,18 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                   orderProvider.exitProviderMode();
                 } catch (e) {
                 }
-                // Navegar para o dashboard limpando toda a pilha de navegaÃ§Ã£o
+                // Navegar para o dashboard limpando toda a pilha de navegação
                 Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
               },
               tooltip: 'Voltar ao Dashboard',
             ),
-            // BotÃ£o da Carteira Lightning
+            // Botão da Carteira Lightning
             IconButton(
               icon: const Icon(Icons.account_balance_wallet, color: Colors.orange),
               onPressed: () => Navigator.pushNamed(context, '/wallet'),
               tooltip: 'Minha Carteira',
             ),
-            // Removido botÃ£o refresh - pull-to-refresh jÃ¡ funciona
+            // Removido botão refresh - pull-to-refresh já funciona
           ],
           bottom: TabBar(
             controller: _tabController,
@@ -397,7 +397,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
             tabs: [
               Tab(
                 icon: const Icon(Icons.local_offer, size: 20),
-                child: Text('DisponÃ­veis (${_availableOrders.length})', style: const TextStyle(fontSize: 13)),
+                child: Text('Disponíveis (${_availableOrders.length})', style: const TextStyle(fontSize: 13)),
               ),
               Tab(
                 icon: const Icon(Icons.assignment_turned_in, size: 20),
@@ -405,13 +405,13 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
               ),
               const Tab(
                 icon: Icon(Icons.bar_chart, size: 20),
-                child: Text('EstatÃ­sticas', style: TextStyle(fontSize: 13)),
+                child: Text('Estatísticas', style: TextStyle(fontSize: 13)),
             ),
           ],
         ),
       ),
       body: SafeArea(
-        top: false, // AppBar jÃ¡ lida com safe area superior
+        top: false, // AppBar já lida com safe area superior
         child: Consumer2<CollateralProvider, OrderProvider>(
           builder: (context, collateralProvider, orderProvider, child) {
             // Mostrar loading enquanto sincronizando
@@ -424,7 +424,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                     const SizedBox(height: 16),
                     Text(
                       _isSyncingNostr 
-                          ? 'ðŸ”„ Sincronizando com Nostr...'
+                          ? '�Y"" Sincronizando com Nostr...'
                           : 'Carregando ordens...',
                       style: const TextStyle(color: Colors.white70, fontSize: 14),
                     ),
@@ -432,7 +432,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                       const Padding(
                         padding: EdgeInsets.only(top: 8),
                         child: Text(
-                          'Buscando ordens de todos os usuÃ¡rios',
+                          'Buscando ordens de todos os usuários',
                           style: TextStyle(color: Colors.white38, fontSize: 12),
                         ),
                       ),
@@ -452,11 +452,11 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
             return TabBarView(
               controller: _tabController,
               children: [
-                // Tab 1: Ordens DisponÃ­veis
+                // Tab 1: Ordens Disponíveis
                 _buildAvailableOrdersTab(collateralProvider),
                 // Tab 2: Minhas Ordens
                 _buildMyOrdersTab(),
-                // Tab 3: EstatÃ­sticas
+                // Tab 3: Estatísticas
                 _buildStatisticsTab(collateralProvider),
               ],
             );
@@ -468,7 +468,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   // ============================================
-  // TAB 1: ORDENS DISPONÃVEIS
+  // TAB 1: ORDENS DISPONÍVEIS
   // ============================================
   
   Widget _buildAvailableOrdersTab(CollateralProvider collateralProvider) {
@@ -499,7 +499,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
             Icon(Icons.inbox_outlined, size: 80, color: Colors.grey[600]),
             const SizedBox(height: 16),
             const Text(
-              'Nenhuma ordem disponÃ­vel',
+              'Nenhuma ordem disponível',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 20,
@@ -508,7 +508,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
             ),
             const SizedBox(height: 8),
             const Text(
-              'Novas ordens aparecerÃ£o aqui quando usuÃ¡rios criarem pedidos.',
+              'Novas ordens aparecerão aqui quando usuários criarem pedidos.',
               style: TextStyle(color: Colors.white70, fontSize: 14),
               textAlign: TextAlign.center,
             ),
@@ -527,14 +527,14 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
 
   Widget _buildAvailableOrderCard(Map<String, dynamic> order, CollateralProvider collateralProvider) {
     final orderId = order['id'] as String? ?? '';
-    if (orderId.isEmpty) return const SizedBox.shrink(); // Ordem invÃ¡lida
+    if (orderId.isEmpty) return const SizedBox.shrink(); // Ordem inválida
     
     final amount = (order['amount'] as num?)?.toDouble() ?? 0;
     final paymentType = order['payment_type'] as String? ?? 'pix';
     final createdAtStr = order['created_at'] as String?;
     final createdAt = createdAtStr != null ? DateTime.tryParse(createdAtStr) ?? DateTime.now() : DateTime.now();
     final timeAgo = _getTimeAgo(createdAt);
-    final userName = order['user_name'] as String? ?? 'UsuÃ¡rio';
+    final userName = order['user_name'] as String? ?? 'Usuário';
     
     bool canAccept;
     String? rejectReason;
@@ -542,8 +542,8 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     if (AppConfig.providerTestMode) {
       canAccept = true;
     } else {
-      // CRÃTICO: Usar APENAS collateralProvider.canAcceptOrderWithReason()
-      // NÃƒO usar _tierAtRisk aqui porque pode estar desatualizado!
+      // CRÍTICO: Usar APENAS collateralProvider.canAcceptOrderWithReason()
+      // N�fO usar _tierAtRisk aqui porque pode estar desatualizado!
       // O collateralProvider sempre usa dados frescos do estado atual
       final (canAcceptResult, reason) = collateralProvider.canAcceptOrderWithReason(amount);
       canAccept = canAcceptResult;
@@ -596,7 +596,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                         border: Border.all(color: canAccept ? Colors.green : Colors.red),
                       ),
                       child: Text(
-                        canAccept ? 'DISPONÃVEL' : 'BLOQUEADA',
+                        canAccept ? 'DISPONÍVEL' : 'BLOQUEADA',
                         style: TextStyle(
                           color: canAccept ? Colors.green : Colors.red,
                           fontSize: 10,
@@ -702,7 +702,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
               ),
               const SizedBox(height: 8),
               const Text(
-                'Aceite ordens na aba "DisponÃ­veis" para comeÃ§ar a ganhar sats!',
+                'Aceite ordens na aba "Disponíveis" para começar a ganhar sats!',
                 style: TextStyle(color: Colors.white70, fontSize: 14),
                 textAlign: TextAlign.center,
               ),
@@ -735,7 +735,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
 
   Widget _buildMyOrderCard(Map<String, dynamic> order) {
     final orderId = order['id'] as String? ?? '';
-    if (orderId.isEmpty) return const SizedBox.shrink(); // Ordem invÃ¡lida
+    if (orderId.isEmpty) return const SizedBox.shrink(); // Ordem inválida
     
     final amount = (order['amount'] as num?)?.toDouble() ?? 0;
     final paymentType = order['payment_type'] ?? order['billType'] ?? 'pix';
@@ -851,7 +851,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   // ============================================
-  // TAB 3: ESTATÃSTICAS
+  // TAB 3: ESTATÍSTICAS
   // ============================================
   
   Widget _buildStatisticsTab(CollateralProvider collateralProvider) {
@@ -865,7 +865,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           _buildTierStatusCard(collateralProvider),
           const SizedBox(height: 16),
           
-          // Card de EstatÃ­sticas
+          // Card de Estatísticas
           _buildStatsCard(),
           const SizedBox(height: 16),
           
@@ -873,7 +873,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           _buildEarningsCard(),
           const SizedBox(height: 16),
           
-          // AÃ§Ãµes
+          // Ações
           _buildActionsCard(),
           const SizedBox(height: 32),
         ],
@@ -919,7 +919,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Aceita ordens atÃ© $tierMax',
+                  'Aceita ordens até $tierMax',
                   style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 14),
                 ),
               ],
@@ -960,7 +960,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
               Icon(Icons.analytics, color: Colors.blue),
               SizedBox(width: 8),
               Text(
-                'EstatÃ­sticas',
+                'Estatísticas',
                 style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ],
@@ -969,7 +969,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           Row(
             children: [
               _buildStatItem('Total', totalOrders.toString(), Colors.white),
-              _buildStatItem('ConcluÃ­das', completedOrders.toString(), Colors.green),
+              _buildStatItem('Concluídas', completedOrders.toString(), Colors.green),
               _buildStatItem('Em Andamento', pendingOrders.toString(), Colors.orange),
             ],
           ),
@@ -1025,7 +1025,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
             style: const TextStyle(color: Colors.green, fontSize: 32, fontWeight: FontWeight.bold),
           ),
           const Text(
-            'Total de comissÃµes ganhas',
+            'Total de comissões ganhas',
             style: TextStyle(color: Colors.white54, fontSize: 12),
           ),
           const SizedBox(height: 12),
@@ -1055,7 +1055,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
               Icon(Icons.settings, color: Colors.grey),
               SizedBox(width: 8),
               Text(
-                'AÃ§Ãµes',
+                'Ações',
                 style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ],
@@ -1105,7 +1105,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
 
   void _openMyOrderDetail(Map<String, dynamic> order) {
     final orderId = order['id'] as String? ?? '';
-    if (orderId.isEmpty) return; // Ordem invÃ¡lida
+    if (orderId.isEmpty) return; // Ordem inválida
     
     Navigator.push(
       context,
@@ -1117,7 +1117,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       ),
     ).then((result) {
       _loadOrders();
-      // Se enviou comprovante, garantir que estÃ¡ na aba "Minhas Ordens"
+      // Se enviou comprovante, garantir que está na aba "Minhas Ordens"
       if (result is Map && result['goToMyOrders'] == true) {
         _tabController.animateTo(1); // Aba 1 = Minhas Ordens
       }
@@ -1134,12 +1134,12 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
             const Icon(Icons.lock_outline, size: 64, color: Colors.orange),
             const SizedBox(height: 16),
             const Text(
-              'Garantia NecessÃ¡ria',
+              'Garantia Necessária',
               style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             const Text(
-              'VocÃª precisa depositar uma garantia em Bitcoin para aceitar ordens.',
+              'Você precisa depositar uma garantia em Bitcoin para aceitar ordens.',
               style: TextStyle(color: Colors.white70, fontSize: 14),
               textAlign: TextAlign.center,
             ),
@@ -1183,31 +1183,31 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     switch (status) {
       case 'completed':
         return {
-          'label': 'CONCLUÃDA',
+          'label': 'CONCLUÍDA',
           'icon': Icons.check_circle,
           'color': Colors.green,
-          'description': 'Pagamento confirmado pelo usuÃ¡rio',
+          'description': 'Pagamento confirmado pelo usuário',
         };
       case 'awaiting_confirmation':
         return {
           'label': 'AGUARDANDO',
           'icon': Icons.hourglass_empty,
           'color': Colors.orange,
-          'description': 'Aguardando confirmaÃ§Ã£o do usuÃ¡rio',
+          'description': 'Aguardando confirmação do usuário',
         };
       case 'pending':
         return {
           'label': 'PENDENTE',
           'icon': Icons.schedule,
           'color': Colors.amber,
-          'description': 'Aguardando aceitaÃ§Ã£o de um Bro',
+          'description': 'Aguardando aceitação de um Bro',
         };
       case 'accepted':
         return {
           'label': 'ACEITA',
           'icon': Icons.assignment_turned_in,
           'color': Colors.blue,
-          'description': 'VocÃª aceitou, agora pague a conta',
+          'description': 'Você aceitou, agora pague a conta',
         };
       case 'cancelled':
         return {
@@ -1249,11 +1249,11 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     final difference = now.difference(dateTime);
 
     if (difference.inDays > 0) {
-      return '${difference.inDays}d atrÃ¡s';
+      return '${difference.inDays}d atrás';
     } else if (difference.inHours > 0) {
-      return '${difference.inHours}h atrÃ¡s';
+      return '${difference.inHours}h atrás';
     } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes}min atrÃ¡s';
+      return '${difference.inMinutes}min atrás';
     } else {
       return 'Agora';
     }
@@ -1263,16 +1263,16 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
   }
 
-  /// Badge compacto do tier - USA COLLATERAL PROVIDER DIRETAMENTE para evitar inconsistÃªncias
+  /// Badge compacto do tier - USA COLLATERAL PROVIDER DIRETAMENTE para evitar inconsistências
   Widget _buildTierBadge() {
-    // CRÃTICO: Usar Consumer para reagir Ã s mudanÃ§as do CollateralProvider
+    // CRÍTICO: Usar Consumer para reagir às mudanças do CollateralProvider
     return Consumer<CollateralProvider>(
       builder: (context, collateralProvider, _) {
         final localCollateral = collateralProvider.localCollateral;
         final hasCollateral = collateralProvider.hasCollateral;
         
         
-        // Se nÃ£o tem tier, mostra "Sem Tier"
+        // Se não tem tier, mostra "Sem Tier"
         if (!hasCollateral || localCollateral == null) {
           return GestureDetector(
             onTap: () => Navigator.pushNamed(context, '/provider-collateral'),
@@ -1295,8 +1295,8 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           );
         }
         
-        // Verificar se pode aceitar pelo menos uma ordem de R$ 1 (teste mÃ­nimo)
-        // Se nÃ£o pode, tier estÃ¡ inativo por saldo insuficiente
+        // Verificar se pode aceitar pelo menos uma ordem de R$ 1 (teste mínimo)
+        // Se não pode, tier está inativo por saldo insuficiente
         final (canAcceptTest, _) = collateralProvider.canAcceptOrderWithReason(1.0);
         final isActive = canAcceptTest;
         final statusText = isActive ? 'Tier Ativo' : 'Tier Inativo';
@@ -1373,7 +1373,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'âš ï¸ Saldo insuficiente',
+                      '�s�️ Saldo insuficiente',
                       style: TextStyle(
                         color: Colors.orange,
                         fontWeight: FontWeight.bold,
@@ -1382,7 +1382,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Seu saldo de ${collateralProvider.effectiveBalanceSats} sats estÃ¡ abaixo do requerido para o tier. Deposite mais Bitcoin para reativar.',
+                      'Seu saldo de ${collateralProvider.effectiveBalanceSats} sats está abaixo do requerido para o tier. Deposite mais Bitcoin para reativar.',
                       style: const TextStyle(color: Colors.white70, fontSize: 13),
                     ),
                   ],
@@ -1390,7 +1390,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
               ),
             ] else
               const Text(
-                'âœ… Seu tier estÃ¡ ativo e vocÃª pode aceitar ordens normalmente.',
+                '�o. Seu tier está ativo e você pode aceitar ordens normalmente.',
                 style: TextStyle(color: Colors.white70, fontSize: 13),
               ),
           ],

@@ -30,7 +30,7 @@ O ícone precisa ser configurado manualmente:
 - ✅ **Modo atual:** TRACKING ONLY
 - ✅ Taxas vão 100% para provedores
 - ✅ Sistema de tracking registra 2% para análise futura
-- ✅ Painel admin em `/admin-bro-2024` (7 toques em Configurações)
+- ✅ Painel admin via rota secreta (7 toques em Configurações)
 
 ### 3. Build Android (Google Play)
 
@@ -85,7 +85,7 @@ Abrir `ios/Runner.xcworkspace` e verificar:
 ## 🔐 Segurança
 
 ### Acesso Admin
-- Rota secreta: `/admin-bro-2024`
+- Rota secreta: configurada no código-fonte
 - Acesso: 7 toques no título "Configurações"
 - Dados de taxas apenas para visualização
 

@@ -1,6 +1,6 @@
 @echo off
 echo ========================================
-echo   PAGA CONTA - Setup Backend
+echo   BRO APP - Setup Backend
 echo ========================================
 echo.
 

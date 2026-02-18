@@ -1,12 +1,11 @@
 ﻿/// Configuracao centralizada do Bro App
-/// 
-/// ⚠️ CHECKLIST PARA PRODUÇÃO:
-/// [x] testMode = false
-/// [x] providerTestMode = false  
-/// [ ] defaultBackendUrl = URL do backend de produção
-/// [ ] Verificar breezApiKey está correto
-/// [ ] Remover logs de debug sensíveis
-/// 
+///
+/// Secrets são carregados via --dart-define-from-file=env.json
+/// Veja env.example.json para as variáveis necessárias.
+///
+/// Build local:  flutter run --dart-define-from-file=env.json
+/// Build CI:     gerado automaticamente pelo script pre-build
+///
 class AppConfig {
   // ============================================
   // MODO DE DESENVOLVIMENTO
@@ -29,25 +28,24 @@ class AppConfig {
   // BACKEND API
   // ============================================
   
-  /// URL do backend para emulador Android
-  static const String _emulatorUrl = 'http://10.0.2.2:3002';
-  
-  /// URL do backend para dispositivo fisico (mesmo WiFi)
-  static const String _localDeviceUrl = 'http://192.168.0.100:3002';
-  
-  /// URL do backend de producao
-  static const String _productionUrl = 'https://api.bro.app';
-  
-  /// URL ativa - mude conforme ambiente
-  static const String defaultBackendUrl = _emulatorUrl;
+  /// URL do backend — definido via env.json (BACKEND_URL)
+  /// Fallback: https://api.bro.app (produção)
+  ///
+  /// Valores comuns para desenvolvimento:
+  ///   Emulador Android: http://10.0.2.2:3002
+  ///   Dispositivo físico: http://<SEU_IP>:3002
+  static const String defaultBackendUrl = String.fromEnvironment(
+    'BACKEND_URL',
+    defaultValue: 'https://api.bro.app',
+  );
 
   // ============================================
   // BREEZ SDK (Lightning Network)
   // ============================================
   
-  /// API Key do Breez SDK (certificado nodeless)
-  /// Este e um certificado publico, NAO e uma chave secreta
-  static const String breezApiKey = '''MIIBjDCCAT6gAwIBAgIHPom4vIYNvzAFBgMrZXAwEDEOMAwGA1UEAxMFQnJlZXowHhcNMjUxMDEyMTY0NTA4WhcNMzUxMDEwMTY0NTA4WjBAMSgwJgYDVQQKEx9BcmVhIEJpdGNvaW4gYW5kIEJpdGNvaW4gQ29kZXJzMRQwEgYDVQQDEwtDYXJvbCBTb3V6YTAqMAUGAytlcAMhANCD9cvfIDwcoiDKKYdT9BunHLS2/OuKzV8NS0SzqV13o4GGMIGDMA4GA1UdDwEB/wQEAwIFoDAMBgNVHRMBAf8EAjAAMB0GA1UdDgQWBBTaOaPuXmtLDTJVv++VYBiQr9gHCTAfBgNVHSMEGDAWgBTeqtaSVvON53SSFvxMtiCyayiYazAjBgNVHREEHDAagRhjYXJvbEBhcmVhYml0Y29pbi5jb20uYnIwBQYDK2VwA0EAXZHGqrPXd8IVwVt7VNj3cKiYsdTo2Lz2B8HnR2Knd//bfoyO6MmBZHD0nszCIBLZTaiUiqgBN18YHfJnymK8DA==''';
+  /// API Key do Breez SDK — definido via env.json (BREEZ_API_KEY)
+  /// Obtenha seu certificado em https://breez.technology
+  static const String breezApiKey = String.fromEnvironment('BREEZ_API_KEY');
 
   // ============================================
   // APP INFO
@@ -93,8 +91,10 @@ class AppConfig {
   static const double totalFeePercent = providerFeePercent + platformFeePercent;
   
   /// Endereço Lightning da plataforma para receber taxas (2%)
-  /// Lightning Address para receber as taxas de manutenção da plataforma
-  static const String platformLightningAddress = 'tutoriais@coinos.io';
+  /// Definido via env.json (PLATFORM_LIGHTNING_ADDRESS)
+  static const String platformLightningAddress = String.fromEnvironment(
+    'PLATFORM_LIGHTNING_ADDRESS',
+  );
   
   // ============================================
   // TAXAS LIQUID (Boltz Swap) - Embutidas no spread

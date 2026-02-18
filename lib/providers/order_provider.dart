@@ -2259,46 +2259,6 @@ class OrderProvider with ChangeNotifier {
         debugPrint('✅ $statusUpdated ordens tiveram status atualizado');
       }
       
-      // AUTO-COMPLETE: Para ordens em awaiting_confirmation, publicar "completed" no Nostr.
-      // LÓGICA: Se o provedor enviou comprovante (bro_complete), a ordem deve ser concluída.
-      // O pagamento real é protegido por invoice Lightning - status não causa dano.
-      final myPubkey = _currentUserPubkey;
-      debugPrint('[AUTO-COMPLETE] myPubkey: ${myPubkey?.substring(0, 16) ?? "NULL"}');
-      debugPrint('[AUTO-COMPLETE] total ordens: ${_orders.length}');
-      
-      if (myPubkey != null && myPubkey.isNotEmpty) {
-        final awaitingOrders = _orders.where((o) {
-          final isAwaiting = o.status == 'awaiting_confirmation';
-          final isMine = o.userPubkey == myPubkey;
-          if (isAwaiting) {
-            debugPrint('[AUTO-COMPLETE] Ordem ${o.id.substring(0, 8)}: awaiting=true, isMine=$isMine (userPubkey=${o.userPubkey?.substring(0, 16) ?? "null"})');
-          }
-          return isAwaiting && isMine;
-        }).toList();
-        
-        debugPrint('[AUTO-COMPLETE] ${awaitingOrders.length} ordens MINHAS em awaiting_confirmation');
-        
-        for (final order in awaitingOrders) {
-          debugPrint('[AUTO-COMPLETE] Completando ordem ${order.id.substring(0, 8)} automaticamente');
-          try {
-            final success = await updateOrderStatus(
-              orderId: order.id,
-              status: 'completed',
-              providerId: order.providerId,
-            );
-            if (success) {
-              debugPrint('[AUTO-COMPLETE] OK: Ordem ${order.id.substring(0, 8)} -> completed');
-            } else {
-              debugPrint('[AUTO-COMPLETE] FALHA: Ordem ${order.id.substring(0, 8)}');
-            }
-          } catch (e) {
-            debugPrint('[AUTO-COMPLETE] ERRO: $e');
-          }
-        }
-      } else {
-        debugPrint('[AUTO-COMPLETE] Pubkey NULL - nao executando');
-      }
-      
       // Ordenar por data (mais recente primeiro)
       _orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       

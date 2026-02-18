@@ -66,6 +66,7 @@ local.properties
 # Environment
 .env
 .env.*
+env.json
 
 # Build outputs
 *.apk

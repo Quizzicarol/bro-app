@@ -161,11 +161,19 @@ base64 bro-release.jks > keystore.txt  # Windows/Linux
 
 ### 4.1 Preparar o App para Produção
 
-Edite `lib/config.dart`:
+1. Copie `env.example.json` para `env.json` e preencha os valores:
+```json
+{
+  "BREEZ_API_KEY": "<seu-certificado-breez>",
+  "PLATFORM_LIGHTNING_ADDRESS": "<seu-lightning-address>",
+  "BACKEND_URL": "https://api.bro.app"
+}
+```
+
+2. Verifique `lib/config.dart`:
 ```dart
-static const bool testMode = false;  // ← MUDAR
-static const bool providerTestMode = false;  // ← MUDAR
-static const String defaultBackendUrl = _productionUrl;  // ← MUDAR
+static const bool testMode = false;
+static const bool providerTestMode = false;
 ```
 
 ### 4.2 Atualizar Versão

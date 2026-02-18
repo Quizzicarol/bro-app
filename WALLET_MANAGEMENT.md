@@ -14,11 +14,8 @@ O Bro App usa o **Breez SDK Spark** (também chamado de "Nodeless") para process
 
 ### 🔑 Chave API (Certificado)
 
-```
-Certificado: Carol Souza - Area Bitcoin
-Email: carol@areabitcoin.com.br
-Validade: 12/10/2025 até 10/10/2035
-```
+O certificado do Breez SDK é configurado via `env.json`.
+Veja `env.example.json` para o formato.
 
 O certificado (`breezApiKey`) apenas **autoriza** o uso do serviço Breez, mas **não controla os fundos**. Os fundos são controlados pelo mnemonic do dispositivo.
 
@@ -30,9 +27,8 @@ O certificado (`breezApiKey`) apenas **autoriza** o uso do serviço Breez, mas *
 
 | Dispositivo/Projeto | Carteira | Status |
 |---------------------|----------|--------|
-| Samsung A55 (bro_app) | Carteira do dispositivo | ✅ Ativa |
-| paga_conta_mobile | Carteira separada | ⚠️ Pode ter saldo |
-| paga_conta_clean | Carteira separada | ⚠️ Pode ter saldo |
+| Dispositivo principal | Carteira do dispositivo | ✅ Ativa |
+| Instalações anteriores | Carteiras separadas | ⚠️ Podem ter saldo |
 | Qualquer outro telefone | Nova carteira | Separada |
 
 ### Como Ver o Saldo

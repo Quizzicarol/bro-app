@@ -14,6 +14,8 @@ workflows:
       app_store_connect: Bro App
       
     environment:
+      groups:
+        - bro_secrets
       android_signing:
         - bro_keystore
       ios_signing:
@@ -36,11 +38,21 @@ workflows:
           include: true
       
     scripts:
+      - name: Generate env.json from CI variables
+        script: |
+          cat > "$CM_BUILD_DIR/env.json" <<EOF
+          {
+            "BREEZ_API_KEY": "$BREEZ_API_KEY",
+            "PLATFORM_LIGHTNING_ADDRESS": "$PLATFORM_LIGHTNING_ADDRESS",
+            "BACKEND_URL": "$BACKEND_URL"
+          }
+          EOF
+
       - name: Get Flutter packages
         script: flutter pub get
         
       - name: Build APK Release (Android)
-        script: flutter build apk --release
+        script: flutter build apk --release --dart-define-from-file=env.json
         
       - name: Install CocoaPods
         script: |
@@ -50,7 +62,7 @@ workflows:
       - name: Build iOS
         script: |
           xcode-project use-profiles
-          flutter build ipa --release --export-options-plist=/Users/builder/export_options.plist
+          flutter build ipa --release --dart-define-from-file=env.json --export-options-plist=/Users/builder/export_options.plist
         
     artifacts:
       - build/**/outputs/**/*.apk
@@ -67,7 +79,7 @@ workflows:
         #   - Beta Público
       email:
         recipients:
-          - carol@quizzicarol.com
+          - your-email@example.com  # TODO: configure
         notify:
           success: true
           failure: true
@@ -83,17 +95,29 @@ workflows:
     instance_type: mac_mini_m2
     
     environment:
+      groups:
+        - bro_secrets
       android_signing:
         - bro_keystore
       flutter: stable
       java: 17
       
     scripts:
+      - name: Generate env.json from CI variables
+        script: |
+          cat > "$CM_BUILD_DIR/env.json" <<EOF
+          {
+            "BREEZ_API_KEY": "$BREEZ_API_KEY",
+            "PLATFORM_LIGHTNING_ADDRESS": "$PLATFORM_LIGHTNING_ADDRESS",
+            "BACKEND_URL": "$BACKEND_URL"
+          }
+          EOF
+
       - name: Get Flutter packages
         script: flutter pub get
         
       - name: Build APK Release (para distribuir)
-        script: flutter build apk --release
+        script: flutter build apk --release --dart-define-from-file=env.json
         
     artifacts:
       - build/**/outputs/**/*.apk
@@ -101,7 +125,7 @@ workflows:
     publishing:
       email:
         recipients:
-          - carol@quizzicarol.com
+          - your-email@example.com  # TODO: configure
         notify:
           success: true
           failure: true
@@ -119,6 +143,7 @@ workflows:
       groups:
         - google_play_credentials
         - keystore_credentials
+        - bro_secrets
       flutter: stable
       java: 17
       
@@ -136,11 +161,21 @@ workflows:
       - name: Get Flutter packages
         script: flutter pub get
         
+      - name: Generate env.json from CI variables
+        script: |
+          cat > "$CM_BUILD_DIR/env.json" <<EOF
+          {
+            "BREEZ_API_KEY": "$BREEZ_API_KEY",
+            "PLATFORM_LIGHTNING_ADDRESS": "$PLATFORM_LIGHTNING_ADDRESS",
+            "BACKEND_URL": "$BACKEND_URL"
+          }
+          EOF
+
       - name: Build APK Release
-        script: flutter build apk --release
+        script: flutter build apk --release --dart-define-from-file=env.json
         
       - name: Build AAB (release for Play Store)
-        script: flutter build appbundle --release
+        script: flutter build appbundle --release --dart-define-from-file=env.json
         
     artifacts:
       - build/**/outputs/**/*.apk
@@ -168,6 +203,7 @@ workflows:
     environment:
       groups:
         - app_store_credentials
+        - bro_secrets
       ios_signing:
         distribution_type: app_store
         bundle_identifier: app.brostr
@@ -187,8 +223,18 @@ workflows:
           cd ios
           pod install
           
+      - name: Generate env.json from CI variables
+        script: |
+          cat > "$CM_BUILD_DIR/env.json" <<EOF
+          {
+            "BREEZ_API_KEY": "$BREEZ_API_KEY",
+            "PLATFORM_LIGHTNING_ADDRESS": "$PLATFORM_LIGHTNING_ADDRESS",
+            "BACKEND_URL": "$BACKEND_URL"
+          }
+          EOF
+
       - name: Build iOS
-        script: flutter build ipa --release --export-options-plist=/Users/builder/export_options.plist
+        script: flutter build ipa --release --dart-define-from-file=env.json --export-options-plist=/Users/builder/export_options.plist
         
     artifacts:
       - build/ios/ipa/*.ipa
@@ -209,6 +255,8 @@ workflows:
     instance_type: mac_mini_m2
     
     environment:
+      groups:
+        - bro_secrets
       flutter: stable
       xcode: latest
       java: 17
@@ -223,6 +271,16 @@ workflows:
           include: true
           
     scripts:
+      - name: Generate env.json from CI variables
+        script: |
+          cat > "$CM_BUILD_DIR/env.json" <<EOF
+          {
+            "BREEZ_API_KEY": "$BREEZ_API_KEY",
+            "PLATFORM_LIGHTNING_ADDRESS": "$PLATFORM_LIGHTNING_ADDRESS",
+            "BACKEND_URL": "$BACKEND_URL"
+          }
+          EOF
+
       - name: Get Flutter packages
         script: flutter pub get
         
@@ -230,7 +288,7 @@ workflows:
         script: flutter analyze --no-fatal-infos
         
       - name: Build Android Debug
-        script: flutter build apk --debug
+        script: flutter build apk --debug --dart-define-from-file=env.json
         
     artifacts:
       - build/**/outputs/**/*.apk

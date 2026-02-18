@@ -1,7 +1,10 @@
+import '../config.dart';
+
 /// Breez SDK Spark Configuration
+/// A API key é carregada via env.json — veja AppConfig.breezApiKey
 class BreezConfig {
-  // API Key da Breez (Carol Souza - Area Bitcoin)
-  static const String apiKey = 'REDACTED_BREEZ_CERTIFICATE';
+  // API Key delegada para AppConfig (fonte única de verdade)
+  static String get apiKey => AppConfig.breezApiKey;
   
   // Network: MAINNET = Bitcoin REAL, produção
   // ⚠️ ATENÇÃO: MAINNET usa Bitcoin de verdade! Transações são irreversíveis!

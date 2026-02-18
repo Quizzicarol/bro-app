@@ -1694,9 +1694,12 @@ class NostrOrderService {
         }
         
         // ESTRATÉGIA 3: Buscar todos os eventos bro-update e filtrar
-        // Último recurso quando as tags específicas não funcionam
-        if (updates.isEmpty) {
+        // CORREÇÃO: Rodar SEMPRE que houver ordens sem updates encontrados
+        // (antes só rodava quando updates estava totalmente vazio)
+        final missingOrderIds = orderIds.where((id) => !updates.containsKey(id)).toList();
+        if (missingOrderIds.isNotEmpty) {
           try {
+            debugPrint('   🔍 Estratégia 3: Buscando ${missingOrderIds.length} ordens sem update ainda...');
             final updateEvents = await _fetchFromRelay(
               relay,
               kinds: [kindBroPaymentProof],

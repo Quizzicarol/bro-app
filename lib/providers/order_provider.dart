@@ -1150,6 +1150,9 @@ class OrderProvider with ChangeNotifier {
       // Ordenar por data (mais recente primeiro)
       _orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       
+      // AUTO-LIQUIDAÇÃO: Verificar ordens awaiting_confirmation com prazo expirado
+      await _checkAutoLiquidation();
+      
       // SEGURANÇA: NÃO salvar ordens de outros usuários no storage local!
       // Apenas salvar as ordens que pertencem ao usuário atual
       // As ordens de outros ficam apenas em memória (para visualização do provedor)
@@ -1486,6 +1489,50 @@ class OrderProvider with ChangeNotifier {
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  /// Verifica ordens em 'awaiting_confirmation' com prazo de 24h expirado
+  /// e executa auto-liquidação em background durante o sync
+  Future<void> _checkAutoLiquidation() async {
+    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return;
+    
+    final now = DateTime.now();
+    const deadline = Duration(hours: 24);
+    
+    // Filtrar ordens do provedor atual em awaiting_confirmation
+    final expiredOrders = _orders.where((order) {
+      if (order.status != 'awaiting_confirmation') return false;
+      // Verificar se a ordem é do provedor atual
+      final providerId = order.metadata?['providerId'] ?? order.metadata?['provider_id'] ?? '';
+      if (providerId != _currentUserPubkey) return false;
+      // Já foi auto-liquidada?
+      if (order.metadata?['autoLiquidated'] == true) return false;
+      
+      // Determinar quando o comprovante foi enviado
+      final proofTimestamp = order.metadata?['receipt_submitted_at'] 
+          ?? order.metadata?['proofReceivedAt']
+          ?? order.metadata?['proofSentAt']
+          ?? order.metadata?['completedAt'];
+      
+      if (proofTimestamp == null) return false;
+      
+      try {
+        final proofTime = DateTime.parse(proofTimestamp.toString());
+        return now.difference(proofTime) > deadline;
+      } catch (_) {
+        return false;
+      }
+    }).toList();
+    
+    for (final order in expiredOrders) {
+      debugPrint('[AutoLiquidation] Ordem ${order.id} expirou 24h - auto-liquidando...');
+      final proof = order.metadata?['paymentProof'] ?? '';
+      await autoLiquidateOrder(order.id, proof.toString());
+    }
+    
+    if (expiredOrders.isNotEmpty) {
+      debugPrint('[AutoLiquidation] ${expiredOrders.length} ordens auto-liquidadas em background');
     }
   }
 

@@ -1052,11 +1052,12 @@ class NostrOrderService {
       final updateStatus = update?['status'] as String?;
       final updateProviderId = update?['providerId'] as String?;
       
-      // Se não tem update OU se o update não é de accept/complete, está disponível
-      final isAccepted = updateStatus == 'accepted' || updateStatus == 'awaiting_confirmation' || updateStatus == 'completed' || updateStatus == 'liquidated';
+      // Se não tem update OU se o update não é de accept/complete/cancelled, está disponível
+      // CORREÇÃO: Incluir 'cancelled' e 'disputed' no filtro — ordens canceladas NÃO devem aparecer!
+      final isUnavailable = updateStatus == 'accepted' || updateStatus == 'awaiting_confirmation' || updateStatus == 'completed' || updateStatus == 'liquidated' || updateStatus == 'cancelled' || updateStatus == 'disputed';
       
-      if (!isAccepted) {
-        // Ordem ainda não foi aceita - DISPONÍVEL para Bros
+      if (!isUnavailable) {
+        // Ordem ainda não foi aceita/cancelada - DISPONÍVEL para Bros
         availableOrders.add(order);
       } else {
         debugPrint('  🚫 Ordem ${order.id.substring(0, 8)} filtrada: updateStatus=$updateStatus');

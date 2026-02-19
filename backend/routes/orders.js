@@ -8,7 +8,6 @@ const { refundOrder } = require('../services/bitcoinService');
 router.post('/create', async (req, res) => {
   try {
     const { 
-      userId, 
       paymentHash, 
       paymentType, 
       accountNumber, 
@@ -16,11 +15,14 @@ router.post('/create', async (req, res) => {
       btcAmount 
     } = req.body;
 
+    // SEGURANÇA: Usar pubkey verificada via NIP-98, não confiar no body
+    const userId = req.verifiedPubkey;
+
     // Validação
     if (!userId || !paymentHash || !paymentType || !accountNumber || !billValue || !btcAmount) {
       return res.status(400).json({ 
         error: 'Campos obrigatórios faltando',
-        required: ['userId', 'paymentHash', 'paymentType', 'accountNumber', 'billValue', 'btcAmount']
+        required: ['paymentHash', 'paymentType', 'accountNumber', 'billValue', 'btcAmount']
       });
     }
 
@@ -89,6 +91,11 @@ router.get('/user/:userId', (req, res) => {
   try {
     const { userId } = req.params;
     
+    // SEGURANÇA: Verificar que o caller é o próprio usuário
+    if (req.verifiedPubkey && req.verifiedPubkey !== userId) {
+      return res.status(403).json({ error: 'Sem permissão para ver ordens de outro usuário' });
+    }
+    
     const userOrders = Array.from(orders.values())
       .filter(order => order.userId === userId)
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -109,7 +116,8 @@ router.get('/user/:userId', (req, res) => {
 router.post('/:orderId/cancel', async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { userId } = req.body;
+    // SEGURANÇA: Usar pubkey verificada do NIP-98
+    const userId = req.verifiedPubkey;
 
     const order = orders.get(orderId);
 
@@ -117,7 +125,7 @@ router.post('/:orderId/cancel', async (req, res) => {
       return res.status(404).json({ error: 'Ordem não encontrada' });
     }
 
-    // Validar que é o dono da ordem
+    // Validar que é o dono da ordem (usando pubkey verificada)
     if (order.userId !== userId) {
       return res.status(403).json({ error: 'Você não tem permissão para cancelar esta ordem' });
     }
@@ -194,7 +202,9 @@ router.get('/available', (req, res) => {
 router.post('/:orderId/accept', async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { providerId, collateralLocked } = req.body;
+    const { collateralLocked } = req.body;
+    // SEGURANÇA: Usar pubkey verificada como providerId
+    const providerId = req.verifiedPubkey;
 
     const order = orders.get(orderId);
 
@@ -244,7 +254,9 @@ router.post('/:orderId/accept', async (req, res) => {
 router.post('/:orderId/submit-proof', async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { providerId, proofUrl, proofData } = req.body;
+    const { proofUrl, proofData } = req.body;
+    // SEGURANÇA: Usar pubkey verificada como providerId
+    const providerId = req.verifiedPubkey;
 
     const order = orders.get(orderId);
 
@@ -252,7 +264,7 @@ router.post('/:orderId/submit-proof', async (req, res) => {
       return res.status(404).json({ error: 'Ordem não encontrada' });
     }
 
-    // Validar que é o provedor da ordem
+    // Validar que é o provedor da ordem (usando pubkey verificada)
     if (order.providerId !== providerId) {
       return res.status(403).json({ error: 'Você não é o provedor desta ordem' });
     }

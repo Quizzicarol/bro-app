@@ -1,9 +1,9 @@
 # Plano de Ação — Open-Source Readiness
 
 > **Criado:** 2026-02-18  
-> **Versão estável:** v1.0.111-stable (tag)  
-> **Build testers:** v1.0.112+182  
-> **Status:** Fase 2 concluída
+> **Versão estável:** v1.0.121-stable (tag)  
+> **Build testers:** v1.0.121+191  
+> **Status:** Fase 4 concluída
 
 ---
 
@@ -56,12 +56,12 @@
 
 | # | Tarefa | Esforço | Status |
 |---|--------|---------|--------|
-| 4.1 | Adicionar `nostr-tools` ao backend | Trivial | ⬜ |
-| 4.2 | Criar middleware `verifyNip98Auth.js` | Médio | ⬜ |
-| 4.3 | Aplicar middleware em todas as rotas | Pequeno | ⬜ |
-| 4.4 | Usar pubkey verificado como userId (não aceitar do body) | Pequeno | ⬜ |
-| 4.5 | Adicionar rate limiting (`express-rate-limit`) | Pequeno | ⬜ |
-| 4.6 | Restringir CORS | Pequeno | ⬜ |
+| 4.1 | Adicionar `nostr-tools` ao backend | Trivial | ✅ |
+| 4.2 | Criar middleware `verifyNip98Auth.js` | Médio | ✅ |
+| 4.3 | Aplicar middleware em todas as rotas | Pequeno | ✅ |
+| 4.4 | Usar pubkey verificado como userId (não aceitar do body) | Pequeno | ✅ |
+| 4.5 | Adicionar rate limiting (`express-rate-limit`) | Pequeno | ✅ |
+| 4.6 | Restringir CORS | Pequeno | ✅ |
 
 **Arquivos afetados:** `backend/server.js`, `backend/routes/*.js`, `backend/package.json`
 

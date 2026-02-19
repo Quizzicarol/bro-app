@@ -1114,7 +1114,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           backgroundColor: const Color(0xFF1A1A1A),
           foregroundColor: Colors.orange,
         ),
-        body: const Center(child: CircularProgressIndicator(color: Colors.orange)),
+        body: const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B6B))),
       );
     }
 
@@ -2767,7 +2767,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           height: 16,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: Colors.orange,
+                            color: Color(0xFFFF6B6B),
                           ),
                         ),
                         SizedBox(width: 8),

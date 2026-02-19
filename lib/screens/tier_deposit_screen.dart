@@ -312,7 +312,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
         ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.orange))
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B6B)))
           : _error != null
               ? _buildErrorView()
               : _depositCompleted
@@ -612,7 +612,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
                 height: 16,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: Colors.orange,
+                  color: Color(0xFFFF6B6B),
                 ),
               ),
               const SizedBox(width: 8),

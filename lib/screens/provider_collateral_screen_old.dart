@@ -77,7 +77,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
         builder: (context, collateralProvider, child) {
           if (collateralProvider.isLoading) {
             return const Center(
-              child: CircularProgressIndicator(color: Colors.orange),
+              child: CircularProgressIndicator(color: Color(0xFFFF6B6B)),
             );
           }
 

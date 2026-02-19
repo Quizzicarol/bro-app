@@ -26,9 +26,11 @@ class OrderProvider with ChangeNotifier {
   bool _isProviderMode = false;  // Modo provedor ativo (para UI, não para filtro de ordens)
 
   // PERFORMANCE: Throttle para evitar syncs/saves/notifies excessivos
-  bool _isSyncing = false; // Guard contra syncs concorrentes
-  DateTime? _lastSyncTime; // Timestamp do último sync completo
-  static const int _minSyncIntervalSeconds = 10; // Intervalo mínimo entre syncs
+  bool _isSyncingUser = false; // Guard contra syncs concorrentes (modo usuário)
+  bool _isSyncingProvider = false; // Guard contra syncs concorrentes (modo provedor)
+  DateTime? _lastUserSyncTime; // Timestamp do último sync de usuário
+  DateTime? _lastProviderSyncTime; // Timestamp do último sync de provedor
+  static const int _minSyncIntervalSeconds = 15; // Intervalo mínimo entre syncs automáticos
   Timer? _saveDebounceTimer; // Debounce para _saveOrders
   Timer? _notifyDebounceTimer; // Debounce para notifyListeners
   bool _notifyPending = false; // Flag para notify pendente
@@ -855,15 +857,16 @@ class OrderProvider with ChangeNotifier {
     try {
       if (forProvider) {
         // MODO PROVEDOR: Buscar TODAS as ordens pendentes de TODOS os usuários
-        // Timeout de 30s para sync provedor
-        await syncAllPendingOrdersFromNostr().timeout(
+        // force: true — ação explícita do usuário, bypass throttle
+        await syncAllPendingOrdersFromNostr(force: true).timeout(
           const Duration(seconds: 30),
           onTimeout: () {
           },
         );
       } else {
         // MODO USUÁRIO: Buscar apenas ordens do próprio usuário
-        await syncOrdersFromNostr().timeout(
+        // force: true — ação explícita do usuário, bypass throttle
+        await syncOrdersFromNostr(force: true).timeout(
           const Duration(seconds: 15),
           onTimeout: () {
           },
@@ -879,14 +882,23 @@ class OrderProvider with ChangeNotifier {
   /// Buscar TODAS as ordens pendentes do Nostr (para modo Provedor/Bro)
   /// SEGURANÇA: Ordens de outros usuários vão para _availableOrdersForProvider
   /// e NUNCA são adicionadas à lista principal _orders!
-  Future<void> syncAllPendingOrdersFromNostr() async {
+  Future<void> syncAllPendingOrdersFromNostr({bool force = false}) async {
     // PERFORMANCE: Não sincronizar se já tem sync em andamento
-    if (_isSyncing) {
+    if (_isSyncingProvider) {
       debugPrint('⏭️ syncAllPending: sync já em andamento, ignorando');
       return;
     }
     
-    _isSyncing = true;
+    // PERFORMANCE: Cooldown para polling automático (ignorado quando force=true)
+    if (!force && _lastProviderSyncTime != null) {
+      final elapsed = DateTime.now().difference(_lastProviderSyncTime!).inSeconds;
+      if (elapsed < _minSyncIntervalSeconds) {
+        debugPrint('⏭️ syncAllPending: último sync há ${elapsed}s, ignorando');
+        return;
+      }
+    }
+    
+    _isSyncingProvider = true;
     
     try {
       
@@ -1142,12 +1154,12 @@ class OrderProvider with ChangeNotifier {
       // Apenas salvar as ordens que pertencem ao usuário atual
       // As ordens de outros ficam apenas em memória (para visualização do provedor)
       _debouncedSave();
-      _lastSyncTime = DateTime.now();
+      _lastProviderSyncTime = DateTime.now();
       _throttledNotify();
       
     } catch (e) {
     } finally {
-      _isSyncing = false;
+      _isSyncingProvider = false;
     }
   }
 
@@ -1912,16 +1924,18 @@ class OrderProvider with ChangeNotifier {
 
   /// Buscar histórico de ordens do usuário atual do Nostr
   /// PERFORMANCE: Throttled — ignora chamadas se sync já em andamento ou muito recente
-  Future<void> syncOrdersFromNostr() async {
+  /// [force] = true bypassa cooldown (para ações explícitas do usuário)
+  Future<void> syncOrdersFromNostr({bool force = false}) async {
     // PERFORMANCE: Não sincronizar se já tem sync em andamento
-    if (_isSyncing) {
+    if (_isSyncingUser) {
       debugPrint('⏭️ syncOrdersFromNostr: sync já em andamento, ignorando');
       return;
     }
     
     // PERFORMANCE: Não sincronizar se último sync foi há menos de N segundos
-    if (_lastSyncTime != null) {
-      final elapsed = DateTime.now().difference(_lastSyncTime!).inSeconds;
+    // Ignorado quando force=true (ação explícita do usuário)
+    if (!force && _lastUserSyncTime != null) {
+      final elapsed = DateTime.now().difference(_lastUserSyncTime!).inSeconds;
       if (elapsed < _minSyncIntervalSeconds) {
         debugPrint('⏭️ syncOrdersFromNostr: último sync há ${elapsed}s (mín: ${_minSyncIntervalSeconds}s), ignorando');
         return;
@@ -1937,7 +1951,7 @@ class OrderProvider with ChangeNotifier {
       return;
     }
     
-    _isSyncing = true;
+    _isSyncingUser = true;
     
     try {
       final nostrOrders = await _nostrOrderService.fetchUserOrders(_currentUserPubkey!);
@@ -2080,12 +2094,12 @@ class OrderProvider with ChangeNotifier {
       // SEGURANÇA CRÍTICA: Salvar apenas ordens do usuário atual!
       // Isso evita que ordens de outros usuários sejam persistidas localmente
       _debouncedSave();
-      _lastSyncTime = DateTime.now();
+      _lastUserSyncTime = DateTime.now();
       _throttledNotify();
       
     } catch (e) {
     } finally {
-      _isSyncing = false;
+      _isSyncingUser = false;
     }
   }
 

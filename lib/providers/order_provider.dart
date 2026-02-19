@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -23,6 +24,14 @@ class OrderProvider with ChangeNotifier {
   bool _isInitialized = false;
   String? _currentUserPubkey;
   bool _isProviderMode = false;  // Modo provedor ativo (para UI, não para filtro de ordens)
+
+  // PERFORMANCE: Throttle para evitar syncs/saves/notifies excessivos
+  bool _isSyncing = false; // Guard contra syncs concorrentes
+  DateTime? _lastSyncTime; // Timestamp do último sync completo
+  static const int _minSyncIntervalSeconds = 10; // Intervalo mínimo entre syncs
+  Timer? _saveDebounceTimer; // Debounce para _saveOrders
+  Timer? _notifyDebounceTimer; // Debounce para notifyListeners
+  bool _notifyPending = false; // Flag para notify pendente
 
   // Prefixo para salvar no SharedPreferences (será combinado com pubkey)
   static const String _ordersKeyPrefix = 'orders_';
@@ -201,6 +210,26 @@ class OrderProvider with ChangeNotifier {
 
   // Chave única para salvar ordens deste usuário
   String get _ordersKey => '${_ordersKeyPrefix}${_currentUserPubkey ?? 'anonymous'}';
+
+  /// PERFORMANCE: notifyListeners throttled — coalesce calls within 100ms
+  void _throttledNotify() {
+    _notifyPending = true;
+    if (_notifyDebounceTimer?.isActive ?? false) return;
+    _notifyDebounceTimer = Timer(const Duration(milliseconds: 100), () {
+      if (_notifyPending) {
+        _notifyPending = false;
+        notifyListeners();
+      }
+    });
+  }
+
+  /// PERFORMANCE: Debounced save — coalesce rapid writes into one 500ms later
+  void _debouncedSave() {
+    _saveDebounceTimer?.cancel();
+    _saveDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+      _saveOnlyUserOrders();
+    });
+  }
 
   // Inicializar com a pubkey do usuário
   Future<void> initialize({String? userPubkey}) async {
@@ -851,6 +880,14 @@ class OrderProvider with ChangeNotifier {
   /// SEGURANÇA: Ordens de outros usuários vão para _availableOrdersForProvider
   /// e NUNCA são adicionadas à lista principal _orders!
   Future<void> syncAllPendingOrdersFromNostr() async {
+    // PERFORMANCE: Não sincronizar se já tem sync em andamento
+    if (_isSyncing) {
+      debugPrint('⏭️ syncAllPending: sync já em andamento, ignorando');
+      return;
+    }
+    
+    _isSyncing = true;
+    
     try {
       
       // Helper para busca segura (captura exceções e retorna lista vazia)
@@ -1104,10 +1141,13 @@ class OrderProvider with ChangeNotifier {
       // SEGURANÇA: NÃO salvar ordens de outros usuários no storage local!
       // Apenas salvar as ordens que pertencem ao usuário atual
       // As ordens de outros ficam apenas em memória (para visualização do provedor)
-      await _saveOnlyUserOrders();
-      notifyListeners();
+      _debouncedSave();
+      _lastSyncTime = DateTime.now();
+      _throttledNotify();
       
     } catch (e) {
+    } finally {
+      _isSyncing = false;
     }
   }
 
@@ -1871,7 +1911,23 @@ class OrderProvider with ChangeNotifier {
   }
 
   /// Buscar histórico de ordens do usuário atual do Nostr
+  /// PERFORMANCE: Throttled — ignora chamadas se sync já em andamento ou muito recente
   Future<void> syncOrdersFromNostr() async {
+    // PERFORMANCE: Não sincronizar se já tem sync em andamento
+    if (_isSyncing) {
+      debugPrint('⏭️ syncOrdersFromNostr: sync já em andamento, ignorando');
+      return;
+    }
+    
+    // PERFORMANCE: Não sincronizar se último sync foi há menos de N segundos
+    if (_lastSyncTime != null) {
+      final elapsed = DateTime.now().difference(_lastSyncTime!).inSeconds;
+      if (elapsed < _minSyncIntervalSeconds) {
+        debugPrint('⏭️ syncOrdersFromNostr: último sync há ${elapsed}s (mín: ${_minSyncIntervalSeconds}s), ignorando');
+        return;
+      }
+    }
+    
     // Tentar pegar a pubkey do NostrService se não temos
     if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) {
       _currentUserPubkey = _nostrService.publicKey;
@@ -1880,6 +1936,8 @@ class OrderProvider with ChangeNotifier {
     if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) {
       return;
     }
+    
+    _isSyncing = true;
     
     try {
       final nostrOrders = await _nostrOrderService.fetchUserOrders(_currentUserPubkey!);
@@ -2021,10 +2079,13 @@ class OrderProvider with ChangeNotifier {
       
       // SEGURANÇA CRÍTICA: Salvar apenas ordens do usuário atual!
       // Isso evita que ordens de outros usuários sejam persistidas localmente
-      await _saveOnlyUserOrders();
-      notifyListeners();
+      _debouncedSave();
+      _lastSyncTime = DateTime.now();
+      _throttledNotify();
       
     } catch (e) {
+    } finally {
+      _isSyncing = false;
     }
   }
 

@@ -298,8 +298,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
   
   void _startOrdersPolling() {
-    // Atualizar ordens a cada 10 segundos para status em tempo real
-    _ordersUpdateTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+    // PERFORMANCE: Intervalo aumentado de 10s para 30s
+    // O syncOrdersFromNostr já tem throttle interno de 10s
+    _ordersUpdateTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
       if (mounted) {
         final orderProvider = context.read<OrderProvider>();
         try {

@@ -5,12 +5,14 @@ const { escrows } = require('../models/database');
 // POST /escrow/create - Criar escrow com Bitcoin do usuário
 router.post('/create', async (req, res) => {
   try {
-    const { orderId, userId, btcAmount } = req.body;
+    const { orderId, btcAmount } = req.body;
+    // SEGURANÇA: Usar pubkey verificada como userId
+    const userId = req.verifiedPubkey;
 
     if (!orderId || !userId || !btcAmount) {
       return res.status(400).json({ 
         error: 'Campos obrigatórios faltando',
-        required: ['orderId', 'userId', 'btcAmount']
+        required: ['orderId', 'btcAmount']
       });
     }
 
@@ -41,12 +43,14 @@ router.post('/create', async (req, res) => {
 // POST /escrow/release - Liberar Bitcoin do escrow
 router.post('/release', async (req, res) => {
   try {
-    const { orderId, providerId } = req.body;
+    const { orderId } = req.body;
+    // SEGURANÇA: Usar pubkey verificada como providerId
+    const providerId = req.verifiedPubkey;
 
     if (!orderId || !providerId) {
       return res.status(400).json({ 
         error: 'Campos obrigatórios faltando',
-        required: ['orderId', 'providerId']
+        required: ['orderId']
       });
     }
 
@@ -105,6 +109,11 @@ router.get('/:orderId', (req, res) => {
 
     if (!escrow) {
       return res.status(404).json({ error: 'Escrow não encontrado' });
+    }
+
+    // SEGURANÇA: Verificar que o caller é parte do escrow
+    if (req.verifiedPubkey && escrow.userId !== req.verifiedPubkey && escrow.providerId !== req.verifiedPubkey) {
+      return res.status(403).json({ error: 'Sem permissão para ver este escrow' });
     }
 
     res.json({

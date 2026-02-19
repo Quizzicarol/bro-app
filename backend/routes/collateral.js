@@ -6,13 +6,15 @@ const { collaterals } = require('../models/database');
 // POST /collateral/deposit - Criar invoice para depósito de garantia
 router.post('/deposit', async (req, res) => {
   try {
-    const { providerId, tierId, amountBrl, amountSats } = req.body;
+    const { tierId, amountBrl, amountSats } = req.body;
+    // SEGURANÇA: Usar pubkey verificada como providerId
+    const providerId = req.verifiedPubkey;
 
     // Validação
     if (!providerId || !tierId || !amountBrl || !amountSats) {
       return res.status(400).json({ 
         error: 'Campos obrigatórios faltando',
-        required: ['providerId', 'tierId', 'amountBrl', 'amountSats']
+        required: ['tierId', 'amountBrl', 'amountSats']
       });
     }
 
@@ -53,12 +55,14 @@ router.post('/deposit', async (req, res) => {
 // POST /collateral/lock - Bloquear garantia ao aceitar ordem
 router.post('/lock', async (req, res) => {
   try {
-    const { providerId, orderId, lockedSats } = req.body;
+    const { orderId, lockedSats } = req.body;
+    // SEGURANÇA: Usar pubkey verificada como providerId
+    const providerId = req.verifiedPubkey;
 
     if (!providerId || !orderId || !lockedSats) {
       return res.status(400).json({ 
         error: 'Campos obrigatórios faltando',
-        required: ['providerId', 'orderId', 'lockedSats']
+        required: ['orderId', 'lockedSats']
       });
     }
 
@@ -82,12 +86,14 @@ router.post('/lock', async (req, res) => {
 // POST /collateral/unlock - Desbloquear garantia após conclusão
 router.post('/unlock', async (req, res) => {
   try {
-    const { providerId, orderId } = req.body;
+    const { orderId } = req.body;
+    // SEGURANÇA: Usar pubkey verificada como providerId
+    const providerId = req.verifiedPubkey;
 
     if (!providerId || !orderId) {
       return res.status(400).json({ 
         error: 'Campos obrigatórios faltando',
-        required: ['providerId', 'orderId']
+        required: ['orderId']
       });
     }
 
@@ -110,6 +116,11 @@ router.post('/unlock', async (req, res) => {
 router.get('/:providerId', (req, res) => {
   try {
     const { providerId } = req.params;
+
+    // SEGURANÇA: Verificar que o caller é o próprio provedor
+    if (req.verifiedPubkey && req.verifiedPubkey !== providerId) {
+      return res.status(403).json({ error: 'Sem permissão para ver garantias de outro provedor' });
+    }
 
     // Buscar todas as garantias deste provedor
     const providerCollaterals = Array.from(collaterals.values())

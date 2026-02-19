@@ -10,6 +10,8 @@ import 'package:intl/intl.dart';
 import '../providers/order_provider.dart';
 import '../providers/breez_provider_export.dart';
 import '../providers/lightning_provider.dart';
+import '../services/local_collateral_service.dart';
+import '../services/platform_fee_service.dart';
 import '../widgets/fee_breakdown_card.dart';
 import 'onchain_payment_screen.dart';
 import 'lightning_payment_screen.dart';
@@ -471,12 +473,376 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   void _showBitcoinPaymentOptions(double totalBrl, String sats) {
     debugPrint('🔵 _showBitcoinPaymentOptions chamado: totalBrl=$totalBrl, sats=$sats');
-    // sats já está em formato correto (satoshis), só converter para BTC quando necessário
-    final btcAmount = int.parse(sats) / 100000000; // Convert sats to BTC for display
-    debugPrint('⚡ Usando apenas Lightning Network (on-chain desabilitado)');
-    
-    // Ir direto para Lightning (sem modal de escolha)
-    _createPayment(paymentType: 'lightning', totalBrl: totalBrl, sats: sats, btcAmount: btcAmount);
+    final btcAmount = int.parse(sats) / 100000000;
+    final amountSats = int.parse(sats);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Como deseja pagar?',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '$amountSats sats (~R\$ ${totalBrl.toStringAsFixed(2)})',
+                style: const TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+              const SizedBox(height: 20),
+              // Opção 1: Lightning Invoice
+              _buildPaymentOptionTile(
+                icon: Icons.flash_on,
+                iconColor: const Color(0xFFFFD700),
+                title: 'Lightning Invoice',
+                subtitle: 'Gere um QR code e pague de qualquer carteira',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _createPayment(paymentType: 'lightning', totalBrl: totalBrl, sats: sats, btcAmount: btcAmount);
+                },
+              ),
+              const SizedBox(height: 12),
+              // Opção 2: Saldo da Carteira
+              _buildPaymentOptionTile(
+                icon: Icons.account_balance_wallet,
+                iconColor: const Color(0xFF4CAF50),
+                title: 'Saldo da Carteira',
+                subtitle: 'Pague diretamente com seu saldo disponível',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _payWithWalletBalance(totalBrl: totalBrl, sats: sats, btcAmount: btcAmount);
+                },
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPaymentOptionTile({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF2A2A2A),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white12),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: iconColor.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: iconColor, size: 28),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 2),
+                  Text(subtitle, style: const TextStyle(color: Colors.white54, fontSize: 13)),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.white38),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Pagar com saldo da carteira - sem invoice, débito direto
+  Future<void> _payWithWalletBalance({
+    required double totalBrl,
+    required String sats,
+    required double btcAmount,
+  }) async {
+    if (_isProcessing) return;
+    final amountSats = int.parse(sats);
+    final lightningProvider = context.read<LightningProvider>();
+    final orderProvider = context.read<OrderProvider>();
+
+    // 1. Verificar saldo
+    int walletBalance;
+    try {
+      walletBalance = await lightningProvider.getBalance();
+    } catch (e) {
+      _showError('Erro ao verificar saldo: $e');
+      return;
+    }
+
+    if (walletBalance < amountSats) {
+      _showError('Saldo insuficiente. Disponível: $walletBalance sats, necessário: $amountSats sats');
+      return;
+    }
+
+    // 2. Verificar se pagamento vai comprometer garantia de tier (Bro mode)
+    final userPubkey = orderProvider.currentUserPubkey ?? '';
+    if (userPubkey.isNotEmpty) {
+      final collateralService = LocalCollateralService();
+      final collateral = await collateralService.getCollateral(userPubkey: userPubkey);
+      if (collateral != null && collateral.requiredSats > 0) {
+        final remainingAfterPayment = walletBalance - amountSats;
+        if (remainingAfterPayment < collateral.requiredSats) {
+          // Mostrar aviso sobre tier
+          final confirmed = await _showTierWarningDialog(
+            tierName: collateral.tierName,
+            requiredSats: collateral.requiredSats,
+            currentBalance: walletBalance,
+            afterPayment: remainingAfterPayment,
+          );
+          if (confirmed != true) return;
+        }
+      }
+    }
+
+    // 3. Criar invoice para si mesmo e pagar (garante registro na cadeia Lightning)
+    setState(() => _isProcessing = true);
+
+    // Mostrar loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => WillPopScope(
+        onWillPop: () async => false,
+        child: AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              CircularProgressIndicator(color: Color(0xFF4CAF50)),
+              SizedBox(height: 20),
+              Text(
+                '💰 Pagando com saldo da carteira...',
+                style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 8),
+              Text('Aguarde um momento...', style: TextStyle(color: Colors.white70, fontSize: 14)),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      if (_billData == null || _conversionData == null) {
+        if (mounted) Navigator.of(context).pop();
+        _showError('Dados da conta não encontrados');
+        return;
+      }
+
+      final dynamic valueData = _billData!['value'];
+      final double billAmount = (valueData is num) ? valueData.toDouble() : 0.0;
+      final dynamic priceData = _conversionData!['bitcoinPrice'];
+      final double btcPrice = (priceData is num) ? priceData.toDouble() : 0.0;
+
+      // Criar invoice para si mesmo (mantém registro no Lightning)
+      final invoiceData = await lightningProvider.createInvoice(
+        amountSats: amountSats,
+        description: 'Bro Wallet Payment',
+      ).timeout(const Duration(seconds: 30), onTimeout: () {
+        return {'success': false, 'error': 'Timeout'};
+      });
+
+      if (invoiceData == null || invoiceData['success'] != true) {
+        if (mounted) Navigator.of(context).pop();
+        _showError('Erro ao preparar pagamento: ${invoiceData?['error'] ?? 'desconhecido'}');
+        return;
+      }
+
+      final invoice = invoiceData['invoice'] as String;
+      final paymentHash = (invoiceData['paymentHash'] ?? '') as String;
+
+      // Pagar a própria invoice (auto-pagamento)
+      final payResult = await lightningProvider.payInvoice(invoice);
+      
+      if (payResult == null || payResult['success'] != true) {
+        if (mounted) Navigator.of(context).pop();
+        _showError('Erro no pagamento: ${payResult?['error'] ?? 'desconhecido'}');
+        return;
+      }
+
+      debugPrint('✅ Auto-pagamento realizado com sucesso!');
+
+      // 4. Criar ordem (mesmo fluxo do LightningPaymentScreen._handlePaymentSuccess)
+      final order = await orderProvider.createOrder(
+        billType: _billData!['billType'] as String,
+        billCode: _codeController.text.trim(),
+        amount: billAmount,
+        btcAmount: btcAmount,
+        btcPrice: btcPrice,
+      );
+
+      if (order == null) {
+        if (mounted) Navigator.of(context).pop();
+        _showError('Pagamento realizado mas erro ao criar ordem.');
+        return;
+      }
+
+      debugPrint('✅ Ordem criada: ${order.id}');
+
+      // Salvar paymentHash
+      if (paymentHash.isNotEmpty) {
+        await orderProvider.setOrderPaymentHash(order.id, paymentHash, invoice);
+      }
+
+      // Atualizar status para payment_received
+      await orderProvider.updateOrderStatus(
+        orderId: order.id,
+        status: 'payment_received',
+      );
+
+      // Registrar taxa da plataforma (2%)
+      try {
+        await PlatformFeeService.recordFee(
+          orderId: order.id,
+          transactionBrl: totalBrl,
+          transactionSats: amountSats,
+          providerPubkey: 'unknown',
+          clientPubkey: userPubkey,
+        );
+      } catch (e) {
+        debugPrint('Erro ao registrar taxa: $e');
+      }
+
+      // Fechar loading
+      if (mounted) Navigator.of(context).pop();
+
+      // Navegar para status da ordem
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Pagamento realizado com saldo da carteira!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
+        
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          '/order-status',
+          (route) => route.isFirst,
+          arguments: {
+            'orderId': order.id,
+            'amountBrl': totalBrl,
+            'amountSats': amountSats,
+          },
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Erro em _payWithWalletBalance: $e');
+      if (mounted) Navigator.of(context).pop();
+      _showError('Erro ao pagar com saldo: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessing = false);
+      }
+    }
+  }
+
+  /// Diálogo de aviso sobre comprometimento da garantia de tier
+  Future<bool?> _showTierWarningDialog({
+    required String tierName,
+    required int requiredSats,
+    required int currentBalance,
+    required int afterPayment,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: const [
+            Icon(Icons.warning_amber_rounded, color: Color(0xFFFF9800), size: 28),
+            SizedBox(width: 10),
+            Text('Aviso de Garantia', style: TextStyle(color: Colors.white, fontSize: 18)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Ao pagar com saldo da carteira, seu saldo ficará abaixo do necessário para manter o tier "$tierName" no modo Bro.',
+              style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.4),
+            ),
+            const SizedBox(height: 16),
+            _buildTierInfoRow('Garantia necessária', '$requiredSats sats'),
+            _buildTierInfoRow('Saldo atual', '$currentBalance sats'),
+            _buildTierInfoRow('Saldo após pagamento', '$afterPayment sats', isNegative: afterPayment < requiredSats),
+            const SizedBox(height: 16),
+            const Text(
+              'Você poderá perder sua garantia e não conseguirá aceitar ordens no modo Bro até repor o saldo.',
+              style: TextStyle(color: Color(0xFFFF9800), fontSize: 13, fontStyle: FontStyle.italic),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFF6B6B),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Pagar mesmo assim', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTierInfoRow(String label, String value, {bool isNegative = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.white54, fontSize: 13)),
+          Text(
+            value,
+            style: TextStyle(
+              color: isNegative ? const Color(0xFFFF6B6B) : Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _createPayment({

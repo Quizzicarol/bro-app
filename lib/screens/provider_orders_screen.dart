@@ -184,16 +184,25 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     }
   }
 
-  Future<void> _loadOrders() async {
+  Future<void> _loadOrders({bool isRefresh = false}) async {
     if (!mounted) {
       return;
     }
     
-    setState(() {
-      _isLoading = true;
-      _isSyncingNostr = true;
-      _error = null;
-    });
+    // CORREÇÃO: Não mostrar loading spinner no pull-to-refresh
+    // Senão o RefreshIndicator é removido da tree e o usuário não vê o refresh
+    if (!isRefresh) {
+      setState(() {
+        _isLoading = true;
+        _isSyncingNostr = true;
+        _error = null;
+      });
+    } else {
+      setState(() {
+        _isSyncingNostr = true;
+        _error = null;
+      });
+    }
 
     try {
       final collateralService = LocalCollateralService();
@@ -481,7 +490,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   
   Widget _buildAvailableOrdersTab(CollateralProvider collateralProvider) {
     return RefreshIndicator(
-      onRefresh: _loadOrders,
+      onRefresh: () => _loadOrders(isRefresh: true),
       color: const Color(0xFFFF6B6B),
       child: _availableOrders.isEmpty
         ? ListView(
@@ -526,10 +535,10 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
               ),
               const SizedBox(height: 24),
               ElevatedButton.icon(
-                onPressed: _loadOrders,
+                onPressed: () => _loadOrders(isRefresh: true),
                 icon: const Icon(Icons.refresh),
                 label: const Text('Atualizar'),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF6B6B)),
               ),
             ],
           ),
@@ -734,7 +743,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       });
     
     return RefreshIndicator(
-      onRefresh: _loadOrders,
+      onRefresh: () => _loadOrders(isRefresh: true),
       color: const Color(0xFFFF6B6B),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -870,7 +879,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   
   Widget _buildStatisticsTab(CollateralProvider collateralProvider) {
     return RefreshIndicator(
-      onRefresh: _loadOrders,
+      onRefresh: () => _loadOrders(isRefresh: true),
       color: const Color(0xFFFF6B6B),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),

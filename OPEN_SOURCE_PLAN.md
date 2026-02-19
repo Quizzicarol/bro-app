@@ -41,12 +41,13 @@
 
 | # | Tarefa | Esforço | Status |
 |---|--------|---------|--------|
-| 3.1 | Encriptar `billCode` no kind 30078 usando NIP-44 | Médio | ⬜ |
-| 3.2 | Encriptar `proofImageBase64` no kind 30081 | Médio | ⬜ |
-| 3.3 | Descriptografar nos pontos de leitura | Médio | ⬜ |
-| 3.4 | Retrocompatibilidade: plaintext para ordens antigas | Pequeno | ⬜ |
+| 3.1 | Encriptar `billCode` no kind 30078 usando NIP-44 | Médio | ⏳ Adiado — provedor precisa ver billCode antes de aceitar. Requer redesenho com NIP-17 Gift Wraps |
+| 3.2 | Encriptar `proofImageBase64` no kind 30081 | Médio | ✅ NIP-44 entre provedor↔usuário, campo `proofImage_nip44` |
+| 3.3 | Descriptografar nos pontos de leitura | Médio | ✅ Auto-decrypt em `_applyStatusUpdate` + pipeline completo |
+| 3.4 | Retrocompatibilidade: plaintext para ordens antigas | Pequeno | ✅ Fallback quando campo `encryption` ausente |
+| 3.5 | Corrigir RNG fraco no nip44_service.dart | CRÍTICO | ✅ `DateTime` seed → `Random.secure()` |
 
-**Arquivos afetados:** `lib/services/nostr_order_service.dart`, `lib/services/nip44_service.dart`
+**Arquivos afetados:** `lib/services/nostr_order_service.dart`, `lib/services/nip44_service.dart`, `lib/providers/order_provider.dart`
 
 ---
 

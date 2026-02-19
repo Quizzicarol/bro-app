@@ -858,9 +858,12 @@ class OrderProvider with ChangeNotifier {
       if (forProvider) {
         // MODO PROVEDOR: Buscar TODAS as ordens pendentes de TODOS os usuários
         // force: true — ação explícita do usuário, bypass throttle
+        // CORREÇÃO: Timeout externo DEVE ser maior que timeout interno do safeFetch (45s)
+        // Senão o timeout externo mata a operação antes dos fetches individuais completarem
         await syncAllPendingOrdersFromNostr(force: true).timeout(
-          const Duration(seconds: 30),
+          const Duration(seconds: 90),
           onTimeout: () {
+            debugPrint('⏰ fetchOrders: timeout externo de 90s atingido');
           },
         );
       } else {
@@ -906,10 +909,12 @@ class OrderProvider with ChangeNotifier {
       // Timeout de 25s por fonte individual
       Future<List<Order>> safeFetch(Future<List<Order>> Function() fetcher, String name) async {
         try {
-          return await fetcher().timeout(const Duration(seconds: 25), onTimeout: () {
+          return await fetcher().timeout(const Duration(seconds: 45), onTimeout: () {
+            debugPrint('⏰ safeFetch timeout: $name');
             return <Order>[];
           });
         } catch (e) {
+          debugPrint('❌ safeFetch error $name: $e');
           return <Order>[];
         }
       }
@@ -929,12 +934,23 @@ class OrderProvider with ChangeNotifier {
       final userOrders = results[1];
       final providerOrders = results[2];
       
+      debugPrint('🔄 syncProvider: pending=${allPendingOrders.length}, user=${userOrders.length}, provider=${providerOrders.length}');
+      
+      // PROTEÇÃO: Se TODAS as buscas retornaram vazio, provavelmente houve timeout/erro
+      // Não limpar a lista anterior para não perder dados
+      if (allPendingOrders.isEmpty && userOrders.isEmpty && providerOrders.isEmpty) {
+        debugPrint('⚠️ syncProvider: TODAS as buscas retornaram vazio - mantendo dados anteriores');
+        _lastProviderSyncTime = DateTime.now();
+        _isSyncingProvider = false;
+        return;
+      }
       
       // SEGURANÇA: Separar ordens em duas listas:
       // 1. Ordens do usuário atual -> _orders
       // 2. Ordens de outros (disponíveis para aceitar) -> _availableOrdersForProvider
       
-      _availableOrdersForProvider = []; // Limpar lista anterior
+      // CORREÇÃO: Acumular em lista temporária, só substituir no final
+      final newAvailableOrders = <Order>[];
       final seenAvailableIds = <String>{}; // Para evitar duplicatas
       int addedToAvailable = 0;
       int updated = 0;
@@ -1016,11 +1032,17 @@ class OrderProvider with ChangeNotifier {
             }
           }
           
-          _availableOrdersForProvider.add(pendingOrder);
+          newAvailableOrders.add(pendingOrder);
           addedToAvailable++;
         }
       }
       
+      // CORREÇÃO: Só substituir a lista se temos dados novos
+      if (allPendingOrders.isNotEmpty) {
+        _availableOrdersForProvider = newAvailableOrders;
+      }
+      
+      debugPrint('🔄 syncProvider: $addedToAvailable disponíveis, $updated atualizadas, _orders total=${_orders.length}');
       
       // Processar ordens do próprio usuário (já buscadas em paralelo)
       int addedFromUser = 0;

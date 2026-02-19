@@ -1012,16 +1012,19 @@ class NostrOrderService {
   Future<List<Order>> fetchPendingOrders() async {
     
     final rawOrders = await _fetchPendingOrdersRaw();
+    debugPrint('📋 fetchPendingOrders: ${rawOrders.length} raw events do relay');
     
     // Buscar eventos de UPDATE para saber quais ordens já foram aceitas
     final statusUpdates = await _fetchAllOrderStatusUpdates();
+    debugPrint('📋 fetchPendingOrders: ${statusUpdates.length} status updates encontrados');
     
     // Converter para Orders COM DEDUPLICAÇÃO por orderId
     final seenOrderIds = <String>{};
     final allOrders = <Order>[];
+    int nullOrders = 0;
     for (final e in rawOrders) {
       final order = eventToOrder(e);
-      if (order == null) continue;
+      if (order == null) { nullOrders++; continue; }
       
       // DEDUPLICAÇÃO: Só adicionar se ainda não vimos este orderId
       if (seenOrderIds.contains(order.id)) {
@@ -1031,11 +1034,14 @@ class NostrOrderService {
       allOrders.add(order);
     }
     
+    debugPrint('📋 fetchPendingOrders: ${allOrders.length} ordens válidas ($nullOrders rejeitadas)');
     
     // LOG DETALHADO de cada ordem
     for (var order in allOrders) {
       final hasUpdate = statusUpdates.containsKey(order.id);
       final update = statusUpdates[order.id];
+      final updateStatus = update?['status'] as String?;
+      debugPrint('  📦 Ordem ${order.id.substring(0, 8)}: status=${order.status}, update=$updateStatus, amount=${order.amount}');
     }
     
     // FILTRAR: Mostrar apenas ordens que NÃO foram aceitas por nenhum Bro
@@ -1047,17 +1053,17 @@ class NostrOrderService {
       final updateProviderId = update?['providerId'] as String?;
       
       // Se não tem update OU se o update não é de accept/complete, está disponível
-      final isAccepted = updateStatus == 'accepted' || updateStatus == 'awaiting_confirmation' || updateStatus == 'completed';
+      final isAccepted = updateStatus == 'accepted' || updateStatus == 'awaiting_confirmation' || updateStatus == 'completed' || updateStatus == 'liquidated';
       
       if (!isAccepted) {
         // Ordem ainda não foi aceita - DISPONÍVEL para Bros
         availableOrders.add(order);
       } else {
-        // Ordem já foi aceita por alguém
+        debugPrint('  🚫 Ordem ${order.id.substring(0, 8)} filtrada: updateStatus=$updateStatus');
       }
     }
     
-    
+    debugPrint('📋 fetchPendingOrders: ${availableOrders.length} ordens disponíveis após filtro');
     return availableOrders;
   }
 
@@ -1096,26 +1102,21 @@ class NostrOrderService {
     final updates = <String, Map<String, dynamic>>{}; // orderId -> latest update
     
     
-    // Buscar de TODOS os relays (sequencialmente para evitar sobrecarga)
-    for (final relay in _relays) {
+    // PERFORMANCE: Buscar de todos os relays EM PARALELO (antes era sequencial e dava timeout)
+    final allEvents = <Map<String, dynamic>>[];
+    final relayFutures = _relays.map((relay) async {
       try {
-        // ESTRATÉGIA: Buscar com tag bro-order primeiro (mais preciso)
-        // Se falhar ou retornar poucos resultados, fallback para busca por kind
         var events = await _fetchFromRelay(
           relay,
-          kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete], // 30079, 30080 e 30081
-          tags: {'#t': [broTag]}, // Filtra apenas eventos do app BRO
+          kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete],
+          tags: {'#t': [broTag]},
           limit: 300,
         ).timeout(
-          const Duration(seconds: 5),
-          onTimeout: () {
-            return <Map<String, dynamic>>[];
-          },
+          const Duration(seconds: 8),
+          onTimeout: () => <Map<String, dynamic>>[],
         );
         
-        
-        // Fallback: se retornou poucos eventos, tentar sem tag
-        // (para compatibilidade com eventos antigos publicados sem tag)
+        // Fallback se poucos eventos
         if (events.length < 10) {
           final fallbackEvents = await _fetchFromRelay(
             relay,
@@ -1126,7 +1127,6 @@ class NostrOrderService {
             onTimeout: () => <Map<String, dynamic>>[],
           );
           
-          // Mesclar eventos únicos do fallback
           final seenIds = events.map((e) => e['id']).toSet();
           for (final e in fallbackEvents) {
             if (!seenIds.contains(e['id'])) {
@@ -1135,7 +1135,21 @@ class NostrOrderService {
           }
         }
         
-        for (final event in events) {
+        return events;
+      } catch (e) {
+        return <Map<String, dynamic>>[];
+      }
+    }).toList();
+    
+    final results = await Future.wait(relayFutures);
+    for (final relayEvents in results) {
+      allEvents.addAll(relayEvents);
+    }
+    
+    debugPrint('📋 _fetchAllOrderStatusUpdates: ${allEvents.length} eventos de ${_relays.length} relays (paralelo)');
+    
+    // Processar todos os eventos coletados
+    for (final event in allEvents) {
           try {
             final content = event['parsedContent'] ?? jsonDecode(event['content']);
             final eventType = content['type'] as String?;
@@ -1227,10 +1241,8 @@ class NostrOrderService {
             // Ignorar eventos mal formatados
           }
         }
-      } catch (e) {
-      }
-    }
     
+    debugPrint('📋 _fetchAllOrderStatusUpdates: ${updates.length} ordens com updates');
     return updates;
   }
   
@@ -1376,6 +1388,8 @@ class NostrOrderService {
       );
       
       
+      debugPrint('📡 Relay $relay: ${relayOrders.length} eventos kind 30078 retornados');
+      
       for (final order in relayOrders) {
         // Verificar se é ordem do Bro app (verificando content)
         try {
@@ -1385,7 +1399,9 @@ class NostrOrderService {
           }
         } catch (_) {}
       }
+      debugPrint('📡 Relay $relay: ${orders.length} ordens bro_order válidas');
     } catch (e) {
+      debugPrint('❌ Relay $relay erro: $e');
     }
     
     return orders;

@@ -93,13 +93,16 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       
       try {
         final orderProvider = context.read<OrderProvider>();
+        debugPrint('⏱️ Timer: chamando fetchOrders(forProvider: true)');
         await orderProvider.fetchOrders(forProvider: true);
+        debugPrint('⏱️ Timer: fetchOrders completou, available=${orderProvider.availableOrdersForProvider.length}');
         
         // Verificar mounted novamente após operação async
         if (mounted) {
           _loadOrdersFromProvider();
         }
       } catch (e) {
+        debugPrint('⏱️ Timer: erro - $e');
         // Não travar a UI - apenas logar o erro
       }
     });
@@ -110,21 +113,24 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     final orderProvider = context.read<OrderProvider>();
     
     final accepted = orderProvider.myAcceptedOrders;
-    for (final o in accepted) {
-    }
+    final allAvailable = orderProvider.availableOrdersForProvider;
+    
+    // CORREÇÃO: Aplicar mesmo filtro de status que _loadOrders
+    // Só mostrar ordens pending e payment_received (usuário já pagou)
+    final filteredAvailable = allAvailable.where((o) {
+      return o.status == 'pending' || o.status == 'payment_received';
+    }).toList();
+    
+    debugPrint('📋 _loadOrdersFromProvider: ${allAvailable.length} total, ${filteredAvailable.length} filtradas, ${accepted.length} aceitas');
     
     setState(() {
-      _availableOrders = orderProvider.availableOrdersForProvider
+      _availableOrders = filteredAvailable
           .map((o) => o.toJson())
           .toList();
       _myOrders = accepted
           .map((o) => o.toJson())
           .toList();
     });
-    
-    for (final m in _myOrders) {
-      final mid = (m["id"] as String? ?? "");
-    }
   }
   
   /// Handler para mudança de aba - usa dados locais (sem resync Nostr)
@@ -216,7 +222,9 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       
       // Buscar ordens do Nostr
       final orderProvider = context.read<OrderProvider>();
+      debugPrint('🔄 _loadOrders: chamando fetchOrders(forProvider: true)');
       await orderProvider.fetchOrders(forProvider: true);
+      debugPrint('🔄 _loadOrders: fetchOrders completou, available=${orderProvider.availableOrdersForProvider.length}');
       
       if (mounted) {
         setState(() {
@@ -248,10 +256,10 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       }
       
       // Processar ordens disponíveis para aceitar (de outros usuários)
-      // FILTRO CRÍTICO: Só mostrar ordens realmente pendentes
+      // FILTRO: Mostrar ordens pending e payment_received (já pagaram via Lightning)
       for (final order in availableFromProvider) {
-        // SEGURANÇA: Só adicionar ordens que ainda estão pending
-        if (order.status != 'pending') {
+        // CORREÇÃO: Incluir payment_received — são ordens onde o usuário já pagou!
+        if (order.status != 'pending' && order.status != 'payment_received') {
           continue;
         }
         

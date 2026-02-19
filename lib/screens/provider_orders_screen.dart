@@ -428,7 +428,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const CircularProgressIndicator(color: Colors.orange),
+                    const CircularProgressIndicator(color: Color(0xFFFF6B6B)),
                     const SizedBox(height: 16),
                     Text(
                       _isSyncingNostr 

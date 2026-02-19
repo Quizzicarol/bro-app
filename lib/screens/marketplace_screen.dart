@@ -219,7 +219,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
       body: SafeArea(
         top: false,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: Colors.orange))
+            ? const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B6B)))
             : _error != null
                 ? _buildErrorView()
                 : TabBarView(

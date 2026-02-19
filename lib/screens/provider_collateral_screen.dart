@@ -99,7 +99,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
         ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.orange))
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B6B)))
           : _error != null
               ? _buildErrorView()
               : _buildContent(),

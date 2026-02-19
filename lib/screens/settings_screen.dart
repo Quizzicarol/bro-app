@@ -287,7 +287,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         foregroundColor: Colors.orange,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.orange))
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B6B)))
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Column(

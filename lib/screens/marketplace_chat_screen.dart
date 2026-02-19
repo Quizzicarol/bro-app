@@ -243,7 +243,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        CircularProgressIndicator(color: Colors.orange),
+                        CircularProgressIndicator(color: Color(0xFFFF6B6B)),
                         SizedBox(height: 16),
                         Text('Conectando aos relays...', style: TextStyle(color: Colors.white70)),
                       ],

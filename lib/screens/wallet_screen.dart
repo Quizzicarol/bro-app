@@ -136,7 +136,7 @@ class _WalletScreenState extends State<WalletScreen> {
       context: context,
       barrierDismissible: false,
       builder: (_) => const Center(
-        child: CircularProgressIndicator(color: Color(0xFFFF9800)),
+        child: CircularProgressIndicator(color: Color(0xFFFF6B6B)),
       ),
     );
     
@@ -280,7 +280,7 @@ class _WalletScreenState extends State<WalletScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CircularProgressIndicator(color: Color(0xFFFF9800)),
+            CircularProgressIndicator(color: Color(0xFFFF6B6B)),
             SizedBox(height: 16),
             Text('Carregando carteira...', style: TextStyle(color: Colors.white70)),
           ],
@@ -2091,63 +2091,46 @@ class _WalletScreenState extends State<WalletScreen> {
     // Obter OrderProvider para correlações
     final orderProvider = context.read<OrderProvider>();
     final currentPubkey = orderProvider.currentUserPubkey;
+    final paymentHash = payment['paymentHash']?.toString() ?? '';
     
-    // CORREÇÃO CRÍTICA: Verificar se é REALMENTE um ganho como Bro
-    // Só é ganho Bro se:
-    // 1. É um pagamento RECEBIDO
-    // 2. Descrição contém 'Bro - Ordem' (formato do invoice do provedor)
-    // 3. O usuário atual é o PROVEDOR da ordem (NÃO o criador!)
+    // CORREÇÃO: Correlacionar por paymentHash (exato) em vez de heurística por valor
+    // Cada ordem salva o paymentHash no momento do pagamento
     bool isBroOrderPayment = false;
     String? correlatedOrderId;
     
-    if (isReceived && 
-        (description.contains('Bro - Ordem') || description.contains('Bro Payment')) && 
+    // 1. Correlação EXATA por paymentHash (mais confiável)
+    if (paymentHash.isNotEmpty) {
+      for (final order in orderProvider.orders) {
+        if (order.paymentHash == paymentHash) {
+          if (order.providerId == currentPubkey && order.userPubkey != currentPubkey) {
+            // Eu sou o provedor — é ganho como Bro
+            isBroOrderPayment = true;
+          }
+          correlatedOrderId = order.id;
+          break;
+        }
+      }
+    }
+    
+    // 2. Fallback: Correlação por descrição (formato "Bro - Ordem XXXXXXXX")
+    if (correlatedOrderId == null && isReceived && 
+        description.contains('Bro - Ordem') && 
         !description.contains('Garantia') &&
         !description.contains('Platform Fee')) {
-      // Extrair orderId da descrição (formato: "Bro - Ordem XXXXXXXX")
       String? orderIdFromDesc;
       if (description.contains('Bro - Ordem ')) {
         orderIdFromDesc = description.split('Bro - Ordem ').last.trim();
       }
       
-      // Verificar se o usuário atual é o PROVEDOR desta ordem
       if (orderIdFromDesc != null && orderIdFromDesc.isNotEmpty) {
-        final order = orderProvider.orders.firstWhere(
-          (o) => o.id.startsWith(orderIdFromDesc!) || orderIdFromDesc!.startsWith(o.id.substring(0, 8)),
-          orElse: () => orderProvider.orders.first, // fallback
+        final order = orderProvider.orders.cast<Order?>().firstWhere(
+          (o) => o!.id.startsWith(orderIdFromDesc!) || orderIdFromDesc!.startsWith(o.id.substring(0, 8)),
+          orElse: () => null,
         );
-        // Só é ganho Bro se EU sou o provedor (não o criador da ordem)
-        isBroOrderPayment = order.providerId == currentPubkey && order.userPubkey != currentPubkey;
-        if (!isBroOrderPayment) {
-          debugPrint('🚫 Pagamento ${description.substring(0, 20)}... NÃO é ganho Bro - sou o criador, não o provedor');
-          // Se não é ganho Bro e sou o criador, é um depósito para ordem
-          if (order.userPubkey == currentPubkey) {
+        if (order != null) {
+          isBroOrderPayment = order.providerId == currentPubkey && order.userPubkey != currentPubkey;
+          if (!isBroOrderPayment && order.userPubkey == currentPubkey) {
             correlatedOrderId = order.id;
-          }
-        }
-      }
-    }
-    
-    // NOVO: Se é um pagamento RECEBIDO genérico ('Bro Payment'), correlacionar com ordens criadas por mim
-    // Correlação por valor aproximado e timing
-    if (isReceived && description == 'Bro Payment' && !isBroOrderPayment && correlatedOrderId == null) {
-      // Buscar ordens que eu criei com valor similar (tolerância de 5%)
-      final myOrders = orderProvider.myCreatedOrders;
-      final paymentDate = date is DateTime ? date : DateTime.now();
-      
-      for (final order in myOrders) {
-        // Converter valor da ordem para sats para comparação
-        final orderSats = (order.btcAmount * 100000000).round();
-        final tolerance = (orderSats * 0.05).round(); // 5% tolerância
-        
-        if ((amount - orderSats).abs() <= tolerance) {
-          // Verificar se a data é próxima (dentro de 24h)
-          final orderDate = order.createdAt;
-          final diff = paymentDate.difference(orderDate).abs();
-          if (diff.inHours <= 24) {
-            correlatedOrderId = order.id;
-            debugPrint('📋 Correlacionado depósito $amount sats com ordem ${order.id.substring(0, 8)}');
-            break;
           }
         }
       }
@@ -2174,27 +2157,11 @@ class _WalletScreenState extends State<WalletScreen> {
         icon = Icons.arrow_downward;
       }
     } else {
-      // Verificar se é pagamento com saldo da carteira (auto-pagamento)
-      if (description == 'Bro Wallet Payment') {
-        // Correlacionar com ordem por valor e timing
-        final myOrders = orderProvider.myCreatedOrders;
-        final paymentDate = date is DateTime ? date : DateTime.now();
-        String? walletOrderId;
-        
-        for (final order in myOrders) {
-          final orderSats = (order.btcAmount * 100000000).round();
-          final tolerance = (orderSats * 0.05).round();
-          if ((amount - orderSats).abs() <= tolerance) {
-            final diff = paymentDate.difference(order.createdAt).abs();
-            if (diff.inHours <= 24) {
-              walletOrderId = order.id;
-              break;
-            }
-          }
-        }
-        
-        if (walletOrderId != null) {
-          label = '📄 Depósito para Ordem #${walletOrderId.substring(0, 8)}';
+      // Verificar se é pagamento com saldo da carteira ou depósito Lightning
+      if (description == 'Bro Wallet Payment' || description == 'Bro Payment') {
+        // Já correlacionado por paymentHash acima
+        if (correlatedOrderId != null) {
+          label = '📄 Depósito para Ordem #${correlatedOrderId.substring(0, 8)}';
         } else {
           label = '📄 Depósito para Ordem';
         }

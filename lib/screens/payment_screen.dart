@@ -159,7 +159,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         
         // VALIDAÇÃO: Limites de valor para ordens
         const double minOrderBrl = 0.01;  // Mínimo R$ 0.01 para testes
-        const double maxOrderBrl = 5000.0; // Máximo R$ 5.000 para segurança
+        const double maxOrderBrl = 200.0; // TEMPORÁRIO: Máximo R$ 200 para fase de testes externos
         
         if (amount < minOrderBrl) {
           if (!mounted) return;
@@ -431,7 +431,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                         : const SizedBox(
                             width: 24,
                             height: 24,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange),
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFFF6B6B)),
                           ),
                     const SizedBox(height: 4),
                     Text(isPaid ? 'Pago' : 'Aguardando pagamento...', style: const TextStyle(color: Colors.white70, fontSize: 12)),

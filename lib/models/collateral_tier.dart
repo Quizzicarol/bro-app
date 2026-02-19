@@ -7,6 +7,10 @@ class CollateralTier {
   final int requiredCollateralSats; // Garantia necessária em sats (calculado)
   final String description;
   final List<String> benefits;
+  
+  // TEMPORÁRIO: Limite máximo de tier durante fase de testes externos
+  // Remover/aumentar quando liberar para produção completa
+  static const double maxTierLimitBrl = 200.0;
 
   CollateralTier({
     required this.id,
@@ -46,7 +50,7 @@ class CollateralTier {
   static List<CollateralTier> getAvailableTiers(double btcPriceBrl) {
     final satsPerBrl = 100000000 / btcPriceBrl; // 1 BTC = 100M sats
 
-    return [
+    final allTiers = [
       // 🧪 Tier Trial - para testar o app
       CollateralTier(
         id: 'trial',
@@ -138,6 +142,9 @@ class CollateralTier {
         ],
       ),
     ];
+    
+    // TEMPORÁRIO: Filtrar tiers acima do limite de teste
+    return allTiers.where((t) => t.maxOrderValueBrl <= maxTierLimitBrl).toList();
   }
 
   /// Retorna o tier adequado baseado no valor da ordem

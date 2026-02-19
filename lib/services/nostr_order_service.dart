@@ -156,13 +156,16 @@ class NostrOrderService {
         ['t', broTag],
         ['t', 'bro-update'],
         ['t', 'status-$newStatus'], // Tag pesquisável por status
-        ['orderId', orderId], // Tag customizada para busca
+        ['r', orderId], // CRÍTICO: Tag 'r' (reference) para busca por orderId nos relays
+        ['orderId', orderId], // Tag customizada (não filtrável por relays, só para leitura)
       ];
       
       // CRÍTICO: Sempre adicionar tag p do provedor para que ele receba
       if (providerId != null && providerId.isNotEmpty) {
         tags.add(['p', providerId]); // Tag do provedor - CRÍTICO para notificação
+        debugPrint('📤 updateOrderStatus: orderId=${orderId.substring(0, 8)} status=$newStatus providerId=${providerId.substring(0, 16)}');
       } else {
+        debugPrint('⚠️ updateOrderStatus: orderId=${orderId.substring(0, 8)} status=$newStatus SEM providerId!');
       }
 
       // IMPORTANTE: Usa kindBroPaymentProof (30080) para não substituir o evento original!
@@ -196,8 +199,10 @@ class NostrOrderService {
       );
 
       final successCount = results.where((r) => r).length;
+      debugPrint('📤 updateOrderStatus: publicado em $successCount/${_relays.length} relays (orderId=${orderId.substring(0, 8)}, status=$newStatus)');
       return successCount > 0;
     } catch (e) {
+      debugPrint('❌ updateOrderStatus EXCEPTION: $e');
       return false;
     }
   }
@@ -1575,6 +1580,8 @@ class NostrOrderService {
 
     // Converter orderIds para Set para busca O(1)
     final orderIdSet = orderIds.toSet();
+    debugPrint('🔍 fetchOrderUpdatesForProvider: buscando updates para ${orderIds.length} ordens');
+    debugPrint('   orderIds: ${orderIds.map((id) => id.substring(0, 8)).join(", ")}');
 
     for (final relay in _relays.take(3)) {
       try {
@@ -1588,6 +1595,7 @@ class NostrOrderService {
           limit: 100,
         );
         
+        debugPrint('   Estratégia 1 (#p): ${pTagEvents.length} eventos de $relay');
         
         for (final event in pTagEvents) {
           try {
@@ -1614,21 +1622,24 @@ class NostrOrderService {
           } catch (_) {}
         }
         
-        // ESTRATÉGIA 2: Buscar diretamente por cada orderId específico
-        // Fallback para quando a tag #p não foi indexada
-        // CORREÇÃO: Aumentado de 20 para 100 para preservar histórico completo
+        // ESTRATÉGIA 2: Buscar diretamente por cada orderId via tag #r (reference)
+        // CORREÇÃO: Antes usava #e (event ID) mas orderId é UUID, não hex event ID
+        // Agora usa tag 'r' (reference) que foi adicionada nos eventos publicados
         for (final orderId in orderIds.take(100)) {
           try {
-            // Buscar por tag #e (referência ao orderId)
-            final eTagEvents = await _fetchFromRelay(
+            // Buscar por tag #r (referência ao orderId - UUID)
+            final rTagEvents = await _fetchFromRelay(
               relay,
               kinds: [kindBroPaymentProof],
-              tags: {'#e': [orderId]},
+              tags: {'#r': [orderId]},
               limit: 10,
             );
             
+            if (rTagEvents.isNotEmpty) {
+              debugPrint('   Estratégia 2 (#r): ${rTagEvents.length} eventos para orderId=${orderId.substring(0, 8)}');
+            }
             
-            for (final event in eTagEvents) {
+            for (final event in rTagEvents) {
               try {
                 final content = event['parsedContent'] ?? jsonDecode(event['content']);
                 final eventOrderId = content['orderId'] as String?;
@@ -1654,11 +1665,48 @@ class NostrOrderService {
           } catch (_) {}
         }
         
+        // ESTRATÉGIA 2b: Fallback - buscar por tag #e (legado, para eventos antigos)
+        for (final orderId in orderIds.take(100)) {
+          if (updates.containsKey(orderId)) continue; // Já encontrado
+          try {
+            final eTagEvents = await _fetchFromRelay(
+              relay,
+              kinds: [kindBroPaymentProof],
+              tags: {'#e': [orderId]},
+              limit: 10,
+            );
+            
+            for (final event in eTagEvents) {
+              try {
+                final content = event['parsedContent'] ?? jsonDecode(event['content']);
+                final eventOrderId = content['orderId'] as String?;
+                final status = content['status'] as String?;
+                final createdAt = event['created_at'] as int? ?? 0;
+                
+                if (eventOrderId == null || eventOrderId != orderId) continue;
+                if (status == null) continue;
+                
+                final existingUpdate = updates[eventOrderId];
+                final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
+                
+                if (existingUpdate == null || createdAt > existingCreatedAt) {
+                  updates[eventOrderId] = {
+                    'orderId': eventOrderId,
+                    'status': status,
+                    'created_at': createdAt,
+                  };
+                }
+              } catch (_) {}
+            }
+          } catch (_) {}
+        }
+        
         // ESTRATÉGIA 3: Buscar todos os eventos bro-update e filtrar
         // CORREÇÃO: Rodar SEMPRE que houver ordens sem updates encontrados
         // (antes só rodava quando updates estava totalmente vazio)
         final missingOrderIds = orderIds.where((id) => !updates.containsKey(id)).toList();
         if (missingOrderIds.isNotEmpty) {
+          debugPrint('   Estratégia 3 (#t:bro-update): ${missingOrderIds.length} ordens sem updates, buscando fallback');
           try {
             final updateEvents = await _fetchFromRelay(
               relay,
@@ -1667,6 +1715,7 @@ class NostrOrderService {
               limit: 100,
             );
             
+            debugPrint('   Estratégia 3: ${updateEvents.length} eventos bro-update de $relay');
             
             for (final event in updateEvents) {
               try {
@@ -1696,9 +1745,14 @@ class NostrOrderService {
         }
         
       } catch (e) {
+        debugPrint('   ❌ Erro ao buscar updates do relay: $e');
       }
     }
 
+    debugPrint('🔍 fetchOrderUpdatesForProvider RESULTADO: ${updates.length} updates encontrados');
+    for (final entry in updates.entries) {
+      debugPrint('   → orderId=${entry.key.substring(0, 8)} status=${entry.value['status']}');
+    }
     return updates;
   }
 

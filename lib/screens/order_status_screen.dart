@@ -3393,7 +3393,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             Text('Processando confirmação...'),
           ],
         ),
-        backgroundColor: Colors.orange,
+        backgroundColor: const Color(0xFFFF6B6B),
         duration: Duration(seconds: 10),
       ),
     );
@@ -3470,7 +3470,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('⚠️ Aviso: Bro pode não receber a notificação automaticamente'),
-              backgroundColor: Colors.orange,
+              backgroundColor: Color(0xFFFF6B6B),
               duration: Duration(seconds: 3),
             ),
           );

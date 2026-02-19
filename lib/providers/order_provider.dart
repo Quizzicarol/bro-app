@@ -1100,12 +1100,6 @@ class OrderProvider with ChangeNotifier {
       // Isso permite que o Bro veja quando o usuário confirmou (status=completed)
       if (_currentUserPubkey != null && _currentUserPubkey!.isNotEmpty) {
         
-        // Log de todas as ordens e seus providerIds
-        for (final o in _orders) {
-          final provId = o.providerId;
-          final match = provId == _currentUserPubkey;
-        }
-        
         final myOrderIds = _orders
             .where((o) => o.providerId == _currentUserPubkey)
             .map((o) => o.id)
@@ -1117,7 +1111,9 @@ class OrderProvider with ChangeNotifier {
             .map((o) => o.id)
             .toList();
         
+        debugPrint('🔍 Provider status check: ${myOrderIds.length} ordens minhas, ${awaitingOrderIds.length} aguardando confirmação');
         if (awaitingOrderIds.isNotEmpty) {
+          debugPrint('   Aguardando: ${awaitingOrderIds.map((id) => id.substring(0, 8)).join(", ")}');
         }
         
         if (myOrderIds.isNotEmpty) {
@@ -1126,7 +1122,9 @@ class OrderProvider with ChangeNotifier {
             orderIds: myOrderIds,
           );
           
+          debugPrint('🔍 Provider updates encontrados: ${providerUpdates.length}');
           for (final entry in providerUpdates.entries) {
+            debugPrint('   Update: orderId=${entry.key.substring(0, 8)} status=${entry.value['status']}');
           }
           
           int statusUpdated = 0;
@@ -1136,15 +1134,18 @@ class OrderProvider with ChangeNotifier {
             final newStatus = update['status'] as String?;
             
             if (newStatus == null) {
+              debugPrint('   ⚠️ Update sem status para orderId=${orderId.substring(0, 8)}');
               continue;
             }
             
             final existingIndex = _orders.indexWhere((o) => o.id == orderId);
             if (existingIndex == -1) {
+              debugPrint('   ⚠️ Ordem ${orderId.substring(0, 8)} não encontrada em _orders');
               continue;
             }
             
             final existing = _orders[existingIndex];
+            debugPrint('   Comparando: orderId=${orderId.substring(0, 8)} local=${existing.status} nostr=$newStatus');
             
             // Verificar se é completed e local é awaiting_confirmation
             if (newStatus == 'completed' && existing.status == 'awaiting_confirmation') {
@@ -1153,6 +1154,7 @@ class OrderProvider with ChangeNotifier {
                 completedAt: DateTime.now(),
               );
               statusUpdated++;
+              debugPrint('   ✅ Atualizado ${orderId.substring(0, 8)} para completed!');
             } else if (_isStatusMoreRecent(newStatus, existing.status)) {
               // Caso genérico
               _orders[existingIndex] = existing.copyWith(
@@ -1160,13 +1162,13 @@ class OrderProvider with ChangeNotifier {
                 completedAt: newStatus == 'completed' ? DateTime.now() : existing.completedAt,
               );
               statusUpdated++;
+              debugPrint('   ✅ Atualizado ${orderId.substring(0, 8)} para $newStatus');
             } else {
+              debugPrint('   ⏭️ Sem mudança para ${orderId.substring(0, 8)}: $newStatus não é mais recente que ${existing.status}');
             }
           }
           
-          if (statusUpdated > 0) {
-          } else {
-          }
+          debugPrint('🔄 Provider sync: $statusUpdated ordens atualizadas');
         }
       }
       

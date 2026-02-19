@@ -5,6 +5,7 @@ import 'package:nostr/nostr.dart';
 import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../models/order.dart';
+import 'nip44_service.dart';
 
 /// Serviço para publicar e buscar ordens via Nostr Relays
 /// 
@@ -17,6 +18,18 @@ class NostrOrderService {
   static final NostrOrderService _instance = NostrOrderService._internal();
   factory NostrOrderService() => _instance;
   NostrOrderService._internal();
+
+  // Serviço de criptografia NIP-44
+  final _nip44 = Nip44Service();
+
+  // Chave privada para descriptografia (configurada pelo order_provider)
+  String? _decryptionKey;
+  
+  /// Configura a chave privada para descriptografia de campos NIP-44
+  /// Chamado pelo OrderProvider quando as chaves estão disponíveis
+  void setDecryptionKey(String? privateKey) {
+    _decryptionKey = privateKey;
+  }
 
   // Relays para publicar ordens
   // NOTA: nostr.wine REMOVIDO - causa rate limit 429 constante e timeouts
@@ -56,12 +69,15 @@ class NostrOrderService {
     try {
       final keychain = Keychain(privateKey);
       
-      // Conteúdo da ordem - inclui billCode para que o provedor possa pagar
+      // Conteúdo da ordem — inclui billCode para que o provedor possa pagar
+      // NOTA: billCode (chave PIX) é necessário em plaintext para que provedores
+      // possam avaliar e aceitar a ordem. A proteção de PII do PIX será feita
+      // via NIP-17 Gift Wraps em versão futura (requer redesign do fluxo).
       // NOTA: eventos kind 30078 são específicos do Bro app e não aparecem em clientes Nostr normais
       // CRÍTICO: userPubkey DEVE estar no content para identificar o dono original da ordem!
       final content = jsonEncode({
         'type': 'bro_order',
-        'version': '1.0',
+        'version': '2.0',
         'orderId': orderId,
         'userPubkey': keychain.public, // CRÍTICO: Identifica o dono original da ordem
         'billType': billType,
@@ -322,7 +338,7 @@ class NostrOrderService {
         
         // CORREÇÃO CRÍTICA: Aplicar status atualizado dos eventos de UPDATE
         // Isso garante que ordens completed/awaiting_confirmation apareçam com status correto
-        order = _applyStatusUpdate(order, statusUpdates);
+        order = _applyStatusUpdate(order, statusUpdates, userPrivateKey: _decryptionKey);
         
         orders.add(order);
       }
@@ -916,18 +932,39 @@ class NostrOrderService {
     try {
       final keychain = Keychain(providerPrivateKey);
       
-      // NOTA: O comprovante é enviado em texto claro por enquanto
-      // Para privacidade total, implementar NIP-17 ou enviar via canal separado
-      // O evento é tagged com a pubkey do usuário para que ele possa encontrar
+      // NOTA: O comprovante é criptografado via NIP-44 entre provedor e usuário
+      // Apenas o destinatário (userPubkey) pode descriptografar
+      String? encryptedProofImage;
+      try {
+        if (order.userPubkey != null && order.userPubkey!.isNotEmpty) {
+          encryptedProofImage = _nip44.encryptBetween(
+            proofImageBase64,
+            keychain.private,
+            order.userPubkey!,
+          );
+          debugPrint('🔐 proofImage criptografado com NIP-44 (${encryptedProofImage.length} chars)');
+        }
+      } catch (e) {
+        debugPrint('⚠️ Falha ao criptografar proofImage: $e — enviando em plaintext');
+      }
+      
       final contentMap = {
         'type': 'bro_complete',
         'orderId': order.id,
         'orderEventId': order.eventId,
         'providerId': keychain.public,
-        'proofImage': proofImageBase64, // Base64 do comprovante
         'recipientPubkey': order.userPubkey, // Para quem é destinado
         'completedAt': DateTime.now().toIso8601String(),
       };
+      
+      // Adicionar proofImage (criptografado ou plaintext como fallback)
+      if (encryptedProofImage != null) {
+        contentMap['proofImage_nip44'] = encryptedProofImage;
+        contentMap['proofImage'] = '[encrypted:nip44v2]'; // Marcador para clientes antigos
+        contentMap['encryption'] = 'nip44v2';
+      } else {
+        contentMap['proofImage'] = proofImageBase64;
+      }
       
       // Incluir invoice do provedor se fornecido
       if (providerInvoice != null && providerInvoice.isNotEmpty) {
@@ -1046,7 +1083,7 @@ class NostrOrderService {
           }
           return true;
         })
-        .map((order) => _applyStatusUpdate(order, statusUpdates))
+        .map((order) => _applyStatusUpdate(order, statusUpdates, userPrivateKey: _decryptionKey))
         .toList();
     
     return orders;
@@ -1159,7 +1196,10 @@ class NostrOrderService {
               }
               
               // IMPORTANTE: Incluir proofImage do comprovante para o usuário ver
+              // Se criptografado com NIP-44, incluir versão encriptada para descriptografia posterior
               final proofImage = content['proofImage'] as String?;
+              final proofImageNip44 = content['proofImage_nip44'] as String?;
+              final encryption = content['encryption'] as String?;
               
               // NOVO: Incluir providerInvoice para pagamento automático
               final providerInvoice = content['providerInvoice'] as String?;
@@ -1175,7 +1215,9 @@ class NostrOrderService {
                 'status': status,
                 'providerId': providerId,
                 'eventAuthorPubkey': eventAuthorPubkey, // Quem publicou este update
-                'proofImage': proofImage, // Comprovante enviado pelo Bro
+                'proofImage': proofImage, // Comprovante enviado pelo Bro (pode ser marcador se encriptado)
+                'proofImage_nip44': proofImageNip44, // Versão NIP-44 encriptada (se houver)
+                'encryption': encryption, // Flag de criptografia
                 'providerInvoice': providerInvoice, // Invoice para pagar o Bro
                 'completedAt': content['completedAt'],
                 'created_at': createdAt,
@@ -1194,15 +1236,33 @@ class NostrOrderService {
   
   /// Aplica o status mais recente de um update a uma ordem
   /// Aplica updates de status do Nostr a uma ordem
-  Order _applyStatusUpdate(Order order, Map<String, Map<String, dynamic>> statusUpdates) {
+  /// [userPrivateKey]: Se fornecido, descriptografa proofImage NIP-44
+  Order _applyStatusUpdate(Order order, Map<String, Map<String, dynamic>> statusUpdates, {String? userPrivateKey}) {
     final update = statusUpdates[order.id];
     if (update == null) return order;
     
     final newStatus = update['status'] as String?;
     final providerId = update['providerId'] as String?;
-    final proofImage = update['proofImage'] as String?;
+    var proofImage = update['proofImage'] as String?;
+    final proofImageNip44 = update['proofImage_nip44'] as String?;
+    final encryption = update['encryption'] as String?;
     final completedAt = update['completedAt'] as String?;
     final providerInvoice = update['providerInvoice'] as String?; // CRÍTICO: Invoice do provedor
+    
+    // NIP-44: Descriptografar proofImage se criptografado
+    if (proofImageNip44 != null && proofImageNip44.isNotEmpty && 
+        encryption == 'nip44v2' && userPrivateKey != null) {
+      final senderPubkey = update['eventAuthorPubkey'] as String? ?? providerId;
+      if (senderPubkey != null) {
+        try {
+          proofImage = _nip44.decryptBetween(proofImageNip44, userPrivateKey, senderPubkey);
+          debugPrint('🔓 proofImage descriptografado com NIP-44');
+        } catch (e) {
+          debugPrint('⚠️ Falha ao descriptografar proofImage: $e');
+          // Manter marcador [encrypted:nip44v2] como fallback
+        }
+      }
+    }
     
     // NOTA: Não bloqueamos mais "completed" do provedor porque:
     // 1. O pagamento ao provedor só acontece via invoice Lightning que ele gera
@@ -1467,6 +1527,8 @@ class NostrOrderService {
                 'eventKind': eventKind,
                 'providerId': content['providerId'] ?? event['pubkey'], // Assinatura já verificada
                 'proofImage': content['proofImage'], // Pode ser null para aceites
+                'proofImage_nip44': content['proofImage_nip44'], // NIP-44 encrypted
+                'encryption': content['encryption'], // nip44v2 flag
                 'created_at': createdAt,
               };
               

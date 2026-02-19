@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:pointycastle/export.dart';
 import 'package:convert/convert.dart';
@@ -226,12 +227,8 @@ class Nip44Service {
 
   /// Gerar bytes aleatórios seguros
   Uint8List _generateSecureRandom(int length) {
-    final random = SecureRandom('Fortuna')
-      ..seed(KeyParameter(Uint8List.fromList(
-        List.generate(32, (i) => DateTime.now().microsecondsSinceEpoch % 256),
-      )));
-    
-    return random.nextBytes(length);
+    final rng = math.Random.secure();
+    return Uint8List.fromList(List.generate(length, (_) => rng.nextInt(256)));
   }
 
   /// Converter BigInt para bytes
@@ -245,5 +242,38 @@ class Nip44Service {
     }
     
     return bytes;
+  }
+
+  // ===== HELPERS PARA CRIPTOGRAFIA DE ORDENS =====
+
+  /// Gera o shared secret hex entre dois participantes
+  String getSharedSecretHex(String privateKeyHex, String publicKeyHex) {
+    final secret = getSharedSecret(privateKeyHex, publicKeyHex);
+    return hex.encode(secret);
+  }
+
+  /// Criptografa um campo para si mesmo (auto-criptografia)
+  /// Usado quando o destinatário ainda não é conhecido (ex: billCode na criação da ordem)
+  String encryptToSelf(String plaintext, String privateKeyHex, String publicKeyHex) {
+    final conversationKey = getSharedSecretHex(privateKeyHex, publicKeyHex);
+    return encrypt(plaintext, conversationKey);
+  }
+
+  /// Descriptografa um campo que foi criptografado para si
+  String decryptFromSelf(String payload, String privateKeyHex, String publicKeyHex) {
+    final conversationKey = getSharedSecretHex(privateKeyHex, publicKeyHex);
+    return decrypt(payload, conversationKey);
+  }
+
+  /// Criptografa um campo entre dois participantes (provider ↔ user)
+  String encryptBetween(String plaintext, String senderPrivKeyHex, String recipientPubKeyHex) {
+    final conversationKey = getSharedSecretHex(senderPrivKeyHex, recipientPubKeyHex);
+    return encrypt(plaintext, conversationKey);
+  }
+
+  /// Descriptografa um campo entre dois participantes (provider ↔ user)
+  String decryptBetween(String payload, String myPrivKeyHex, String otherPubKeyHex) {
+    final conversationKey = getSharedSecretHex(myPrivKeyHex, otherPubKeyHex);
+    return decrypt(payload, conversationKey);
   }
 }

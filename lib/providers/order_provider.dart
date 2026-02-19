@@ -212,6 +212,8 @@ class OrderProvider with ChangeNotifier {
       _currentUserPubkey = _nostrService.publicKey;
     }
     
+    // SEGURANÇA: Fornecer chave privada para descriptografar proofImage NIP-44
+    _nostrOrderService.setDecryptionKey(_nostrService.privateKey);
     
     // 🧹 SEGURANÇA: Limpar storage 'orders_anonymous' que pode conter ordens vazadas
     await _cleanupAnonymousStorage();
@@ -312,6 +314,9 @@ class OrderProvider with ChangeNotifier {
     _availableOrdersForProvider = [];  // Limpar também lista de disponíveis
     _isInitialized = false;
     _isProviderMode = false;  // Reset modo provedor ao trocar de usuário
+    
+    // SEGURANÇA: Atualizar chave de descriptografia NIP-44
+    _nostrOrderService.setDecryptionKey(_nostrService.privateKey);
     
     // Notificar IMEDIATAMENTE que ordens foram limpas
     // Isso garante que committedSats retorne 0 antes de carregar novas ordens

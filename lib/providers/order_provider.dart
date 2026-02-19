@@ -225,6 +225,10 @@ class OrderProvider with ChangeNotifier {
     });
   }
 
+  // Cache de ordens salvas localmente — usado para proteger contra regressão de status
+  // quando o relay não retorna o evento de conclusão mais recente
+  final Map<String, Order> _savedOrdersCache = {};
+  
   /// PERFORMANCE: Debounced save — coalesce rapid writes into one 500ms later
   void _debouncedSave() {
     _saveDebounceTimer?.cancel();
@@ -442,6 +446,12 @@ class OrderProvider with ChangeNotifier {
           }
         }).whereType<Order>().toList(); // Remove nulls
         
+        // PROTEÇÃO: Cachear ordens salvas para proteger contra regressão de status
+        // Quando o relay não retorna o evento 'completed', o cache local preserva o status correto
+        for (final order in _orders) {
+          _savedOrdersCache[order.id] = order;
+        }
+        
         
         // SEGURANÇA CRÍTICA: Filtrar ordens de OUTROS usuários que vazaram para este storage
         // Isso pode acontecer se o modo provedor salvou ordens incorretamente
@@ -595,6 +605,11 @@ class OrderProvider with ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final ordersJson = json.encode(userOrders.map((o) => o.toJson()).toList());
       await prefs.setString(_ordersKey, ordersJson);
+      
+      // PROTEÇÃO: Atualizar cache local para proteger contra regressão de status
+      for (final order in userOrders) {
+        _savedOrdersCache[order.id] = order;
+      }
     } catch (e) {
     }
   }
@@ -1072,6 +1087,19 @@ class OrderProvider with ChangeNotifier {
             // Então esta é uma ordem aceita mas ainda não processada
             provOrder = provOrder.copyWith(status: 'accepted');
           }
+          
+          // CORREÇÃO BUG: Verificar se esta ordem existe no cache local com status mais avançado
+          // Cenário: app reinicia, cache tem 'completed', mas relay não retornou o evento completed
+          // Sem isso, a ordem reaparece como 'awaiting_confirmation'
+          final savedOrder = _savedOrdersCache[provOrder.id];
+          if (savedOrder != null && _isStatusMoreRecent(savedOrder.status, provOrder.status)) {
+            debugPrint('🛡️ PROTEÇÃO: Ordem ${provOrder.id.substring(0, 8)} no cache=${ savedOrder.status}, relay=${provOrder.status} - mantendo cache');
+            provOrder = provOrder.copyWith(
+              status: savedOrder.status,
+              completedAt: savedOrder.completedAt,
+            );
+          }
+          
           _orders.add(provOrder);
           addedFromProviderHistory++;
         } else if (existingIndex != -1) {

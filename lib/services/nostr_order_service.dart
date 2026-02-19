@@ -1194,13 +1194,27 @@ class NostrOrderService {
             final existingUpdate = updates[orderId];
             final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
             
-            if (existingUpdate == null || createdAt > existingCreatedAt) {
+            // CORREÇÃO: Usar >= para timestamps iguais, permitindo que status mais avançado vença
+            // Antes usava > (estritamente maior), o que fazia o primeiro evento processado ganhar
+            // em caso de empate, mesmo que tivesse status menos avançado
+            if (existingUpdate == null || createdAt >= existingCreatedAt) {
               // Determinar status baseado no tipo de evento
               String? status = content['status'] as String?;
               if (eventType == 'bro_accept' || eventKind == kindBroAccept) {
                 status = 'accepted';
               } else if (eventType == 'bro_complete' || eventKind == kindBroComplete) {
-                status = 'awaiting_confirmation'; // Bro pagou, aguardando confirmação do usuário
+                // CORREÇÃO BUG: Respeitar content['status'] se for mais avançado que 'awaiting_confirmation'
+                // Antes, sempre forçava 'awaiting_confirmation', sobrescrevendo 'completed'
+                // quando o evento bro_complete tinha timestamp mais recente que o bro_order_update
+                final contentStatus = content['status'] as String?;
+                const statusOrder = ['pending', 'accepted', 'awaiting_confirmation', 'completed', 'liquidated'];
+                final contentIdx = statusOrder.indexOf(contentStatus ?? '');
+                final awaitingIdx = statusOrder.indexOf('awaiting_confirmation');
+                if (contentIdx > awaitingIdx) {
+                  status = contentStatus; // Manter status mais avançado (ex: 'completed')
+                } else {
+                  status = 'awaiting_confirmation'; // Bro pagou, aguardando confirmação do usuário
+                }
               }
               
               // PROTEÇÃO: Não regredir status mais avançado
@@ -1746,6 +1760,60 @@ class NostrOrderService {
         
       } catch (e) {
         debugPrint('   ❌ Erro ao buscar updates do relay: $e');
+      }
+    }
+    
+    // ESTRATÉGIA 4: Buscar por tag #d (d-tag único do evento de confirmação)
+    // CORREÇÃO BUG: O evento de confirmação do usuário usa d-tag '${orderId}_${pubkey}_update'
+    // Alguns relays não indexam #r ou #p corretamente, mas TODOS indexam #d (NIP-33)
+    final missingAfterAllRelays = orderIds.where((id) => !updates.containsKey(id)).toList();
+    if (missingAfterAllRelays.isNotEmpty) {
+      debugPrint('   Estratégia 4 (#d): ${missingAfterAllRelays.length} ordens ainda sem updates');
+      for (final relay in _relays.take(3)) {
+        for (final orderId in missingAfterAllRelays) {
+          try {
+            // Buscar por d-tag parcial (orderId_*_update)
+            final dTagEvents = await _fetchFromRelay(
+              relay,
+              kinds: [kindBroPaymentProof, kindBroComplete], // 30080 e 30081
+              tags: {'#d': ['${orderId}_']}, // Prefixo da d-tag
+              limit: 10,
+            );
+            
+            for (final event in dTagEvents) {
+              try {
+                final content = event['parsedContent'] ?? jsonDecode(event['content']);
+                final eventOrderId = content['orderId'] as String?;
+                final status = content['status'] as String?;
+                final createdAt = event['created_at'] as int? ?? 0;
+                
+                if (eventOrderId == null || eventOrderId != orderId) continue;
+                if (status == null) continue;
+                
+                final existingUpdate = updates[eventOrderId];
+                final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
+                
+                if (existingUpdate == null || createdAt > existingCreatedAt) {
+                  // PROTEÇÃO: Não regredir status
+                  final existingStatus = existingUpdate?['status'] as String?;
+                  if (existingStatus != null) {
+                    const statusOrder = ['pending', 'accepted', 'awaiting_confirmation', 'completed', 'liquidated'];
+                    final existingIdx = statusOrder.indexOf(existingStatus);
+                    final newIdx = statusOrder.indexOf(status);
+                    if (existingIdx >= 0 && newIdx >= 0 && newIdx < existingIdx) continue;
+                  }
+                  
+                  updates[eventOrderId] = {
+                    'orderId': eventOrderId,
+                    'status': status,
+                    'created_at': createdAt,
+                  };
+                  debugPrint('   ✅ Estratégia 4: encontrado status=$status para orderId=${orderId.substring(0, 8)}');
+                }
+              } catch (_) {}
+            }
+          } catch (_) {}
+        }
       }
     }
 

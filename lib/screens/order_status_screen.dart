@@ -163,8 +163,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   void _startStatusPolling() {
-    // Verificar status a cada 5 segundos para ser mais responsivo
-    _statusCheckTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+    // PERFORMANCE: Intervalo aumentado de 5s para 15s
+    // O syncOrdersFromNostr tem throttle interno que evita syncs < 10s
+    _statusCheckTimer = Timer.periodic(const Duration(seconds: 15), (timer) async {
       // CORREÇÃO: Verificar se a tela ainda está montada antes de fazer qualquer coisa
       if (!mounted) {
         timer.cancel();

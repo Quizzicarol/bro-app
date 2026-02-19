@@ -482,7 +482,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   Widget _buildAvailableOrdersTab(CollateralProvider collateralProvider) {
     return RefreshIndicator(
       onRefresh: _loadOrders,
-      color: Colors.orange,
+      color: const Color(0xFFFF6B6B),
       child: _availableOrders.isEmpty
         ? ListView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -735,7 +735,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     
     return RefreshIndicator(
       onRefresh: _loadOrders,
-      color: Colors.orange,
+      color: const Color(0xFFFF6B6B),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
@@ -871,8 +871,9 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   Widget _buildStatisticsTab(CollateralProvider collateralProvider) {
     return RefreshIndicator(
       onRefresh: _loadOrders,
-      color: Colors.orange,
+      color: const Color(0xFFFF6B6B),
       child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         children: [
           // Card do Tier

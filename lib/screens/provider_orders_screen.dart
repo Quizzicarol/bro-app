@@ -408,21 +408,31 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           ],
           bottom: TabBar(
             controller: _tabController,
-            indicatorColor: Colors.orange,
-            labelColor: Colors.orange,
+            indicatorColor: const Color(0xFFFF6B6B),
+            labelColor: const Color(0xFFFF6B6B),
             unselectedLabelColor: Colors.white60,
+            labelPadding: const EdgeInsets.symmetric(horizontal: 4),
             tabs: [
               Tab(
                 icon: const Icon(Icons.local_offer, size: 20),
-                child: Text('Disponíveis (${_availableOrders.length})', style: const TextStyle(fontSize: 13)),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text('Disponíveis (${_availableOrders.length})', style: const TextStyle(fontSize: 12)),
+                ),
               ),
               Tab(
                 icon: const Icon(Icons.assignment_turned_in, size: 20),
-                child: Text('Minhas (${_myOrders.length})', style: const TextStyle(fontSize: 13)),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text('Minhas (${_myOrders.length})', style: const TextStyle(fontSize: 12)),
+                ),
               ),
               const Tab(
                 icon: Icon(Icons.bar_chart, size: 20),
-                child: Text('Estatísticas', style: TextStyle(fontSize: 13)),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text('Estatísticas', style: TextStyle(fontSize: 12)),
+                ),
             ),
           ],
         ),
@@ -502,7 +512,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
             padding: const EdgeInsets.all(16),
             children: [
               ..._availableOrders.map((order) => _buildAvailableOrderCard(order, collateralProvider)),
-              const SizedBox(height: 32),
+              const SizedBox(height: 80),
             ],
           ),
     );
@@ -710,26 +720,38 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   
   Widget _buildMyOrdersTab() {
     if (_myOrders.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.assignment_outlined, size: 80, color: Colors.grey[600]),
-              const SizedBox(height: 16),
-              const Text(
-                'Nenhuma ordem ainda',
-                style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+      return RefreshIndicator(
+        onRefresh: () => _loadOrders(isRefresh: true),
+        color: const Color(0xFFFF6B6B),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height: MediaQuery.of(context).size.height * 0.6,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.assignment_outlined, size: 80, color: Colors.grey[600]),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Nenhuma ordem ainda',
+                        style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Aceite ordens na aba "Disponíveis" para começar a ganhar sats!',
+                        style: TextStyle(color: Colors.white70, fontSize: 14),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              const SizedBox(height: 8),
-              const Text(
-                'Aceite ordens na aba "Disponíveis" para começar a ganhar sats!',
-                style: TextStyle(color: Colors.white70, fontSize: 14),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       );
     }
@@ -750,7 +772,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         padding: const EdgeInsets.all(16),
         children: [
           ...sortedOrders.map((order) => _buildMyOrderCard(order)),
-          const SizedBox(height: 32),
+          const SizedBox(height: 80),
         ],
       ),
     );
@@ -899,7 +921,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           
           // Ações
           _buildActionsCard(),
-          const SizedBox(height: 32),
+          const SizedBox(height: 80),
         ],
       ),
     );

@@ -75,6 +75,13 @@ class _WalletScreenState extends State<WalletScreen> {
           return false;
         }
         
+        // OCULTAR: Lado RECEBIDO do auto-pagamento com saldo da carteira
+        // É uma transação interna — só queremos mostrar o lado "enviado" como depósito
+        if (isReceived && description == 'Bro Wallet Payment') {
+          debugPrint('🔇 Ocultando lado recebido do wallet payment: $amount sats');
+          return false;
+        }
+        
         // OCULTAR: Pagamentos enviados muito pequenos (< 5 sats) são provavelmente taxas
         // Isso é uma heurística para taxas que não têm descrição clara
         if (!isReceived && amount > 0 && amount <= 5) {
@@ -2167,14 +2174,42 @@ class _WalletScreenState extends State<WalletScreen> {
         icon = Icons.arrow_downward;
       }
     } else {
-      // Verificar se é pagamento de conta (descrição contém info de ordem)
-      if (description.contains('Ordem') || description.contains('conta')) {
+      // Verificar se é pagamento com saldo da carteira (auto-pagamento)
+      if (description == 'Bro Wallet Payment') {
+        // Correlacionar com ordem por valor e timing
+        final myOrders = orderProvider.myCreatedOrders;
+        final paymentDate = date is DateTime ? date : DateTime.now();
+        String? walletOrderId;
+        
+        for (final order in myOrders) {
+          final orderSats = (order.btcAmount * 100000000).round();
+          final tolerance = (orderSats * 0.05).round();
+          if ((amount - orderSats).abs() <= tolerance) {
+            final diff = paymentDate.difference(order.createdAt).abs();
+            if (diff.inHours <= 24) {
+              walletOrderId = order.id;
+              break;
+            }
+          }
+        }
+        
+        if (walletOrderId != null) {
+          label = '📄 Depósito para Ordem #${walletOrderId.substring(0, 8)}';
+        } else {
+          label = '📄 Depósito para Ordem';
+        }
+        iconColor = Colors.amber;
+        icon = Icons.receipt_long;
+      } else if (description.contains('Ordem') || description.contains('conta')) {
+        // Pagamento de conta (descrição contém info de ordem)
         label = '📄 Pagamento de Conta';
+        iconColor = Colors.red;
+        icon = Icons.arrow_upward;
       } else {
         label = 'Enviado';
+        iconColor = Colors.red;
+        icon = Icons.arrow_upward;
       }
-      iconColor = Colors.red;
-      icon = Icons.arrow_upward;
     }
     
     // Usar estilo destacado para ganhos Bro (tanto do provider quanto do Lightning)

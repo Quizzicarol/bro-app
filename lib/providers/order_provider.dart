@@ -972,7 +972,8 @@ class OrderProvider with ChangeNotifier {
         // Se NÃO é minha ordem e NÃO é ordem que aceitei, verificar status
         // Ordens de outros com status final não interessam
         if (!isMyOrder && !isMyProviderOrder) {
-          if (pendingOrder.status == 'cancelled' || pendingOrder.status == 'completed') continue;
+          if (pendingOrder.status == 'cancelled' || pendingOrder.status == 'completed' || 
+              pendingOrder.status == 'liquidated' || pendingOrder.status == 'disputed') continue;
         }
         
         if (isMyOrder || isMyProviderOrder) {

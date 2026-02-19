@@ -480,54 +480,59 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   // ============================================
   
   Widget _buildAvailableOrdersTab(CollateralProvider collateralProvider) {
-    if (_availableOrders.isEmpty) {
-      return _buildEmptyAvailableView();
-    }
-    
     return RefreshIndicator(
       onRefresh: _loadOrders,
       color: Colors.orange,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          ..._availableOrders.map((order) => _buildAvailableOrderCard(order, collateralProvider)),
-          const SizedBox(height: 32),
-        ],
-      ),
+      child: _availableOrders.isEmpty
+        ? ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [_buildEmptyAvailableView()],
+          )
+        : ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            children: [
+              ..._availableOrders.map((order) => _buildAvailableOrderCard(order, collateralProvider)),
+              const SizedBox(height: 32),
+            ],
+          ),
     );
   }
 
   Widget _buildEmptyAvailableView() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.inbox_outlined, size: 80, color: Colors.grey[600]),
-            const SizedBox(height: 16),
-            const Text(
-              'Nenhuma ordem disponível',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+    return SizedBox(
+      height: MediaQuery.of(context).size.height * 0.6,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.inbox_outlined, size: 80, color: Colors.grey[600]),
+              const SizedBox(height: 16),
+              const Text(
+                'Nenhuma ordem disponível',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Novas ordens aparecerão aqui quando usuários criarem pedidos.',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: _loadOrders,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Atualizar'),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-            ),
-          ],
+              const SizedBox(height: 8),
+              const Text(
+                'Novas ordens aparecerão aqui quando usuários criarem pedidos.',
+                style: TextStyle(color: Colors.white70, fontSize: 14),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: _loadOrders,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Atualizar'),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -732,6 +737,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       onRefresh: _loadOrders,
       color: Colors.orange,
       child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         children: [
           ...sortedOrders.map((order) => _buildMyOrderCard(order)),

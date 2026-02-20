@@ -1116,7 +1116,7 @@ class NostrOrderService {
           relay,
           kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete],
           tags: {'#t': [broTag]},
-          limit: 300,
+          limit: 500,
         ).timeout(
           const Duration(seconds: 8),
           onTimeout: () => <Map<String, dynamic>>[],
@@ -1127,7 +1127,7 @@ class NostrOrderService {
           final fallbackEvents = await _fetchFromRelay(
             relay,
             kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete],
-            limit: 300,
+            limit: 500,
           ).timeout(
             const Duration(seconds: 5),
             onTimeout: () => <Map<String, dynamic>>[],
@@ -1197,7 +1197,14 @@ class NostrOrderService {
             // CORREÇÃO: Usar >= para timestamps iguais, permitindo que status mais avançado vença
             // Antes usava > (estritamente maior), o que fazia o primeiro evento processado ganhar
             // em caso de empate, mesmo que tivesse status menos avançado
-            if (existingUpdate == null || createdAt >= existingCreatedAt) {
+            // CORREÇÃO CRÍTICA: 'cancelled' SEMPRE vence independente de timestamp
+            final isCancel = (content['status'] as String?) == 'cancelled';
+            final existingIsCancelled = existingUpdate?['status'] == 'cancelled';
+            
+            // Se existente já é cancelled, NADA pode sobrescrever
+            if (existingIsCancelled) continue;
+            
+            if (existingUpdate == null || isCancel || createdAt >= existingCreatedAt) {
               // Determinar status baseado no tipo de evento
               String? status = content['status'] as String?;
               if (eventType == 'bro_accept' || eventKind == kindBroAccept) {
@@ -1218,9 +1225,18 @@ class NostrOrderService {
               }
               
               // PROTEÇÃO: Não regredir status mais avançado
-              // Ordem de progressão: pending -> accepted -> awaiting_confirmation -> completed
+              // CORREÇÃO CRÍTICA: 'cancelled' é estado TERMINAL - não pode ser sobrescrito
+              // por nenhum outro status (exceto 'disputed')
               final existingStatus = existingUpdate?['status'] as String?;
               if (existingStatus != null) {
+                // Se já está cancelado, NUNCA sobrescrever
+                if (existingStatus == 'cancelled') {
+                  continue;
+                }
+                // Se novo status é cancelled, SEMPRE sobrescrever (cancelamento é ação explícita)
+                // (não entra aqui, cai no update abaixo)
+                
+                // Progressão linear normal (sem cancelled)
                 const statusOrder = ['pending', 'accepted', 'awaiting_confirmation', 'completed', 'liquidated'];
                 final existingIdx = statusOrder.indexOf(existingStatus);
                 final newIdx = statusOrder.indexOf(status ?? 'pending');
@@ -1636,21 +1652,21 @@ class NostrOrderService {
           } catch (_) {}
         }
         
-        // ESTRATÉGIA 2: Buscar diretamente por cada orderId via tag #r (reference)
-        // CORREÇÃO: Antes usava #e (event ID) mas orderId é UUID, não hex event ID
-        // Agora usa tag 'r' (reference) que foi adicionada nos eventos publicados
-        for (final orderId in orderIds.take(100)) {
+        // ESTRATÉGIA 2: Buscar por tag #r (reference) em BATCH
+        // PERFORMANCE: Envia todos os orderIds em uma única query ao invés de uma por ordem
+        // Nostr suporta múltiplos valores em filtro de tag: {'#r': [id1, id2, ...]}
+        final missingForStrategy2 = orderIds.where((id) => !updates.containsKey(id)).toList();
+        if (missingForStrategy2.isNotEmpty) {
           try {
-            // Buscar por tag #r (referência ao orderId - UUID)
             final rTagEvents = await _fetchFromRelay(
               relay,
               kinds: [kindBroPaymentProof],
-              tags: {'#r': [orderId]},
-              limit: 10,
+              tags: {'#r': missingForStrategy2},
+              limit: 200,
             );
             
             if (rTagEvents.isNotEmpty) {
-              debugPrint('   Estratégia 2 (#r): ${rTagEvents.length} eventos para orderId=${orderId.substring(0, 8)}');
+              debugPrint('   Estratégia 2 (#r batch): ${rTagEvents.length} eventos de $relay');
             }
             
             for (final event in rTagEvents) {
@@ -1660,9 +1676,9 @@ class NostrOrderService {
                 final status = content['status'] as String?;
                 final createdAt = event['created_at'] as int? ?? 0;
                 
+                if (eventOrderId == null || status == null) continue;
                 // SEGURANÇA: Verificar se é a ordem correta
-                if (eventOrderId == null || eventOrderId != orderId) continue;
-                if (status == null) continue;
+                if (!orderIdSet.contains(eventOrderId)) continue;
                 
                 final existingUpdate = updates[eventOrderId];
                 final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
@@ -1679,15 +1695,15 @@ class NostrOrderService {
           } catch (_) {}
         }
         
-        // ESTRATÉGIA 2b: Fallback - buscar por tag #e (legado, para eventos antigos)
-        for (final orderId in orderIds.take(100)) {
-          if (updates.containsKey(orderId)) continue; // Já encontrado
+        // ESTRATÉGIA 2b: Fallback - buscar por tag #e em BATCH (legado, para eventos antigos)
+        final missingForStrategy2b = orderIds.where((id) => !updates.containsKey(id)).toList();
+        if (missingForStrategy2b.isNotEmpty) {
           try {
             final eTagEvents = await _fetchFromRelay(
               relay,
               kinds: [kindBroPaymentProof],
-              tags: {'#e': [orderId]},
-              limit: 10,
+              tags: {'#e': missingForStrategy2b},
+              limit: 200,
             );
             
             for (final event in eTagEvents) {
@@ -1697,8 +1713,8 @@ class NostrOrderService {
                 final status = content['status'] as String?;
                 final createdAt = event['created_at'] as int? ?? 0;
                 
-                if (eventOrderId == null || eventOrderId != orderId) continue;
-                if (status == null) continue;
+                if (eventOrderId == null || status == null) continue;
+                if (!orderIdSet.contains(eventOrderId)) continue;
                 
                 final existingUpdate = updates[eventOrderId];
                 final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
@@ -1763,57 +1779,67 @@ class NostrOrderService {
       }
     }
     
-    // ESTRATÉGIA 4: Buscar por tag #d (d-tag único do evento de confirmação)
+    // ESTRATÉGIA 4: Buscar por tag #d (d-tag único do evento de confirmação) em BATCH
     // CORREÇÃO BUG: O evento de confirmação do usuário usa d-tag '${orderId}_${pubkey}_update'
+    // O evento bro_complete do provedor usa d-tag '${orderId}_complete'
     // Alguns relays não indexam #r ou #p corretamente, mas TODOS indexam #d (NIP-33)
     final missingAfterAllRelays = orderIds.where((id) => !updates.containsKey(id)).toList();
     if (missingAfterAllRelays.isNotEmpty) {
       debugPrint('   Estratégia 4 (#d): ${missingAfterAllRelays.length} ordens ainda sem updates');
+      
+      // Construir lista de d-tags a buscar: '${orderId}_complete' para cada ordem faltante
+      final dTagsToSearch = missingAfterAllRelays.map((id) => '${id}_complete').toList();
+      
       for (final relay in _relays.take(3)) {
-        for (final orderId in missingAfterAllRelays) {
-          try {
-            // Buscar por d-tag parcial (orderId_*_update)
-            final dTagEvents = await _fetchFromRelay(
-              relay,
-              kinds: [kindBroPaymentProof, kindBroComplete], // 30080 e 30081
-              tags: {'#d': ['${orderId}_']}, // Prefixo da d-tag
-              limit: 10,
-            );
-            
-            for (final event in dTagEvents) {
-              try {
-                final content = event['parsedContent'] ?? jsonDecode(event['content']);
-                final eventOrderId = content['orderId'] as String?;
-                final status = content['status'] as String?;
-                final createdAt = event['created_at'] as int? ?? 0;
-                
-                if (eventOrderId == null || eventOrderId != orderId) continue;
-                if (status == null) continue;
-                
-                final existingUpdate = updates[eventOrderId];
-                final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
-                
-                if (existingUpdate == null || createdAt > existingCreatedAt) {
-                  // PROTEÇÃO: Não regredir status
-                  final existingStatus = existingUpdate?['status'] as String?;
-                  if (existingStatus != null) {
-                    const statusOrder = ['pending', 'accepted', 'awaiting_confirmation', 'completed', 'liquidated'];
-                    final existingIdx = statusOrder.indexOf(existingStatus);
-                    final newIdx = statusOrder.indexOf(status);
-                    if (existingIdx >= 0 && newIdx >= 0 && newIdx < existingIdx) continue;
-                  }
-                  
-                  updates[eventOrderId] = {
-                    'orderId': eventOrderId,
-                    'status': status,
-                    'created_at': createdAt,
-                  };
-                  debugPrint('   ✅ Estratégia 4: encontrado status=$status para orderId=${orderId.substring(0, 8)}');
+        try {
+          // BATCH: Buscar todas as d-tags de uma vez ao invés de uma por uma
+          final dTagEvents = await _fetchFromRelay(
+            relay,
+            kinds: [kindBroPaymentProof, kindBroComplete], // 30080 e 30081
+            tags: {'#d': dTagsToSearch},
+            limit: 200,
+          );
+          
+          if (dTagEvents.isNotEmpty) {
+            debugPrint('   Estratégia 4 (#d batch): ${dTagEvents.length} eventos de $relay');
+          }
+          
+          for (final event in dTagEvents) {
+            try {
+              final content = event['parsedContent'] ?? jsonDecode(event['content']);
+              final eventOrderId = content['orderId'] as String?;
+              final status = content['status'] as String?;
+              final createdAt = event['created_at'] as int? ?? 0;
+              
+              if (eventOrderId == null) continue;
+              if (!orderIdSet.contains(eventOrderId)) continue;
+              if (status == null) continue;
+              
+              final existingUpdate = updates[eventOrderId];
+              final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
+              
+              if (existingUpdate == null || createdAt > existingCreatedAt) {
+                // PROTEÇÃO: Não regredir status
+                final existingStatus = existingUpdate?['status'] as String?;
+                if (existingStatus != null) {
+                  // CORREÇÃO CRÍTICA: cancelled é terminal - nunca sobrescrever
+                  if (existingStatus == 'cancelled') continue;
+                  const statusOrder = ['pending', 'accepted', 'awaiting_confirmation', 'completed', 'liquidated'];
+                  final existingIdx = statusOrder.indexOf(existingStatus);
+                  final newIdx = statusOrder.indexOf(status);
+                  if (existingIdx >= 0 && newIdx >= 0 && newIdx < existingIdx) continue;
                 }
-              } catch (_) {}
-            }
-          } catch (_) {}
-        }
+                
+                updates[eventOrderId] = {
+                  'orderId': eventOrderId,
+                  'status': status,
+                  'created_at': createdAt,
+                };
+                debugPrint('   ✅ Estratégia 4: encontrado status=$status para orderId=${eventOrderId.substring(0, 8)}');
+              }
+            } catch (_) {}
+          }
+        } catch (_) {}
       }
     }
 

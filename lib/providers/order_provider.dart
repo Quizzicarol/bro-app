@@ -1091,8 +1091,11 @@ class OrderProvider with ChangeNotifier {
           // CORREÇÃO BUG: Verificar se esta ordem existe no cache local com status mais avançado
           // Cenário: app reinicia, cache tem 'completed', mas relay não retornou o evento completed
           // Sem isso, a ordem reaparece como 'awaiting_confirmation'
+          // IMPORTANTE: NUNCA sobrescrever status 'cancelled' do relay — cancelamento é ação explícita
           final savedOrder = _savedOrdersCache[provOrder.id];
-          if (savedOrder != null && _isStatusMoreRecent(savedOrder.status, provOrder.status)) {
+          if (savedOrder != null && 
+              provOrder.status != 'cancelled' &&
+              _isStatusMoreRecent(savedOrder.status, provOrder.status)) {
             debugPrint('🛡️ PROTEÇÃO: Ordem ${provOrder.id.substring(0, 8)} no cache=${ savedOrder.status}, relay=${provOrder.status} - mantendo cache');
             provOrder = provOrder.copyWith(
               status: savedOrder.status,
@@ -1105,6 +1108,12 @@ class OrderProvider with ChangeNotifier {
         } else if (existingIndex != -1) {
           // Ordem já existe - atualizar se status do Nostr é mais avançado
           final existing = _orders[existingIndex];
+          
+          // CORREÇÃO: Se Nostr diz 'cancelled', SEMPRE aceitar — cancelamento é ação explícita
+          if (provOrder.status == 'cancelled' && existing.status != 'cancelled') {
+            _orders[existingIndex] = existing.copyWith(status: 'cancelled');
+            continue;
+          }
           
           // CORREÇÃO: Status "accepted" NÃO deve ser protegido pois pode evoluir para completed
           // Apenas status finais devem ser protegidos
@@ -1128,8 +1137,12 @@ class OrderProvider with ChangeNotifier {
       // Isso permite que o Bro veja quando o usuário confirmou (status=completed)
       if (_currentUserPubkey != null && _currentUserPubkey!.isNotEmpty) {
         
+        // PERFORMANCE: Só buscar updates para ordens com status NÃO-FINAL
+        // Ordens completed/cancelled/liquidated/disputed não precisam de updates
+        // Isso reduz de 26+ queries para apenas as ordens que PRECISAM ser atualizadas
+        const finalStatuses = ['completed', 'cancelled', 'liquidated', 'disputed'];
         final myOrderIds = _orders
-            .where((o) => o.providerId == _currentUserPubkey)
+            .where((o) => o.providerId == _currentUserPubkey && !finalStatuses.contains(o.status))
             .map((o) => o.id)
             .toList();
         
@@ -1139,7 +1152,7 @@ class OrderProvider with ChangeNotifier {
             .map((o) => o.id)
             .toList();
         
-        debugPrint('🔍 Provider status check: ${myOrderIds.length} ordens minhas, ${awaitingOrderIds.length} aguardando confirmação');
+        debugPrint('🔍 Provider status check: ${myOrderIds.length} ordens não-finais, ${awaitingOrderIds.length} aguardando confirmação');
         if (awaitingOrderIds.isNotEmpty) {
           debugPrint('   Aguardando: ${awaitingOrderIds.map((id) => id.substring(0, 8)).join(", ")}');
         }
@@ -2091,6 +2104,14 @@ class OrderProvider with ChangeNotifier {
           // Ordem já existe, mesclar dados preservando os locais que não são 0
           final existing = _orders[existingIndex];
           
+          // CORREÇÃO: Se Nostr diz 'cancelled', SEMPRE aceitar — cancelamento é ação explícita
+          // Isso corrige o bug onde auto-complete sobrescreveu cancelled com completed
+          if (nostrOrder.status == 'cancelled' && existing.status != 'cancelled') {
+            _orders[existingIndex] = existing.copyWith(status: 'cancelled');
+            updated++;
+            continue;
+          }
+          
           // REGRA CRÍTICA: Apenas status FINAIS não podem reverter
           // accepted e awaiting_confirmation podem evoluir para completed
           final protectedStatuses = ['cancelled', 'completed', 'liquidated', 'disputed'];
@@ -2207,7 +2228,17 @@ class OrderProvider with ChangeNotifier {
   bool _isStatusMoreRecent(String newStatus, String currentStatus) {
     // CORREÇÃO: Apenas status FINAIS não podem regredir
     // accepted e awaiting_confirmation PODEM evoluir para completed/liquidated
-    const finalStatuses = ['cancelled', 'completed', 'liquidated', 'disputed'];
+    // CORREÇÃO CRÍTICA: 'cancelled' é estado TERMINAL absoluto
+    // Nada pode sobrescrever cancelled (exceto disputed)
+    if (currentStatus == 'cancelled') {
+      return newStatus == 'disputed';
+    }
+    // Se o novo status é 'cancelled', SEMPRE aceitar (cancelamento é ação explícita do usuário)
+    if (newStatus == 'cancelled') {
+      return true;
+    }
+    
+    const finalStatuses = ['completed', 'liquidated', 'disputed'];
     if (finalStatuses.contains(currentStatus)) {
       // Status final - só pode virar disputed
       if (currentStatus != 'disputed' && newStatus == 'disputed') {
@@ -2216,7 +2247,7 @@ class OrderProvider with ChangeNotifier {
       return false;
     }
     
-    // Ordem de progressão de status:
+    // Ordem de progressão de status (SEM cancelled - tratado separadamente acima):
     // draft -> pending -> payment_received -> accepted -> processing -> awaiting_confirmation -> completed/liquidated
     const statusOrder = [
       'draft',

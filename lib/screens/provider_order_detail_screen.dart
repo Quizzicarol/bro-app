@@ -392,6 +392,23 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     });
 
     try {
+      // Timeout global de 60s para toda a operação de upload
+      await _doUploadReceipt().timeout(
+        const Duration(seconds: 60),
+        onTimeout: () {
+          throw TimeoutException('Tempo esgotado ao enviar comprovante (60s)');
+        },
+      );
+    } catch (e) {
+      setState(() {
+        _isUploading = false;
+      });
+      _showError('Erro ao enviar comprovante: $e');
+    }
+  }
+
+  Future<void> _doUploadReceipt() async {
+    try {
       String proofImageBase64 = '';
       String confirmationCode = _confirmationCodeController.text.trim();
       
@@ -439,30 +456,38 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       if (providerReceiveSats > 0 && breezProvider.isInitialized) {
         debugPrint('⚡ Gerando invoice de $providerReceiveSats sats via Breez Spark...');
         
-        final result = await breezProvider.createInvoice(
-          amountSats: providerReceiveSats,
-          description: 'Bro - Ordem ${widget.orderId.substring(0, 8)}',
-        );
-        
-        if (result != null && result['bolt11'] != null) {
-          generatedInvoice = result['bolt11'] as String;
-          debugPrint('✅ Invoice gerado via Spark: ${generatedInvoice.substring(0, 30)}...');
-        } else {
-          debugPrint('⚠️ Falha ao gerar invoice via Spark: $result');
+        try {
+          final result = await breezProvider.createInvoice(
+            amountSats: providerReceiveSats,
+            description: 'Bro - Ordem ${widget.orderId.substring(0, 8)}',
+          ).timeout(const Duration(seconds: 30));
+          
+          if (result != null && result['bolt11'] != null) {
+            generatedInvoice = result['bolt11'] as String;
+            debugPrint('✅ Invoice gerado via Spark: ${generatedInvoice.substring(0, 30)}...');
+          } else {
+            debugPrint('⚠️ Falha ao gerar invoice via Spark: $result');
+          }
+        } catch (e) {
+          debugPrint('⚠️ Erro/timeout ao gerar invoice Spark: $e — continuando sem invoice');
         }
       } else if (providerReceiveSats > 0 && liquidProvider.isInitialized) {
         debugPrint('⚡ Gerando invoice de $providerReceiveSats sats via Liquid (fallback)...');
         
-        final result = await liquidProvider.createInvoice(
-          amountSats: providerReceiveSats,
-          description: 'Bro - Ordem ${widget.orderId.substring(0, 8)}',
-        );
-        
-        if (result != null && result['bolt11'] != null) {
-          generatedInvoice = result['bolt11'] as String;
-          debugPrint('✅ Invoice gerado via Liquid: ${generatedInvoice.substring(0, 30)}...');
-        } else {
-          debugPrint('⚠️ Falha ao gerar invoice via Liquid: $result');
+        try {
+          final result = await liquidProvider.createInvoice(
+            amountSats: providerReceiveSats,
+            description: 'Bro - Ordem ${widget.orderId.substring(0, 8)}',
+          ).timeout(const Duration(seconds: 30));
+          
+          if (result != null && result['bolt11'] != null) {
+            generatedInvoice = result['bolt11'] as String;
+            debugPrint('✅ Invoice gerado via Liquid: ${generatedInvoice.substring(0, 30)}...');
+          } else {
+            debugPrint('⚠️ Falha ao gerar invoice via Liquid: $result');
+          }
+        } catch (e) {
+          debugPrint('⚠️ Erro/timeout ao gerar invoice Liquid: $e — continuando sem invoice');
         }
       } else if (providerReceiveSats <= 0) {
         debugPrint('ℹ️ providerReceiveSats=$providerReceiveSats (muito baixo), não gerando invoice');

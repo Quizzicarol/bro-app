@@ -125,10 +125,24 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     
     setState(() {
       _availableOrders = filteredAvailable
-          .map((o) => o.toJson())
+          .map((o) {
+            final orderMap = o.toJson();
+            orderMap['amount'] = o.amount;
+            orderMap['payment_type'] = o.billType;
+            orderMap['created_at'] = o.createdAt.toIso8601String();
+            orderMap['user_name'] = 'Usuário ${o.userPubkey?.substring(0, 6) ?? "anon"}';
+            return orderMap;
+          })
           .toList();
       _myOrders = accepted
-          .map((o) => o.toJson())
+          .map((o) {
+            final orderMap = o.toJson();
+            orderMap['amount'] = o.amount;
+            orderMap['payment_type'] = o.billType;
+            orderMap['created_at'] = o.createdAt.toIso8601String();
+            orderMap['user_name'] = 'Usuário ${o.userPubkey?.substring(0, 6) ?? "anon"}';
+            return orderMap;
+          })
           .toList();
     });
   }

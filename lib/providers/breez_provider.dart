@@ -598,6 +598,9 @@ class BreezProvider with ChangeNotifier {
               amountSats: BigInt.from(amountSats),
             ),
           ),
+        ).timeout(
+          const Duration(seconds: 30),
+          onTimeout: () => throw TimeoutException('receivePayment timeout após 30s'),
         );
 
         final bolt11 = resp.paymentRequest;
@@ -606,7 +609,10 @@ class BreezProvider with ChangeNotifier {
         // Try to parse to extract payment hash for tracking
         String? paymentHash;
         try {
-          final parsed = await _sdk!.parse(input: bolt11);
+          final parsed = await _sdk!.parse(input: bolt11).timeout(
+            const Duration(seconds: 10),
+            onTimeout: () => throw TimeoutException('parse timeout após 10s'),
+          );
           if (parsed is spark.InputType_Bolt11Invoice) {
             paymentHash = parsed.field0.paymentHash;
             debugPrint('🔑 Payment Hash: $paymentHash');

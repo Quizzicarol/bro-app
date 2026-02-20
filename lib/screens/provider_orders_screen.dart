@@ -225,16 +225,17 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       final orderProvider = context.read<OrderProvider>();
       
       // Executar tudo em paralelo
-      final results = await Future.wait([
-        collateralService.getCollateral(),
-        breezProvider.getBalance(),
-        orderProvider.fetchOrders(forProvider: true),
-      ]);
+      // Separar fetchOrders (void) dos que retornam valores
+      final collateralFuture = collateralService.getCollateral();
+      final balanceFuture = breezProvider.getBalance();
+      final fetchOrdersFuture = orderProvider.fetchOrders(forProvider: true);
       
-      final localCollateral = results[0];
+      await Future.wait([collateralFuture, balanceFuture, fetchOrdersFuture]);
+      
+      final localCollateral = await collateralFuture;
       _hasCollateral = localCollateral != null;
       
-      final balanceInfo = results[1] as Map<String, dynamic>;
+      final balanceInfo = await balanceFuture;
       final walletBalance = int.tryParse(balanceInfo['balance']?.toString() ?? '0') ?? 0;
       final committedSats = orderProvider.committedSats;
       

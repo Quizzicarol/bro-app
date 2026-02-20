@@ -3594,8 +3594,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         final totalSats = widget.amountSats.toDouble();
         
         // Taxa da plataforma: 2% do valor total (manutenção da plataforma)
-        final platformFee = totalSats * AppConfig.platformFeePercent;
-        final platformFeeSats = platformFee.round();
+        // Mínimo de 1 sat para garantir que a taxa sempre seja enviada
+        final platformFeeRaw = totalSats * AppConfig.platformFeePercent;
+        final platformFeeSats = platformFeeRaw.round() < 1 ? 1 : platformFeeRaw.round();
+        final platformFee = platformFeeSats.toDouble();
         
         final orderDescription = 'Ordem ${widget.orderId.substring(0, 8)} - R\$ ${widget.amountBrl.toStringAsFixed(2)}';
 

@@ -77,7 +77,7 @@ class NostrOrderService {
       // CRÍTICO: userPubkey DEVE estar no content para identificar o dono original da ordem!
       final content = jsonEncode({
         'type': 'bro_order',
-        'version': '2.0',
+        'version': '1.0',
         'orderId': orderId,
         'userPubkey': keychain.public, // CRÍTICO: Identifica o dono original da ordem
         'billType': billType,
@@ -369,7 +369,7 @@ class NostrOrderService {
       // NOTA: Em iOS, channel.ready pode não funcionar bem, então usamos try/catch
       try {
         await channel.ready.timeout(
-          const Duration(seconds: 5),
+          const Duration(seconds: 8),
           onTimeout: () {
             throw TimeoutException('Connection timeout');
           },
@@ -381,7 +381,7 @@ class NostrOrderService {
       
       
       // Timeout de 8 segundos para resposta
-      timeout = Timer(const Duration(seconds: 5), () {
+      timeout = Timer(const Duration(seconds: 8), () {
         if (!completer.isCompleted) {
           completer.complete(false);
           channel?.sink.close();
@@ -473,7 +473,7 @@ class NostrOrderService {
       }
       
       // Timeout de 8 segundos
-      timeout = Timer(const Duration(seconds: 5), () {
+      timeout = Timer(const Duration(seconds: 8), () {
         if (!completer.isCompleted) {
           completer.complete(events);
           try { channel?.sink.close(); } catch (_) {}
@@ -598,8 +598,9 @@ class NostrOrderService {
         return null;
       }
       
-      // CRÍTICO: Determinar o userPubkey correto - APENAS do CONTENT!
-      // SEGURANÇA: Não usar event.pubkey como fallback pois pode ser de quem republicou!
+      // CRÍTICO: Determinar o userPubkey correto
+      // Preferência: content.userPubkey (mais explícito)
+      // Fallback: event.pubkey (seguro pois assinatura Nostr garante autenticidade do autor)
       final contentUserPubkey = content['userPubkey'] as String?;
       
       String? originalUserPubkey;
@@ -607,10 +608,16 @@ class NostrOrderService {
         // Ordem nova com userPubkey no content - CONFIÁVEL
         originalUserPubkey = contentUserPubkey;
       } else {
-        // SEGURANÇA CRÍTICA: Ordem legada sem userPubkey no content
-        // NÃO usar event.pubkey como fallback - pode ser de quem republicou!
-        // Isso pode ter causado ordens aparecerem no dispositivo errado
-        return null; // REJEITAR - não temos como saber quem é o dono real
+        // Ordem legada (v1.0) sem userPubkey no content
+        // SEGURO usar event.pubkey porque a assinatura criptográfica (sig)
+        // garante que o pubkey é do autor original — relays não podem falsificar
+        final eventPubkey = event['pubkey'] as String?;
+        if (eventPubkey != null && eventPubkey.isNotEmpty) {
+          originalUserPubkey = eventPubkey;
+          debugPrint('ℹ️ Ordem legada: usando event.pubkey como userPubkey');
+        } else {
+          return null; // Sem nenhuma forma de identificar o dono
+        }
       }
       
       return Order(
@@ -678,11 +685,12 @@ class NostrOrderService {
             
             if (eventOrderId == orderId) {
               
-              // SEGURANÇA: Usar userPubkey do content, não event.pubkey
+              // SEGURANÇA: Usar userPubkey do content preferencialmente
               // event.pubkey pode ser de quem republicou o evento
-              final contentUserPubkey = content['userPubkey'] as String?;
+              // FALLBACK: Para ordens legadas (v1.0) sem userPubkey no content, usar event.pubkey
+              final contentUserPubkey = content['userPubkey'] as String? ?? event['pubkey'] as String?;
               if (contentUserPubkey == null || contentUserPubkey.isEmpty) {
-                debugPrint('⚠️ Ordem sem userPubkey no content, rejeitando');
+                debugPrint('⚠️ Ordem sem userPubkey (content e event), rejeitando');
                 continue;
               }
               
@@ -715,10 +723,11 @@ class NostrOrderService {
           final content = event['parsedContent'] ?? jsonDecode(event['content']);
           
           
-          // SEGURANÇA: Usar userPubkey do content, não event.pubkey
-          final fallbackUserPubkey = content['userPubkey'] as String?;
+          // SEGURANÇA: Usar userPubkey do content preferencialmente
+          // FALLBACK: Para ordens legadas sem userPubkey no content, usar event.pubkey
+          final fallbackUserPubkey = content['userPubkey'] as String? ?? event['pubkey'] as String?;
           if (fallbackUserPubkey == null || fallbackUserPubkey.isEmpty) {
-            debugPrint('⚠️ Evento fallback sem userPubkey, rejeitando');
+            debugPrint('⚠️ Evento fallback sem userPubkey (content e event), rejeitando');
             continue;
           }
           
@@ -1051,21 +1060,21 @@ class NostrOrderService {
     
     // FILTRAR: Mostrar apenas ordens que NÃO foram aceitas por nenhum Bro
     // OU que têm status pending/payment_received
-    // TAMBÉM filtrar ordens muito antigas (>24h) que provavelmente foram abandonadas
+    // TAMBÉM filtrar ordens muito antigas (>7 dias) que provavelmente foram abandonadas
     final availableOrders = <Order>[];
     final now = DateTime.now();
-    final maxOrderAge = const Duration(hours: 24);
+    final maxOrderAge = const Duration(days: 7);
     
     for (var order in allOrders) {
       final update = statusUpdates[order.id];
       final updateStatus = update?['status'] as String?;
       final updateProviderId = update?['providerId'] as String?;
       
-      // CORREÇÃO: Filtrar ordens pendentes muito antigas (>24h)
-      // Ordens que ficam pendentes por mais de 24h foram abandonadas pelo usuário
+      // CORREÇÃO: Filtrar ordens pendentes muito antigas (>7 dias)
+      // Ordens que ficam pendentes por mais de 7 dias foram abandonadas pelo usuário
       final orderAge = now.difference(order.createdAt);
       if (orderAge > maxOrderAge && (order.status == 'pending')) {
-        debugPrint('  ⏰ Ordem ${order.id.substring(0, 8)} expirada: ${orderAge.inHours}h atrás');
+        debugPrint('  ⏰ Ordem ${order.id.substring(0, 8)} expirada: ${orderAge.inDays} dias atrás');
         continue;
       }
       
@@ -1141,7 +1150,7 @@ class NostrOrderService {
             kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete],
             limit: 500,
           ).timeout(
-            const Duration(seconds: 5),
+            const Duration(seconds: 8),
             onTimeout: () => <Map<String, dynamic>>[],
           );
           
@@ -1222,18 +1231,10 @@ class NostrOrderService {
               if (eventType == 'bro_accept' || eventKind == kindBroAccept) {
                 status = 'accepted';
               } else if (eventType == 'bro_complete' || eventKind == kindBroComplete) {
-                // CORREÇÃO BUG: Respeitar content['status'] se for mais avançado que 'awaiting_confirmation'
-                // Antes, sempre forçava 'awaiting_confirmation', sobrescrevendo 'completed'
-                // quando o evento bro_complete tinha timestamp mais recente que o bro_order_update
-                final contentStatus = content['status'] as String?;
-                const statusOrder = ['pending', 'accepted', 'awaiting_confirmation', 'completed', 'liquidated'];
-                final contentIdx = statusOrder.indexOf(contentStatus ?? '');
-                final awaitingIdx = statusOrder.indexOf('awaiting_confirmation');
-                if (contentIdx > awaitingIdx) {
-                  status = contentStatus; // Manter status mais avançado (ex: 'completed')
-                } else {
-                  status = 'awaiting_confirmation'; // Bro pagou, aguardando confirmação do usuário
-                }
+                // SEGURANÇA: bro_complete SEMPRE resulta em 'awaiting_confirmation'
+                // O provedor NÃO pode completar unilateralmente — o usuário deve confirmar manualmente
+                // Isso evita que um provedor malicioso marque ordens como completed sem o pagamento real
+                status = 'awaiting_confirmation'; // Bro pagou, aguardando confirmação do usuário
               }
               
               // PROTEÇÃO: Não regredir status mais avançado
@@ -1429,7 +1430,7 @@ class NostrOrderService {
         since: sinceTimestamp,
         limit: 200, // Aumentado para pegar mais ordens
       ).timeout(
-        const Duration(seconds: 5),
+        const Duration(seconds: 8),
         onTimeout: () {
           return <Map<String, dynamic>>[];
         },
@@ -1501,7 +1502,7 @@ class NostrOrderService {
         authors: [pubkey],
         limit: 100,
       ).timeout(
-        const Duration(seconds: 5),
+        const Duration(seconds: 8),
         onTimeout: () {
           return <Map<String, dynamic>>[];
         },

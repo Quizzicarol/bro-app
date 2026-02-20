@@ -68,9 +68,10 @@ class _WalletScreenState extends State<WalletScreen> {
         
         // OCULTAR: Taxas de plataforma (são internas, não devem aparecer para o usuário)
         // Detectar por descrição OU por valor pequeno enviado
-        if (description.contains('Platform Fee') || 
-            description.contains('Bro Platform Fee') ||
-            description.contains('tutoriais@coinos')) {
+        final descLower = description.toLowerCase();
+        if (descLower.contains('platform fee') || 
+            descLower.contains('bro platform fee') ||
+            descLower.contains('tutoriais@coinos')) {
           debugPrint('🔇 Ocultando taxa da plataforma: $description ($amount sats)');
           return false;
         }
@@ -82,9 +83,9 @@ class _WalletScreenState extends State<WalletScreen> {
           return false;
         }
         
-        // OCULTAR: Pagamentos enviados muito pequenos (< 5 sats) são provavelmente taxas
-        // Isso é uma heurística para taxas que não têm descrição clara
-        if (!isReceived && amount > 0 && amount <= 5) {
+        // OCULTAR: Pagamentos enviados muito pequenos (≤ 10 sats) são provavelmente taxas internas
+        // Transações de 1-10 sats que são envio provavelmente são taxas de plataforma (~2%)
+        if (!isReceived && amount > 0 && amount <= 10) {
           debugPrint('🔇 Ocultando pagamento pequeno (provável taxa): $amount sats');
           return false;
         }
@@ -2137,7 +2138,23 @@ class _WalletScreenState extends State<WalletScreen> {
           if (!isBroOrderPayment) {
             correlatedOrderId = order.id;
           }
+        } else if (orderIdFromDesc.length >= 8) {
+          // Ordem não encontrada no cache local, mas temos o ID da descrição
+          // Usar o ID extraído da descrição como fallback
+          correlatedOrderId = orderIdFromDesc;
         }
+      }
+    }
+    
+    // 3. Fallback final: Se a descrição contém padrões conhecidos do Bro mas não correlacionou,
+    // ainda marcar como pagamento Bro (heurística da v1.0.107 que sempre funcionou)
+    if (!isBroOrderPayment && correlatedOrderId == null && isReceived &&
+        !description.contains('Garantia')) {
+      if (description.contains('Bro Payment') || 
+          description.contains('Bro - Ordem') || 
+          description.contains('Bro Ordem') ||
+          (description.startsWith('Bro ') && description.length >= 12)) {
+        isBroOrderPayment = true;
       }
     }
     
@@ -2156,6 +2173,16 @@ class _WalletScreenState extends State<WalletScreen> {
         label = '📄 Depósito para Ordem #${correlatedOrderId.substring(0, 8)}';
         iconColor = Colors.amber;
         icon = Icons.receipt_long;
+      } else if (description.contains('Depósito Bro') || description.contains('Deposito Bro')) {
+        // Depósito manual na carteira
+        label = '📥 $description';
+        iconColor = Colors.blue;
+        icon = Icons.account_balance_wallet;
+      } else if (description.contains('Receber') && description.contains('sats')) {
+        // Recebimento manual via invoice
+        label = '📥 $description';
+        iconColor = Colors.green;
+        icon = Icons.arrow_downward;
       } else {
         label = 'Recebido';
         iconColor = Colors.green;

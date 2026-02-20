@@ -2403,13 +2403,13 @@ class OrderProvider with ChangeNotifier {
   }
 
   /// Callback chamado quando o Breez SDK detecta um pagamento ENVIADO
-  /// DESATIVADO: Não deve auto-completar ordens. Usuário deve confirmar manualmente.
+  /// Usado para marcar ordens como completed automaticamente
   Future<void> onPaymentSent({
     required String paymentId,
     required int amountSats,
     String? paymentHash,
   }) async {
-    return; // DESATIVADO - não auto-completar
+    debugPrint('💪 OrderProvider.onPaymentSent: $amountSats sats (hash: ${paymentHash ?? "N/A"})');
     
     // CORREÇÃO CRÍTICA: Só buscar ordens que EU CRIEI
     final currentUserPubkey = _nostrService.publicKey;
@@ -2419,9 +2419,11 @@ class OrderProvider with ChangeNotifier {
     ).toList();
     
     if (awaitingOrders.isEmpty) {
+      debugPrint('📡 Nenhuma ordem aguardando liberação de BTC');
       return;
     }
     
+    debugPrint('🔌 Verificando ${awaitingOrders.length} ordens...');
     
     // Procurar ordem com valor correspondente
     for (final order in awaitingOrders) {
@@ -2478,14 +2480,7 @@ class OrderProvider with ChangeNotifier {
     final usedPaymentIds = <String>{};
     final reconciliationLog = <Map<String, dynamic>>[];
     
-    // Listar todos os pagamentos
-    for (final p in breezPayments) {
-      final amount = p['amount'];
-      final status = p['status']?.toString() ?? '';
-      final type = p['type']?.toString() ?? '';
-      final id = p['id']?.toString() ?? '';
-      final direction = p['direction']?.toString() ?? type;
-    }
+    debugPrint('🔌 forceReconcileAllOrders: ${breezPayments.length} pagamentos');
     
     // Separar por tipo
     final receivedPayments = breezPayments.where((p) {

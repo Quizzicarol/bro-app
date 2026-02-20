@@ -2112,24 +2112,29 @@ class _WalletScreenState extends State<WalletScreen> {
       }
     }
     
-    // 2. Fallback: Correlação por descrição (formato "Bro - Ordem XXXXXXXX")
-    if (correlatedOrderId == null && isReceived && 
-        description.contains('Bro - Ordem') && 
+    // 2. Fallback: Correlação por descrição
+    // Suporta múltiplos formatos: "Bro - Ordem XXXXXXXX" e "Bro XXXXXXXX"
+    if (correlatedOrderId == null && 
         !description.contains('Garantia') &&
         !description.contains('Platform Fee')) {
       String? orderIdFromDesc;
       if (description.contains('Bro - Ordem ')) {
         orderIdFromDesc = description.split('Bro - Ordem ').last.trim();
+      } else if (description.startsWith('Bro ') && description.length >= 12) {
+        // Formato: "Bro {orderId}" (usado ao criar invoice)
+        orderIdFromDesc = description.substring(4).trim();
       }
       
       if (orderIdFromDesc != null && orderIdFromDesc.isNotEmpty) {
         final order = orderProvider.orders.cast<Order?>().firstWhere(
-          (o) => o!.id.startsWith(orderIdFromDesc!) || orderIdFromDesc!.startsWith(o.id.substring(0, 8)),
+          (o) => o!.id.startsWith(orderIdFromDesc!) || 
+                 orderIdFromDesc!.startsWith(o.id.substring(0, 8)) ||
+                 o.id == orderIdFromDesc,
           orElse: () => null,
         );
         if (order != null) {
           isBroOrderPayment = order.providerId == currentPubkey && order.userPubkey != currentPubkey;
-          if (!isBroOrderPayment && order.userPubkey == currentPubkey) {
+          if (!isBroOrderPayment) {
             correlatedOrderId = order.id;
           }
         }

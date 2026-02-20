@@ -1051,11 +1051,23 @@ class NostrOrderService {
     
     // FILTRAR: Mostrar apenas ordens que NÃO foram aceitas por nenhum Bro
     // OU que têm status pending/payment_received
+    // TAMBÉM filtrar ordens muito antigas (>24h) que provavelmente foram abandonadas
     final availableOrders = <Order>[];
+    final now = DateTime.now();
+    final maxOrderAge = const Duration(hours: 24);
+    
     for (var order in allOrders) {
       final update = statusUpdates[order.id];
       final updateStatus = update?['status'] as String?;
       final updateProviderId = update?['providerId'] as String?;
+      
+      // CORREÇÃO: Filtrar ordens pendentes muito antigas (>24h)
+      // Ordens que ficam pendentes por mais de 24h foram abandonadas pelo usuário
+      final orderAge = now.difference(order.createdAt);
+      if (orderAge > maxOrderAge && (order.status == 'pending')) {
+        debugPrint('  ⏰ Ordem ${order.id.substring(0, 8)} expirada: ${orderAge.inHours}h atrás');
+        continue;
+      }
       
       // Se não tem update OU se o update não é de accept/complete/cancelled, está disponível
       // CORREÇÃO: Incluir 'cancelled' e 'disputed' no filtro — ordens canceladas NÃO devem aparecer!

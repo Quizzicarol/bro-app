@@ -25,11 +25,42 @@ class NostrOrderService {
   // Chave privada para descriptografia (configurada pelo order_provider)
   String? _decryptionKey;
   
-  // PERFORMANCE: Cache de _fetchAllOrderStatusUpdates com TTL de 15s
+  // PERFORMANCE: Cache de _fetchAllOrderStatusUpdates com TTL de 60s
   // Evita chamar 3x a mesma função pesada durante um único ciclo de sync
+  // CORREÇÃO v1.0.129: Aumentado de 15s para 60s para garantir consistência
+  // entre chamadas dentro do mesmo ciclo de polling (45s)
   Map<String, Map<String, dynamic>>? _statusUpdatesCache;
   DateTime? _statusUpdatesCacheTime;
-  static const _statusUpdatesCacheTtlSeconds = 15;
+  static const _statusUpdatesCacheTtlSeconds = 60;
+  // CORREÇÃO v1.0.129: Lock para evitar chamadas simultâneas de _fetchAllOrderStatusUpdates
+  // Quando 3 funções chamam em paralelo, a primeira faz o fetch real,
+  // as outras esperam pelo mesmo resultado sem criar novas conexões
+  Completer<Map<String, Map<String, dynamic>>>? _statusUpdatesFetching;
+
+  /// Helper: Verifica se newStatus é progressão válida em relação a currentStatus
+  /// Mesma lógica de _isStatusMoreRecent do OrderProvider, mas local
+  /// REGRA DE OURO: Status NUNCA regride. cancelled/completed/liquidated/disputed são terminais.
+  static bool _isStatusProgression(String newStatus, String currentStatus) {
+    if (newStatus == currentStatus) return false;
+    // cancelled é TERMINAL ABSOLUTO - só disputed pode sobrescrever
+    if (currentStatus == 'cancelled') return newStatus == 'disputed';
+    // cancelled SEMPRE vence (ação explícita do usuário)
+    if (newStatus == 'cancelled') return true;
+    // Status finais - só disputed pode seguir
+    const finalStatuses = ['completed', 'liquidated', 'disputed'];
+    if (finalStatuses.contains(currentStatus)) {
+      return currentStatus != 'disputed' && newStatus == 'disputed';
+    }
+    // Progressão linear
+    const statusOrder = [
+      'draft', 'pending', 'payment_received', 'accepted', 'processing',
+      'awaiting_confirmation', 'completed', 'liquidated',
+    ];
+    final newIdx = statusOrder.indexOf(newStatus);
+    final currentIdx = statusOrder.indexOf(currentStatus);
+    if (newIdx == -1 || currentIdx == -1) return false;
+    return newIdx > currentIdx;
+  }
   
   /// Configura a chave privada para descriptografia de campos NIP-44
   /// Chamado pelo OrderProvider quando as chaves estão disponíveis
@@ -214,28 +245,40 @@ class NostrOrderService {
     final orderIdsFromAccepts = <String>{};
 
     // PERFORMANCE: Buscar de todos os relays EM PARALELO
+    // CORREÇÃO v1.0.128: Adicionada estratégia 3 com tag #t para maior cobertura
     final relayResults = await Future.wait(
       _relays.take(3).map((relay) async {
         final relayOrders = <Map<String, dynamic>>[];
         final relayAcceptIds = <String>{};
         try {
-          // 1. Buscar ordens com tag #p do provedor
-          // 2. Buscar eventos de aceitação E updates publicados por este provedor
-          // PARALELO dentro do mesmo relay
+          // PARALELO: 3 estratégias simultâneas por relay
           final results = await Future.wait([
-            _fetchFromRelay(relay, kinds: [kindBroOrder], tags: {'#p': [providerPubkey]}, limit: 100),
-            _fetchFromRelay(relay, kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete], authors: [providerPubkey], limit: 200),
+            // 1. Ordens com tag #p do provedor
+            _fetchFromRelay(relay, kinds: [kindBroOrder], tags: {'#p': [providerPubkey]}, limit: 100)
+              .catchError((_) => <Map<String, dynamic>>[]),
+            // 2. Eventos de aceitação/update/complete publicados por este provedor
+            _fetchFromRelay(relay, kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete], authors: [providerPubkey], limit: 200)
+              .catchError((_) => <Map<String, dynamic>>[]),
+            // 3. NOVO: Buscar eventos bro-accept com tag #t (fallback se #p falhar)
+            _fetchFromRelay(relay, kinds: [kindBroAccept, kindBroComplete], tags: {'#t': ['bro-accept']}, limit: 100)
+              .catchError((_) => <Map<String, dynamic>>[]),
           ]);
           
           relayOrders.addAll(results[0]);
           
-          // Extrair orderIds dos eventos de aceitação/update
-          for (final event in results[1]) {
-            try {
-              final content = event['parsedContent'] ?? jsonDecode(event['content']);
-              final orderId = content['orderId'] as String?;
-              if (orderId != null) relayAcceptIds.add(orderId);
-            } catch (_) {}
+          // Extrair orderIds dos eventos de aceitação/update (estratégia 2 + 3)
+          for (final eventList in [results[1], results[2]]) {
+            for (final event in eventList) {
+              try {
+                // Filtrar eventos da estratégia 3 para apenas os do provedor
+                final eventPubkey = event['pubkey'] as String?;
+                if (eventPubkey != providerPubkey && !results[1].contains(event)) continue;
+                
+                final content = event['parsedContent'] ?? jsonDecode(event['content']);
+                final orderId = content['orderId'] as String?;
+                if (orderId != null) relayAcceptIds.add(orderId);
+              } catch (_) {}
+            }
           }
         } catch (e) {}
         return {'orders': relayOrders, 'acceptIds': relayAcceptIds};
@@ -315,7 +358,12 @@ class NostrOrderService {
             total: (raw['total'] as num?)?.toDouble() ?? 0,
             status: raw['status']?.toString() ?? 'pending',
             providerId: raw['providerId']?.toString() ?? providerPubkey,
-            createdAt: DateTime.tryParse(raw['createdAt']?.toString() ?? '') ?? DateTime.now(),
+            // CORREÇÃO v1.0.129: Usar timestamp Nostr como fallback em vez de DateTime.now()
+            // DateTime.now() fazia TODAS as ordens sem createdAt ficarem com a mesma data (do sync)
+            createdAt: DateTime.tryParse(raw['createdAt']?.toString() ?? '') ?? 
+                       (raw['created_at'] != null 
+                         ? DateTime.fromMillisecondsSinceEpoch((raw['created_at'] as int) * 1000)
+                         : DateTime.now()),
           );
         } catch (e) {
         }
@@ -451,54 +499,55 @@ class NostrOrderService {
     int limit = 50,
   }) async {
     final events = <Map<String, dynamic>>[];
-    final completer = Completer<List<Map<String, dynamic>>>();
-    WebSocketChannel? channel;
-    Timer? timeout;
     final subscriptionId = const Uuid().v4().substring(0, 8);
 
-    try {
-      // CRÍTICO: Envolver connect em try-catch para capturar erros 429/HTTP
-      try {
-        channel = WebSocketChannel.connect(Uri.parse(relayUrl));
-      } catch (e) {
-        return events; // Retorna lista vazia em vez de propagar exceção
-      }
-      
-      // Timeout de 8 segundos
-      timeout = Timer(const Duration(seconds: 8), () {
-        if (!completer.isCompleted) {
-          completer.complete(events);
-          try { channel?.sink.close(); } catch (_) {}
-        }
-      });
+    // CORREÇÃO v1.0.128: Usar runZonedGuarded para capturar TODOS os erros assíncronos
+    // de WebSocket (DNS failures, HTTP 502, connection refused, etc.)
+    // Sem isso, erros de conexão lazy propagam como "Unhandled Exception" no console
+    final zoneCompleter = Completer<List<Map<String, dynamic>>>();
 
-      // Escutar eventos - envolver em try-catch para capturar erros de conexão
+    runZonedGuarded(() async {
+      WebSocketChannel? channel;
+      Timer? timeout;
+      final completer = Completer<List<Map<String, dynamic>>>();
+
       try {
-        channel.stream.listen(
+        // Conectar ao relay
+        channel = WebSocketChannel.connect(Uri.parse(relayUrl));
+        final ch = channel!; // Capturar referência não-nula
+
+        // Timeout de 8 segundos
+        timeout = Timer(const Duration(seconds: 8), () {
+          if (!completer.isCompleted) {
+            completer.complete(events);
+            try { ch.sink.close(); } catch (_) {}
+          }
+        });
+
+        // Escutar eventos
+        ch.stream.listen(
           (message) {
             try {
               final response = jsonDecode(message);
               if (response[0] == 'EVENT' && response[1] == subscriptionId) {
                 final eventData = response[2] as Map<String, dynamic>;
-                
-                // SEGURANÇA: Verificar assinatura do evento antes de processar
-                // Impede relay malicioso de injetar eventos forjados
+
+                // SEGURANÇA: Verificar assinatura do evento
                 try {
                   Event.fromJson(eventData, verify: true);
                 } catch (e) {
                   debugPrint('⚠️ REJEITADO evento com assinatura inválida: ${eventData['id']?.toString().substring(0, 8) ?? '?'} - $e');
-                  return; // Ignorar evento inválido
+                  return;
                 }
-                
+
                 // Parsear conteúdo JSON se possível
                 try {
                   final content = jsonDecode(eventData['content']);
                   eventData['parsedContent'] = content;
                 } catch (_) {}
-                
+
                 events.add(eventData);
               } else if (response[0] == 'EOSE') {
-                // End of stored events
                 if (!completer.isCompleted) {
                   completer.complete(events);
                 }
@@ -512,45 +561,45 @@ class NostrOrderService {
             if (!completer.isCompleted) completer.complete(events);
           },
         );
+
+        // Montar filtro
+        final filter = <String, dynamic>{
+          'kinds': kinds,
+          'limit': limit,
+        };
+        if (authors != null && authors.isNotEmpty) {
+          filter['authors'] = authors;
+        }
+        if (tags != null) {
+          filter.addAll(tags);
+        }
+        if (since != null) {
+          filter['since'] = since;
+        }
+
+        // Enviar requisição
+        ch.sink.add(jsonEncode(['REQ', subscriptionId, filter]));
+
+        // Aguardar resultado
+        final result = await completer.future;
+        if (!zoneCompleter.isCompleted) zoneCompleter.complete(result);
       } catch (e) {
-        if (!completer.isCompleted) completer.complete(events);
-        return events;
+        if (!zoneCompleter.isCompleted) zoneCompleter.complete(events);
+      } finally {
+        timeout?.cancel();
+        try { channel?.sink.add(jsonEncode(['CLOSE', subscriptionId])); } catch (_) {}
+        try { channel?.sink.close(); } catch (_) {}
       }
+    }, (error, stack) {
+      // Capturar erros de zona (WebSocket DNS, 502, etc.) silenciosamente
+      if (!zoneCompleter.isCompleted) zoneCompleter.complete(events);
+    });
 
-      // Montar filtro
-      final filter = <String, dynamic>{
-        'kinds': kinds,
-        'limit': limit,
-      };
-      
-      if (authors != null && authors.isNotEmpty) {
-        filter['authors'] = authors;
-      }
-      
-      if (tags != null) {
-        filter.addAll(tags);
-      }
-      
-      // CRÍTICO: Adicionar 'since' para melhor sincronização entre dispositivos
-      if (since != null) {
-        filter['since'] = since;
-      }
-
-      // Enviar requisição
-      final req = ['REQ', subscriptionId, filter];
-      channel.sink.add(jsonEncode(req));
-
-      return await completer.future;
-    } catch (e) {
-      return events;
-    } finally {
-      timeout?.cancel();
-      // Fechar subscription
-      try {
-        channel?.sink.add(jsonEncode(['CLOSE', subscriptionId]));
-      } catch (_) {}
-      channel?.sink.close();
-    }
+    // Timeout de segurança
+    return zoneCompleter.future.timeout(
+      const Duration(seconds: 10),
+      onTimeout: () => events,
+    );
   }
 
   /// Converte evento Nostr para Order model
@@ -698,6 +747,7 @@ class NostrOrderService {
               'status': content['status'] ?? 'pending',
               'providerId': content['providerId'],
               'createdAt': content['createdAt'],
+              'created_at': event['created_at'], // Timestamp Nostr como fallback
             };
           }
         } catch (_) {}
@@ -725,6 +775,7 @@ class NostrOrderService {
           'status': content['status'] ?? 'pending',
           'providerId': content['providerId'],
           'createdAt': content['createdAt'],
+          'created_at': event['created_at'], // Timestamp Nostr como fallback
         };
       }
     } catch (e) {}
@@ -1051,6 +1102,12 @@ class NostrOrderService {
     return availableOrders;
   }
 
+  /// Pre-fetch status updates para preencher o cache ANTES de chamadas paralelas
+  /// Deve ser chamado ANTES de Future.wait([fetchPendingOrders, fetchUserOrders, fetchProviderOrders])
+  Future<void> prefetchStatusUpdates() async {
+    await _fetchAllOrderStatusUpdates();
+  }
+
   /// Busca ordens de um usuário específico e retorna como List<Order>
   /// INCLUI merge com eventos de UPDATE para obter status correto
   Future<List<Order>> fetchUserOrders(String pubkey) async {
@@ -1093,6 +1150,15 @@ class NostrOrderService {
       }
     }
     
+    // CORREÇÃO v1.0.129: Lock de concorrência — se já tem um fetch em andamento,
+    // esperar pelo resultado ao invés de criar mais 6 conexões WebSocket
+    if (_statusUpdatesFetching != null) {
+      debugPrint('📋 _fetchAllOrderStatusUpdates: aguardando fetch em andamento...');
+      return _statusUpdatesFetching!.future;
+    }
+    _statusUpdatesFetching = Completer<Map<String, Map<String, dynamic>>>();
+    
+    try {
     final updates = <String, Map<String, dynamic>>{}; // orderId -> latest update
     
     
@@ -1216,8 +1282,9 @@ class NostrOrderService {
                 // Se novo status é cancelled, SEMPRE sobrescrever (cancelamento é ação explícita)
                 // (não entra aqui, cai no update abaixo)
                 
-                // Progressão linear normal (sem cancelled)
-                const statusOrder = ['pending', 'accepted', 'awaiting_confirmation', 'completed', 'liquidated'];
+                // Progressão linear — usar lista COMPLETA de status
+                // CORREÇÃO v1.0.129: Lista incompleta causava bypass do guard
+                const statusOrder = ['draft', 'pending', 'payment_received', 'accepted', 'processing', 'awaiting_confirmation', 'completed', 'liquidated'];
                 final existingIdx = statusOrder.indexOf(existingStatus);
                 final newIdx = statusOrder.indexOf(status ?? 'pending');
                 if (existingIdx >= 0 && newIdx >= 0 && newIdx < existingIdx) {
@@ -1264,7 +1331,22 @@ class NostrOrderService {
     _statusUpdatesCache = updates;
     _statusUpdatesCacheTime = DateTime.now();
     
+    // Completar o lock para liberar chamadores concorrentes
+    if (_statusUpdatesFetching != null && !_statusUpdatesFetching!.isCompleted) {
+      _statusUpdatesFetching!.complete(updates);
+    }
+    _statusUpdatesFetching = null;
+    
     return updates;
+    } catch (e) {
+      // Em caso de erro, liberar o lock e retornar cache ou vazio
+      final fallback = _statusUpdatesCache ?? <String, Map<String, dynamic>>{};
+      if (_statusUpdatesFetching != null && !_statusUpdatesFetching!.isCompleted) {
+        _statusUpdatesFetching!.complete(fallback);
+      }
+      _statusUpdatesFetching = null;
+      return fallback;
+    }
   }
   
   /// Aplica o status mais recente de um update a uma ordem
@@ -1305,6 +1387,12 @@ class NostrOrderService {
     
     if (newStatus != null && newStatus != order.status) {
       
+      // CORREÇÃO v1.0.129: NUNCA regredir status
+      // Se o status atual é mais avançado que o novo, manter o atual
+      // Mas ainda atualizar metadata (proofImage, etc)
+      final isProgression = _isStatusProgression(newStatus, order.status);
+      final statusToApply = isProgression ? newStatus : order.status;
+      
       // Mesclar metadata existente com novos dados do comprovante
       final updatedMetadata = Map<String, dynamic>.from(order.metadata ?? {});
       if (proofImage != null && proofImage.isNotEmpty) {
@@ -1332,7 +1420,7 @@ class NostrOrderService {
         providerFee: order.providerFee,
         platformFee: order.platformFee,
         total: order.total,
-        status: newStatus,
+        status: statusToApply,
         providerId: providerId ?? order.providerId,
         createdAt: order.createdAt,
         metadata: updatedMetadata, // IMPORTANTE: Incluir metadata com proofImage!
@@ -1505,25 +1593,39 @@ class NostrOrderService {
     }
 
     // PERFORMANCE: Buscar de todos os relays EM PARALELO
+    // CORREÇÃO v1.0.128: Também buscar eventos do PRÓPRIO USUÁRIO (kind 30080)
+    // para encontrar status 'completed' publicado quando o usuário confirmou o pagamento
     final allRelayEvents = await Future.wait(
       _relays.take(3).map((relay) async {
         try {
-          // PERFORMANCE: Buscar AMBAS estratégias em paralelo (não sequencial com fallback)
+          // PERFORMANCE: Buscar TODAS as estratégias em paralelo
           final results = await Future.wait([
+            // Estratégia 1: Eventos do Bro direcionados ao usuário (accept/complete)
             _fetchFromRelay(relay, kinds: [kindBroAccept, kindBroComplete], tags: {'#p': [userPubkey]}, limit: 100)
               .catchError((_) => <Map<String, dynamic>>[]),
+            // Estratégia 2: Eventos com tag bro (fallback)
             _fetchFromRelay(relay, kinds: [kindBroAccept, kindBroComplete], tags: {'#t': [broTag]}, limit: 100)
               .catchError((_) => <Map<String, dynamic>>[]),
+            // Estratégia 3: NOVO - Eventos do PRÓPRIO USUÁRIO (kind 30080)
+            // Quando o usuário confirma pagamento, publica kind 30080 com status 'completed'
+            // Sem isso, após reinstalar o app, o status 'completed' se perde
+            _fetchFromRelay(relay, kinds: [kindBroPaymentProof], authors: [userPubkey], limit: 100)
+              .catchError((_) => <Map<String, dynamic>>[]),
           ]);
-          return [...results[0], ...results[1]];
+          return [...results[0], ...results[1], ...results[2]];
         } catch (e) {
           return <Map<String, dynamic>>[];
         }
       }),
     );
     
+    // LOG: Total de eventos recebidos dos relays
+    final totalEvents = allRelayEvents.fold<int>(0, (sum, list) => sum + list.length);
+    debugPrint('🔍 fetchOrderUpdatesForUser: $totalEvents eventos de ${_relays.take(3).length} relays');
+    
     // Processar todos os eventos de todos os relays
     for (final events in allRelayEvents) {
+      for (final event in events) {
           try {
             final content = event['parsedContent'] ?? jsonDecode(event['content']);
             final orderId = content['orderId'] as String?;
@@ -1532,13 +1634,23 @@ class NostrOrderService {
             
             if (orderId == null) continue;
             
-            // SEGURANÇA: Validar papel - apenas provedor pode aceitar/completar
+            // SEGURANÇA: Validar papel baseado no tipo de evento
             final eventPubkey = event['pubkey'] as String?;
             final contentProviderId = content['providerId'] as String?;
-            if (contentProviderId != null && eventPubkey != null &&
-                eventPubkey != contentProviderId) {
-              debugPrint('⚠️ fetchOrderUpdatesForUser: pubkey não bate com providerId, rejeitando');
-              continue;
+            
+            // Para eventos de accept/complete (do Bro): pubkey deve ser o providerId
+            // Para eventos do PRÓPRIO USUÁRIO (kind 30080): pubkey deve ser o userPubkey
+            if (eventKind == kindBroAccept || eventKind == kindBroComplete) {
+              // Apenas provedor pode aceitar/completar
+              if (contentProviderId != null && eventPubkey != null &&
+                  eventPubkey != contentProviderId) {
+                continue;
+              }
+            } else if (eventKind == kindBroPaymentProof) {
+              // Evento do próprio usuário: pubkey deve ser o userPubkey
+              if (eventPubkey != null && eventPubkey != userPubkey) {
+                continue; // Não é nosso evento, ignorar
+              }
             }
             
             // Verificar se este evento é mais recente que o atual
@@ -1552,28 +1664,51 @@ class NostrOrderService {
                 newStatus = 'accepted';
               } else if (eventKind == kindBroComplete) {
                 newStatus = 'awaiting_confirmation';
+              } else if (eventKind == kindBroPaymentProof) {
+                // NOVO: Evento do próprio usuário (kind 30080) com status do content
+                // Isso recupera o status 'completed' que o usuário publicou ao confirmar
+                final contentStatus = content['status'] as String?;
+                if (contentStatus != null && contentStatus.isNotEmpty) {
+                  newStatus = contentStatus;
+                } else {
+                  continue;
+                }
               } else {
                 continue;
+              }
+              
+              // PROTEÇÃO: Não regredir status mais avançado
+              // CORREÇÃO v1.0.129: Usar _isStatusProgression com lista COMPLETA
+              // Lista anterior não incluía 'cancelled', permitindo que 'completed'
+              // sobrescrevesse 'cancelled' (bug: ordem cancelada aparecia como concluída)
+              final existingStatus = existingUpdate?['status'] as String?;
+              if (existingStatus != null) {
+                if (!_isStatusProgression(newStatus, existingStatus)) {
+                  continue; // Não regredir
+                }
               }
               
               updates[orderId] = {
                 'orderId': orderId,
                 'status': newStatus,
                 'eventKind': eventKind,
-                'providerId': content['providerId'] ?? event['pubkey'], // Assinatura já verificada
-                'proofImage': content['proofImage'], // Pode ser null para aceites
-                'proofImage_nip44': content['proofImage_nip44'], // NIP-44 encrypted
-                'encryption': content['encryption'], // nip44v2 flag
+                'providerId': content['providerId'] ?? event['pubkey'],
+                'proofImage': content['proofImage'],
+                'proofImage_nip44': content['proofImage_nip44'],
+                'encryption': content['encryption'],
                 'created_at': createdAt,
               };
               
             }
           } catch (e) {
           }
-        }
       }
     }
 
+    debugPrint('🔍 fetchOrderUpdatesForUser: ${updates.length} updates encontrados');
+    for (final entry in updates.entries) {
+      debugPrint('   📋 ${entry.key.substring(0, 8)}: status=${entry.value['status']}, kind=${entry.value['eventKind']}');
+    }
     return updates;
   }
   
@@ -1649,14 +1784,10 @@ class NostrOrderService {
           final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
           
           if (existingUpdate == null || createdAt > existingCreatedAt) {
-            // PROTEÇÃO: Não regredir status
+            // PROTEÇÃO: Não regredir status — usar _isStatusProgression com lista COMPLETA
             final existingStatus = existingUpdate?['status'] as String?;
             if (existingStatus != null) {
-              if (existingStatus == 'cancelled') continue;
-              const statusOrder = ['pending', 'accepted', 'awaiting_confirmation', 'completed', 'liquidated'];
-              final existingIdx = statusOrder.indexOf(existingStatus);
-              final newIdx = statusOrder.indexOf(status);
-              if (existingIdx >= 0 && newIdx >= 0 && newIdx < existingIdx) continue;
+              if (!_isStatusProgression(status, existingStatus)) continue;
             }
             
             updates[eventOrderId] = {

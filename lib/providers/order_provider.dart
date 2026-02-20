@@ -871,11 +871,11 @@ class OrderProvider with ChangeNotifier {
       if (forProvider) {
         // MODO PROVEDOR: Buscar TODAS as ordens pendentes de TODOS os usuários
         // force: true — ação explícita do usuário, bypass throttle
-        // PERFORMANCE: Timeout reduzido de 90s para 30s — parallelization makes it much faster
+        // PERFORMANCE: Timeout de 60s — prefetch + parallelization makes it faster
         await syncAllPendingOrdersFromNostr(force: true).timeout(
-          const Duration(seconds: 30),
+          const Duration(seconds: 60),
           onTimeout: () {
-            debugPrint('⏰ fetchOrders: timeout externo de 30s atingido');
+            debugPrint('⏰ fetchOrders: timeout externo de 60s atingido');
           },
         );
       } else {
@@ -917,11 +917,20 @@ class OrderProvider with ChangeNotifier {
     
     try {
       
+      // CORREÇÃO v1.0.129: Pre-fetch status updates para que estejam em cache
+      // ANTES das 3 buscas paralelas. Sem isso, as 3 funções chamam
+      // _fetchAllOrderStatusUpdates simultaneamente, criando 18+ conexões WebSocket
+      // que saturam a rede e causam timeouts.
+      try {
+        await _nostrOrderService.prefetchStatusUpdates();
+      } catch (_) {}
+      
       // Helper para busca segura (captura exceções e retorna lista vazia)
-      // PERFORMANCE: Timeout reduzido de 45s para 15s — parallelization makes individual fetches much faster
+      // CORREÇÃO v1.0.129: Aumentado de 15s para 30s — com runZonedGuarded cada relay
+      // tem 8s timeout + 10s zone timeout, 15s era insuficiente para 3 estratégias
       Future<List<Order>> safeFetch(Future<List<Order>> Function() fetcher, String name) async {
         try {
-          return await fetcher().timeout(const Duration(seconds: 15), onTimeout: () {
+          return await fetcher().timeout(const Duration(seconds: 30), onTimeout: () {
             debugPrint('⏰ safeFetch timeout: $name');
             return <Order>[];
           });
@@ -1050,9 +1059,47 @@ class OrderProvider with ChangeNotifier {
         }
       }
       
-      // CORREÇÃO: Só substituir a lista se temos dados novos
+      // CORREÇÃO v1.0.129: MERGE em vez de substituição bruta
+      // Problema anterior: substituir a lista inteira causava oscilação
+      // (32 → 0 → 32) quando relays retornavam dados parciais entre polls.
+      // Agora: adicionar novas ordens E remover apenas as CONFIRMADAS como aceitas/concluídas.
       if (allPendingOrders.isNotEmpty) {
-        _availableOrdersForProvider = newAvailableOrders;
+        final newIds = newAvailableOrders.map((o) => o.id).toSet();
+        
+        // Manter ordens existentes que ainda não foram confirmadas como aceitas
+        // (podem ter sumido temporariamente do relay mas ainda estão disponíveis)
+        final merged = <Order>[];
+        final mergedIds = <String>{};
+        
+        // 1. Adicionar todas as novas ordens
+        for (final order in newAvailableOrders) {
+          if (!mergedIds.contains(order.id)) {
+            merged.add(order);
+            mergedIds.add(order.id);
+          }
+        }
+        
+        // 2. Manter ordens existentes que não apareceram nos novos dados
+        //    EXCETO se já foram aceitas/concluídas em _orders (confirmadas como taken)
+        for (final existing in _availableOrdersForProvider) {
+          if (mergedIds.contains(existing.id)) continue; // Já incluída
+          
+          // Verificar se foi aceita em _orders (confirmação explícita)
+          final inMyOrders = _orders.cast<Order?>().firstWhere(
+            (o) => o?.id == existing.id,
+            orElse: () => null,
+          );
+          final isTaken = inMyOrders != null && 
+              const ['accepted', 'awaiting_confirmation', 'completed', 'liquidated', 'cancelled', 'disputed']
+                  .contains(inMyOrders.status);
+          
+          if (!isTaken) {
+            merged.add(existing);
+            mergedIds.add(existing.id);
+          }
+        }
+        
+        _availableOrdersForProvider = merged;
       }
       
       debugPrint('🔄 syncProvider: $addedToAvailable disponíveis, $updated atualizadas, _orders total=${_orders.length}');
@@ -1299,6 +1346,13 @@ class OrderProvider with ChangeNotifier {
   Future<void> updateOrderStatusLocal(String orderId, String status) async {
     final index = _orders.indexWhere((o) => o.id == orderId);
     if (index != -1) {
+      // CORREÇÃO v1.0.129: Verificar se o novo status é progressão válida
+      // Exceção: 'cancelled' e 'disputed' sempre são aceitos (ações explícitas)
+      final currentStatus = _orders[index].status;
+      if (status != 'cancelled' && status != 'disputed' && !_isStatusMoreRecent(status, currentStatus)) {
+        debugPrint('⚠️ updateOrderStatusLocal: bloqueado $currentStatus → $status (regressão)');
+        return;
+      }
       _orders[index] = _orders[index].copyWith(status: status);
       await _saveOrders();
       notifyListeners();
@@ -1378,10 +1432,8 @@ class OrderProvider with ChangeNotifier {
           completedAt: status == 'completed' ? DateTime.now() : _orders[index].completedAt,
         );
         
-        // Salvar localmente
-        final prefs = await SharedPreferences.getInstance();
-        final ordersJson = json.encode(_orders.map((o) => o.toJson()).toList());
-        await prefs.setString(_ordersKey, ordersJson);
+        // Salvar localmente — usar save filtrado para não vazar ordens de outros
+        _debouncedSave();
         
       } else {
       }
@@ -2152,12 +2204,16 @@ class OrderProvider with ChangeNotifier {
       }
       
       // NOVO: Buscar atualizações de status (aceites e comprovantes de Bros)
+      // CORREÇÃO v1.0.128: fetchOrderUpdatesForUser agora também busca eventos do próprio usuário (kind 30080)
+      // para recuperar status 'completed' após reinstalação do app
       final orderIds = _orders.map((o) => o.id).toList();
+      debugPrint('📡 syncOrdersFromNostr: buscando updates para ${orderIds.length} ordens');
       final orderUpdates = await _nostrOrderService.fetchOrderUpdatesForUser(
         _currentUserPubkey!,
         orderIds: orderIds,
       );
       
+      debugPrint('📡 syncOrdersFromNostr: ${orderUpdates.length} updates recebidos');
       int statusUpdated = 0;
       for (final entry in orderUpdates.entries) {
         final orderId = entry.key;
@@ -2169,16 +2225,25 @@ class OrderProvider with ChangeNotifier {
           final newStatus = update['status'] as String;
           final newProviderId = update['providerId'] as String?;
           
+          // PROTEÇÃO CRÍTICA: Status finais NUNCA podem regredir
+          // Isso evita que 'completed' volte para 'awaiting_confirmation'
+          const protectedStatuses = ['completed', 'cancelled', 'liquidated', 'disputed'];
+          if (protectedStatuses.contains(existing.status) && !_isStatusMoreRecent(newStatus, existing.status)) {
+            // Apenas atualizar providerId se necessário, sem mudar status
+            if (newProviderId != null && newProviderId != existing.providerId) {
+              _orders[existingIndex] = existing.copyWith(
+                providerId: newProviderId,
+              );
+            }
+            continue;
+          }
+          
           // SEMPRE atualizar providerId se vier do Nostr e for diferente
-          // Isso corrige ordens com providerId errado ou null
           bool needsUpdate = false;
           if (newProviderId != null && newProviderId != existing.providerId) {
             needsUpdate = true;
           }
           
-          // NOTA: O bloqueio de "completed" indevido é feito no NostrOrderService._applyStatusUpdate()
-          // que verifica se o evento foi publicado pelo PROVEDOR ou pelo PRÓPRIO USUÁRIO.
-          // Aqui apenas aplicamos o status que já foi processado.
           String statusToUse = newStatus;
           
           // Verificar se o novo status é mais avançado
@@ -2190,7 +2255,6 @@ class OrderProvider with ChangeNotifier {
             _orders[existingIndex] = existing.copyWith(
               status: _isStatusMoreRecent(statusToUse, existing.status) ? statusToUse : existing.status,
               providerId: newProviderId ?? existing.providerId,
-              // Se for comprovante, salvar no metadata (incluindo providerInvoice)
               metadata: (update['proofImage'] != null || update['providerInvoice'] != null) ? {
                 ...?existing.metadata,
                 if (update['proofImage'] != null) 'proofImage': update['proofImage'],

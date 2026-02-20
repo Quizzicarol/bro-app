@@ -255,8 +255,9 @@ class PlatformFeeService {
       return true; // Retorna true pois já foi pago
     }
     
-    // Calcular taxa da plataforma: 2% do valor total
-    final platformFeeSats = (totalSats * AppConfig.platformFeePercent).round();
+    // Calcular taxa da plataforma: 2% do valor total (mínimo 1 sat)
+    final platformFeeRaw = (totalSats * AppConfig.platformFeePercent).round();
+    final platformFeeSats = platformFeeRaw < 1 ? 1 : platformFeeRaw;
     
     if (platformFeeSats <= 0) {
       debugPrint('💼 Taxa da plataforma = 0 sats, ignorando...');

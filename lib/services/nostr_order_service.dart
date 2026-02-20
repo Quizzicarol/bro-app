@@ -108,15 +108,11 @@ class NostrOrderService {
       );
 
       
-      // Publicar em todos os relays
-      int successCount = 0;
-      for (final relay in _relays) {
-        try {
-          final success = await _publishToRelay(relay, event);
-          if (success) successCount++;
-        } catch (e) {
-        }
-      }
+      // Publicar em todos os relays EM PARALELO
+      final results = await Future.wait(
+        _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
+      );
+      final successCount = results.where((r) => r).length;
 
       
       return successCount > 0 ? event.id : null;
@@ -181,17 +177,11 @@ class NostrOrderService {
       final results = await Future.wait(
         _relays.map((relay) async {
           try {
-            // Tentar até 2 vezes
-            for (int attempt = 1; attempt <= 2; attempt++) {
-              final success = await _publishToRelay(relay, event);
-              if (success) {
-                return true;
-              }
-              if (attempt < 2) {
-                await Future.delayed(const Duration(milliseconds: 500));
-              }
-            }
-            return false;
+            final success = await _publishToRelay(relay, event);
+            if (success) return true;
+            // Uma única tentativa de retry após delay curto
+            await Future.delayed(const Duration(milliseconds: 300));
+            return await _publishToRelay(relay, event);
           } catch (e) {
             return false;
           }
@@ -217,74 +207,70 @@ class NostrOrderService {
     final seenIds = <String>{};
     final orderIdsFromAccepts = <String>{};
 
-
-    for (final relay in _relays.take(3)) {
-      try {
-        // 1. Buscar ordens com tag #p do provedor
-        final relayOrders = await _fetchFromRelay(
-          relay,
-          kinds: [kindBroOrder],
-          tags: {'#p': [providerPubkey]},
-          limit: 100,
-        );
-        
-        
-        for (final order in relayOrders) {
-          final id = order['id'];
-          if (!seenIds.contains(id)) {
-            seenIds.add(id);
-            orders.add(order);
+    // PERFORMANCE: Buscar de todos os relays EM PARALELO
+    final relayResults = await Future.wait(
+      _relays.take(3).map((relay) async {
+        final relayOrders = <Map<String, dynamic>>[];
+        final relayAcceptIds = <String>{};
+        try {
+          // 1. Buscar ordens com tag #p do provedor
+          // 2. Buscar eventos de aceitação E updates publicados por este provedor
+          // PARALELO dentro do mesmo relay
+          final results = await Future.wait([
+            _fetchFromRelay(relay, kinds: [kindBroOrder], tags: {'#p': [providerPubkey]}, limit: 100),
+            _fetchFromRelay(relay, kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete], authors: [providerPubkey], limit: 200),
+          ]);
+          
+          relayOrders.addAll(results[0]);
+          
+          // Extrair orderIds dos eventos de aceitação/update
+          for (final event in results[1]) {
+            try {
+              final content = event['parsedContent'] ?? jsonDecode(event['content']);
+              final orderId = content['orderId'] as String?;
+              if (orderId != null) relayAcceptIds.add(orderId);
+            } catch (_) {}
           }
+        } catch (e) {}
+        return {'orders': relayOrders, 'acceptIds': relayAcceptIds};
+      }),
+    );
+    
+    // Consolidar resultados de todos os relays
+    for (final result in relayResults) {
+      for (final order in result['orders'] as List<Map<String, dynamic>>) {
+        final id = order['id'];
+        if (!seenIds.contains(id)) {
+          seenIds.add(id);
+          orders.add(order);
         }
-        
-        // 2. Buscar eventos de aceitação E updates publicados por este provedor
-        // CORREÇÃO: Adicionar kindBroPaymentProof (30080) que contém providerId nos updates
-        final acceptEvents = await _fetchFromRelay(
-          relay,
-          kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete], // 30079, 30080 e 30081
-          authors: [providerPubkey],
-          limit: 200,
-        );
-        
-        
-        // Extrair orderIds dos eventos de aceitação/update
-        for (final event in acceptEvents) {
-          try {
-            final content = event['parsedContent'] ?? jsonDecode(event['content']);
-            final orderId = content['orderId'] as String?;
-            if (orderId != null && !orderIdsFromAccepts.contains(orderId)) {
-              orderIdsFromAccepts.add(orderId);
-            }
-          } catch (_) {}
-        }
-        
-        // 3. Buscar eventos de UPDATE globais com providerId no conteúdo
-        // OTIMIZAÇÃO: Usar mesmo relay, mas filtrar por providerId no content
-        // Isso é mais lento mas necessário para histórico completo
-        // REMOVIDO: Causava timeout. Vamos buscar apenas por author (provedor que publicou)
-      } catch (e) {
       }
+      orderIdsFromAccepts.addAll(result['acceptIds'] as Set<String>);
     }
     
     // 3. Buscar as ordens originais pelos IDs encontrados nos eventos de aceitação
+    // PERFORMANCE: Buscar EM PARALELO em lotes de 10
     if (orderIdsFromAccepts.isNotEmpty) {
+      final missingIds = orderIdsFromAccepts.where((id) => !seenIds.contains(id)).toList();
       
-      // CORREÇÃO: Aumentado de 20 para 100 para preservar histórico completo do provedor
-      for (final orderId in orderIdsFromAccepts.take(100)) {
-        if (seenIds.contains(orderId)) {
-          continue;
-        }
-        
-        final orderData = await fetchOrderFromNostr(orderId);
-        if (orderData != null) {
-          seenIds.add(orderId);
-          // Adicionar providerId ao orderData
-          orderData['providerId'] = providerPubkey;
-          orders.add(orderData);
-        } else {
+      if (missingIds.isNotEmpty) {
+        // Buscar em lotes paralelos de 10 para não sobrecarregar
+        for (int i = 0; i < missingIds.length; i += 10) {
+          final batch = missingIds.skip(i).take(10).toList();
+          final batchResults = await Future.wait(
+            batch.map((orderId) => fetchOrderFromNostr(orderId).catchError((_) => null)),
+          );
+          
+          for (int j = 0; j < batchResults.length; j++) {
+            final orderData = batchResults[j];
+            if (orderData != null) {
+              seenIds.add(batch[j]);
+              orderData['providerId'] = providerPubkey;
+              orders.add(orderData);
+            }
+          }
         }
       }
-    } else {
     }
 
     return orders;
@@ -369,7 +355,7 @@ class NostrOrderService {
       // NOTA: Em iOS, channel.ready pode não funcionar bem, então usamos try/catch
       try {
         await channel.ready.timeout(
-          const Duration(seconds: 8),
+          const Duration(seconds: 4),
           onTimeout: () {
             throw TimeoutException('Connection timeout');
           },
@@ -653,114 +639,91 @@ class NostrOrderService {
   }
 
   /// Busca uma ordem específica do Nostr pelo ID
+  /// PERFORMANCE: Busca em todos os relays EM PARALELO e usa o primeiro resultado
   Future<Map<String, dynamic>?> fetchOrderFromNostr(String orderId) async {
     
-    Map<String, dynamic>? orderData;
+    // Buscar em todos os relays em paralelo
+    final results = await Future.wait(
+      _relays.take(3).map((relay) => _fetchOrderFromRelay(relay, orderId).catchError((_) => null)),
+    );
     
-    for (final relay in _relays.take(3)) {
-      try {
-        // Estratégia 1: Buscar pelo d-tag (orderId)
-        var events = await _fetchFromRelay(
-          relay,
-          kinds: [kindBroOrder],
-          tags: {'#d': [orderId]},
-          limit: 5,
-        );
-        
-        // Estratégia 2: Se não encontrou, buscar pelo #t tag com orderId
-        if (events.isEmpty) {
-          events = await _fetchFromRelay(
-            relay,
-            kinds: [kindBroOrder],
-            tags: {'#t': [orderId]},
-            limit: 5,
-          );
-        }
-        
-        // Verificar se algum evento tem o orderId no content
-        for (final event in events) {
-          try {
-            final content = event['parsedContent'] ?? jsonDecode(event['content']);
-            final eventOrderId = content['orderId'] as String?;
-            
-            if (eventOrderId == orderId) {
-              
-              // SEGURANÇA: Usar userPubkey do content preferencialmente
-              // event.pubkey pode ser de quem republicou o evento
-              // FALLBACK: Para ordens legadas (v1.0) sem userPubkey no content, usar event.pubkey
-              final contentUserPubkey = content['userPubkey'] as String? ?? event['pubkey'] as String?;
-              if (contentUserPubkey == null || contentUserPubkey.isEmpty) {
-                debugPrint('⚠️ Ordem sem userPubkey (content e event), rejeitando');
-                continue;
-              }
-              
-              orderData = {
-                'id': orderId,
-                'eventId': event['id'],
-                'userPubkey': contentUserPubkey,
-                'billType': content['billType'] ?? 'pix',
-                'billCode': content['billCode'] ?? '',
-                'amount': (content['amount'] as num?)?.toDouble() ?? 0,
-                'btcAmount': (content['btcAmount'] as num?)?.toDouble() ?? 0,
-                'btcPrice': (content['btcPrice'] as num?)?.toDouble() ?? 0,
-                'providerFee': (content['providerFee'] as num?)?.toDouble() ?? 0,
-                'platformFee': (content['platformFee'] as num?)?.toDouble() ?? 0,
-                'total': (content['total'] as num?)?.toDouble() ?? 0,
-                'status': content['status'] ?? 'pending',
-                'providerId': content['providerId'],
-                'createdAt': content['createdAt'],
-              };
-              break;
-            }
-          } catch (_) {}
-        }
-        
-        if (orderData != null) break;
-        
-        // Se encontrou eventos mas nenhum com orderId match, usar o primeiro
-        if (events.isNotEmpty) {
-          final event = events.first;
+    // Usar o primeiro resultado não-null
+    for (final result in results) {
+      if (result != null) return result;
+    }
+    
+    return null;
+  }
+  
+  /// Helper: Busca ordem de um relay específico
+  Future<Map<String, dynamic>?> _fetchOrderFromRelay(String relay, String orderId) async {
+    try {
+      // Buscar em paralelo: d-tag e t-tag simultaneamente
+      final results = await Future.wait([
+        _fetchFromRelay(relay, kinds: [kindBroOrder], tags: {'#d': [orderId]}, limit: 5),
+        _fetchFromRelay(relay, kinds: [kindBroOrder], tags: {'#t': [orderId]}, limit: 5),
+      ]);
+      
+      // Combinar resultados
+      final allEvents = [...results[0], ...results[1]];
+      
+      // Verificar se algum evento tem o orderId no content
+      for (final event in allEvents) {
+        try {
           final content = event['parsedContent'] ?? jsonDecode(event['content']);
+          final eventOrderId = content['orderId'] as String?;
           
-          
-          // SEGURANÇA: Usar userPubkey do content preferencialmente
-          // FALLBACK: Para ordens legadas sem userPubkey no content, usar event.pubkey
-          final fallbackUserPubkey = content['userPubkey'] as String? ?? event['pubkey'] as String?;
-          if (fallbackUserPubkey == null || fallbackUserPubkey.isEmpty) {
-            debugPrint('⚠️ Evento fallback sem userPubkey (content e event), rejeitando');
-            continue;
+          if (eventOrderId == orderId) {
+            final contentUserPubkey = content['userPubkey'] as String? ?? event['pubkey'] as String?;
+            if (contentUserPubkey == null || contentUserPubkey.isEmpty) continue;
+            
+            return {
+              'id': orderId,
+              'eventId': event['id'],
+              'userPubkey': contentUserPubkey,
+              'billType': content['billType'] ?? 'pix',
+              'billCode': content['billCode'] ?? '',
+              'amount': (content['amount'] as num?)?.toDouble() ?? 0,
+              'btcAmount': (content['btcAmount'] as num?)?.toDouble() ?? 0,
+              'btcPrice': (content['btcPrice'] as num?)?.toDouble() ?? 0,
+              'providerFee': (content['providerFee'] as num?)?.toDouble() ?? 0,
+              'platformFee': (content['platformFee'] as num?)?.toDouble() ?? 0,
+              'total': (content['total'] as num?)?.toDouble() ?? 0,
+              'status': content['status'] ?? 'pending',
+              'providerId': content['providerId'],
+              'createdAt': content['createdAt'],
+            };
           }
-          
-          orderData = {
-            'id': content['orderId'] ?? orderId,
-            'eventId': event['id'],
-            'userPubkey': fallbackUserPubkey,
-            'billType': content['billType'] ?? 'pix',
-            'billCode': content['billCode'] ?? '',
-            'amount': (content['amount'] as num?)?.toDouble() ?? 0,
-            'btcAmount': (content['btcAmount'] as num?)?.toDouble() ?? 0,
-            'btcPrice': (content['btcPrice'] as num?)?.toDouble() ?? 0,
-            'providerFee': (content['providerFee'] as num?)?.toDouble() ?? 0,
-            'platformFee': (content['platformFee'] as num?)?.toDouble() ?? 0,
-            'total': (content['total'] as num?)?.toDouble() ?? 0,
-            'status': content['status'] ?? 'pending',
-            'providerId': content['providerId'],
-            'createdAt': content['createdAt'],
-          };
-          break;
-        }
-      } catch (e) {
+        } catch (_) {}
       }
-    }
+      
+      // Se encontrou eventos mas nenhum com orderId match, usar o primeiro
+      if (allEvents.isNotEmpty) {
+        final event = allEvents.first;
+        final content = event['parsedContent'] ?? jsonDecode(event['content']);
+        final fallbackUserPubkey = content['userPubkey'] as String? ?? event['pubkey'] as String?;
+        if (fallbackUserPubkey == null || fallbackUserPubkey.isEmpty) return null;
+        
+        return {
+          'id': content['orderId'] ?? orderId,
+          'eventId': event['id'],
+          'userPubkey': fallbackUserPubkey,
+          'billType': content['billType'] ?? 'pix',
+          'billCode': content['billCode'] ?? '',
+          'amount': (content['amount'] as num?)?.toDouble() ?? 0,
+          'btcAmount': (content['btcAmount'] as num?)?.toDouble() ?? 0,
+          'btcPrice': (content['btcPrice'] as num?)?.toDouble() ?? 0,
+          'providerFee': (content['providerFee'] as num?)?.toDouble() ?? 0,
+          'platformFee': (content['platformFee'] as num?)?.toDouble() ?? 0,
+          'total': (content['total'] as num?)?.toDouble() ?? 0,
+          'status': content['status'] ?? 'pending',
+          'providerId': content['providerId'],
+          'createdAt': content['createdAt'],
+        };
+      }
+    } catch (e) {}
     
-    if (orderData == null) {
-      return null;
-    }
-    
-    // NOTA: O status local é gerenciado pelo order_provider.dart
-    // Não fazer busca extra aqui para evitar timeout
-    
-    return orderData;
+    return null;
   }
   
   /// Busca o status mais recente de uma ordem dos eventos de UPDATE (kind 30080) e COMPLETE (kind 30081)
@@ -769,43 +732,39 @@ class NostrOrderService {
     String? latestStatus;
     int latestTimestamp = 0;
     
-    for (final relay in _relays.take(3)) {
-      try {
-        // Buscar eventos de PaymentProof e Complete para esta ordem
-        final updateEvents = await _fetchFromRelay(
-          relay,
-          kinds: [kindBroPaymentProof, kindBroComplete],
-          tags: {'#orderId': [orderId]},
-          limit: 20,
-        );
-        
-        // Também tentar buscar por #t tag
-        final updateEventsT = await _fetchFromRelay(
-          relay,
-          kinds: [kindBroPaymentProof, kindBroComplete],
-          tags: {'#t': [orderId]},
-          limit: 20,
-        );
-        
-        final allEvents = [...updateEvents, ...updateEventsT];
-        
-        for (final event in allEvents) {
-          try {
-            final content = event['parsedContent'] ?? jsonDecode(event['content']);
-            final eventOrderId = content['orderId'] as String?;
-            
-            if (eventOrderId == orderId) {
-              final eventTimestamp = event['created_at'] as int? ?? 0;
-              final eventStatus = content['status'] as String?;
-              
-              if (eventStatus != null && eventTimestamp > latestTimestamp) {
-                latestTimestamp = eventTimestamp;
-                latestStatus = eventStatus;
-              }
-            }
-          } catch (_) {}
+    // PERFORMANCE: Buscar em todos os relays EM PARALELO
+    final relayResults = await Future.wait(
+      _relays.take(3).map((relay) async {
+        try {
+          // Buscar ambas estratégias em paralelo dentro do relay
+          final fetches = await Future.wait([
+            _fetchFromRelay(relay, kinds: [kindBroPaymentProof, kindBroComplete], tags: {'#orderId': [orderId]}, limit: 20),
+            _fetchFromRelay(relay, kinds: [kindBroPaymentProof, kindBroComplete], tags: {'#t': [orderId]}, limit: 20),
+          ]);
+          return [...fetches[0], ...fetches[1]];
+        } catch (e) {
+          return <Map<String, dynamic>>[];
         }
-      } catch (e) {
+      }),
+    );
+    
+    // Processar todos os resultados
+    for (final events in relayResults) {
+      for (final event in events) {
+        try {
+          final content = event['parsedContent'] ?? jsonDecode(event['content']);
+          final eventOrderId = content['orderId'] as String?;
+          
+          if (eventOrderId == orderId) {
+            final eventTimestamp = event['created_at'] as int? ?? 0;
+            final eventStatus = content['status'] as String?;
+            
+            if (eventStatus != null && eventTimestamp > latestTimestamp) {
+              latestTimestamp = eventTimestamp;
+              latestStatus = eventStatus;
+            }
+          }
+        } catch (_) {}
       }
     }
     
@@ -816,49 +775,41 @@ class NostrOrderService {
   /// Retorna um Map com os dados do evento COMPLETE incluindo providerInvoice
   Future<Map<String, dynamic>?> fetchOrderCompleteEvent(String orderId) async {
     
-    for (final relay in _relays.take(3)) {
-      try {
-        // Buscar eventos de Complete para esta ordem por orderId tag
-        var completeEvents = await _fetchFromRelay(
-          relay,
-          kinds: [kindBroComplete],
-          tags: {'#orderId': [orderId]},
-          limit: 5,
-        );
-        
-        // Também tentar por #d tag (pattern: orderId_complete)
-        if (completeEvents.isEmpty) {
-          completeEvents = await _fetchFromRelay(
-            relay,
-            kinds: [kindBroComplete],
-            tags: {'#d': ['${orderId}_complete']},
-            limit: 5,
-          );
-        }
-        
-        for (final event in completeEvents) {
-          try {
-            final content = event['parsedContent'] ?? jsonDecode(event['content']);
-            final eventOrderId = content['orderId'] as String?;
-            
-            if (eventOrderId == orderId) {
-              final providerInvoice = content['providerInvoice'] as String?;
-              final providerId = content['providerId'] as String?;
+    // PERFORMANCE: Buscar em todos os relays EM PARALELO
+    final results = await Future.wait(
+      _relays.take(3).map((relay) async {
+        try {
+          // Buscar ambas estratégias em paralelo
+          final fetches = await Future.wait([
+            _fetchFromRelay(relay, kinds: [kindBroComplete], tags: {'#orderId': [orderId]}, limit: 5),
+            _fetchFromRelay(relay, kinds: [kindBroComplete], tags: {'#d': ['${orderId}_complete']}, limit: 5),
+          ]);
+          
+          final allEvents = [...fetches[0], ...fetches[1]];
+          
+          for (final event in allEvents) {
+            try {
+              final content = event['parsedContent'] ?? jsonDecode(event['content']);
+              final eventOrderId = content['orderId'] as String?;
               
-              if (providerInvoice != null) {
+              if (eventOrderId == orderId) {
+                return {
+                  'orderId': orderId,
+                  'providerId': content['providerId'] as String?,
+                  'providerInvoice': content['providerInvoice'] as String?,
+                  'completedAt': content['completedAt'],
+                };
               }
-              
-              return {
-                'orderId': orderId,
-                'providerId': providerId,
-                'providerInvoice': providerInvoice,
-                'completedAt': content['completedAt'],
-              };
-            }
-          } catch (_) {}
-        }
-      } catch (e) {
-      }
+            } catch (_) {}
+          }
+        } catch (e) {}
+        return null;
+      }),
+    );
+    
+    // Usar o primeiro resultado não-null
+    for (final result in results) {
+      if (result != null) return result;
     }
     
     return null;
@@ -1129,40 +1080,40 @@ class NostrOrderService {
     final updates = <String, Map<String, dynamic>>{}; // orderId -> latest update
     
     
-    // PERFORMANCE: Buscar de todos os relays EM PARALELO (antes era sequencial e dava timeout)
+    // PERFORMANCE: Buscar de todos os relays EM PARALELO
+    // Para cada relay, buscar AMBAS as estratégias em paralelo (com e sem tag)
     final allEvents = <Map<String, dynamic>>[];
     final relayFutures = _relays.map((relay) async {
       try {
-        var events = await _fetchFromRelay(
-          relay,
-          kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete],
-          tags: {'#t': [broTag]},
-          limit: 500,
-        ).timeout(
-          const Duration(seconds: 8),
-          onTimeout: () => <Map<String, dynamic>>[],
-        );
-        
-        // Fallback se poucos eventos
-        if (events.length < 10) {
-          final fallbackEvents = await _fetchFromRelay(
+        // Buscar ambas estratégias em paralelo dentro do mesmo relay
+        final results = await Future.wait([
+          _fetchFromRelay(
+            relay,
+            kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete],
+            tags: {'#t': [broTag]},
+            limit: 500,
+          ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]),
+          _fetchFromRelay(
             relay,
             kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete],
             limit: 500,
-          ).timeout(
-            const Duration(seconds: 8),
-            onTimeout: () => <Map<String, dynamic>>[],
-          );
-          
-          final seenIds = events.map((e) => e['id']).toSet();
-          for (final e in fallbackEvents) {
-            if (!seenIds.contains(e['id'])) {
-              events.add(e);
+          ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]),
+        ]);
+        
+        // Combinar e deduplicar
+        final combined = <Map<String, dynamic>>[];
+        final seenIds = <String>{};
+        for (final eventList in results) {
+          for (final e in eventList) {
+            final id = e['id'];
+            if (id != null && !seenIds.contains(id)) {
+              seenIds.add(id);
+              combined.add(e);
             }
           }
         }
         
-        return events;
+        return combined;
       } catch (e) {
         return <Map<String, dynamic>>[];
       }
@@ -1525,35 +1476,44 @@ class NostrOrderService {
 
   /// Busca eventos de aceitação e comprovante direcionados a um usuário
   /// Isso permite que o usuário veja quando um Bro aceitou sua ordem ou enviou comprovante
+  /// PERFORMANCE: Busca em todos os relays EM PARALELO
   Future<Map<String, Map<String, dynamic>>> fetchOrderUpdatesForUser(String userPubkey, {List<String>? orderIds}) async {
     final updates = <String, Map<String, dynamic>>{}; // orderId -> latest update
     
     if (orderIds != null && orderIds.isNotEmpty) {
     }
 
-    for (final relay in _relays.take(3)) {
-      try {
-        // Buscar eventos de aceitação (kind 30079) e comprovante (kind 30081) onde o usuário é tagged
-        var events = await _fetchFromRelay(
-          relay,
-          kinds: [kindBroAccept, kindBroComplete],
-          tags: {'#p': [userPubkey]}, // Eventos direcionados ao usuário
-          limit: 100,
-        );
-        
-        
-        // Se não encontrou eventos e temos IDs de ordens, buscar por tag #t (bro-accept, bro-complete)
-        if (events.isEmpty) {
-          final altEvents = await _fetchFromRelay(
+    // PERFORMANCE: Buscar de todos os relays EM PARALELO
+    final allRelayEvents = await Future.wait(
+      _relays.take(3).map((relay) async {
+        try {
+          // Buscar ambas estratégias em paralelo dentro do mesmo relay
+          var events = await _fetchFromRelay(
             relay,
             kinds: [kindBroAccept, kindBroComplete],
-            tags: {'#t': [broTag]}, // Todos os eventos bro
+            tags: {'#p': [userPubkey]},
             limit: 100,
           );
-          events = altEvents;
+          
+          // Se não encontrou eventos, buscar fallback
+          if (events.isEmpty) {
+            events = await _fetchFromRelay(
+              relay,
+              kinds: [kindBroAccept, kindBroComplete],
+              tags: {'#t': [broTag]},
+              limit: 100,
+            );
+          }
+          
+          return events;
+        } catch (e) {
+          return <Map<String, dynamic>>[];
         }
-        
-        for (final event in events) {
+      }),
+    );
+    
+    // Processar todos os eventos de todos os relays
+    for (final events in allRelayEvents) {
           try {
             final content = event['parsedContent'] ?? jsonDecode(event['content']);
             final orderId = content['orderId'] as String?;
@@ -1601,7 +1561,6 @@ class NostrOrderService {
           } catch (e) {
           }
         }
-      } catch (e) {
       }
     }
 
@@ -1611,252 +1570,96 @@ class NostrOrderService {
   /// Busca eventos de update de status para ordens que o provedor aceitou
   /// Isso permite que o Bro veja quando o usuário confirmou o pagamento (completed)
   /// SEGURANÇA: Só retorna updates para ordens específicas do provedor
+  /// PERFORMANCE: Todas as estratégias rodam em PARALELO em todos os relays
   Future<Map<String, Map<String, dynamic>>> fetchOrderUpdatesForProvider(String providerPubkey, {List<String>? orderIds}) async {
     final updates = <String, Map<String, dynamic>>{}; // orderId -> latest update
     
     // SEGURANÇA: Se não temos orderIds específicos, não buscar nada
-    // Isso previne vazamento de ordens de outros usuários
     if (orderIds == null || orderIds.isEmpty) {
       return updates;
     }
-    
 
-    // Converter orderIds para Set para busca O(1)
     final orderIdSet = orderIds.toSet();
     debugPrint('🔍 fetchOrderUpdatesForProvider: buscando updates para ${orderIds.length} ordens');
-    debugPrint('   orderIds: ${orderIds.map((id) => id.substring(0, 8)).join(", ")}');
-
+    
+    // Construir d-tags para Estratégia 4
+    final dTagsToSearch = orderIds.map((id) => '${id}_complete').toList();
+    
+    // PERFORMANCE: Rodar TODAS as estratégias em TODOS os relays EM PARALELO
+    // Antes: 4 estratégias × 3 relays = 12 chamadas SEQUENCIAIS (até 96s)
+    // Agora: todas em paralelo (máximo ~8s, tempo de um único timeout)
+    final allEventsFutures = <Future<List<Map<String, dynamic>>>>[];
+    
     for (final relay in _relays.take(3)) {
-      try {
-        
-        // ESTRATÉGIA 1: Buscar por tag #p (eventos direcionados ao provedor)
-        // Esta é a forma mais segura - só retorna eventos onde o provedor foi tagueado
-        final pTagEvents = await _fetchFromRelay(
-          relay,
-          kinds: [kindBroPaymentProof], // 30080
-          tags: {'#p': [providerPubkey]},
-          limit: 100,
-        );
-        
-        debugPrint('   Estratégia 1 (#p): ${pTagEvents.length} eventos de $relay');
-        
-        for (final event in pTagEvents) {
-          try {
-            final content = event['parsedContent'] ?? jsonDecode(event['content']);
-            final eventOrderId = content['orderId'] as String?;
-            final status = content['status'] as String?;
-            final createdAt = event['created_at'] as int? ?? 0;
-            
-            if (eventOrderId == null || status == null) continue;
-            
-            // SEGURANÇA: Só processar se a ordem está na lista que buscamos
-            if (!orderIdSet.contains(eventOrderId)) continue;
-            
-            final existingUpdate = updates[eventOrderId];
-            final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
-            
-            if (existingUpdate == null || createdAt > existingCreatedAt) {
-              updates[eventOrderId] = {
-                'orderId': eventOrderId,
-                'status': status,
-                'created_at': createdAt,
-              };
-            }
-          } catch (_) {}
-        }
-        
-        // ESTRATÉGIA 2: Buscar por tag #r (reference) em BATCH
-        // PERFORMANCE: Envia todos os orderIds em uma única query ao invés de uma por ordem
-        // Nostr suporta múltiplos valores em filtro de tag: {'#r': [id1, id2, ...]}
-        final missingForStrategy2 = orderIds.where((id) => !updates.containsKey(id)).toList();
-        if (missingForStrategy2.isNotEmpty) {
-          try {
-            final rTagEvents = await _fetchFromRelay(
-              relay,
-              kinds: [kindBroPaymentProof],
-              tags: {'#r': missingForStrategy2},
-              limit: 200,
-            );
-            
-            if (rTagEvents.isNotEmpty) {
-              debugPrint('   Estratégia 2 (#r batch): ${rTagEvents.length} eventos de $relay');
-            }
-            
-            for (final event in rTagEvents) {
-              try {
-                final content = event['parsedContent'] ?? jsonDecode(event['content']);
-                final eventOrderId = content['orderId'] as String?;
-                final status = content['status'] as String?;
-                final createdAt = event['created_at'] as int? ?? 0;
-                
-                if (eventOrderId == null || status == null) continue;
-                // SEGURANÇA: Verificar se é a ordem correta
-                if (!orderIdSet.contains(eventOrderId)) continue;
-                
-                final existingUpdate = updates[eventOrderId];
-                final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
-                
-                if (existingUpdate == null || createdAt > existingCreatedAt) {
-                  updates[eventOrderId] = {
-                    'orderId': eventOrderId,
-                    'status': status,
-                    'created_at': createdAt,
-                  };
-                }
-              } catch (_) {}
-            }
-          } catch (_) {}
-        }
-        
-        // ESTRATÉGIA 2b: Fallback - buscar por tag #e em BATCH (legado, para eventos antigos)
-        final missingForStrategy2b = orderIds.where((id) => !updates.containsKey(id)).toList();
-        if (missingForStrategy2b.isNotEmpty) {
-          try {
-            final eTagEvents = await _fetchFromRelay(
-              relay,
-              kinds: [kindBroPaymentProof],
-              tags: {'#e': missingForStrategy2b},
-              limit: 200,
-            );
-            
-            for (final event in eTagEvents) {
-              try {
-                final content = event['parsedContent'] ?? jsonDecode(event['content']);
-                final eventOrderId = content['orderId'] as String?;
-                final status = content['status'] as String?;
-                final createdAt = event['created_at'] as int? ?? 0;
-                
-                if (eventOrderId == null || status == null) continue;
-                if (!orderIdSet.contains(eventOrderId)) continue;
-                
-                final existingUpdate = updates[eventOrderId];
-                final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
-                
-                if (existingUpdate == null || createdAt > existingCreatedAt) {
-                  updates[eventOrderId] = {
-                    'orderId': eventOrderId,
-                    'status': status,
-                    'created_at': createdAt,
-                  };
-                }
-              } catch (_) {}
-            }
-          } catch (_) {}
-        }
-        
-        // ESTRATÉGIA 3: Buscar todos os eventos bro-update e filtrar
-        // CORREÇÃO: Rodar SEMPRE que houver ordens sem updates encontrados
-        // (antes só rodava quando updates estava totalmente vazio)
-        final missingOrderIds = orderIds.where((id) => !updates.containsKey(id)).toList();
-        if (missingOrderIds.isNotEmpty) {
-          debugPrint('   Estratégia 3 (#t:bro-update): ${missingOrderIds.length} ordens sem updates, buscando fallback');
-          try {
-            final updateEvents = await _fetchFromRelay(
-              relay,
-              kinds: [kindBroPaymentProof],
-              tags: {'#t': ['bro-update']},
-              limit: 100,
-            );
-            
-            debugPrint('   Estratégia 3: ${updateEvents.length} eventos bro-update de $relay');
-            
-            for (final event in updateEvents) {
-              try {
-                final content = event['parsedContent'] ?? jsonDecode(event['content']);
-                final eventOrderId = content['orderId'] as String?;
-                final status = content['status'] as String?;
-                final createdAt = event['created_at'] as int? ?? 0;
-                
-                if (eventOrderId == null || status == null) continue;
-                
-                // Verificar se esta ordem está na lista que buscamos
-                if (!orderIdSet.contains(eventOrderId)) continue;
-                
-                final existingUpdate = updates[eventOrderId];
-                final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
-                
-                if (existingUpdate == null || createdAt > existingCreatedAt) {
-                  updates[eventOrderId] = {
-                    'orderId': eventOrderId,
-                    'status': status,
-                    'created_at': createdAt,
-                  };
-                }
-              } catch (_) {}
-            }
-          } catch (_) {}
-        }
-        
-      } catch (e) {
-        debugPrint('   ❌ Erro ao buscar updates do relay: $e');
-      }
+      // Estratégia 1: #p tag
+      allEventsFutures.add(
+        _fetchFromRelay(relay, kinds: [kindBroPaymentProof], tags: {'#p': [providerPubkey]}, limit: 100)
+          .catchError((_) => <Map<String, dynamic>>[])
+      );
+      // Estratégia 2: #r tag batch
+      allEventsFutures.add(
+        _fetchFromRelay(relay, kinds: [kindBroPaymentProof], tags: {'#r': orderIds}, limit: 200)
+          .catchError((_) => <Map<String, dynamic>>[])
+      );
+      // Estratégia 2b: #e tag batch (legado)
+      allEventsFutures.add(
+        _fetchFromRelay(relay, kinds: [kindBroPaymentProof], tags: {'#e': orderIds}, limit: 200)
+          .catchError((_) => <Map<String, dynamic>>[])
+      );
+      // Estratégia 3: #t bro-update
+      allEventsFutures.add(
+        _fetchFromRelay(relay, kinds: [kindBroPaymentProof], tags: {'#t': ['bro-update']}, limit: 100)
+          .catchError((_) => <Map<String, dynamic>>[])
+      );
+      // Estratégia 4: #d tag batch
+      allEventsFutures.add(
+        _fetchFromRelay(relay, kinds: [kindBroPaymentProof, kindBroComplete], tags: {'#d': dTagsToSearch}, limit: 200)
+          .catchError((_) => <Map<String, dynamic>>[])
+      );
     }
     
-    // ESTRATÉGIA 4: Buscar por tag #d (d-tag único do evento de confirmação) em BATCH
-    // CORREÇÃO BUG: O evento de confirmação do usuário usa d-tag '${orderId}_${pubkey}_update'
-    // O evento bro_complete do provedor usa d-tag '${orderId}_complete'
-    // Alguns relays não indexam #r ou #p corretamente, mas TODOS indexam #d (NIP-33)
-    final missingAfterAllRelays = orderIds.where((id) => !updates.containsKey(id)).toList();
-    if (missingAfterAllRelays.isNotEmpty) {
-      debugPrint('   Estratégia 4 (#d): ${missingAfterAllRelays.length} ordens ainda sem updates');
-      
-      // Construir lista de d-tags a buscar: '${orderId}_complete' para cada ordem faltante
-      final dTagsToSearch = missingAfterAllRelays.map((id) => '${id}_complete').toList();
-      
-      for (final relay in _relays.take(3)) {
+    // Executar TUDO em paralelo
+    final allResults = await Future.wait(allEventsFutures);
+    
+    // Processar todos os eventos de todas as estratégias
+    int totalEvents = 0;
+    for (final events in allResults) {
+      totalEvents += events.length;
+      for (final event in events) {
         try {
-          // BATCH: Buscar todas as d-tags de uma vez ao invés de uma por uma
-          final dTagEvents = await _fetchFromRelay(
-            relay,
-            kinds: [kindBroPaymentProof, kindBroComplete], // 30080 e 30081
-            tags: {'#d': dTagsToSearch},
-            limit: 200,
-          );
+          final content = event['parsedContent'] ?? jsonDecode(event['content']);
+          final eventOrderId = content['orderId'] as String?;
+          final status = content['status'] as String?;
+          final createdAt = event['created_at'] as int? ?? 0;
           
-          if (dTagEvents.isNotEmpty) {
-            debugPrint('   Estratégia 4 (#d batch): ${dTagEvents.length} eventos de $relay');
-          }
+          if (eventOrderId == null || status == null) continue;
+          if (!orderIdSet.contains(eventOrderId)) continue;
           
-          for (final event in dTagEvents) {
-            try {
-              final content = event['parsedContent'] ?? jsonDecode(event['content']);
-              final eventOrderId = content['orderId'] as String?;
-              final status = content['status'] as String?;
-              final createdAt = event['created_at'] as int? ?? 0;
-              
-              if (eventOrderId == null) continue;
-              if (!orderIdSet.contains(eventOrderId)) continue;
-              if (status == null) continue;
-              
-              final existingUpdate = updates[eventOrderId];
-              final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
-              
-              if (existingUpdate == null || createdAt > existingCreatedAt) {
-                // PROTEÇÃO: Não regredir status
-                final existingStatus = existingUpdate?['status'] as String?;
-                if (existingStatus != null) {
-                  // CORREÇÃO CRÍTICA: cancelled é terminal - nunca sobrescrever
-                  if (existingStatus == 'cancelled') continue;
-                  const statusOrder = ['pending', 'accepted', 'awaiting_confirmation', 'completed', 'liquidated'];
-                  final existingIdx = statusOrder.indexOf(existingStatus);
-                  final newIdx = statusOrder.indexOf(status);
-                  if (existingIdx >= 0 && newIdx >= 0 && newIdx < existingIdx) continue;
-                }
-                
-                updates[eventOrderId] = {
-                  'orderId': eventOrderId,
-                  'status': status,
-                  'created_at': createdAt,
-                };
-                debugPrint('   ✅ Estratégia 4: encontrado status=$status para orderId=${eventOrderId.substring(0, 8)}');
-              }
-            } catch (_) {}
+          final existingUpdate = updates[eventOrderId];
+          final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
+          
+          if (existingUpdate == null || createdAt > existingCreatedAt) {
+            // PROTEÇÃO: Não regredir status
+            final existingStatus = existingUpdate?['status'] as String?;
+            if (existingStatus != null) {
+              if (existingStatus == 'cancelled') continue;
+              const statusOrder = ['pending', 'accepted', 'awaiting_confirmation', 'completed', 'liquidated'];
+              final existingIdx = statusOrder.indexOf(existingStatus);
+              final newIdx = statusOrder.indexOf(status);
+              if (existingIdx >= 0 && newIdx >= 0 && newIdx < existingIdx) continue;
+            }
+            
+            updates[eventOrderId] = {
+              'orderId': eventOrderId,
+              'status': status,
+              'created_at': createdAt,
+            };
           }
         } catch (_) {}
       }
     }
 
-    debugPrint('🔍 fetchOrderUpdatesForProvider RESULTADO: ${updates.length} updates encontrados');
+    debugPrint('🔍 fetchOrderUpdatesForProvider RESULTADO: ${updates.length} updates de $totalEvents eventos');
     for (final entry in updates.entries) {
       debugPrint('   → orderId=${entry.key.substring(0, 8)} status=${entry.value['status']}');
     }
@@ -1909,14 +1712,11 @@ class NostrOrderService {
       );
 
       
-      int successCount = 0;
-      for (final relay in _relays) {
-        try {
-          final success = await _publishToRelay(relay, event);
-          if (success) successCount++;
-        } catch (e) {
-        }
-      }
+      // PERFORMANCE: Publicar em todos os relays EM PARALELO
+      final publishResults = await Future.wait(
+        _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
+      );
+      final successCount = publishResults.where((s) => s).length;
 
       return successCount > 0;
     } catch (e) {
@@ -1927,31 +1727,35 @@ class NostrOrderService {
   /// Busca os dados do tier do provedor no Nostr
   Future<Map<String, dynamic>?> fetchProviderTier(String providerPubkey) async {
     
-    for (final relay in _relays) {
-      try {
-        final events = await _fetchFromRelay(
-          relay,
-          kinds: [kindBroProviderTier],
-          tags: {'#d': ['tier_$providerPubkey']},
-          limit: 1,
-        );
-        
-        if (events.isNotEmpty) {
-          final event = events.first;
-          final content = event['parsedContent'] ?? jsonDecode(event['content']);
-          
-          
-          return {
-            'tierId': content['tierId'],
-            'tierName': content['tierName'],
-            'depositedSats': content['depositedSats'],
-            'maxOrderValue': content['maxOrderValue'],
-            'activatedAt': content['activatedAt'],
-            'updatedAt': content['updatedAt'],
-          };
-        }
-      } catch (e) {
-      }
+    // PERFORMANCE: Buscar em todos os relays EM PARALELO
+    final results = await Future.wait(
+      _relays.map((relay) async {
+        try {
+          final events = await _fetchFromRelay(
+            relay,
+            kinds: [kindBroProviderTier],
+            tags: {'#d': ['tier_$providerPubkey']},
+            limit: 1,
+          );
+          if (events.isNotEmpty) {
+            final event = events.first;
+            final content = event['parsedContent'] ?? jsonDecode(event['content']);
+            return {
+              'tierId': content['tierId'],
+              'tierName': content['tierName'],
+              'depositedSats': content['depositedSats'],
+              'maxOrderValue': content['maxOrderValue'],
+              'activatedAt': content['activatedAt'],
+              'updatedAt': content['updatedAt'],
+            };
+          }
+        } catch (e) {}
+        return null;
+      }),
+    );
+    
+    for (final result in results) {
+      if (result != null) return result;
     }
     
     return null;
@@ -2011,16 +1815,11 @@ class NostrOrderService {
       );
 
       
-      int successCount = 0;
-      for (final relay in _relays.take(5)) {
-        try {
-          final success = await _publishToRelay(relay, event);
-          if (success) {
-            successCount++;
-          }
-        } catch (e) {
-        }
-      }
+      // PERFORMANCE: Publicar em todos os relays EM PARALELO
+      final publishResults = await Future.wait(
+        _relays.take(5).map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
+      );
+      final successCount = publishResults.where((s) => s).length;
 
       return successCount > 0 ? offerId : null;
     } catch (e) {
@@ -2034,40 +1833,33 @@ class NostrOrderService {
     final seenIds = <String>{};
 
 
-    for (final relay in _relays.take(5)) {
-      try {
-        final events = await _fetchFromRelay(
-          relay,
-          kinds: [kindMarketplaceOffer],
-          tags: {'#t': [marketplaceTag]},
-          limit: 50,
-        );
-        
-        
-        for (final event in events) {
-          final id = event['id'];
-          if (!seenIds.contains(id)) {
-            seenIds.add(id);
-            
-            // Parse content
-            try {
-              final content = event['parsedContent'] ?? jsonDecode(event['content']);
-              offers.add({
-                'id': content['offerId'] ?? id,
-                'title': content['title'] ?? '',
-                'description': content['description'] ?? '',
-                'priceSats': content['priceSats'] ?? 0,
-                'category': content['category'] ?? 'outros',
-                'sellerPubkey': event['pubkey'],
-                'createdAt': DateTime.fromMillisecondsSinceEpoch(
-                  (event['created_at'] as int) * 1000,
-                ).toIso8601String(),
-              });
-            } catch (e) {
-            }
-          }
+    // PERFORMANCE: Buscar de todos os relays EM PARALELO
+    final relayResults = await Future.wait(
+      _relays.take(5).map((relay) =>
+        _fetchFromRelay(relay, kinds: [kindMarketplaceOffer], tags: {'#t': [marketplaceTag]}, limit: 50)
+          .catchError((_) => <Map<String, dynamic>>[])
+      ),
+    );
+    for (final events in relayResults) {
+      for (final event in events) {
+        final id = event['id'];
+        if (!seenIds.contains(id)) {
+          seenIds.add(id);
+          try {
+            final content = event['parsedContent'] ?? jsonDecode(event['content']);
+            offers.add({
+              'id': content['offerId'] ?? id,
+              'title': content['title'] ?? '',
+              'description': content['description'] ?? '',
+              'priceSats': content['priceSats'] ?? 0,
+              'category': content['category'] ?? 'outros',
+              'sellerPubkey': event['pubkey'],
+              'createdAt': DateTime.fromMillisecondsSinceEpoch(
+                (event['created_at'] as int) * 1000,
+              ).toIso8601String(),
+            });
+          } catch (e) {}
         }
-      } catch (e) {
       }
     }
 
@@ -2080,39 +1872,33 @@ class NostrOrderService {
     final seenIds = <String>{};
 
 
-    for (final relay in _relays.take(3)) {
-      try {
-        final events = await _fetchFromRelay(
-          relay,
-          kinds: [kindMarketplaceOffer],
-          authors: [pubkey],
-          tags: {'#t': [marketplaceTag]},
-          limit: 50,
-        );
-        
-        for (final event in events) {
-          final id = event['id'];
-          if (!seenIds.contains(id)) {
-            seenIds.add(id);
-            
-            try {
-              final content = event['parsedContent'] ?? jsonDecode(event['content']);
-              offers.add({
-                'id': content['offerId'] ?? id,
-                'title': content['title'] ?? '',
-                'description': content['description'] ?? '',
-                'priceSats': content['priceSats'] ?? 0,
-                'category': content['category'] ?? 'outros',
-                'sellerPubkey': event['pubkey'],
-                'createdAt': DateTime.fromMillisecondsSinceEpoch(
-                  (event['created_at'] as int) * 1000,
-                ).toIso8601String(),
-              });
-            } catch (e) {
-            }
-          }
+    // PERFORMANCE: Buscar de todos os relays EM PARALELO
+    final relayResults = await Future.wait(
+      _relays.take(3).map((relay) =>
+        _fetchFromRelay(relay, kinds: [kindMarketplaceOffer], authors: [pubkey], tags: {'#t': [marketplaceTag]}, limit: 50)
+          .catchError((_) => <Map<String, dynamic>>[])
+      ),
+    );
+    for (final events in relayResults) {
+      for (final event in events) {
+        final id = event['id'];
+        if (!seenIds.contains(id)) {
+          seenIds.add(id);
+          try {
+            final content = event['parsedContent'] ?? jsonDecode(event['content']);
+            offers.add({
+              'id': content['offerId'] ?? id,
+              'title': content['title'] ?? '',
+              'description': content['description'] ?? '',
+              'priceSats': content['priceSats'] ?? 0,
+              'category': content['category'] ?? 'outros',
+              'sellerPubkey': event['pubkey'],
+              'createdAt': DateTime.fromMillisecondsSinceEpoch(
+                (event['created_at'] as int) * 1000,
+              ).toIso8601String(),
+            });
+          } catch (e) {}
         }
-      } catch (e) {
       }
     }
 

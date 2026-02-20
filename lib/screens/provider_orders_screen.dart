@@ -205,22 +205,24 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     }
 
     try {
+      // PERFORMANCE: Buscar prereqs e ordens EM PARALELO (não sequencial)
       final collateralService = LocalCollateralService();
-      final localCollateral = await collateralService.getCollateral();
+      final breezProvider = context.read<BreezProvider>();
+      final orderProvider = context.read<OrderProvider>();
+      
+      // Executar tudo em paralelo
+      final results = await Future.wait([
+        collateralService.getCollateral(),
+        breezProvider.getBalance(),
+        orderProvider.fetchOrders(forProvider: true),
+      ]);
+      
+      final localCollateral = results[0];
       _hasCollateral = localCollateral != null;
       
-      // Buscar saldo da carteira
-      int walletBalance = 0;
-      int committedSats = 0;
-      try {
-        final breezProvider = context.read<BreezProvider>();
-        final balanceInfo = await breezProvider.getBalance();
-        walletBalance = int.tryParse(balanceInfo['balance']?.toString() ?? '0') ?? 0;
-        
-        final orderProvider = context.read<OrderProvider>();
-        committedSats = orderProvider.committedSats;
-      } catch (e) {
-      }
+      final balanceInfo = results[1] as Map<String, dynamic>;
+      final walletBalance = int.tryParse(balanceInfo['balance']?.toString() ?? '0') ?? 0;
+      final committedSats = orderProvider.committedSats;
       
       final collateralProvider = context.read<CollateralProvider>();
       await collateralProvider.initialize(
@@ -228,12 +230,6 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         walletBalance: walletBalance,
         committedSats: committedSats,
       );
-      
-      // Buscar ordens do Nostr
-      final orderProvider = context.read<OrderProvider>();
-      debugPrint('🔄 _loadOrders: chamando fetchOrders(forProvider: true)');
-      await orderProvider.fetchOrders(forProvider: true);
-      debugPrint('🔄 _loadOrders: fetchOrders completou, available=${orderProvider.availableOrdersForProvider.length}');
       
       if (mounted) {
         setState(() {

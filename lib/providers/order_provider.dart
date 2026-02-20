@@ -400,14 +400,12 @@ class OrderProvider with ChangeNotifier {
     // Executar em background sem bloquear a UI
     Future.microtask(() async {
       try {
-        // Primeiro republicar ordens locais antigas que não estão no Nostr
+        // PERFORMANCE: Republicar e sincronizar EM PARALELO (não sequencial)
         final privateKey = _nostrService.privateKey;
-        if (privateKey != null) {
-          await republishLocalOrdersToNostr();
-        }
-        
-        // Depois sincronizar do Nostr
-        await syncOrdersFromNostr();
+        await Future.wait([
+          if (privateKey != null) republishLocalOrdersToNostr(),
+          syncOrdersFromNostr(),
+        ]);
       } catch (e) {
       }
     });
@@ -873,12 +871,11 @@ class OrderProvider with ChangeNotifier {
       if (forProvider) {
         // MODO PROVEDOR: Buscar TODAS as ordens pendentes de TODOS os usuários
         // force: true — ação explícita do usuário, bypass throttle
-        // CORREÇÃO: Timeout externo DEVE ser maior que timeout interno do safeFetch (45s)
-        // Senão o timeout externo mata a operação antes dos fetches individuais completarem
+        // PERFORMANCE: Timeout reduzido de 90s para 30s — parallelization makes it much faster
         await syncAllPendingOrdersFromNostr(force: true).timeout(
-          const Duration(seconds: 90),
+          const Duration(seconds: 30),
           onTimeout: () {
-            debugPrint('⏰ fetchOrders: timeout externo de 90s atingido');
+            debugPrint('⏰ fetchOrders: timeout externo de 30s atingido');
           },
         );
       } else {
@@ -921,10 +918,10 @@ class OrderProvider with ChangeNotifier {
     try {
       
       // Helper para busca segura (captura exceções e retorna lista vazia)
-      // Timeout de 25s por fonte individual
+      // PERFORMANCE: Timeout reduzido de 45s para 15s — parallelization makes individual fetches much faster
       Future<List<Order>> safeFetch(Future<List<Order>> Function() fetcher, String name) async {
         try {
-          return await fetcher().timeout(const Duration(seconds: 45), onTimeout: () {
+          return await fetcher().timeout(const Duration(seconds: 15), onTimeout: () {
             debugPrint('⏰ safeFetch timeout: $name');
             return <Order>[];
           });
@@ -2283,33 +2280,33 @@ class OrderProvider with ChangeNotifier {
     
     int republished = 0;
     
-    for (var order in _orders) {
-      // SEGURANÇA CRÍTICA: Só republicar ordens que PERTENCEM ao usuário atual!
-      // Nunca republicar ordens de outros usuários (isso causaria duplicação com pubkey errado)
-      if (order.userPubkey != _currentUserPubkey) {
-        continue;
-      }
-      
-      // Só republicar ordens que não têm eventId
-      if (order.eventId == null || order.eventId!.isEmpty) {
-        try {
-          final eventId = await _nostrOrderService.publishOrder(
-            order: order,
-            privateKey: privateKey,
+    // PERFORMANCE: Coletar ordens a republicar e fazer em paralelo
+    final ordersToRepublish = _orders.where((order) {
+      if (order.userPubkey != _currentUserPubkey) return false;
+      if (order.eventId == null || order.eventId!.isEmpty) return true;
+      return false;
+    }).toList();
+    
+    if (ordersToRepublish.isEmpty) return 0;
+    
+    final results = await Future.wait(
+      ordersToRepublish.map((order) => _nostrOrderService.publishOrder(
+        order: order,
+        privateKey: privateKey,
+      ).catchError((_) => null)),
+    );
+    
+    for (int i = 0; i < results.length; i++) {
+      final eventId = results[i];
+      if (eventId != null) {
+        final order = ordersToRepublish[i];
+        final index = _orders.indexWhere((o) => o.id == order.id);
+        if (index != -1) {
+          _orders[index] = order.copyWith(
+            eventId: eventId,
+            userPubkey: _currentUserPubkey,
           );
-          
-          if (eventId != null) {
-            // Atualizar ordem com eventId
-            final index = _orders.indexWhere((o) => o.id == order.id);
-            if (index != -1) {
-              _orders[index] = order.copyWith(
-                eventId: eventId,
-                userPubkey: _currentUserPubkey,
-              );
-              republished++;
-            }
-          }
-        } catch (e) {
+          republished++;
         }
       }
     }

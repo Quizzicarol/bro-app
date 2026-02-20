@@ -312,13 +312,12 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadData({bool force = false}) async {
     try {
       final breezProvider = context.read<BreezProvider>();
       final orderProvider = context.read<OrderProvider>();
 
       // SEGURANÇA CRÍTICA: Garantir que NÃO estamos em modo provedor na home
-      // Isso previne vazamento de dados se o exitProviderMode falhou
       if (orderProvider.isProviderMode) {
         debugPrint('⚠️ [HOME] Detectado modo provedor ativo! Forçando reset...');
         orderProvider.exitProviderMode();
@@ -329,7 +328,10 @@ class _HomeScreenState extends State<HomeScreen> {
       
       await Future.wait([
         breezProvider.refresh(),
-        orderProvider.fetchOrders(), // SEMPRE com forProvider: false (default)
+        // PERFORMANCE: Na inicialização, não forçar sync — o initialize() já faz
+        // Forçar apenas em pull-to-refresh (force=true)
+        if (force) orderProvider.fetchOrders(),
+        if (!force) orderProvider.syncOrdersFromNostr(), // usa throttle interno
       ]);
       
       // Mostrar conclusão
@@ -392,7 +394,7 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: _buildAppBar(),
       body: RefreshIndicator(
         onRefresh: () async {
-          await _loadData();
+          await _loadData(force: true);
           await _fetchBitcoinPrice();
         },
         backgroundColor: const Color(0xFF1A1A1A),

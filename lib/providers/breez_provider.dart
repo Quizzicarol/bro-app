@@ -539,19 +539,11 @@ class BreezProvider with ChangeNotifier {
       debugPrint('   balanceSats: ${info.balanceSats}');
       debugPrint('═══════════════════════════════════════');
       
-      // Listar TODOS os pagamentos para debug
+      // PERFORMANCE: Apenas contar pagamentos (sem listar individualmente)
       final paymentsResp = await _sdk!.listPayments(
         request: spark.ListPaymentsRequest(limit: 100),
       );
-      debugPrint('📋 HISTÓRICO DE PAGAMENTOS (${paymentsResp.payments.length} total):');
-      for (var p in paymentsResp.payments) {
-        debugPrint('   [${p.status}] ${p.amount} sats - ${p.paymentType} - ${p.id.substring(0, 16)}...');
-      }
-      if (paymentsResp.payments.isEmpty) {
-        debugPrint('   ⚠️ NENHUM PAGAMENTO NO HISTÓRICO!');
-        debugPrint('   ⚠️ Isso significa que esta seed NUNCA recebeu fundos no Breez!');
-      }
-      debugPrint('═══════════════════════════════════════');
+      debugPrint('📋 Pagamentos encontrados: ${paymentsResp.payments.length}');
       
       // Verificar pagamentos persistidos localmente (que deveriam ter sido recebidos)
       final prefs = await SharedPreferences.getInstance();
@@ -704,21 +696,15 @@ class BreezProvider with ChangeNotifier {
     }
 
     try {
-      await _sdk!.syncWallet(request: spark.SyncWalletRequest());
-      
+      // PERFORMANCE: Não sincronizar novamente se já sincronizou recentemente
+      // getAllPayments é chamado na reconciliação e a wallet já foi sincronizada
       final resp = await _sdk!.listPayments(
-        request: spark.ListPaymentsRequest(limit: 1000),
+        request: spark.ListPaymentsRequest(limit: 100),
       );
 
       final payments = <Map<String, dynamic>>[];
       
-      debugPrint('');
-      debugPrint('╔═══════════════════════════════════════════════════════════════╗');
-      debugPrint('║      DIAGNÓSTICO COMPLETO DE PAGAMENTOS DA CARTEIRA          ║');
-      debugPrint('╠═══════════════════════════════════════════════════════════════╣');
-      debugPrint('║  Total de pagamentos encontrados: ${resp.payments.length.toString().padLeft(3)}                       ║');
-      debugPrint('╚═══════════════════════════════════════════════════════════════╝');
-      debugPrint('');
+      debugPrint('📋 getAllPayments: ${resp.payments.length} pagamentos encontrados');
       
       for (var p in resp.payments) {
         String? paymentHash;
@@ -729,29 +715,14 @@ class BreezProvider with ChangeNotifier {
           paymentHash = details.paymentHash;
         }
         
-        final paymentInfo = {
+        payments.add({
           'id': p.id,
           'amount': p.amount.toInt(),
           'status': p.status.toString(),
           'type': p.paymentType.toString(),
           'direction': direction,
           'paymentHash': paymentHash ?? 'N/A',
-        };
-        
-        payments.add(paymentInfo);
-        
-        final statusIcon = p.status == spark.PaymentStatus.completed ? '✅' : '❌';
-        debugPrint('$statusIcon [$direction] ${p.amount} sats');
-        debugPrint('   PaymentHash: ${paymentHash ?? "N/A"}');
-        debugPrint('   Status: ${p.status}');
-        debugPrint('');
-      }
-      
-      if (payments.isEmpty) {
-        debugPrint('⚠️ NENHUM PAGAMENTO ENCONTRADO NESTA CARTEIRA!');
-        debugPrint('   Isso pode significar:');
-        debugPrint('   1. A seed está correta mas nunca recebeu fundos');
-        debugPrint('   2. A seed está errada e deveria ser outra');
+        });
       }
       
       return payments;

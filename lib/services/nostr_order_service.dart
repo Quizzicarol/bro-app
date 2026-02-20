@@ -25,6 +25,12 @@ class NostrOrderService {
   // Chave privada para descriptografia (configurada pelo order_provider)
   String? _decryptionKey;
   
+  // PERFORMANCE: Cache de _fetchAllOrderStatusUpdates com TTL de 15s
+  // Evita chamar 3x a mesma função pesada durante um único ciclo de sync
+  Map<String, Map<String, dynamic>>? _statusUpdatesCache;
+  DateTime? _statusUpdatesCacheTime;
+  static const _statusUpdatesCacheTtlSeconds = 15;
+  
   /// Configura a chave privada para descriptografia de campos NIP-44
   /// Chamado pelo OrderProvider quando as chaves estão disponíveis
   void setDecryptionKey(String? privateKey) {
@@ -1076,7 +1082,17 @@ class NostrOrderService {
   /// Busca TODOS os eventos de UPDATE de status (kind 30080, 30081)
   /// Inclui: updates de status, conclusões de ordem
   /// CRÍTICO: Busca de TODOS os relays para garantir sincronização
+  /// PERFORMANCE: Resultado cacheado por 15s para evitar chamadas redundantes
   Future<Map<String, Map<String, dynamic>>> _fetchAllOrderStatusUpdates() async {
+    // PERFORMANCE: Retornar cache se ainda válido (evita 3x chamadas idênticas por sync)
+    if (_statusUpdatesCache != null && _statusUpdatesCacheTime != null) {
+      final elapsed = DateTime.now().difference(_statusUpdatesCacheTime!).inSeconds;
+      if (elapsed < _statusUpdatesCacheTtlSeconds) {
+        debugPrint('📋 _fetchAllOrderStatusUpdates: usando cache (${elapsed}s ago, ${_statusUpdatesCache!.length} updates)');
+        return _statusUpdatesCache!;
+      }
+    }
+    
     final updates = <String, Map<String, dynamic>>{}; // orderId -> latest update
     
     
@@ -1243,6 +1259,11 @@ class NostrOrderService {
         }
     
     debugPrint('📋 _fetchAllOrderStatusUpdates: ${updates.length} ordens com updates');
+    
+    // PERFORMANCE: Salvar no cache para evitar chamadas redundantes
+    _statusUpdatesCache = updates;
+    _statusUpdatesCacheTime = DateTime.now();
+    
     return updates;
   }
   
@@ -1487,25 +1508,14 @@ class NostrOrderService {
     final allRelayEvents = await Future.wait(
       _relays.take(3).map((relay) async {
         try {
-          // Buscar ambas estratégias em paralelo dentro do mesmo relay
-          var events = await _fetchFromRelay(
-            relay,
-            kinds: [kindBroAccept, kindBroComplete],
-            tags: {'#p': [userPubkey]},
-            limit: 100,
-          );
-          
-          // Se não encontrou eventos, buscar fallback
-          if (events.isEmpty) {
-            events = await _fetchFromRelay(
-              relay,
-              kinds: [kindBroAccept, kindBroComplete],
-              tags: {'#t': [broTag]},
-              limit: 100,
-            );
-          }
-          
-          return events;
+          // PERFORMANCE: Buscar AMBAS estratégias em paralelo (não sequencial com fallback)
+          final results = await Future.wait([
+            _fetchFromRelay(relay, kinds: [kindBroAccept, kindBroComplete], tags: {'#p': [userPubkey]}, limit: 100)
+              .catchError((_) => <Map<String, dynamic>>[]),
+            _fetchFromRelay(relay, kinds: [kindBroAccept, kindBroComplete], tags: {'#t': [broTag]}, limit: 100)
+              .catchError((_) => <Map<String, dynamic>>[]),
+          ]);
+          return [...results[0], ...results[1]];
         } catch (e) {
           return <Map<String, dynamic>>[];
         }

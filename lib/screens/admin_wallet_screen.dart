@@ -202,8 +202,8 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
                   _buildSupportToolsCard(),
                   const SizedBox(height: 24),
                   
-                  // TAXAS DA PLATAFORMA (2%)
-                  _buildSectionTitle('💼 Taxas da Plataforma (2%)'),
+                  // TAXAS DA PLATAFORMA
+                  _buildSectionTitle('💼 Taxas da Plataforma (${(AppConfig.platformFeePercent * 100).toStringAsFixed(0)}%)'),
                   _buildPlatformFeesCard(),
                   const SizedBox(height: 32),
                 ],

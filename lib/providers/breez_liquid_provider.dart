@@ -387,7 +387,8 @@ class BreezLiquidProvider with ChangeNotifier {
         destination: bolt11,
       );
       
-      final prepareResponse = await _sdk!.prepareSendPayment(req: prepareRequest);
+      final prepareResponse = await _sdk!.prepareSendPayment(req: prepareRequest)
+          .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Timeout ao preparar pagamento Liquid (30s)'));
       final fees = prepareResponse.feesSat?.toInt() ?? 0;
       
       debugPrint('📊 Taxas para envio: $fees sats');
@@ -397,7 +398,8 @@ class BreezLiquidProvider with ChangeNotifier {
         prepareResponse: prepareResponse,
       );
       
-      final sendResponse = await _sdk!.sendPayment(req: sendRequest);
+      final sendResponse = await _sdk!.sendPayment(req: sendRequest)
+          .timeout(const Duration(seconds: 60), onTimeout: () => throw TimeoutException('Timeout ao enviar pagamento Liquid (60s)'));
       final payment = sendResponse.payment;
       final txId = payment.txId ?? 'unknown';
       

@@ -151,7 +151,9 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
     final totalCommitted = effectiveTierLocked + effectiveCommittedSats;
     final freeBalance = (effectiveWalletBalance - totalCommitted).clamp(0, effectiveWalletBalance);
     
-    return Column(
+    return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      child: Column(
       children: [
         // Aviso se saldo zerou e tier estava ativo
         if (_walletBalance == 0 && _currentCollateral != null) ...[
@@ -463,23 +465,24 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
         ),
         const SizedBox(height: 8),
 
-        // Lista de tiers
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: _tiers?.length ?? 0,
-            itemBuilder: (context, index) {
-              final tier = _tiers![index];
-              final isCurrentTier = _currentCollateral?.tierId == tier.id;
-              // 🔥 Tolerância de 10% para oscilação do Bitcoin
-              final minRequired = (tier.requiredCollateralSats * 0.90).round();
-              final hasEnoughBalance = _walletBalance >= minRequired;
-              
-              return _buildTierCard(tier, isCurrentTier, hasEnoughBalance);
-            },
+        // Lista de tiers (inline, sem scroll separado)
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              for (int index = 0; index < (_tiers?.length ?? 0); index++)
+                _buildTierCard(
+                  _tiers![index],
+                  _currentCollateral?.tierId == _tiers![index].id,
+                  _walletBalance >= (_tiers![index].requiredCollateralSats * 0.90).round(),
+                ),
+            ],
           ),
         ),
+        // Espaço extra no final para garantir scroll completo
+        const SizedBox(height: 40),
       ],
+      ),
     );
   }
 

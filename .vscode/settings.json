@@ -48,6 +48,23 @@
         "/^& \"\\$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb\\.exe\" logcat -v time -s flutter 2>&1 \\| Tee-Object -FilePath \"c:\\\\Users\\\\produ\\\\Documents\\\\GitHub\\\\bro_app\\\\logs_render2\\.txt\"$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "Resolve-Path": true,
+        "/^python3 -c \"\nwith open\\(r'c:\\\\Users\\\\produ\\\\Documents\\\\GitHub\\\\bro_app\\\\lib\\\\providers\\\\order_provider\\.dart', 'rb'\\) as f:\n    data = f\\.read\\(\\)\n# Show hex around line 1582 area - search for fetchOrderFromNostr\\(orderId\\); without timeout\nimport re\nmatches = list\\(re\\.finditer\\(b'fetchOrderFromNostr\\\\\\\\\\(orderId\\\\\\\\\\);', data\\)\\)\nfor m in matches:\n    start = max\\(0, m\\.start\\(\\)-200\\)\n    end = min\\(len\\(data\\), m\\.end\\(\\)\\+200\\)\n    print\\(f'Match at byte \\{m\\.start\\(\\)\\}:'\\)\n    print\\(repr\\(data\\[start:end\\]\\)\\)\n    print\\('---'\\)\n\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^python -c \"with open\\(r'c:\\\\Users\\\\produ\\\\Documents\\\\GitHub\\\\bro_app\\\\lib\\\\providers\\\\order_provider\\.dart', 'rb'\\) as f: data = f\\.read\\(\\); import re; matches = list\\(re\\.finditer\\(b'fetchOrderFromNostr\\\\\\(orderId\\\\\\);', data\\)\\); \\[print\\(repr\\(data\\[max\\(0,m\\.start\\(\\)-100\\):min\\(len\\(data\\),m\\.end\\(\\)\\+100\\)\\]\\)\\) for m in matches\\]\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^python -c \"\nwith open\\(r'c:\\\\Users\\\\produ\\\\Documents\\\\GitHub\\\\bro_app\\\\lib\\\\providers\\\\order_provider\\.dart', 'rb'\\) as f:\n    data = f\\.read\\(\\)\n\nold = b'final orderData = await _nostrOrderService\\.fetchOrderFromNostr\\(orderId\\);\\\\r\\\\n        if \\(orderData != null\\) \\{\\\\r\\\\n          order = Order\\.fromJson\\(orderData\\);'\n\nnew = b'final orderData = await _nostrOrderService\\.fetchOrderFromNostr\\(orderId\\)\\.timeout\\(\\\\r\\\\n          const Duration\\(seconds: 10\\),\\\\r\\\\n          onTimeout: \\(\\) \\{\\\\r\\\\n            debugPrint\\(\\\\'\\[completeOrderAsProvider\\] timeout ao buscar ordem do Nostr\\\\'\\);\\\\r\\\\n            return null;\\\\r\\\\n          \\},\\\\r\\\\n        \\);\\\\r\\\\n        if \\(orderData != null\\) \\{\\\\r\\\\n          order = Order\\.fromJson\\(orderData\\);'\n\nif old in data:\n    data = data\\.replace\\(old, new, 1\\)\n    with open\\(r'c:\\\\Users\\\\produ\\\\Documents\\\\GitHub\\\\bro_app\\\\lib\\\\providers\\\\order_provider\\.dart', 'wb'\\) as f:\n        f\\.write\\(data\\)\n    print\\('SUCCESS'\\)\nelse:\n    print\\('NOT FOUND'\\)\n\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^\\$adb = \"\\$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb\\.exe\"; & \\$adb install -r \"build\\\\app\\\\outputs\\\\flutter-apk\\\\app-release\\.apk\"$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }

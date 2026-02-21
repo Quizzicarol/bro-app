@@ -2183,6 +2183,11 @@ class _WalletScreenState extends State<WalletScreen> {
         label = '📥 $description';
         iconColor = Colors.green;
         icon = Icons.arrow_downward;
+      } else if (description.contains('Garantia Bro')) {
+        // Depósito de garantia para tier do provedor Bro
+        label = '🔒 $description';
+        iconColor = Colors.amber;
+        icon = Icons.shield;
       } else {
         label = 'Recebido';
         iconColor = Colors.green;

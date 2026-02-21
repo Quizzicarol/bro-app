@@ -518,13 +518,16 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
             physics: const AlwaysScrollableScrollPhysics(),
             children: [_buildEmptyAvailableView()],
           )
-        : ListView(
+        : ListView.builder(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(16),
-            children: [
-              ..._availableOrders.map((order) => _buildAvailableOrderCard(order, collateralProvider)),
-              const SizedBox(height: 80),
-            ],
+            itemCount: _availableOrders.length + 1,
+            itemBuilder: (context, index) {
+              if (index == _availableOrders.length) {
+                return const SizedBox(height: 80);
+              }
+              return _buildAvailableOrderCard(_availableOrders[index], collateralProvider);
+            },
           ),
     );
   }
@@ -778,13 +781,16 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     return RefreshIndicator(
       onRefresh: () => _loadOrders(isRefresh: true),
       color: const Color(0xFFFF6B6B),
-      child: ListView(
+      child: ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
-        children: [
-          ...sortedOrders.map((order) => _buildMyOrderCard(order)),
-          const SizedBox(height: 80),
-        ],
+        itemCount: sortedOrders.length + 1,
+        itemBuilder: (context, index) {
+          if (index == sortedOrders.length) {
+            return const SizedBox(height: 80);
+          }
+          return _buildMyOrderCard(sortedOrders[index]);
+        },
       ),
     );
   }

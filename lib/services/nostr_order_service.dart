@@ -376,6 +376,13 @@ class NostrOrderService {
       }
       
       if (order != null) {
+        // CORREÇÃO CRÍTICA: Excluir ordens onde o usuário é o próprio dono
+        // Quando user == provider (mesmo device), os status updates do usuário
+        // são capturados como "provider events" causando contaminação
+        if (order.userPubkey == providerPubkey) {
+          continue; // Pular ordens próprias — não sou meu próprio Bro!
+        }
+        
         // CORREÇÃO CRÍTICA: Garantir que providerId seja setado para ordens do provedor
         if (order.providerId == null || order.providerId!.isEmpty) {
           order = order.copyWith(providerId: providerPubkey);
@@ -420,8 +427,8 @@ class NostrOrderService {
       }
       
       
-      // Timeout de 8 segundos para resposta
-      timeout = Timer(const Duration(seconds: 8), () {
+      // Timeout de 15 segundos para resposta (aumentado de 8 para melhor confiabilidade)
+      timeout = Timer(const Duration(seconds: 15), () {
         if (!completer.isCompleted) {
           completer.complete(false);
           channel?.sink.close();
@@ -929,14 +936,31 @@ class NostrOrderService {
       );
 
       
-      int successCount = 0;
-      // Publicar em paralelo para maior velocidade
-      final results = await Future.wait(
-        _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
-      );
-      successCount = results.where((s) => s).length;
+      // Publicar em paralelo - retornar assim que pelo menos 1 relay aceitar
+      // Não esperar todos os relays (evita timeout quando um relay é lento)
+      final futures = _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)).toList();
+      
+      // Esperar o primeiro sucesso ou todos falharem
+      bool anySuccess = false;
+      for (final future in futures) {
+        try {
+          final result = await future;
+          if (result) {
+            anySuccess = true;
+            break;
+          }
+        } catch (_) {}
+      }
+      
+      // Se nenhum retornou true via loop (pode ter saído cedo), verificar os restantes em background
+      if (!anySuccess) {
+        final results = await Future.wait(
+          futures.map((f) => f.catchError((_) => false)),
+        );
+        anySuccess = results.any((s) => s);
+      }
 
-      return successCount > 0;
+      return anySuccess;
     } catch (e, stack) {
       return false;
     }
@@ -1016,14 +1040,28 @@ class NostrOrderService {
       );
 
       
-      int successCount = 0;
-      // Publicar em paralelo para maior velocidade
-      final results = await Future.wait(
-        _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
-      );
-      successCount = results.where((s) => s).length;
+      // Publicar em paralelo - retornar assim que pelo menos 1 relay aceitar
+      final futures = _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)).toList();
+      
+      bool anySuccess = false;
+      for (final future in futures) {
+        try {
+          final result = await future;
+          if (result) {
+            anySuccess = true;
+            break;
+          }
+        } catch (_) {}
+      }
+      
+      if (!anySuccess) {
+        final results = await Future.wait(
+          futures.map((f) => f.catchError((_) => false)),
+        );
+        anySuccess = results.any((s) => s);
+      }
 
-      return successCount > 0;
+      return anySuccess;
     } catch (e) {
       return false;
     }

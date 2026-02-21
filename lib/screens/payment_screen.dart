@@ -684,7 +684,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final paymentHash = (invoiceData['paymentHash'] ?? '') as String;
 
       // Pagar a própria invoice (auto-pagamento)
-      final payResult = await lightningProvider.payInvoice(invoice);
+      final payResult = await lightningProvider.payInvoice(invoice)
+          .timeout(const Duration(seconds: 60), onTimeout: () {
+        return {'success': false, 'error': 'Timeout ao pagar (60s)'};
+      });
       
       if (payResult == null || payResult['success'] != true) {
         if (mounted) Navigator.of(context).pop();
@@ -1072,7 +1075,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint('🔄 PaymentScreen build - _isProcessing: $_isProcessing');
     return GestureDetector(
       onTap: () {
         // Retrair teclado ao tocar no fundo da tela

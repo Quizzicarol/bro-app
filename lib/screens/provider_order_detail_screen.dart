@@ -104,6 +104,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   Future<void> _loadOrderDetails({bool forceSync = false}) async {
     if (!mounted) return;
     
+    debugPrint('🔵 [LOAD] _loadOrderDetails INICIADO (forceSync=$forceSync, _orderDetails=${_orderDetails != null ? "set" : "null"})');
+    
     // Não mostrar loading se for polling (forceSync = false mantido do caller)
     if (_orderDetails == null) {
       setState(() {
@@ -128,10 +130,11 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         );
       }
       
+      debugPrint('🔵 [LOAD] Chamando getOrder(${widget.orderId.substring(0, 8)})...');
       final order = await orderProvider.getOrder(widget.orderId);
       
-      debugPrint('🔍 _loadOrderDetails: ordem carregada = $order');
-      debugPrint('🔍 _loadOrderDetails: billCode = ${order?['billCode']}');
+      debugPrint('🔍 _loadOrderDetails: ordem carregada = ${order != null ? "OK (status=${order['status']})" : "NULL"}');
+      debugPrint('🔍 _loadOrderDetails: billCode = ${order?['billCode'] != null && (order!['billCode'] as String).isNotEmpty ? "present (${(order['billCode'] as String).length} chars)" : "EMPTY"}');
 
       if (mounted) {
         setState(() {
@@ -191,9 +194,13 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   Future<void> _acceptOrder() async {
     if (!mounted) return;
     
+    debugPrint('🔵 [ACCEPT] _acceptOrder INICIADO para ordem ${widget.orderId.substring(0, 8)}');
+    
     // PROTEÇÃO CRÍTICA: Verificar se ordem já foi aceita
     final currentStatus = _orderDetails?['status'] ?? 'pending';
     final currentProviderId = _orderDetails?['providerId'] ?? _orderDetails?['provider_id'];
+    
+    debugPrint('🔵 [ACCEPT] Status atual: $currentStatus, providerId: $currentProviderId, _orderAccepted: $_orderAccepted');
     
     if (currentStatus != 'pending' && currentStatus != 'payment_received') {
       debugPrint('🚫 BLOQUEIO DE SEGURANÇA: Tentativa de aceitar ordem com status=$currentStatus');
@@ -289,57 +296,91 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     });
 
     try {
-      // Em modo produção, bloquear garantia
-      if (!AppConfig.providerTestMode) {
-        final collateralProvider = context.read<CollateralProvider>();
-        final tierId = collateralProvider.getCurrentTier()!.id;
-        
+      // TIMEOUT GLOBAL: Toda operação de aceitar deve completar em 45s
+      // Inclui retry automático se falhar na primeira tentativa
+      await _doAcceptOrder(orderAmount).timeout(
+        const Duration(seconds: 45),
+        onTimeout: () {
+          debugPrint('⏱️ [ACCEPT] TIMEOUT GLOBAL de 45s atingido!');
+          throw TimeoutException('Tempo esgotado ao aceitar ordem (45s)');
+        },
+      );
+    } catch (e) {
+      debugPrint('❌ [ACCEPT] ERRO: $e');
+      _showError('Erro ao aceitar ordem: $e');
+    } finally {
+      // GARANTIA: _isAccepting SEMPRE é resetado
+      if (mounted && _isAccepting) {
+        debugPrint('🔵 [ACCEPT] Resetando _isAccepting no finally');
+        setState(() {
+          _isAccepting = false;
+        });
+      }
+    }
+  }
+
+  /// Execução interna do aceitar — separada para permitir timeout global
+  Future<void> _doAcceptOrder(double orderAmount) async {
+    // Em modo produção, bloquear garantia
+    if (!AppConfig.providerTestMode) {
+      final collateralProvider = context.read<CollateralProvider>();
+      final currentTier = collateralProvider.getCurrentTier();
+      
+      if (currentTier != null) {
+        debugPrint('🔵 [ACCEPT] Bloqueando garantia (tier=${currentTier.id})...');
         await _escrowService.lockCollateral(
           providerId: widget.providerId,
           orderId: widget.orderId,
           lockedSats: (orderAmount * 1000).round(),
         );
+        debugPrint('🔵 [ACCEPT] Garantia bloqueada OK');
+      } else {
+        debugPrint('⚠️ [ACCEPT] Sem tier ativo — pulando lockCollateral');
       }
-
-      // Publicar aceitação no Nostr E atualizar localmente
-      final orderProvider = context.read<OrderProvider>();
-      final success = await orderProvider.acceptOrderAsProvider(widget.orderId);
-      
-      if (!success) {
-        _showError('Falha ao publicar aceitação no Nostr');
-        if (mounted) {
-          setState(() {
-            _isAccepting = false;
-          });
-        }
-        return;
-      }
-
-      if (mounted) {
-        setState(() {
-          _orderAccepted = true;
-          _isAccepting = false;
-        });
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Ordem aceita! Pague a conta e envie o comprovante.'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-
-      await _loadOrderDetails();
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isAccepting = false;
-        });
-      }
-      _showError('Erro ao aceitar ordem: $e');
     }
+
+    // Publicar aceitação no Nostr E atualizar localmente
+    // Retry automático: até 2 tentativas se falhar
+    debugPrint('🔵 [ACCEPT] Publicando aceitação no Nostr...');
+    final orderProvider = context.read<OrderProvider>();
+    
+    bool success = false;
+    for (int attempt = 1; attempt <= 2; attempt++) {
+      debugPrint('🔵 [ACCEPT] Tentativa $attempt/2...');
+      success = await orderProvider.acceptOrderAsProvider(widget.orderId);
+      if (success) break;
+      if (attempt < 2) {
+        debugPrint('⚠️ [ACCEPT] Tentativa $attempt falhou, retentando em 2s...');
+        await Future.delayed(const Duration(seconds: 2));
+      }
+    }
+    
+    debugPrint('🔵 [ACCEPT] Resultado final: success=$success');
+    
+    if (!success) {
+      _showError('Falha ao publicar aceitação no Nostr');
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _orderAccepted = true;
+        _isAccepting = false;
+      });
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ Ordem aceita! Pague a conta e envie o comprovante.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+
+    debugPrint('🔵 [ACCEPT] Recarregando detalhes da ordem...');
+    await _loadOrderDetails();
+    debugPrint('🔵 [ACCEPT] Ordem aceita e detalhes carregados com sucesso!');
   }
 
   Future<void> _pickReceipt() async {
@@ -392,11 +433,11 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     });
 
     try {
-      // Timeout global de 60s para toda a operação de upload
+      // Timeout global de 90s para toda a operação de upload
       await _doUploadReceipt().timeout(
-        const Duration(seconds: 60),
+        const Duration(seconds: 90),
         onTimeout: () {
-          throw TimeoutException('Tempo esgotado ao enviar comprovante (60s)');
+          throw TimeoutException('Tempo esgotado ao enviar comprovante (90s)');
         },
       );
     } catch (e) {
@@ -500,13 +541,39 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         debugPrint('   Invoice: ${generatedInvoice.substring(0, 50)}...');
       }
 
+      // CRÍTICO: Se não gerou invoice e há sats a receber, bloquear
+      if (generatedInvoice == null && providerReceiveSats > 0) {
+        debugPrint('🚨 BLOQUEANDO: Sem invoice gerado para receber $providerReceiveSats sats!');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('❌ Carteira não conectada. Conecte sua carteira para receber pagamento.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 5),
+            ),
+          );
+          setState(() => _isUploading = false);
+        }
+        return;
+      }
+
       // Publicar comprovante + invoice no Nostr E atualizar localmente
+      // Retry automático: até 2 tentativas se falhar
       final orderProvider = context.read<OrderProvider>();
-      final success = await orderProvider.completeOrderAsProvider(
-        widget.orderId, 
-        proofImageBase64.isNotEmpty ? proofImageBase64 : confirmationCode,
-        providerInvoice: generatedInvoice, // Invoice gerado automaticamente
-      );
+      bool success = false;
+      for (int attempt = 1; attempt <= 2; attempt++) {
+        debugPrint('📤 [UPLOAD] Tentativa $attempt/2 de publicar comprovante...');
+        success = await orderProvider.completeOrderAsProvider(
+          widget.orderId, 
+          proofImageBase64.isNotEmpty ? proofImageBase64 : confirmationCode,
+          providerInvoice: generatedInvoice,
+        );
+        if (success) break;
+        if (attempt < 2) {
+          debugPrint('⚠️ [UPLOAD] Tentativa $attempt falhou, retentando em 3s...');
+          await Future.delayed(const Duration(seconds: 3));
+        }
+      }
       
       if (!success) {
         _showError('Falha ao publicar comprovante no Nostr');

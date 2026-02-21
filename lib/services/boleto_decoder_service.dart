@@ -1,73 +1,75 @@
-/// Decodificador local de boletos bancários brasileiros
-/// Suporta boletos tradicionais (47 dígitos) e boletos de concessionárias (48 dígitos)
+﻿import 'package:flutter/foundation.dart';
+
+/// Decodificador local de boletos bancÃ¡rios brasileiros
+/// Suporta boletos tradicionais (47 dÃ­gitos) e boletos de concessionÃ¡rias (48 dÃ­gitos)
 class BoletoDecoderService {
   
-  /// Decodifica linha digitável do boleto e extrai o valor
-  /// Retorna null se não for um boleto válido
+  /// Decodifica linha digitÃ¡vel do boleto e extrai o valor
+  /// Retorna null se nÃ£o for um boleto vÃ¡lido
   static Map<String, dynamic>? decodeBoleto(String code) {
-    // Limpar código - remover espaços, pontos e hífens
+    // Limpar cÃ³digo - remover espaÃ§os, pontos e hÃ­fens
     final cleanCode = code.replaceAll(RegExp(r'[^\d]'), '');
     
-    print('🔍 BoletoDecoderService.decodeBoleto()');
-    print('🔍 Código original: ${code.length} chars');
-    print('🔍 Código limpo: ${cleanCode.length} dígitos');
+    debugPrint('ðŸ” BoletoDecoderService.decodeBoleto()');
+    debugPrint('ðŸ” CÃ³digo original: ${code.length} chars');
+    debugPrint('ðŸ” CÃ³digo limpo: ${cleanCode.length} dÃ­gitos');
     
     if (cleanCode.isEmpty) {
-      print('❌ Código vazio após limpeza');
+      debugPrint('âŒ CÃ³digo vazio apÃ³s limpeza');
       return null;
     }
     
-    // Boleto bancário tradicional: 47 dígitos
+    // Boleto bancÃ¡rio tradicional: 47 dÃ­gitos
     if (cleanCode.length == 47) {
-      print('✅ Detectado boleto bancário (47 dígitos)');
+      debugPrint('âœ… Detectado boleto bancÃ¡rio (47 dÃ­gitos)');
       return _decodeBoletoTradicional(cleanCode);
     }
     
-    // Boleto de concessionária/convênio: 48 dígitos
+    // Boleto de concessionÃ¡ria/convÃªnio: 48 dÃ­gitos
     if (cleanCode.length == 48) {
-      print('✅ Detectado boleto convênio (48 dígitos)');
+      debugPrint('âœ… Detectado boleto convÃªnio (48 dÃ­gitos)');
       return _decodeBoletoConvenio(cleanCode);
     }
     
-    // Código de barras direto: 44 dígitos
+    // CÃ³digo de barras direto: 44 dÃ­gitos
     if (cleanCode.length == 44) {
-      print('✅ Detectado código de barras (44 dígitos)');
+      debugPrint('âœ… Detectado cÃ³digo de barras (44 dÃ­gitos)');
       return _decodeCodigoBarras(cleanCode);
     }
     
-    print('❌ Tamanho inválido: ${cleanCode.length} dígitos (esperado: 44, 47 ou 48)');
+    debugPrint('âŒ Tamanho invÃ¡lido: ${cleanCode.length} dÃ­gitos (esperado: 44, 47 ou 48)');
     return null;
   }
   
-  /// Decodifica boleto bancário tradicional (47 dígitos)
+  /// Decodifica boleto bancÃ¡rio tradicional (47 dÃ­gitos)
   /// Formato: AAABC.CCCCX DDDDD.DDDDDY EEEEE.EEEEEZ K UUUUVVVVVVVVVV
-  /// Onde o valor está nos últimos 10 dígitos (VVVVVVVVVV)
+  /// Onde o valor estÃ¡ nos Ãºltimos 10 dÃ­gitos (VVVVVVVVVV)
   static Map<String, dynamic>? _decodeBoletoTradicional(String code) {
     try {
-      print('🔍 Decodificando boleto tradicional (47 dígitos)');
-      print('🔍 Código: $code');
+      debugPrint('ðŸ” Decodificando boleto tradicional (47 dÃ­gitos)');
+      debugPrint('ðŸ” CÃ³digo: $code');
       
-      // Extrair campos da linha digitável
-      final campo1 = code.substring(0, 10);   // Posições 1-10
-      final campo2 = code.substring(10, 21);  // Posições 11-21
-      final campo3 = code.substring(21, 32);  // Posições 22-32
-      final campo4 = code.substring(32, 33);  // Posição 33 (dígito verificador geral)
-      final campo5 = code.substring(33, 47);  // Posições 34-47 (vencimento + valor)
+      // Extrair campos da linha digitÃ¡vel
+      final campo1 = code.substring(0, 10);   // PosiÃ§Ãµes 1-10
+      final campo2 = code.substring(10, 21);  // PosiÃ§Ãµes 11-21
+      final campo3 = code.substring(21, 32);  // PosiÃ§Ãµes 22-32
+      final campo4 = code.substring(32, 33);  // PosiÃ§Ã£o 33 (dÃ­gito verificador geral)
+      final campo5 = code.substring(33, 47);  // PosiÃ§Ãµes 34-47 (vencimento + valor)
       
-      print('📊 Campo1: $campo1');
-      print('📊 Campo2: $campo2');
-      print('📊 Campo3: $campo3');
-      print('📊 Campo4: $campo4');
-      print('📊 Campo5: $campo5');
+      debugPrint('ðŸ“Š Campo1: $campo1');
+      debugPrint('ðŸ“Š Campo2: $campo2');
+      debugPrint('ðŸ“Š Campo3: $campo3');
+      debugPrint('ðŸ“Š Campo4: $campo4');
+      debugPrint('ðŸ“Š Campo5: $campo5');
       
-      // Extrair valor do campo 5 (últimos 10 dígitos representam o valor)
-      final valorStr = campo5.substring(4, 14); // Pular fator vencimento (4 dígitos)
+      // Extrair valor do campo 5 (Ãºltimos 10 dÃ­gitos representam o valor)
+      final valorStr = campo5.substring(4, 14); // Pular fator vencimento (4 dÃ­gitos)
       final valorCentavos = int.tryParse(valorStr) ?? 0;
       final valor = valorCentavos / 100.0;
       
-      print('💰 Valor String: $valorStr');
-      print('💰 Valor Centavos: $valorCentavos');
-      print('💰 Valor Final: R\$ $valor');
+      debugPrint('ðŸ’° Valor String: $valorStr');
+      debugPrint('ðŸ’° Valor Centavos: $valorCentavos');
+      debugPrint('ðŸ’° Valor Final: R\$ $valor');
       
       // Extrair fator de vencimento para calcular data
       final fatorVencimento = int.tryParse(campo5.substring(0, 4)) ?? 0;
@@ -78,12 +80,12 @@ class BoletoDecoderService {
         dataVencimento = dataBase.add(Duration(days: fatorVencimento));
       }
       
-      // Extrair código do banco (3 primeiros dígitos)
+      // Extrair cÃ³digo do banco (3 primeiros dÃ­gitos)
       final codigoBanco = code.substring(0, 3);
       final nomeBanco = _getNomeBanco(codigoBanco);
       
-      print('🏦 Banco: $nomeBanco ($codigoBanco)');
-      print('📅 Vencimento: $dataVencimento');
+      debugPrint('ðŸ¦ Banco: $nomeBanco ($codigoBanco)');
+      debugPrint('ðŸ“… Vencimento: $dataVencimento');
       
       return {
         'success': true,
@@ -97,67 +99,67 @@ class BoletoDecoderService {
         'message': 'Boleto decodificado localmente',
       };
     } catch (e) {
-      print('❌ Erro ao decodificar boleto tradicional: $e');
+      debugPrint('âŒ Erro ao decodificar boleto tradicional: $e');
       return null;
     }
   }
   
-  /// Decodifica boleto de concessionária/convênio (48 dígitos)
-  /// Usado para contas de luz, água, gás, IPTU, telecomunicações, etc.
+  /// Decodifica boleto de concessionÃ¡ria/convÃªnio (48 dÃ­gitos)
+  /// Usado para contas de luz, Ã¡gua, gÃ¡s, IPTU, telecomunicaÃ§Ãµes, etc.
   /// Estrutura: ABCD.EEEEEEEEEE-F GGGG.GGGGGGG-H IIII.IIIIIII-J KKKK.KKKKKKK-L
   static Map<String, dynamic>? _decodeBoletoConvenio(String code) {
     try {
-      print('🔍 Decodificando boleto convênio (48 dígitos)');
-      print('🔍 Código: $code');
+      debugPrint('ðŸ” Decodificando boleto convÃªnio (48 dÃ­gitos)');
+      debugPrint('ðŸ” CÃ³digo: $code');
       
-      // Estrutura do código de barras de convênio (48 dígitos na linha digitável):
-      // A linha digitável tem 4 campos de 12 dígitos cada (48 total)
-      // O código de barras original tem 44 dígitos
+      // Estrutura do cÃ³digo de barras de convÃªnio (48 dÃ­gitos na linha digitÃ¡vel):
+      // A linha digitÃ¡vel tem 4 campos de 12 dÃ­gitos cada (48 total)
+      // O cÃ³digo de barras original tem 44 dÃ­gitos
       
-      // Para extrair o valor, precisamos reconstruir o código de barras:
-      // Linha digitável: AAAAAAAAAAA-X BBBBBBBBBBB-Y CCCCCCCCCCC-Z DDDDDDDDDDD-W
-      // Código barras:   AAAAAAAAAAA   BBBBBBBBBBB   CCCCCCCCCCC   DDDDDDDDDDD
+      // Para extrair o valor, precisamos reconstruir o cÃ³digo de barras:
+      // Linha digitÃ¡vel: AAAAAAAAAAA-X BBBBBBBBBBB-Y CCCCCCCCCCC-Z DDDDDDDDDDD-W
+      // CÃ³digo barras:   AAAAAAAAAAA   BBBBBBBBBBB   CCCCCCCCCCC   DDDDDDDDDDD
       
-      // Remover dígitos verificadores (posições 12, 24, 36, 48)
-      final campo1 = code.substring(0, 11);   // 11 dígitos
-      final campo2 = code.substring(12, 23);  // 11 dígitos
-      final campo3 = code.substring(24, 35);  // 11 dígitos
-      final campo4 = code.substring(36, 47);  // 11 dígitos
+      // Remover dÃ­gitos verificadores (posiÃ§Ãµes 12, 24, 36, 48)
+      final campo1 = code.substring(0, 11);   // 11 dÃ­gitos
+      final campo2 = code.substring(12, 23);  // 11 dÃ­gitos
+      final campo3 = code.substring(24, 35);  // 11 dÃ­gitos
+      final campo4 = code.substring(36, 47);  // 11 dÃ­gitos
       
-      final codigoBarras = campo1 + campo2 + campo3 + campo4; // 44 dígitos
+      final codigoBarras = campo1 + campo2 + campo3 + campo4; // 44 dÃ­gitos
       
-      print('📊 Campo1: $campo1');
-      print('📊 Campo2: $campo2');
-      print('📊 Campo3: $campo3');
-      print('📊 Campo4: $campo4');
-      print('📊 Código de barras: $codigoBarras');
+      debugPrint('ðŸ“Š Campo1: $campo1');
+      debugPrint('ðŸ“Š Campo2: $campo2');
+      debugPrint('ðŸ“Š Campo3: $campo3');
+      debugPrint('ðŸ“Š Campo4: $campo4');
+      debugPrint('ðŸ“Š CÃ³digo de barras: $codigoBarras');
       
-      // No código de barras de convênio (44 dígitos):
-      // Posição 1: Identificador do produto (8 = arrecadação)
-      // Posição 2: Identificador do segmento
-      // Posição 3: Identificador de valor efetivo ou referência
-      // Posição 4: Dígito verificador geral
-      // Posições 5-15: Valor (11 dígitos, com 2 casas decimais)
-      // Posições 16-44: Informações da empresa/convênio
+      // No cÃ³digo de barras de convÃªnio (44 dÃ­gitos):
+      // PosiÃ§Ã£o 1: Identificador do produto (8 = arrecadaÃ§Ã£o)
+      // PosiÃ§Ã£o 2: Identificador do segmento
+      // PosiÃ§Ã£o 3: Identificador de valor efetivo ou referÃªncia
+      // PosiÃ§Ã£o 4: DÃ­gito verificador geral
+      // PosiÃ§Ãµes 5-15: Valor (11 dÃ­gitos, com 2 casas decimais)
+      // PosiÃ§Ãµes 16-44: InformaÃ§Ãµes da empresa/convÃªnio
       
       final identificador = codigoBarras.substring(0, 1);
       final segmentoCode = codigoBarras.substring(1, 2);
       final tipoValor = codigoBarras.substring(2, 3);
       
-      // Valor está nas posições 5-15 (índices 4-14) = 11 dígitos
+      // Valor estÃ¡ nas posiÃ§Ãµes 5-15 (Ã­ndices 4-14) = 11 dÃ­gitos
       final valorStr = codigoBarras.substring(4, 15);
       final valorCentavos = int.tryParse(valorStr) ?? 0;
       final valor = valorCentavos / 100.0;
       
-      print('💰 Identificador: $identificador');
-      print('💰 Segmento: $segmentoCode');
-      print('💰 Tipo Valor: $tipoValor');
-      print('💰 Valor String: $valorStr');
-      print('💰 Valor Centavos: $valorCentavos');
-      print('💰 Valor Final: R\$ $valor');
+      debugPrint('ðŸ’° Identificador: $identificador');
+      debugPrint('ðŸ’° Segmento: $segmentoCode');
+      debugPrint('ðŸ’° Tipo Valor: $tipoValor');
+      debugPrint('ðŸ’° Valor String: $valorStr');
+      debugPrint('ðŸ’° Valor Centavos: $valorCentavos');
+      debugPrint('ðŸ’° Valor Final: R\$ $valor');
       
-      // Identificar o tipo de convênio pelo segmento
-      String tipoConvenio = 'Convênio';
+      // Identificar o tipo de convÃªnio pelo segmento
+      String tipoConvenio = 'ConvÃªnio';
       switch (segmentoCode) {
         case '1':
           tipoConvenio = 'Prefeituras';
@@ -166,19 +168,19 @@ class BoletoDecoderService {
           tipoConvenio = 'Saneamento';
           break;
         case '3':
-          tipoConvenio = 'Energia/Gás';
+          tipoConvenio = 'Energia/GÃ¡s';
           break;
         case '4':
-          tipoConvenio = 'Telecomunicações';
+          tipoConvenio = 'TelecomunicaÃ§Ãµes';
           break;
         case '5':
-          tipoConvenio = 'Órgãos Governamentais';
+          tipoConvenio = 'Ã“rgÃ£os Governamentais';
           break;
         case '6':
           tipoConvenio = 'Carnes e Assemelhados';
           break;
         case '7':
-          tipoConvenio = 'Multas de Trânsito';
+          tipoConvenio = 'Multas de TrÃ¢nsito';
           break;
         case '8':
           tipoConvenio = 'Uso exclusivo do banco';
@@ -188,7 +190,7 @@ class BoletoDecoderService {
           break;
       }
       
-      print('🏢 Tipo: $tipoConvenio');
+      debugPrint('ðŸ¢ Tipo: $tipoConvenio');
       
       return {
         'success': true,
@@ -198,24 +200,24 @@ class BoletoDecoderService {
         'merchantName': tipoConvenio,
         'segmento': segmentoCode,
         'barcode': code,
-        'message': 'Boleto de convênio decodificado localmente',
+        'message': 'Boleto de convÃªnio decodificado localmente',
       };
     } catch (e) {
-      print('❌ Erro ao decodificar boleto convênio: $e');
+      debugPrint('âŒ Erro ao decodificar boleto convÃªnio: $e');
       return null;
     }
   }
   
-  /// Decodifica código de barras direto (44 dígitos)
+  /// Decodifica cÃ³digo de barras direto (44 dÃ­gitos)
   static Map<String, dynamic>? _decodeCodigoBarras(String code) {
     try {
-      // Código de barras de boleto bancário (44 dígitos):
-      // Posições 1-3: Código do banco
-      // Posição 4: Código da moeda (9 = Real)
-      // Posição 5: Dígito verificador geral
-      // Posições 6-9: Fator de vencimento
-      // Posições 10-19: Valor (10 dígitos, 8 inteiros + 2 decimais)
-      // Posições 20-44: Campo livre
+      // CÃ³digo de barras de boleto bancÃ¡rio (44 dÃ­gitos):
+      // PosiÃ§Ãµes 1-3: CÃ³digo do banco
+      // PosiÃ§Ã£o 4: CÃ³digo da moeda (9 = Real)
+      // PosiÃ§Ã£o 5: DÃ­gito verificador geral
+      // PosiÃ§Ãµes 6-9: Fator de vencimento
+      // PosiÃ§Ãµes 10-19: Valor (10 dÃ­gitos, 8 inteiros + 2 decimais)
+      // PosiÃ§Ãµes 20-44: Campo livre
       
       final codigoBanco = code.substring(0, 3);
       final fatorVencimento = int.tryParse(code.substring(5, 9)) ?? 0;
@@ -240,29 +242,29 @@ class BoletoDecoderService {
         'bankCode': codigoBanco,
         'dueDate': dataVencimento?.toIso8601String(),
         'barcode': code,
-        'message': 'Código de barras decodificado localmente',
+        'message': 'CÃ³digo de barras decodificado localmente',
       };
     } catch (e) {
-      print('❌ Erro ao decodificar código de barras: $e');
+      debugPrint('âŒ Erro ao decodificar cÃ³digo de barras: $e');
       return null;
     }
   }
   
-  /// Retorna o nome do banco pelo código
+  /// Retorna o nome do banco pelo cÃ³digo
   static String _getNomeBanco(String codigo) {
     final bancos = {
       '001': 'Banco do Brasil',
       '033': 'Santander',
-      '104': 'Caixa Econômica',
+      '104': 'Caixa EconÃ´mica',
       '237': 'Bradesco',
-      '341': 'Itaú',
+      '341': 'ItaÃº',
       '356': 'Banco Real',
       '389': 'Mercantil do Brasil',
       '399': 'HSBC',
       '422': 'Safra',
       '453': 'Rural',
       '633': 'Rendimento',
-      '652': 'Itaú Unibanco',
+      '652': 'ItaÃº Unibanco',
       '745': 'Citibank',
       '756': 'Sicoob',
       '748': 'Sicredi',
@@ -287,7 +289,7 @@ class BoletoDecoderService {
       '065': 'Bracce',
       '036': 'Bradesco BBI',
       '394': 'Bradesco Financiamentos',
-      '204': 'Bradesco Cartões',
+      '204': 'Bradesco CartÃµes',
       '225': 'Brascan',
       '044': 'BVA',
       '263': 'Cacique',
@@ -295,7 +297,7 @@ class BoletoDecoderService {
       '040': 'Cargill',
       '745': 'Citibank',
       '477': 'Citibank',
-      '081': 'Concórdia',
+      '081': 'ConcÃ³rdia',
       '707': 'Daycoval',
       '487': 'Deutsche',
       '751': 'Dresdner',
@@ -304,9 +306,9 @@ class BoletoDecoderService {
       '399': 'HSBC',
       '168': 'HSBC Finance',
       '492': 'ING',
-      '998': 'Itaú',
-      '652': 'Itaú Holding',
-      '341': 'Itaú Unibanco',
+      '998': 'ItaÃº',
+      '652': 'ItaÃº Holding',
+      '341': 'ItaÃº Unibanco',
       '079': 'JBS',
       '376': 'J.P. Morgan',
       '074': 'J. Safra',
@@ -317,26 +319,26 @@ class BoletoDecoderService {
       '079': 'Original Agro',
       '623': 'Pan',
       '611': 'Paulista',
-      '613': 'Pecúnia',
+      '613': 'PecÃºnia',
       '094': 'Petra',
       '643': 'Pine',
       '747': 'Rabobank',
       '633': 'Rendimento',
-      '741': 'Ribeirão Preto',
+      '741': 'RibeirÃ£o Preto',
       '453': 'Rural',
       '422': 'Safra',
       '033': 'Santander',
       '955': 'Santander',
       '250': 'Schahin',
       '749': 'Simples',
-      '366': 'Société Générale',
+      '366': 'SociÃ©tÃ© GÃ©nÃ©rale',
       '637': 'Sofisa',
       '012': 'Standard',
-      '082': 'Topázio',
+      '082': 'TopÃ¡zio',
       '464': 'Sumitomo',
-      '634': 'Triângulo',
+      '634': 'TriÃ¢ngulo',
       '208': 'UBS Pactual',
-      '116': 'Único',
+      '116': 'Ãšnico',
       '655': 'Votorantim',
       '610': 'VR',
       '370': 'Mizuho',
@@ -344,7 +346,7 @@ class BoletoDecoderService {
       '719': 'Banif',
       '755': 'Bank of America',
       '744': 'BankBoston',
-      '073': 'BB Cartões',
+      '073': 'BB CartÃµes',
       '078': 'BES',
       '069': 'BPN',
       '070': 'BRB',
@@ -357,8 +359,8 @@ class BoletoDecoderService {
       '077': 'Inter',
       '653': 'Indusval',
       '249': 'Investcred',
-      '184': 'Itaú BBA',
-      '479': 'Itaú Bank Boston',
+      '184': 'ItaÃº BBA',
+      '479': 'ItaÃº Bank Boston',
       '604': 'Industrial do Brasil',
       '320': 'Industrial e Comercial',
       '653': 'Indusval',

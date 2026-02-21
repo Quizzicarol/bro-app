@@ -1,8 +1,10 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:crypto/crypto.dart';
 import '../services/storage_service.dart';
 import '../providers/breez_provider.dart';
 
@@ -19,6 +21,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isLoading = true;
   int _adminTapCount = 0;
   String _appVersion = '1.0.0';
+  
+  // SHA-256 hash da senha de admin
+  static const String _adminPasswordHash = '9ca268d4f101447772eaf5887e7e1d0598e502d722eea231a0e391f1bc9d9213';
 
   @override
   void initState() {
@@ -42,13 +47,99 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _adminTapCount++;
     if (_adminTapCount >= 7) {
       _adminTapCount = 0;
+      _showAdminPasswordDialog();
+    }
+    // Sem feedback visual - acesso admin totalmente oculto
+  }
+  
+  void _showAdminPasswordDialog() {
+    final passwordController = TextEditingController();
+    bool obscure = true;
+    
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A2E),
+          title: const Row(
+            children: [
+              Icon(Icons.admin_panel_settings, color: Colors.amber, size: 28),
+              SizedBox(width: 10),
+              Text('Admin Access', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Digite a senha de administrador:',
+                style: TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: passwordController,
+                obscureText: obscure,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Senha',
+                  hintStyle: const TextStyle(color: Colors.white38),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Color(0xFF333333)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Colors.amber),
+                  ),
+                  prefixIcon: const Icon(Icons.lock, color: Colors.white54),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      obscure ? Icons.visibility_off : Icons.visibility,
+                      color: Colors.white54,
+                    ),
+                    onPressed: () => setDialogState(() => obscure = !obscure),
+                  ),
+                  filled: true,
+                  fillColor: Colors.black26,
+                ),
+                onSubmitted: (_) {
+                  _validateAdminPassword(passwordController.text);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                _validateAdminPassword(passwordController.text);
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
+              child: const Text('Entrar', style: TextStyle(color: Colors.black)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  void _validateAdminPassword(String password) {
+    final inputHash = sha256.convert(utf8.encode(password)).toString();
+    
+    if (inputHash == _adminPasswordHash) {
+      Navigator.pop(context); // Fechar dialog
       Navigator.pushNamed(context, '/admin-bro-2024');
-    } else if (_adminTapCount >= 4) {
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${7 - _adminTapCount} toques restantes...'),
-          duration: const Duration(milliseconds: 500),
-          backgroundColor: Colors.deepPurple,
+        const SnackBar(
+          content: Text('❌ Senha incorreta'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 2),
         ),
       );
     }
@@ -802,7 +893,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             horizontal: 20,
                             vertical: 8,
                           ),
-                          onTap: _onTitleTap,
                         ),
                         Divider(height: 1, color: Colors.white12),
                         ListTile(

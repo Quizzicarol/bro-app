@@ -917,24 +917,30 @@ class _HomeScreenState extends State<HomeScreen> {
               // myCreatedOrders já retorna apenas ordens onde userPubkey == currentUser
               final myOrders = orderProvider.myCreatedOrders;
               
-              return Container(
+              if (myOrders.isEmpty) {
+                return Container(
+                  padding: const EdgeInsets.all(20),
+                  child: const EmptyTransactionState(),
+                );
+              }
+              return ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(20),
-                child: myOrders.isEmpty
-                    ? const EmptyTransactionState()
-                    : Column(
-                        children: myOrders.map((order) {
-                          return TransactionCard(
-                            title: order.billType == 'pix' ? 'PIX' : 'Boleto',
-                            amount: _currencyFormat.format(order.amount),
-                            status: order.status,
-                            statusLabel: _getStatusLabel(order.status),
-                            orderId: order.id, // ID da ordem para controle
-                            onTap: () {
-                              _showOrderDetails(order);
-                            },
-                          );
-                        }).toList(),
-                      ),
+                itemCount: myOrders.length,
+                itemBuilder: (context, index) {
+                  final order = myOrders[index];
+                  return TransactionCard(
+                    title: order.billType == 'pix' ? 'PIX' : 'Boleto',
+                    amount: _currencyFormat.format(order.amount),
+                    status: order.status,
+                    statusLabel: _getStatusLabel(order.status),
+                    orderId: order.id,
+                    onTap: () {
+                      _showOrderDetails(order);
+                    },
+                  );
+                },
               );
             },
           ),

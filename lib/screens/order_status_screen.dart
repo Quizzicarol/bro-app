@@ -3477,37 +3477,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         }
       }
 
-      // Atualizar status para 'completed' - SEMPRE usar OrderProvider que publica no Nostr
-      // IMPORTANTE: Passar providerId para que o Bro seja notificado via tag #p
-      final updateSuccess = await orderProvider.updateOrderStatus(
-        orderId: widget.orderId,
-        status: 'completed',
-        providerId: providerId,  // CRÍTICO: Para notificar o Bro via Nostr!
-      );
-      
-      if (!updateSuccess) {
-        debugPrint('❌ FALHA ao publicar confirmação no Nostr');
-        if (mounted) {
-          ScaffoldMessenger.of(context).hideCurrentSnackBar();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('❌ Falha ao publicar confirmação. Tente novamente.'),
-              backgroundColor: Colors.red,
-              duration: Duration(seconds: 5),
-            ),
-          );
-          setState(() {
-            _isConfirming = false;
-            _currentStatus = 'awaiting_confirmation'; // Manter status anterior
-          });
-        }
-        return; // CRÍTICO: Não continuar se Nostr falhou
-      }
-      
-      debugPrint('✅ Status atualizado para completed e publicado no Nostr');
-
-      // ========== PAGAR INVOICE DO PROVEDOR ==========
-      // Buscar providerInvoice da ordem (enviado junto com o comprovante)
+      // ========== ETAPA 1: PAGAR INVOICE DO PROVEDOR ANTES DE MARCAR COMPLETED ==========
+      // CRÍTICO: Pagamento DEVE ocorrer ANTES de marcar como completed
+      // Se o pagamento falhar, a ordem permanece em awaiting_confirmation
       String? providerInvoice;
       if (orderDetails != null) {
         providerInvoice = orderDetails['metadata']?['providerInvoice'] as String?;
@@ -3534,54 +3506,142 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         }
       }
       
-      if (providerInvoice != null && providerInvoice.isNotEmpty) {
-        debugPrint('⚡ Pagando invoice do provedor: ${providerInvoice.substring(0, 30)}...');
-        
-        try {
-          // CORRIGIDO: Usar BreezProvider diretamente pois é o que está inicializado pelo login
-          final breezProvider = context.read<BreezProvider>();
-          final liquidProvider = context.read<BreezLiquidProvider>();
-          
-          debugPrint('🔍 DEBUG PAY INVOICE:');
-          debugPrint('   breezProvider.isInitialized: ${breezProvider.isInitialized}');
-          debugPrint('   liquidProvider.isInitialized: ${liquidProvider.isInitialized}');
-          
-          Map<String, dynamic>? payResult;
-          String usedBackend = 'none';
-          
-          if (breezProvider.isInitialized) {
-            debugPrint('⚡ Pagando via Breez Spark...');
-            payResult = await breezProvider.payInvoice(providerInvoice);
-            usedBackend = 'Spark';
-          } else if (liquidProvider.isInitialized) {
-            debugPrint('⚡ Pagando via Liquid (fallback)...');
-            payResult = await liquidProvider.payInvoice(providerInvoice);
-            usedBackend = 'Liquid';
-          } else {
-            debugPrint('🚨 NENHUMA CARTEIRA INICIALIZADA!');
-          }
-          
-          if (payResult != null && payResult['success'] == true) {
-            debugPrint('✅ Invoice do provedor pago com sucesso via $usedBackend!');
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('⚡ Pagamento enviado para o Bro!'),
-                  backgroundColor: Colors.green,
-                  duration: Duration(seconds: 2),
-                ),
-              );
-            }
-          } else if (payResult != null) {
-            debugPrint('⚠️ Falha ao pagar invoice do provedor: $payResult');
-            // Não falhar a confirmação por isso - o provedor pode cobrar depois
-          }
-        } catch (e) {
-          debugPrint('⚠️ Erro ao pagar invoice do provedor: $e');
-          // Não falhar a confirmação por isso
+      // Se não tem invoice, BLOQUEAR a confirmação
+      if (providerInvoice == null || providerInvoice.isEmpty) {
+        debugPrint('🚨 BLOQUEANDO confirmação: Nenhum providerInvoice encontrado!');
+        if (mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('❌ Invoice do provedor não encontrado. Tente novamente em alguns segundos.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 5),
+            ),
+          );
+          setState(() {
+            _isConfirming = false;
+            _currentStatus = 'awaiting_confirmation';
+          });
         }
-      } else {
-        debugPrint('ℹ️ Nenhum providerInvoice encontrado - provedor receberá via saldo');
+        return;
+      }
+      
+      // PAGAR O PROVEDOR
+      debugPrint('⚡ Pagando invoice do provedor: ${providerInvoice.substring(0, 30)}...');
+      bool paymentSuccess = false;
+      String paymentError = '';
+      
+      try {
+        final breezProvider = context.read<BreezProvider>();
+        final liquidProvider = context.read<BreezLiquidProvider>();
+        
+        debugPrint('🔍 DEBUG PAY INVOICE:');
+        debugPrint('   breezProvider.isInitialized: ${breezProvider.isInitialized}');
+        debugPrint('   liquidProvider.isInitialized: ${liquidProvider.isInitialized}');
+        
+        if (!breezProvider.isInitialized && !liquidProvider.isInitialized) {
+          paymentError = 'Carteira não inicializada. Abra sua carteira e tente novamente.';
+        } else {
+          // Retry: tentar até 3 vezes com intervalo de 2s
+          for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+              Map<String, dynamic>? payResult;
+              String usedBackend = 'none';
+              
+              if (breezProvider.isInitialized) {
+                debugPrint('⚡ Tentativa $attempt/3: Pagando via Breez Spark...');
+                payResult = await breezProvider.payInvoice(providerInvoice).timeout(
+                  const Duration(seconds: 30),
+                  onTimeout: () => {'success': false, 'error': 'timeout'},
+                );
+                usedBackend = 'Spark';
+              } else if (liquidProvider.isInitialized) {
+                debugPrint('⚡ Tentativa $attempt/3: Pagando via Liquid...');
+                payResult = await liquidProvider.payInvoice(providerInvoice).timeout(
+                  const Duration(seconds: 30),
+                  onTimeout: () => {'success': false, 'error': 'timeout'},
+                );
+                usedBackend = 'Liquid';
+              }
+              
+              if (payResult != null && payResult['success'] == true) {
+                debugPrint('✅ Invoice do provedor pago com sucesso via $usedBackend na tentativa $attempt!');
+                paymentSuccess = true;
+                break;
+              } else {
+                paymentError = payResult?['error']?.toString() ?? 'Falha desconhecida';
+                debugPrint('⚠️ Tentativa $attempt falhou: $paymentError');
+              }
+            } catch (e) {
+              paymentError = e.toString();
+              debugPrint('⚠️ Tentativa $attempt erro: $paymentError');
+            }
+            
+            if (attempt < 3) {
+              debugPrint('⏳ Aguardando 2s antes da próxima tentativa...');
+              await Future.delayed(const Duration(seconds: 2));
+            }
+          }
+        }
+      } catch (e) {
+        paymentError = e.toString();
+        debugPrint('⚠️ Erro geral ao pagar invoice: $e');
+      }
+      
+      // Se o pagamento falhou, NÃO marcar como completed
+      if (!paymentSuccess) {
+        debugPrint('❌ Pagamento ao provedor FALHOU após 3 tentativas: $paymentError');
+        if (mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('❌ Pagamento ao Bro falhou: $paymentError\nA ordem NÃO foi finalizada. Tente novamente.'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 8),
+            ),
+          );
+          setState(() {
+            _isConfirming = false;
+            _currentStatus = 'awaiting_confirmation';
+          });
+        }
+        return; // CRÍTICO: Não finalizar sem pagamento
+      }
+      
+      debugPrint('✅ Pagamento ao provedor confirmado! Agora marcando ordem como completed...');
+
+      // ========== ETAPA 2: MARCAR COMO COMPLETED NO NOSTR (só após pagamento bem-sucedido) ==========
+      final updateSuccess = await orderProvider.updateOrderStatus(
+        orderId: widget.orderId,
+        status: 'completed',
+        providerId: providerId,
+      );
+      
+      if (!updateSuccess) {
+        debugPrint('⚠️ Pagamento feito mas falha ao publicar status no Nostr - tentando novamente...');
+        // Pagamento já foi feito, tentar publicar novamente
+        await Future.delayed(const Duration(seconds: 2));
+        final retrySuccess = await orderProvider.updateOrderStatus(
+          orderId: widget.orderId,
+          status: 'completed',
+          providerId: providerId,
+        );
+        if (!retrySuccess) {
+          debugPrint('⚠️ Segunda tentativa de publicar status falhou - pagamento foi feito, status será sincronizado depois');
+        }
+      }
+      
+      debugPrint('✅ Ordem marcada como completed com sucesso');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚡ Pagamento enviado para o Bro!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
       }
 
       // ========== PAGAR TAXA DA PLATAFORMA ==========

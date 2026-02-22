@@ -1995,13 +1995,16 @@ class NostrOrderService {
             // Estratégia 2: Eventos com tag bro (fallback)
             _fetchFromRelay(relay, kinds: [kindBroAccept, kindBroComplete], tags: {'#t': [broTag]}, limit: 100)
               .catchError((_) => <Map<String, dynamic>>[]),
-            // Estratégia 3: NOVO - Eventos do PRÓPRIO USUÁRIO (kind 30080)
+            // Estratégia 3: Eventos do PRÓPRIO USUÁRIO (kind 30080)
             // Quando o usuário confirma pagamento, publica kind 30080 com status 'completed'
-            // Sem isso, após reinstalar o app, o status 'completed' se perde
             _fetchFromRelay(relay, kinds: [kindBroPaymentProof], authors: [userPubkey], limit: 100)
               .catchError((_) => <Map<String, dynamic>>[]),
+            // Estratégia 4: Eventos kind 30080 DIRECIONADOS a este usuário via tag #p
+            // Isso captura disputas/updates publicados pela OUTRA parte (ex: usuário publica 'disputed', provedor recebe)
+            _fetchFromRelay(relay, kinds: [kindBroPaymentProof], tags: {'#p': [userPubkey]}, limit: 100)
+              .catchError((_) => <Map<String, dynamic>>[]),
           ]);
-          return [...results[0], ...results[1], ...results[2]];
+          return [...results[0], ...results[1], ...results[2], ...results[3]];
         } catch (e) {
           return <Map<String, dynamic>>[];
         }
@@ -2028,7 +2031,7 @@ class NostrOrderService {
             final contentProviderId = content['providerId'] as String?;
             
             // Para eventos de accept/complete (do Bro): pubkey deve ser o providerId
-            // Para eventos do PRÓPRIO USUÁRIO (kind 30080): pubkey deve ser o userPubkey
+            // Para eventos kind 30080: aceitar do PRÓPRIO USUÁRIO ou de OUTRA PARTE se tagged #p
             if (eventKind == kindBroAccept || eventKind == kindBroComplete) {
               // Apenas provedor pode aceitar/completar
               if (contentProviderId != null && eventPubkey != null &&
@@ -2036,10 +2039,11 @@ class NostrOrderService {
                 continue;
               }
             } else if (eventKind == kindBroPaymentProof) {
-              // Evento do próprio usuário: pubkey deve ser o userPubkey
-              if (eventPubkey != null && eventPubkey != userPubkey) {
-                continue; // Não é nosso evento, ignorar
-              }
+              // Aceitar eventos kind 30080 se:
+              // 1. Publicado pelo próprio usuário (nosso update)
+              // 2. OU publicado pela outra parte E contém orderId válido (disputa/update direcionado)
+              // A validação de orderId é feita abaixo (content['orderId'])
+              // Não filtrar mais por pubkey - confiar na assinatura verificada pelo relay
             }
             
             // Verificar se este evento é mais recente que o atual
@@ -2433,5 +2437,100 @@ class NostrOrderService {
     }
 
     return offers;
+  }
+
+  /// Publica uma notificação de disputa no Nostr como kind 1 (nota)
+  /// Kind 1 NÃO é addressable, então #t tags SÃO indexadas pelos relays
+  /// Isso permite que o admin busque todas as disputas de qualquer dispositivo
+  Future<bool> publishDisputeNotification({
+    required String privateKey,
+    required String orderId,
+    required String reason,
+    required String description,
+    required String openedBy,
+    Map<String, dynamic>? orderDetails,
+  }) async {
+    try {
+      final keychain = Keychain(privateKey);
+      
+      final content = jsonEncode({
+        'type': 'bro_dispute',
+        'orderId': orderId,
+        'reason': reason,
+        'description': description,
+        'openedBy': openedBy,
+        'userPubkey': keychain.public,
+        'amount_brl': orderDetails?['amount_brl'],
+        'amount_sats': orderDetails?['amount_sats'],
+        'payment_type': orderDetails?['payment_type'],
+        'pix_key': orderDetails?['pix_key'],
+        'previous_status': orderDetails?['status'],
+        'provider_id': orderDetails?['provider_id'],
+        'createdAt': DateTime.now().toIso8601String(),
+      });
+      
+      final event = Event.from(
+        kind: 1, // Nota regular - #t tags SÃO indexadas!
+        tags: [
+          ['t', 'bro-disputa'],
+          ['t', broTag],
+          ['r', orderId],
+        ],
+        content: content,
+        privkey: keychain.private,
+      );
+      
+      final results = await Future.wait(
+        _relays.map((relay) async {
+          try {
+            return await _publishToRelay(relay, event);
+          } catch (_) {
+            return false;
+          }
+        }),
+      );
+      
+      final successCount = results.where((r) => r).length;
+      debugPrint('📤 publishDisputeNotification: publicado em $successCount/${_relays.length} relays');
+      return successCount > 0;
+    } catch (e) {
+      debugPrint('❌ publishDisputeNotification EXCEPTION: $e');
+      return false;
+    }
+  }
+
+  /// Busca notificações de disputa do Nostr (kind 1 com tag bro-disputa)
+  /// Usado pelo admin para ver todas as disputas de qualquer dispositivo
+  Future<List<Map<String, dynamic>>> fetchDisputeNotifications() async {
+    final allEvents = <Map<String, dynamic>>[];
+    final seenIds = <String>{};
+    
+    final results = await Future.wait(
+      _relays.map((relay) async {
+        try {
+          return await _fetchFromRelay(
+            relay,
+            kinds: [1],
+            tags: {'#t': ['bro-disputa']},
+            limit: 100,
+          ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]);
+        } catch (_) {
+          return <Map<String, dynamic>>[];
+        }
+      }),
+    );
+    
+    for (final events in results) {
+      for (final e in events) {
+        final id = e['id'] as String?;
+        if (id != null && !seenIds.contains(id)) {
+          seenIds.add(id);
+          allEvents.add(e);
+        }
+      }
+    }
+    
+    debugPrint('📤 fetchDisputeNotifications: ${allEvents.length} disputas encontradas');
+    return allEvents;
   }
 }

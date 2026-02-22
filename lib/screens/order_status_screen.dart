@@ -52,6 +52,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   bool _isLoading = true;
   String? _error;
   DateTime? _expiresAt;
+  
+  // Dados da disputa para exibição no relatório
+  String? _disputeReason;
+  String? _disputeDescription;
+  DateTime? _disputeCreatedAt;
 
   @override
   void initState() {
@@ -2212,7 +2217,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             left: 20,
             right: 20,
             top: 20,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+            bottom: MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom + 24,
           ),
           child: SingleChildScrollView(
             child: Column(
@@ -2372,8 +2377,32 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         // Atualizar status local para "em disputa"
         final orderProvider = context.read<OrderProvider>();
         await orderProvider.updateOrderStatus(orderId: widget.orderId, status: 'disputed');
+        
+        // Publicar notificação de disputa no Nostr (kind 1 com tag bro-disputa)
+        // Isso permite que o admin veja todas as disputas de qualquer dispositivo
+        try {
+          final nostrOrderService = NostrOrderService();
+          final privateKey = orderProvider.nostrPrivateKey;
+          if (privateKey != null) {
+            await nostrOrderService.publishDisputeNotification(
+              privateKey: privateKey,
+              orderId: widget.orderId,
+              reason: reason,
+              description: description,
+              openedBy: 'user',
+              orderDetails: orderDetails,
+            );
+            debugPrint('📤 Disputa publicada no Nostr com sucesso');
+          }
+        } catch (e) {
+          debugPrint('⚠️ Erro ao publicar disputa no Nostr: $e');
+        }
+        
         setState(() {
           _currentStatus = 'disputed';
+          _disputeReason = reason;
+          _disputeDescription = description;
+          _disputeCreatedAt = DateTime.now();
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -3735,6 +3764,23 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   Widget _buildDisputedCard() {
+    // Carregar dados da disputa se não tivermos
+    final disputeService = DisputeService();
+    final dispute = disputeService.getDisputeByOrderId(widget.orderId);
+    final reason = _disputeReason ?? dispute?.reason ?? 'Não informado';
+    final desc = _disputeDescription ?? dispute?.description ?? '';
+    final createdAt = _disputeCreatedAt ?? dispute?.createdAt ?? DateTime.now();
+    final providerId = _orderDetails?['providerId'] ?? _orderDetails?['provider_id'] ?? '';
+    final proofImage = _orderDetails?['metadata']?['proofImage'] as String?;
+    final userPubkey = _orderDetails?['userPubkey'] ?? widget.userId ?? '';
+    
+    final day = createdAt.day.toString().padLeft(2, '0');
+    final month = createdAt.month.toString().padLeft(2, '0');
+    final year = createdAt.year;
+    final hour = createdAt.hour.toString().padLeft(2, '0');
+    final minute = createdAt.minute.toString().padLeft(2, '0');
+    final dateStr = '$day/$month/$year $hour:$minute';
+    
     return Card(
       color: const Color(0xFF1A1A1A),
       shape: RoundedRectangleBorder(
@@ -3743,9 +3789,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
-          child: Column(
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Header
             Row(
               children: [
                 Container(
@@ -3772,7 +3819,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       SizedBox(height: 4),
                       Text(
                         'Um mediador está analisando seu caso',
-                        style: TextStyle(fontSize: 14, color: Colors.black87),
+                        style: TextStyle(fontSize: 14, color: Colors.white70),
                       ),
                     ],
                   ),
@@ -3780,32 +3827,119 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               ],
             ),
             const SizedBox(height: 16),
+            
+            // Relatório detalhado da ordem
             Container(
-              padding: const EdgeInsets.all(12),
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: const Color(0xFF0D0D0D),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                border: Border.all(color: Colors.orange.withOpacity(0.2)),
               ),
-              child: const Column(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '📋 O que acontece agora?',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  const Text(
+                    '📋 Relatório da Disputa',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                      color: Colors.orange,
+                    ),
                   ),
-                  SizedBox(height: 8),
-                  Text(
-                    '1. Um mediador irá revisar todas as evidências\n'
-                    '2. Ambas as partes podem ser contactadas para esclarecimentos\n'
-                    '3. A decisão será comunicada via notificação\n'
-                    '4. Os Bitcoin permanecerão no escrow até resolução',
-                    style: TextStyle(fontSize: 13, height: 1.5),
-                  ),
+                  const SizedBox(height: 12),
+                  
+                  // ID da Ordem
+                  _disputeReportRow('🆔 Ordem', widget.orderId.length > 16 
+                      ? '${widget.orderId.substring(0, 16)}...' 
+                      : widget.orderId, isMonospace: true),
+                  const SizedBox(height: 6),
+                  
+                  // Data e hora
+                  _disputeReportRow('📅 Data', dateStr),
+                  const SizedBox(height: 6),
+                  
+                  // Valor
+                  _disputeReportRow('💰 Valor', 'R\$ ${widget.amountBrl.toStringAsFixed(2)}'),
+                  const SizedBox(height: 6),
+                  _disputeReportRow('₿ Sats', '${widget.amountSats}'),
+                  const SizedBox(height: 6),
+                  
+                  // Usuários
+                  if (userPubkey.isNotEmpty) ...[
+                    _disputeReportRow('👤 Usuário', '${userPubkey.toString().substring(0, 16)}...', isMonospace: true),
+                    const SizedBox(height: 6),
+                  ],
+                  if (providerId.isNotEmpty) ...[
+                    _disputeReportRow('🏪 Provedor', '${providerId.toString().substring(0, 16)}...', isMonospace: true),
+                    const SizedBox(height: 6),
+                  ],
+                  
+                  const Divider(color: Colors.white24, height: 20),
+                  
+                  // Motivo
+                  _disputeReportRow('📌 Motivo', reason),
+                  const SizedBox(height: 6),
+                  
+                  // Descrição
+                  if (desc.isNotEmpty) ...[
+                    const Text('📝 Descrição:', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                    const SizedBox(height: 4),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.black26,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        desc,
+                        style: const TextStyle(color: Colors.white70, fontSize: 13),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                  ],
+                  
+                  // Foto do comprovante (se disponível)
+                  if (proofImage != null && proofImage.isNotEmpty) ...[
+                    const Divider(color: Colors.white24, height: 20),
+                    const Text(
+                      '📸 Comprovante do Provedor',
+                      style: TextStyle(color: Colors.white54, fontSize: 12),
+                    ),
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: proofImage.startsWith('http')
+                          ? Image.network(
+                              proofImage,
+                              height: 200,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(
+                                height: 100,
+                                color: Colors.black26,
+                                child: const Center(
+                                  child: Text('Imagem indisponível', style: TextStyle(color: Colors.white38)),
+                                ),
+                              ),
+                            )
+                          : Container(
+                              height: 100,
+                              color: Colors.black26,
+                              child: const Center(
+                                child: Text('Comprovante anexado', style: TextStyle(color: Colors.white38)),
+                              ),
+                            ),
+                    ),
+                  ],
                 ],
               ),
             ),
             const SizedBox(height: 12),
+            
+            // Tempo estimado
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -3819,7 +3953,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   Expanded(
                     child: Text(
                       'Tempo estimado: 24-72 horas',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.white70),
                     ),
                   ),
                 ],
@@ -3828,6 +3962,30 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           ],
         ),
       ),
+    );
+  }
+  
+  Widget _disputeReportRow(String label, String value, {bool isMonospace = false}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontFamily: isMonospace ? 'monospace' : null,
+            ),
+            textAlign: TextAlign.right,
+          ),
+        ),
+      ],
     );
   }
 }

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'dart:convert';
 import '../services/platform_fee_service.dart';
 import '../services/dispute_service.dart';
+import '../services/nostr_order_service.dart';
 import '../providers/order_provider.dart';
 import '../config.dart';
 
@@ -33,6 +35,9 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
   final DisputeService _disputeService = DisputeService();
   List<Dispute> _openDisputes = [];
   List<Dispute> _allDisputes = [];
+  
+  // Disputas do Nostr (visíveis de qualquer dispositivo)
+  List<Map<String, dynamic>> _nostrDisputes = [];
 
   @override
   void initState() {
@@ -47,16 +52,62 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
       final totals = await PlatformFeeService.getHistoricalTotals();
       final pending = await PlatformFeeService.getPendingFees();
       
-      // Carregar disputas
+      // Carregar disputas locais
       await _disputeService.initialize();
       final openDisputes = _disputeService.getOpenDisputes();
       final allDisputes = _disputeService.getAllDisputes();
+      
+      // Carregar disputas do Nostr (de qualquer dispositivo)
+      List<Map<String, dynamic>> nostrDisputes = [];
+      try {
+        final nostrOrderService = NostrOrderService();
+        final rawEvents = await nostrOrderService.fetchDisputeNotifications()
+            .timeout(const Duration(seconds: 10), onTimeout: () => <Map<String, dynamic>>[]);
+        
+        for (final event in rawEvents) {
+          try {
+            final content = event['parsedContent'] ?? jsonDecode(event['content']);
+            if (content['type'] == 'bro_dispute') {
+              final orderId = content['orderId'] as String? ?? '';
+              // Verificar se já existe como disputa local
+              final existsLocally = allDisputes.any((d) => d.orderId == orderId);
+              
+              nostrDisputes.add({
+                'orderId': orderId,
+                'reason': content['reason'] ?? 'Não informado',
+                'description': content['description'] ?? '',
+                'openedBy': content['openedBy'] ?? 'user',
+                'userPubkey': content['userPubkey'] ?? event['pubkey'] ?? '',
+                'amount_brl': content['amount_brl'],
+                'amount_sats': content['amount_sats'],
+                'payment_type': content['payment_type'],
+                'pix_key': content['pix_key'],
+                'provider_id': content['provider_id'],
+                'previous_status': content['previous_status'],
+                'createdAt': content['createdAt'] ?? DateTime.fromMillisecondsSinceEpoch(
+                  ((event['created_at'] ?? 0) as int) * 1000,
+                ).toIso8601String(),
+                'existsLocally': existsLocally,
+                'eventId': event['id'],
+              });
+            }
+          } catch (_) {}
+        }
+        
+        // Ordenar por data (mais recentes primeiro)
+        nostrDisputes.sort((a, b) => (b['createdAt'] ?? '').compareTo(a['createdAt'] ?? ''));
+        
+        debugPrint('📋 Admin: ${nostrDisputes.length} disputas do Nostr, ${allDisputes.length} locais');
+      } catch (e) {
+        debugPrint('⚠️ Erro ao buscar disputas do Nostr: $e');
+      }
       
       setState(() {
         _totals = totals;
         _pendingRecords = pending;
         _openDisputes = openDisputes;
         _allDisputes = allDisputes;
+        _nostrDisputes = nostrDisputes;
       });
     } catch (e) {
       debugPrint('Erro ao carregar dados: $e');
@@ -215,7 +266,11 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
                 valueColor: AlwaysStoppedAnimation<Color>(Colors.amber),
               ),
             )
-          : SingleChildScrollView(
+          : RefreshIndicator(
+              onRefresh: _loadData,
+              color: Colors.amber,
+              child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -268,6 +323,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
                 ],
               ),
             ),
+          ),
     );
   }
 
@@ -680,14 +736,14 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
                 children: [
                   Icon(
                     Icons.gavel, 
-                    color: _openDisputes.isNotEmpty ? Colors.red : Colors.white54,
+                    color: (_openDisputes.isNotEmpty || _nostrDisputes.isNotEmpty) ? Colors.red : Colors.white54,
                     size: 24,
                   ),
                   const SizedBox(width: 8),
                   Text(
                     'Disputas',
                     style: TextStyle(
-                      color: _openDisputes.isNotEmpty ? Colors.red : Colors.white,
+                      color: (_openDisputes.isNotEmpty || _nostrDisputes.isNotEmpty) ? Colors.red : Colors.white,
                       fontWeight: FontWeight.bold, 
                       fontSize: 16,
                     ),
@@ -696,7 +752,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
               ),
               Row(
                 children: [
-                  if (_openDisputes.isNotEmpty)
+                  if (_openDisputes.isNotEmpty || _nostrDisputes.isNotEmpty)
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
@@ -704,7 +760,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        '${_openDisputes.length} aberta${_openDisputes.length > 1 ? 's' : ''}',
+                        '${_openDisputes.length + _nostrDisputes.where((d) => d['existsLocally'] != true).length} aberta${(_openDisputes.length + _nostrDisputes.length) > 1 ? 's' : ''}',
                         style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12),
                       ),
                     ),
@@ -716,7 +772,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      '${_allDisputes.length} total',
+                      '${_allDisputes.length + _nostrDisputes.where((d) => d['existsLocally'] != true).length} total',
                       style: const TextStyle(color: Colors.white54, fontSize: 12),
                     ),
                   ),
@@ -726,7 +782,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
           ),
           const SizedBox(height: 16),
           
-          if (_openDisputes.isEmpty && _allDisputes.isEmpty)
+          if (_openDisputes.isEmpty && _allDisputes.isEmpty && _nostrDisputes.isEmpty)
             const Center(
               child: Padding(
                 padding: EdgeInsets.all(20),
@@ -743,10 +799,21 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
               ),
             )
           else ...[
-            // Disputas abertas (prioridade)
+            // Disputas do Nostr (de qualquer dispositivo)
+            if (_nostrDisputes.isNotEmpty) ...[
+              const Text(
+                '🌐 DISPUTAS (via Nostr)',
+                style: TextStyle(color: Colors.orange, fontSize: 13, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              ..._nostrDisputes.map((d) => _buildNostrDisputeCard(d)),
+              const SizedBox(height: 16),
+            ],
+            
+            // Disputas locais abertas (prioridade)
             if (_openDisputes.isNotEmpty) ...[
               const Text(
-                '🔴 ABERTAS - REQUEREM AÇÃO',
+                '🔴 ABERTAS (local) - REQUEREM AÇÃO',
                 style: TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
@@ -1025,6 +1092,195 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
     final hour = dt.hour.toString().padLeft(2, '0');
     final minute = dt.minute.toString().padLeft(2, '0');
     return '$day/$month/$year $hour:$minute';
+  }
+
+  /// Card de disputa recebida via Nostr (de qualquer dispositivo)
+  Widget _buildNostrDisputeCard(Map<String, dynamic> dispute) {
+    final orderId = dispute['orderId'] as String? ?? '';
+    final reason = dispute['reason'] as String? ?? 'Não informado';
+    final description = dispute['description'] as String? ?? '';
+    final openedBy = dispute['openedBy'] as String? ?? 'user';
+    final userPubkey = dispute['userPubkey'] as String? ?? '';
+    final amountBrl = dispute['amount_brl'];
+    final amountSats = dispute['amount_sats'];
+    final paymentType = dispute['payment_type'] as String? ?? '';
+    final pixKey = dispute['pix_key'] as String? ?? '';
+    final providerId = dispute['provider_id'] as String? ?? '';
+    final previousStatus = dispute['previous_status'] as String? ?? '';
+    final createdAtStr = dispute['createdAt'] as String? ?? '';
+    final existsLocally = dispute['existsLocally'] as bool? ?? false;
+    
+    String dateStr = '';
+    try {
+      final dt = DateTime.parse(createdAtStr);
+      dateStr = _formatDisputeDate(dt);
+    } catch (_) {
+      dateStr = createdAtStr;
+    }
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.orange.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.orange.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.gavel, color: Colors.orange, size: 18),
+                  const SizedBox(width: 6),
+                  Text(
+                    existsLocally ? 'Disputa (Nostr + Local)' : 'Disputa (Nostr)',
+                    style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                ],
+              ),
+              Text(dateStr, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          
+          // Ordem ID
+          Row(
+            children: [
+              const Text('🆔 Ordem: ', style: TextStyle(color: Colors.white54, fontSize: 12)),
+              Expanded(
+                child: Text(
+                  orderId.length > 20 ? '${orderId.substring(0, 20)}...' : orderId,
+                  style: const TextStyle(color: Colors.amber, fontFamily: 'monospace', fontSize: 12),
+                ),
+              ),
+              GestureDetector(
+                onTap: () => _copyToClipboard(orderId, 'Order ID'),
+                child: const Icon(Icons.copy, size: 14, color: Colors.white38),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          
+          // Aberta por
+          Row(
+            children: [
+              const Text('👤 Aberta por: ', style: TextStyle(color: Colors.white54, fontSize: 12)),
+              Icon(
+                openedBy == 'user' ? Icons.person : Icons.storefront,
+                color: Colors.white70, size: 16,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                openedBy == 'user' ? 'Usuário' : 'Provedor',
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          
+          // Pubkey do autor
+          if (userPubkey.isNotEmpty) ...[
+            Row(
+              children: [
+                const Text('🔑 Pubkey: ', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                Text(
+                  '${userPubkey.substring(0, 16)}...',
+                  style: const TextStyle(color: Colors.white70, fontFamily: 'monospace', fontSize: 11),
+                ),
+                const SizedBox(width: 4),
+                GestureDetector(
+                  onTap: () => _copyToClipboard(userPubkey, 'Pubkey'),
+                  child: const Icon(Icons.copy, size: 12, color: Colors.white38),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+          ],
+          
+          // Provider ID
+          if (providerId.isNotEmpty) ...[
+            Row(
+              children: [
+                const Text('🏪 Provedor: ', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                Text(
+                  '${providerId.substring(0, 16)}...',
+                  style: const TextStyle(color: Colors.white70, fontFamily: 'monospace', fontSize: 11),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+          ],
+          
+          // Valores
+          if (amountBrl != null || amountSats != null) ...[
+            Row(
+              children: [
+                if (amountBrl != null) ...[
+                  const Text('💰 ', style: TextStyle(fontSize: 12)),
+                  Text(
+                    'R\$ ${amountBrl is num ? amountBrl.toStringAsFixed(2) : amountBrl}',
+                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(width: 12),
+                ],
+                if (amountSats != null) ...[
+                  const Text('₿ ', style: TextStyle(fontSize: 12)),
+                  Text(
+                    '$amountSats sats',
+                    style: const TextStyle(color: Colors.amber, fontSize: 12),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 6),
+          ],
+          
+          // PIX / Tipo / Status anterior
+          if (paymentType.isNotEmpty)
+            Text('💳 Tipo: $paymentType', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+          if (pixKey.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text('🔑 PIX: $pixKey', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+          ],
+          if (previousStatus.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text('📊 Status anterior: $previousStatus', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+          ],
+          const SizedBox(height: 8),
+          
+          // Motivo e descrição
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.black26,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '📌 $reason',
+                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                ),
+                if (description.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    description,
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _updateDisputeStatus(Dispute dispute, String newStatus, {String? resolution, String? notes}) async {

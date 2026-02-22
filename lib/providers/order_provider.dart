@@ -86,6 +86,9 @@ class OrderProvider with ChangeNotifier {
   /// Getter pÃÂºblico para a pubkey do usuÃÂ¡rio atual (usado para verificaÃÂ§ÃÂµes externas)
   String? get currentUserPubkey => _currentUserPubkey;
   
+  /// Getter publico para a chave privada Nostr (usado para publicar disputas)
+  String? get nostrPrivateKey => _nostrService.privateKey;
+
   /// SEGURANÃâ¡A: Getter para ordens que EU CRIEI (modo usuÃÂ¡rio)
   /// Retorna APENAS ordens onde userPubkey == currentUserPubkey
   /// Usado na tela "Minhas Trocas" do modo usuÃÂ¡rio

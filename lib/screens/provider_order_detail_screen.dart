@@ -13,6 +13,7 @@ import '../providers/lightning_provider.dart';
 import '../services/escrow_service.dart';
 import '../services/dispute_service.dart';
 import '../services/notification_service.dart';
+import '../services/nostr_order_service.dart';
 import '../config.dart';
 
 /// Tela de detalhes da ordem para o provedor
@@ -1820,7 +1821,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             left: 20,
             right: 20,
             top: 20,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+            bottom: MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom + 24,
           ),
           child: SingleChildScrollView(
             child: Column(
@@ -1978,6 +1979,25 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       // Atualizar status local para "em disputa"
       final orderProvider = context.read<OrderProvider>();
       await orderProvider.updateOrderStatus(orderId: widget.orderId, status: 'disputed');
+
+      // Publicar notificação de disputa no Nostr (kind 1 com tag bro-disputa)
+      try {
+        final nostrOrderService = NostrOrderService();
+        final privateKey = orderProvider.nostrPrivateKey;
+        if (privateKey != null) {
+          await nostrOrderService.publishDisputeNotification(
+            privateKey: privateKey,
+            orderId: widget.orderId,
+            reason: reason,
+            description: description,
+            openedBy: 'provider',
+            orderDetails: orderDetails,
+          );
+          debugPrint('📤 Disputa do provedor publicada no Nostr');
+        }
+      } catch (e) {
+        debugPrint('⚠️ Erro ao publicar disputa no Nostr: $e');
+      }
 
       if (mounted) {
         Navigator.pop(context); // Fechar loading

@@ -1066,47 +1066,20 @@ class OrderProvider with ChangeNotifier {
         }
       }
       
-      // CORREÃâ¡ÃÆO v1.0.129: MERGE em vez de substituiÃÂ§ÃÂ£o bruta
-      // Problema anterior: substituir a lista inteira causava oscilaÃÂ§ÃÂ£o
-      // (32 Ã¢â â 0 Ã¢â â 32) quando relays retornavam dados parciais entre polls.
-      // Agora: adicionar novas ordens E remover apenas as CONFIRMADAS como aceitas/concluÃÂ­das.
+      // v1.0.129+202: SUBSTITUIR lista ao inves de merge
+      // O merge anterior preservava ordens stale indefinidamente (bug: 43 ordens
+      // concluidas ainda apareciam como disponiveis). Com 3 relays em paralelo,
+      // uma ordem so desaparece se sumiu de TODOS os relays (= foi concluida/cancelada).
+      // Protecao: se fetch retornou 0 ordens (falha de rede), manter lista antiga.
       if (allPendingOrders.isNotEmpty) {
-        final newIds = newAvailableOrders.map((o) => o.id).toSet();
+        final previousCount = _availableOrdersForProvider.length;
+        _availableOrdersForProvider = newAvailableOrders;
         
-        // Manter ordens existentes que ainda nÃÂ£o foram confirmadas como aceitas
-        // (podem ter sumido temporariamente do relay mas ainda estÃÂ£o disponÃÂ­veis)
-        final merged = <Order>[];
-        final mergedIds = <String>{};
-        
-        // 1. Adicionar todas as novas ordens
-        for (final order in newAvailableOrders) {
-          if (!mergedIds.contains(order.id)) {
-            merged.add(order);
-            mergedIds.add(order.id);
-          }
+        if (previousCount > 0 && newAvailableOrders.isEmpty) {
+          debugPrint('AVISO: Lista de disponiveis foi de $previousCount para 0 - possivel falha de relay');
+        } else if (previousCount != newAvailableOrders.length) {
+          debugPrint('Disponiveis: $previousCount -> ${newAvailableOrders.length}');
         }
-        
-        // 2. Manter ordens existentes que nÃÂ£o apareceram nos novos dados
-        //    EXCETO se jÃÂ¡ foram aceitas/concluÃÂ­das em _orders (confirmadas como taken)
-        for (final existing in _availableOrdersForProvider) {
-          if (mergedIds.contains(existing.id)) continue; // JÃÂ¡ incluÃÂ­da
-          
-          // Verificar se foi aceita em _orders (confirmaÃÂ§ÃÂ£o explÃÂ­cita)
-          final inMyOrders = _orders.cast<Order?>().firstWhere(
-            (o) => o?.id == existing.id,
-            orElse: () => null,
-          );
-          final isTaken = inMyOrders != null && 
-              const ['accepted', 'awaiting_confirmation', 'completed', 'liquidated', 'cancelled', 'disputed']
-                  .contains(inMyOrders.status);
-          
-          if (!isTaken) {
-            merged.add(existing);
-            mergedIds.add(existing.id);
-          }
-        }
-        
-        _availableOrdersForProvider = merged;
       }
       
       debugPrint('Ã°Å¸ââ syncProvider: $addedToAvailable disponÃÂ­veis, $updated atualizadas, _orders total=${_orders.length}');

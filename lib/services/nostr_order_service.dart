@@ -2507,21 +2507,37 @@ class NostrOrderService {
     }
   }
 
-  /// Busca notificações de disputa do Nostr (kind 1 com tag bro-disputa)
-  /// Usado pelo admin para ver todas as disputas de qualquer dispositivo
+  /// Busca notificações de disputa do Nostr
+  /// Estratégia dupla:
+  /// 1. Kind 1 com tag bro-disputa (notificações explícitas, build 207+)
+  /// 2. Kind 30080 com tag status-disputed (updates de status 'disputed', qualquer build)
+  /// Usado pelo admin para ver TODAS as disputas de qualquer dispositivo
   Future<List<Map<String, dynamic>>> fetchDisputeNotifications() async {
     final allEvents = <Map<String, dynamic>>[];
     final seenIds = <String>{};
+    final seenOrderIds = <String>{}; // Para deduplicar por orderId
     
     final results = await Future.wait(
       _relays.map((relay) async {
         try {
-          return await _fetchFromRelay(
-            relay,
-            kinds: [1],
-            tags: {'#t': ['bro-disputa']},
-            limit: 100,
-          ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]);
+          // Buscar AMBAS as fontes em paralelo
+          final fetches = await Future.wait([
+            // Estratégia 1: Kind 1 - notificações explícitas de disputa (build 207+)
+            _fetchFromRelay(
+              relay,
+              kinds: [1],
+              tags: {'#t': ['bro-disputa']},
+              limit: 100,
+            ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]),
+            // Estratégia 2: Kind 30080 com tag status-disputed (qualquer build)
+            _fetchFromRelay(
+              relay,
+              kinds: [kindBroPaymentProof],
+              tags: {'#t': ['status-disputed']},
+              limit: 100,
+            ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]),
+          ]);
+          return [...fetches[0], ...fetches[1]];
         } catch (_) {
           return <Map<String, dynamic>>[];
         }

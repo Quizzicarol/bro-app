@@ -45,6 +45,9 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   File? _receiptImage;
   bool _orderAccepted = false;
   
+  // Dados de resolução de disputa (vindo do mediador)
+  Map<String, dynamic>? _disputeResolution;
+  
   // Timer de 24h para auto-liquidação
   Duration? _timeRemaining;
   DateTime? _receiptSubmittedAt;
@@ -59,6 +62,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadOrderDetails(forceSync: true);
       _startStatusPolling();
+      _fetchResolutionIfNeeded();
     });
   }
 
@@ -67,6 +71,23 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     _statusPollingTimer?.cancel();
     _confirmationCodeController.dispose();
     super.dispose();
+  }
+  
+  /// Busca resolução de disputa do Nostr
+  Future<void> _fetchResolutionIfNeeded() async {
+    await Future.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+    
+    try {
+      final nostrService = NostrOrderService();
+      final resolution = await nostrService.fetchDisputeResolution(widget.orderId);
+      if (resolution != null && mounted) {
+        setState(() => _disputeResolution = resolution);
+        debugPrint('✅ Provider: resolução encontrada para ${widget.orderId.substring(0, 8)}');
+      }
+    } catch (e) {
+      debugPrint('⚠️ Provider: erro ao buscar resolução: $e');
+    }
   }
   
   /// Inicia polling automático para verificar updates de status
@@ -728,6 +749,11 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           // ========== ORDEM CONCLUÍDA - Tela de Resumo ==========
           if (isCompleted) ...[
             _buildCompletedOrderView(amount, providerFee, billType),
+            // Card de resolução (se ordem foi resolvida via mediação)
+            if (_disputeResolution != null) ...[
+              const SizedBox(height: 16),
+              _buildDisputeResolutionCard(),
+            ],
           ]
           // ========== AGUARDANDO CONFIRMAÇÃO DO USUÁRIO ==========
           else if (isAwaitingConfirmation) ...[
@@ -767,6 +793,11 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             _buildAmountCard(amount, providerFee),
             const SizedBox(height: 16),
             _buildStatusCard(),
+            // Card de resolução de disputa (se houver)
+            if (_disputeResolution != null) ...[
+              const SizedBox(height: 16),
+              _buildDisputeResolutionCard(),
+            ],
           ],
           
           // Padding extra para não ficar sob a barra de navegação
@@ -1209,6 +1240,90 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     return 'Ver código abaixo';
   }
 
+  /// Card mostrando resultado da resolução do mediador
+  Widget _buildDisputeResolutionCard() {
+    final resolution = _disputeResolution!;
+    final isProviderFavor = resolution['resolution'] == 'resolved_provider';
+    final notes = resolution['notes'] as String? ?? '';
+    final resolvedAt = resolution['resolvedAt'] as String? ?? '';
+    
+    String dateStr = '';
+    try {
+      final dt = DateTime.parse(resolvedAt);
+      dateStr = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      dateStr = resolvedAt;
+    }
+    
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: (isProviderFavor ? Colors.green : Colors.orange).withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: (isProviderFavor ? Colors.green : Colors.orange).withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.gavel, color: isProviderFavor ? Colors.green : Colors.orange, size: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '⚖️ Decisão do Mediador',
+                      style: TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.bold,
+                        color: isProviderFavor ? Colors.green : Colors.orange,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      isProviderFavor
+                          ? 'Resolvida a seu favor — pagamento mantido'
+                          : 'Resolvida a favor do usuário — ordem cancelada',
+                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (notes.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.black26,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.white10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Mensagem do mediador:', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                  const SizedBox(height: 6),
+                  Text(notes, style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.4)),
+                ],
+              ),
+            ),
+          ],
+          if (dateStr.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text('📅 $dateStr', style: const TextStyle(color: Colors.white38, fontSize: 11)),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Map<String, dynamic> _getStatusInfo(String status) {
     switch (status) {
       case 'pending':
@@ -1241,6 +1356,18 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           'color': Colors.orange,
         };
       case 'confirmed':
+      case 'completed':
+        if (_disputeResolution != null) {
+          final isProviderFavor = _disputeResolution!['resolution'] == 'resolved_provider';
+          return {
+            'title': 'Resolvida por Mediação',
+            'description': isProviderFavor
+                ? 'Mediador decidiu a seu favor — pagamento mantido'
+                : 'Mediador decidiu a favor do usuário',
+            'icon': Icons.gavel,
+            'color': isProviderFavor ? Colors.green : Colors.orange,
+          };
+        }
         return {
           'title': 'Confirmado',
           'description': 'Pagamento recebido!',

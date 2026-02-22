@@ -7,6 +7,7 @@ import '../services/dispute_service.dart';
 import '../services/nostr_order_service.dart';
 import '../providers/order_provider.dart';
 import '../config.dart';
+import 'dispute_detail_screen.dart';
 
 /// Tela de administração MASTER - Taxas da Plataforma + Disputas
 /// ACESSO RESTRITO - Protegida por senha de administrador
@@ -1140,15 +1141,9 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
   Widget _buildNostrDisputeCard(Map<String, dynamic> dispute) {
     final orderId = dispute['orderId'] as String? ?? '';
     final reason = dispute['reason'] as String? ?? 'Não informado';
-    final description = dispute['description'] as String? ?? '';
     final openedBy = dispute['openedBy'] as String? ?? 'user';
-    final userPubkey = dispute['userPubkey'] as String? ?? '';
     final amountBrl = dispute['amount_brl'];
     final amountSats = dispute['amount_sats'];
-    final paymentType = dispute['payment_type'] as String? ?? '';
-    final pixKey = dispute['pix_key'] as String? ?? '';
-    final providerId = dispute['provider_id'] as String? ?? '';
-    final previousStatus = dispute['previous_status'] as String? ?? '';
     final createdAtStr = dispute['createdAt'] as String? ?? '';
     final existsLocally = dispute['existsLocally'] as bool? ?? false;
     
@@ -1160,208 +1155,111 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
       dateStr = createdAtStr;
     }
     
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.orange.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.orange.withOpacity(0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.gavel, color: Colors.orange, size: 18),
-                  const SizedBox(width: 6),
-                  Text(
-                    existsLocally ? 'Disputa (Nostr + Local)' : 'Disputa (Nostr)',
-                    style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 13),
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => DisputeDetailScreen(dispute: dispute)),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.orange.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.orange.withOpacity(0.3)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.gavel, color: Colors.orange, size: 18),
+                    const SizedBox(width: 6),
+                    Text(
+                      existsLocally ? 'Disputa (Nostr + Local)' : 'Disputa (Nostr)',
+                      style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                  ],
+                ),
+                Text(dateStr, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+              ],
+            ),
+            const SizedBox(height: 10),
+            
+            // Ordem ID
+            Row(
+              children: [
+                const Text('🆔 Ordem: ', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                Expanded(
+                  child: Text(
+                    orderId.length > 20 ? '${orderId.substring(0, 20)}...' : orderId,
+                    style: const TextStyle(color: Colors.amber, fontFamily: 'monospace', fontSize: 12),
                   ),
-                ],
-              ),
-              Text(dateStr, style: const TextStyle(color: Colors.white38, fontSize: 11)),
-            ],
-          ),
-          const SizedBox(height: 10),
-          
-          // Ordem ID
-          Row(
-            children: [
-              const Text('🆔 Ordem: ', style: TextStyle(color: Colors.white54, fontSize: 12)),
-              Expanded(
-                child: Text(
-                  orderId.length > 20 ? '${orderId.substring(0, 20)}...' : orderId,
-                  style: const TextStyle(color: Colors.amber, fontFamily: 'monospace', fontSize: 12),
-                ),
-              ),
-              GestureDetector(
-                onTap: () => _copyToClipboard(orderId, 'Order ID'),
-                child: const Icon(Icons.copy, size: 14, color: Colors.white38),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          
-          // Aberta por
-          Row(
-            children: [
-              const Text('👤 Aberta por: ', style: TextStyle(color: Colors.white54, fontSize: 12)),
-              Icon(
-                openedBy == 'user' ? Icons.person : Icons.storefront,
-                color: Colors.white70, size: 16,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                openedBy == 'user' ? 'Usuário' : 'Provedor',
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          
-          // Pubkey do autor
-          if (userPubkey.isNotEmpty) ...[
-            Row(
-              children: [
-                const Text('🔑 Pubkey: ', style: TextStyle(color: Colors.white54, fontSize: 12)),
-                Text(
-                  '${userPubkey.substring(0, 16)}...',
-                  style: const TextStyle(color: Colors.white70, fontFamily: 'monospace', fontSize: 11),
-                ),
-                const SizedBox(width: 4),
-                GestureDetector(
-                  onTap: () => _copyToClipboard(userPubkey, 'Pubkey'),
-                  child: const Icon(Icons.copy, size: 12, color: Colors.white38),
                 ),
               ],
             ),
             const SizedBox(height: 6),
-          ],
-          
-          // Provider ID
-          if (providerId.isNotEmpty) ...[
+            
+            // Aberta por + Valores
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('🏪 Provedor: ', style: TextStyle(color: Colors.white54, fontSize: 12)),
-                Text(
-                  '${providerId.substring(0, 16)}...',
-                  style: const TextStyle(color: Colors.white70, fontFamily: 'monospace', fontSize: 11),
+                Row(
+                  children: [
+                    Icon(
+                      openedBy == 'user' ? Icons.person : Icons.storefront,
+                      color: Colors.white70, size: 16,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      openedBy == 'user' ? 'Usuário' : 'Provedor',
+                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 6),
-          ],
-          
-          // Valores
-          if (amountBrl != null || amountSats != null) ...[
-            Row(
-              children: [
-                if (amountBrl != null) ...[
-                  const Text('💰 ', style: TextStyle(fontSize: 12)),
+                if (amountBrl != null)
                   Text(
                     'R\$ ${amountBrl is num ? amountBrl.toStringAsFixed(2) : amountBrl}',
                     style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(width: 12),
-                ],
-                if (amountSats != null) ...[
-                  const Text('₿ ', style: TextStyle(fontSize: 12)),
-                  Text(
-                    '$amountSats sats',
-                    style: const TextStyle(color: Colors.amber, fontSize: 12),
-                  ),
-                ],
               ],
             ),
-            const SizedBox(height: 6),
-          ],
-          
-          // PIX / Tipo / Status anterior
-          if (paymentType.isNotEmpty)
-            Text('💳 Tipo: $paymentType', style: const TextStyle(color: Colors.white54, fontSize: 11)),
-          if (pixKey.isNotEmpty) ...[
-            const SizedBox(height: 2),
-            Text('🔑 PIX: $pixKey', style: const TextStyle(color: Colors.white54, fontSize: 11)),
-          ],
-          if (previousStatus.isNotEmpty) ...[
-            const SizedBox(height: 2),
-            Text('📊 Status anterior: $previousStatus', style: const TextStyle(color: Colors.white54, fontSize: 11)),
-          ],
-          const SizedBox(height: 8),
-          
-          // Motivo e descrição
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: Colors.black26,
-              borderRadius: BorderRadius.circular(6),
+            const SizedBox(height: 8),
+            
+            // Motivo resumido
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.black26,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                '📌 $reason',
+                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            
+            // Indicador de toque
+            const SizedBox(height: 8),
+            const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  '📌 $reason',
-                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
-                ),
-                if (description.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    description,
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
-                  ),
-                ],
+                Icon(Icons.touch_app, color: Colors.orange, size: 14),
+                SizedBox(width: 4),
+                Text('Toque para ver detalhes e mediar', style: TextStyle(color: Colors.orange, fontSize: 11)),
               ],
             ),
-          ),
-          
-          // Botões de resolução
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              // Resolver a favor do usuário
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 4),
-                  child: ElevatedButton.icon(
-                    onPressed: () => _showNostrResolveDialog(dispute, 'resolved_user'),
-                    icon: const Icon(Icons.person, size: 16, color: Colors.white),
-                    label: const FittedBox(
-                      child: Text('Favor Usuário', style: TextStyle(fontSize: 11, color: Colors.white)),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue.shade700,
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                    ),
-                  ),
-                ),
-              ),
-              // Resolver a favor do provedor
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 4),
-                  child: ElevatedButton.icon(
-                    onPressed: () => _showNostrResolveDialog(dispute, 'resolved_provider'),
-                    icon: const Icon(Icons.storefront, size: 16, color: Colors.white),
-                    label: const FittedBox(
-                      child: Text('Favor Provedor', style: TextStyle(fontSize: 11, color: Colors.white)),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green.shade700,
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -57,12 +57,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   String? _disputeReason;
   String? _disputeDescription;
   DateTime? _disputeCreatedAt;
+  
+  // Dados de resolução de disputa (vindo do mediador)
+  Map<String, dynamic>? _disputeResolution;
 
   @override
   void initState() {
     super.initState();
     _loadOrderDetails();
     _startStatusPolling();
+    _fetchResolutionIfNeeded();
   }
 
   @override
@@ -131,7 +135,25 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       });
     }
   }
-
+/// Busca resolução de disputa do Nostr (se a ordem tiver passado por disputa)
+  Future<void> _fetchResolutionIfNeeded() async {
+    // Aguardar dados da ordem carregarem
+    await Future.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+    
+    // Buscar resolução para qualquer ordem (pode ter sido disputada e já resolvida)
+    try {
+      final nostrService = NostrOrderService();
+      final resolution = await nostrService.fetchDisputeResolution(widget.orderId);
+      if (resolution != null && mounted) {
+        setState(() => _disputeResolution = resolution);
+        debugPrint('✅ Resolução de disputa encontrada para ${widget.orderId.substring(0, 8)}');
+      }
+    } catch (e) {
+      debugPrint('⚠️ Erro ao buscar resolução: $e');
+    }
+  }
+  
   
   /// Trata mudancas de status e envia notificacoes
   void _handleStatusChange(String newStatus) {
@@ -1201,6 +1223,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 const SizedBox(height: 16),
                 _buildDisputedCard(),
               ],
+              // Card de resolução de disputa (para completed/cancelled/disputed com resolução)
+              if (_disputeResolution != null) ...[
+                const SizedBox(height: 16),
+                _buildDisputeResolutionCard(),
+              ],
               // Botão de saque para ordens canceladas
               if (_currentStatus == 'cancelled') ...[
                 const SizedBox(height: 16),
@@ -1409,6 +1436,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           'color': const Color(0xFFFF6B6B),
         };
       case 'completed':
+        if (_disputeResolution != null) {
+          return {
+            'icon': Icons.gavel,
+            'title': 'Resolvida por Mediação',
+            'subtitle': _disputeResolution!['resolution'] == 'resolved_provider'
+                ? 'Mediador decidiu a favor do provedor'
+                : 'Mediador decidiu - ordem concluída',
+            'color': Colors.green,
+          };
+        }
         return {
           'icon': Icons.celebration,
           'title': 'Concluída!',
@@ -1423,6 +1460,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           'color': Colors.purple,
         };
       case 'cancelled':
+        if (_disputeResolution != null) {
+          return {
+            'icon': Icons.gavel,
+            'title': 'Resolvida por Mediação',
+            'subtitle': _disputeResolution!['resolution'] == 'resolved_user'
+                ? 'Mediador decidiu a seu favor — sats devolvidos'
+                : 'Mediador decidiu — ordem cancelada',
+            'color': Colors.orange,
+          };
+        }
         return {
           'icon': Icons.cancel_outlined,
           'title': 'Cancelada',
@@ -3761,6 +3808,97 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         });
       }
     }
+  }
+
+  /// Card mostrando resultado da resolução do mediador
+  Widget _buildDisputeResolutionCard() {
+    final resolution = _disputeResolution!;
+    final isUserFavor = resolution['resolution'] == 'resolved_user';
+    final notes = resolution['notes'] as String? ?? '';
+    final resolvedAt = resolution['resolvedAt'] as String? ?? '';
+    
+    String dateStr = '';
+    try {
+      final dt = DateTime.parse(resolvedAt);
+      dateStr = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      dateStr = resolvedAt;
+    }
+    
+    return Card(
+      color: const Color(0xFF1A1A1A),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: isUserFavor ? Colors.blue.withOpacity(0.3) : Colors.green.withOpacity(0.3)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: (isUserFavor ? Colors.blue : Colors.green).withOpacity(0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.gavel, color: isUserFavor ? Colors.blue : Colors.green, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '⚖️ Decisão do Mediador',
+                        style: TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.bold,
+                          color: isUserFavor ? Colors.blue : Colors.green,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        isUserFavor ? 'Resolvida a seu favor' : 'Resolvida a favor do provedor',
+                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (notes.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.black26,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.white10),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Mensagem do mediador:', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                    const SizedBox(height: 6),
+                    Text(notes, style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.4)),
+                  ],
+                ),
+              ),
+            ],
+            if (dateStr.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Text('📅 $dateStr', style: const TextStyle(color: Colors.white38, fontSize: 11)),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildDisputedCard() {

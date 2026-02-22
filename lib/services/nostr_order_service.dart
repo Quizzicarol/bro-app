@@ -2624,4 +2624,167 @@ class NostrOrderService {
       return false;
     }
   }
+
+  /// Publica mensagem do mediador no Nostr (kind 1, tag bro-mediacao)
+  /// Permite o admin enviar mensagem direta para user, provider ou ambos
+  Future<bool> publishMediatorMessage({
+    required String privateKey,
+    required String orderId,
+    required String message,
+    required String target, // 'user', 'provider', 'both'
+    String? userPubkey,
+    String? providerId,
+  }) async {
+    try {
+      final keychain = Keychain(privateKey);
+      
+      final content = jsonEncode({
+        'type': 'bro_mediator_message',
+        'orderId': orderId,
+        'message': message,
+        'target': target,
+        'adminPubkey': keychain.public,
+        'userPubkey': userPubkey,
+        'providerId': providerId,
+        'sentAt': DateTime.now().toIso8601String(),
+      });
+      
+      final tags = [
+        ['t', 'bro-mediacao'],
+        ['t', broTag],
+        ['r', orderId],
+      ];
+      
+      if ((target == 'user' || target == 'both') && userPubkey != null && userPubkey.isNotEmpty) {
+        tags.add(['p', userPubkey]);
+      }
+      if ((target == 'provider' || target == 'both') && providerId != null && providerId.isNotEmpty) {
+        tags.add(['p', providerId]);
+      }
+      
+      final event = Event.from(kind: 1, tags: tags, content: content, privkey: keychain.private);
+      
+      final results = await Future.wait(
+        _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
+      );
+      
+      final successCount = results.where((r) => r).length;
+      debugPrint('📤 publishMediatorMessage: publicado em $successCount/${_relays.length} relays (target=$target, orderId=${orderId.substring(0, 8)})');
+      return successCount > 0;
+    } catch (e) {
+      debugPrint('❌ publishMediatorMessage EXCEPTION: $e');
+      return false;
+    }
+  }
+
+  /// Busca resolução de disputa para uma ordem específica (kind 1, tag bro-resolucao)
+  /// Retorna o mapa de resolução ou null se não encontrada
+  Future<Map<String, dynamic>?> fetchDisputeResolution(String orderId) async {
+    try {
+      final filter = {
+        'kinds': [1],
+        '#t': ['bro-resolucao'],
+        '#r': [orderId],
+        'limit': 5,
+      };
+      
+      Map<String, dynamic>? latestResolution;
+      int latestTimestamp = 0;
+      
+      for (final relay in _relays.take(3)) {
+        try {
+          final channel = WebSocketChannel.connect(Uri.parse(relay));
+          final subId = 'res_${orderId.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
+          
+          channel.sink.add(jsonEncode(['REQ', subId, filter]));
+          
+          await for (final msg in channel.stream.timeout(const Duration(seconds: 8), onTimeout: (sink) => sink.close())) {
+            final data = jsonDecode(msg.toString());
+            if (data is List && data.length >= 3 && data[0] == 'EVENT') {
+              final eventData = data[2] as Map<String, dynamic>;
+              final createdAt = eventData['created_at'] as int? ?? 0;
+              
+              if (createdAt > latestTimestamp) {
+                try {
+                  final contentMap = jsonDecode(eventData['content'] as String) as Map<String, dynamic>;
+                  if (contentMap['type'] == 'bro_dispute_resolution') {
+                    latestResolution = contentMap;
+                    latestTimestamp = createdAt;
+                  }
+                } catch (_) {}
+              }
+            }
+            if (data is List && data[0] == 'EOSE') break;
+          }
+          
+          channel.sink.add(jsonEncode(['CLOSE', subId]));
+          channel.sink.close();
+        } catch (_) {}
+      }
+      
+      if (latestResolution != null) {
+        debugPrint('✅ fetchDisputeResolution: resolução encontrada para ${orderId.substring(0, 8)} - ${latestResolution['resolution']}');
+      } else {
+        debugPrint('🔍 fetchDisputeResolution: nenhuma resolução para ${orderId.substring(0, 8)}');
+      }
+      
+      return latestResolution;
+    } catch (e) {
+      debugPrint('❌ fetchDisputeResolution EXCEPTION: $e');
+      return null;
+    }
+  }
+
+  /// Busca mensagens do mediador para um usuário ou provedor específico
+  /// Retorna lista de mensagens relevantes
+  Future<List<Map<String, dynamic>>> fetchMediatorMessages(String pubkey, {String? orderId}) async {
+    try {
+      final filter = <String, dynamic>{
+        'kinds': [1],
+        '#t': ['bro-mediacao'],
+        '#p': [pubkey],
+        'limit': 20,
+      };
+      if (orderId != null) {
+        filter['#r'] = [orderId];
+      }
+      
+      final messages = <Map<String, dynamic>>[];
+      
+      for (final relay in _relays.take(3)) {
+        try {
+          final channel = WebSocketChannel.connect(Uri.parse(relay));
+          final subId = 'med_${pubkey.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
+          
+          channel.sink.add(jsonEncode(['REQ', subId, filter]));
+          
+          await for (final msg in channel.stream.timeout(const Duration(seconds: 8), onTimeout: (sink) => sink.close())) {
+            final data = jsonDecode(msg.toString());
+            if (data is List && data.length >= 3 && data[0] == 'EVENT') {
+              final eventData = data[2] as Map<String, dynamic>;
+              try {
+                final content = jsonDecode(eventData['content'] as String) as Map<String, dynamic>;
+                if (content['type'] == 'bro_mediator_message') {
+                  content['eventCreatedAt'] = eventData['created_at'];
+                  final existing = messages.any((m) => m['sentAt'] == content['sentAt'] && m['orderId'] == content['orderId']);
+                  if (!existing) messages.add(content);
+                }
+              } catch (_) {}
+            }
+            if (data is List && data[0] == 'EOSE') break;
+          }
+          
+          channel.sink.add(jsonEncode(['CLOSE', subId]));
+          channel.sink.close();
+        } catch (_) {}
+      }
+      
+      messages.sort((a, b) => (b['eventCreatedAt'] as int? ?? 0).compareTo(a['eventCreatedAt'] as int? ?? 0));
+      debugPrint('📨 fetchMediatorMessages: ${messages.length} mensagens para ${pubkey.substring(0, 8)}');
+      return messages;
+    } catch (e) {
+      debugPrint('❌ fetchMediatorMessages EXCEPTION: $e');
+      return [];
+    }
+  }
 }

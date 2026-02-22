@@ -65,6 +65,15 @@
         "/^\\$adb = \"\\$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb\\.exe\"; & \\$adb install -r \"build\\\\app\\\\outputs\\\\flutter-apk\\\\app-release\\.apk\"$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "\\\"": true,
+        "/^python fix_debugprint\\.py$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^\\$adb = \"\\$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb\\.exe\"; & \\$adb devices$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }

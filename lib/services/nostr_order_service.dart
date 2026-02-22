@@ -25,13 +25,12 @@ class NostrOrderService {
   // Chave privada para descriptografia (configurada pelo order_provider)
   String? _decryptionKey;
   
-  // PERFORMANCE: Cache de _fetchAllOrderStatusUpdates com TTL de 60s
-  // Evita chamar 3x a mesma função pesada durante um único ciclo de sync
-  // CORREÇÃO v1.0.129: Aumentado de 15s para 60s para garantir consistência
-  // entre chamadas dentro do mesmo ciclo de polling (45s)
+  // PERFORMANCE: Cache de _fetchAllOrderStatusUpdates com TTL de 15s
+  // O Completer lock já previne chamadas paralelas, então TTL curto é seguro
+  // e garante dados mais frescos entre polls (45s)
   Map<String, Map<String, dynamic>>? _statusUpdatesCache;
   DateTime? _statusUpdatesCacheTime;
-  static const _statusUpdatesCacheTtlSeconds = 60;
+  static const _statusUpdatesCacheTtlSeconds = 15;
   // CORREÇÃO v1.0.129: Lock para evitar chamadas simultâneas de _fetchAllOrderStatusUpdates
   // Quando 3 funções chamam em paralelo, a primeira faz o fetch real,
   // as outras esperam pelo mesmo resultado sem criar novas conexões
@@ -1203,19 +1202,26 @@ class NostrOrderService {
     // PERFORMANCE: Buscar de todos os relays EM PARALELO
     // Para cada relay, buscar AMBAS as estratégias em paralelo (com e sem tag)
     final allEvents = <Map<String, dynamic>>[];
+    // Usar mesmo window de 14 dias das ordens para garantir cobertura completa
+    final fourteenDaysAgo = DateTime.now().subtract(const Duration(days: 14));
+    final statusSince = (fourteenDaysAgo.millisecondsSinceEpoch / 1000).floor();
+    
     final relayFutures = _relays.map((relay) async {
       try {
         // Buscar ambas estratégias em paralelo dentro do mesmo relay
+        // COM since para evitar truncagem por limit em volumes altos
         final results = await Future.wait([
-          _fetchFromRelay(
+          _fetchFromRelayWithSince(
             relay,
             kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete],
             tags: {'#t': [broTag]},
+            since: statusSince,
             limit: 500,
           ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]),
-          _fetchFromRelay(
+          _fetchFromRelayWithSince(
             relay,
             kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete],
+            since: statusSince,
             limit: 500,
           ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]),
         ]);

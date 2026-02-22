@@ -1176,7 +1176,7 @@ class NostrOrderService {
     
     // Filtrar ordens expiradas ANTES do fetch de status (economiza queries)
     final now = DateTime.now();
-    final maxOrderAge = const Duration(days: 3);
+    final maxOrderAge = const Duration(days: 7);
     final freshOrders = <Order>[];
     final expiredIds = <String>{};
     

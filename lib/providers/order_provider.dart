@@ -2245,8 +2245,12 @@ class OrderProvider with ChangeNotifier {
       // NOVO: Buscar atualizaÃÂ§ÃÂµes de status (aceites e comprovantes de Bros)
       // CORREÃâ¡ÃÆO v1.0.128: fetchOrderUpdatesForUser agora tambÃÂ©m busca eventos do prÃÂ³prio usuÃÂ¡rio (kind 30080)
       // para recuperar status 'completed' apÃÂ³s reinstalaÃÂ§ÃÂ£o do app
-      final orderIds = _orders.map((o) => o.id).toList();
-      debugPrint('Ã°Å¸âÂ¡ syncOrdersFromNostr: buscando updates para ${orderIds.length} ordens');
+      // PERFORMANCE v1.0.129+218: Buscar updates APENAS para ordens NAO-TERMINAIS
+      // Ordens completed/cancelled/liquidated ja tem status final
+      const terminalStatuses = ['completed', 'cancelled', 'liquidated'];
+      final activeOrders = _orders.where((o) => !terminalStatuses.contains(o.status)).toList();
+      final orderIds = activeOrders.map((o) => o.id).toList();
+      debugPrint('syncOrdersFromNostr: ${orderIds.length} ordens ativas, ${_orders.length - orderIds.length} terminais ignoradas');
       final orderUpdates = await _nostrOrderService.fetchOrderUpdatesForUser(
         _currentUserPubkey!,
         orderIds: orderIds,

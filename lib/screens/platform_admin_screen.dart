@@ -139,25 +139,34 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
         
         nostrDisputes = disputesByOrderId.values.toList();
         
-        // Verificar resolução de cada disputa para separar abertas/resolvidas
+        // Verificar resolução de cada disputa EM PARALELO para separar abertas/resolvidas
+        // CORREÇÃO build 218: Antes era sequencial (N × 3 relays × 8s timeout = muito lento)
         final openNostr = <Map<String, dynamic>>[];
         final resolvedNostr = <Map<String, dynamic>>[];
         
-        for (final dispute in nostrDisputes) {
+        // Buscar resoluções em paralelo (todas ao mesmo tempo)
+        final resolutionFutures = nostrDisputes.map((dispute) async {
           final dOrderId = dispute['orderId'] as String? ?? '';
-          if (dOrderId.isEmpty) continue;
+          if (dOrderId.isEmpty) return {'dispute': dispute, 'resolution': null};
           try {
             final resolution = await nostrOrderService.fetchDisputeResolution(dOrderId)
-                .timeout(const Duration(seconds: 6), onTimeout: () => null);
-            if (resolution != null) {
-              dispute['resolution'] = resolution;
-              dispute['resolved'] = true;
-              resolvedNostr.add(dispute);
-            } else {
-              dispute['resolved'] = false;
-              openNostr.add(dispute);
-            }
+                .timeout(const Duration(seconds: 8), onTimeout: () => null);
+            return {'dispute': dispute, 'resolution': resolution};
           } catch (_) {
+            return {'dispute': dispute, 'resolution': null};
+          }
+        }).toList();
+        
+        final resolutionResults = await Future.wait(resolutionFutures);
+        
+        for (final result in resolutionResults) {
+          final dispute = result['dispute'] as Map<String, dynamic>;
+          final resolution = result['resolution'] as Map<String, dynamic>?;
+          if (resolution != null) {
+            dispute['resolution'] = resolution;
+            dispute['resolved'] = true;
+            resolvedNostr.add(dispute);
+          } else {
             dispute['resolved'] = false;
             openNostr.add(dispute);
           }

@@ -1560,19 +1560,22 @@ class NostrOrderService {
       try {
         // Buscar ambas estratégias em paralelo dentro do mesmo relay
         // COM since para evitar truncagem por limit em volumes altos
+        // PERFORMANCE v1.0.129+218: Reduzido limit de 2000→500 por estratégia
+        // Com a filtragem de ordens terminais no caller, não precisamos mais
+        // buscar o histórico completo de 14 dias — apenas ordens ativas recentes
         final results = await Future.wait([
           _fetchFromRelayWithSince(
             relay,
             kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete],
             tags: {'#t': [broTag]},
             since: statusSince,
-            limit: 2000,
+            limit: 500,
           ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]),
           _fetchFromRelayWithSince(
             relay,
             kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete],
             since: statusSince,
-            limit: 2000,
+            limit: 500,
           ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]),
         ]);
         
@@ -1983,8 +1986,15 @@ class NostrOrderService {
   Future<Map<String, Map<String, dynamic>>> fetchOrderUpdatesForUser(String userPubkey, {List<String>? orderIds}) async {
     final updates = <String, Map<String, dynamic>>{}; // orderId -> latest update
     
-    if (orderIds != null && orderIds.isNotEmpty) {
+    // PERFORMANCE v1.0.129+218: Se não há ordens ativas para buscar, retornar vazio
+    // Isso evita abrir 12 conexões WebSocket desnecessárias
+    if (orderIds != null && orderIds.isEmpty) {
+      debugPrint('🔍 fetchOrderUpdatesForUser: 0 ordens ativas, pulando fetch');
+      return updates;
     }
+    
+    // Converter para Set para filtragem O(1) no processamento
+    final activeOrderIdSet = orderIds?.toSet();
 
     // PERFORMANCE: Buscar de todos os relays EM PARALELO
     // CORREÇÃO v1.0.128: Também buscar eventos do PRÓPRIO USUÁRIO (kind 30080)
@@ -2030,6 +2040,10 @@ class NostrOrderService {
             final createdAt = event['created_at'] as int? ?? 0;
             
             if (orderId == null) continue;
+            
+            // PERFORMANCE v1.0.129+218: Ignorar eventos de ordens que não estão na lista ativa
+            // Isso filtra eventos de ordens já terminais (completed/cancelled/liquidated)
+            if (activeOrderIdSet != null && !activeOrderIdSet.contains(orderId)) continue;
             
             // SEGURANÇA: Validar papel baseado no tipo de evento
             final eventPubkey = event['pubkey'] as String?;

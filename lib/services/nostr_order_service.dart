@@ -2617,7 +2617,51 @@ class NostrOrderService {
       );
       
       final successCount = results.where((r) => r).length;
-      debugPrint('📤 publishDisputeResolution: publicado em $successCount/${_relays.length} relays (orderId=${orderId.substring(0, 8)}, resolution=$resolution)');
+      debugPrint('📤 publishDisputeResolution: kind 1 publicado em $successCount/${_relays.length} relays (orderId=${orderId.substring(0, 8)}, resolution=$resolution)');
+      
+      // AUDITABILIDADE: Publicar também como kind 30080 com tags de status
+      // Isso permite que QUALQUER pessoa busque a resolução pela cadeia de eventos da ordem
+      try {
+        final auditContent = jsonEncode({
+          'type': 'bro_dispute_resolution',
+          'orderId': orderId,
+          'resolution': resolution,
+          'resolvedBy': 'admin',
+          'adminPubkey': keychain.public,
+          'notes': notes,
+          'userPubkey': userPubkey,
+          'providerId': providerId,
+          'resolvedAt': DateTime.now().toIso8601String(),
+          'status': resolution == 'resolved_user' ? 'cancelled' : 'completed',
+        });
+        
+        final auditTags = [
+          ['d', '${orderId}_resolution'],
+          ['t', broTag],
+          ['t', 'bro-resolucao'],
+          ['t', 'status-${resolution == 'resolved_user' ? 'cancelled' : 'completed'}'],
+          ['r', orderId],
+          ['orderId', orderId],
+        ];
+        if (userPubkey != null && userPubkey.isNotEmpty) auditTags.add(['p', userPubkey]);
+        if (providerId != null && providerId.isNotEmpty) auditTags.add(['p', providerId]);
+        
+        final auditEvent = Event.from(
+          kind: kindBroPaymentProof, // kind 30080 - na cadeia de eventos da ordem
+          tags: auditTags,
+          content: auditContent,
+          privkey: keychain.private,
+        );
+        
+        final auditResults = await Future.wait(
+          _relays.map((relay) => _publishToRelay(relay, auditEvent).catchError((_) => false)),
+        );
+        final auditSuccess = auditResults.where((r) => r).length;
+        debugPrint('📤 publishDisputeResolution: kind 30080 (audit) publicado em $auditSuccess/${_relays.length} relays');
+      } catch (e) {
+        debugPrint('⚠️ Audit event (kind 30080) falhou: $e');
+      }
+      
       return successCount > 0;
     } catch (e) {
       debugPrint('❌ publishDisputeResolution EXCEPTION: $e');
@@ -2785,6 +2829,155 @@ class NostrOrderService {
     } catch (e) {
       debugPrint('❌ fetchMediatorMessages EXCEPTION: $e');
       return [];
+    }
+  }
+
+  /// Busca o comprovante de pagamento para uma ordem específica
+  /// Pesquisa kind 30081 (bro_complete) e kind 30080 diretamente pelo orderId
+  /// Retorna Map com 'proofImage' (plaintext ou null) e 'encrypted' (bool)
+  Future<Map<String, dynamic>> fetchProofForOrder(String orderId, {String? providerPubkey}) async {
+    try {
+      final result = <String, dynamic>{
+        'proofImage': null,
+        'encrypted': false,
+        'providerPubkey': providerPubkey,
+      };
+      
+      for (final relay in _relays.take(3)) {
+        try {
+          final channel = WebSocketChannel.connect(Uri.parse(relay));
+          final subId = 'proof_${orderId.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
+          
+          // Buscar kind 30081 (complete) e kind 30080 (payment proof) pelo orderId
+          final filters = <Map<String, dynamic>>[];
+          
+          // Filter 1: por tag orderId
+          filters.add({
+            'kinds': [kindBroComplete, kindBroPaymentProof],
+            '#orderId': [orderId],
+            'limit': 10,
+          });
+          
+          // Filter 2: por tag #r (alternativa)
+          filters.add({
+            'kinds': [kindBroComplete, kindBroPaymentProof],
+            '#r': [orderId],
+            'limit': 10,
+          });
+          
+          // Filter 3: se conhecemos o provedor, buscar por autor
+          if (providerPubkey != null && providerPubkey.isNotEmpty) {
+            filters.add({
+              'kinds': [kindBroComplete, kindBroPaymentProof],
+              'authors': [providerPubkey],
+              'limit': 20,
+            });
+          }
+          
+          // Enviar todos os filters
+          for (int i = 0; i < filters.length; i++) {
+            channel.sink.add(jsonEncode(['REQ', '${subId}_$i', filters[i]]));
+          }
+          
+          int eoseCount = 0;
+          await for (final msg in channel.stream.timeout(const Duration(seconds: 10), onTimeout: (sink) => sink.close())) {
+            final data = jsonDecode(msg.toString());
+            if (data is List && data.length >= 3 && data[0] == 'EVENT') {
+              final eventData = data[2] as Map<String, dynamic>;
+              try {
+                final content = jsonDecode(eventData['content'] as String) as Map<String, dynamic>;
+                final eventOrderId = content['orderId'] as String?;
+                
+                // Filtrar pelo orderId correto
+                if (eventOrderId != orderId) continue;
+                
+                // Extrair providerId se disponível
+                final eventProviderId = content['providerId'] as String?;
+                if (eventProviderId != null && eventProviderId.isNotEmpty) {
+                  result['providerPubkey'] = eventProviderId;
+                }
+                
+                // Verificar proofImage
+                final proofImage = content['proofImage'] as String?;
+                final proofImageNip44 = content['proofImage_nip44'] as String?;
+                
+                if (proofImage != null && proofImage.isNotEmpty && proofImage != '[encrypted:nip44v2]') {
+                  // Plaintext - perfeito
+                  result['proofImage'] = proofImage;
+                  result['encrypted'] = false;
+                  debugPrint('✅ Comprovante plaintext encontrado para ${orderId.substring(0, 8)}');
+                } else if (proofImageNip44 != null && proofImageNip44.isNotEmpty) {
+                  // Existe mas é criptografado
+                  if (result['proofImage'] == null) {
+                    result['encrypted'] = true;
+                    result['proofImage_nip44'] = proofImageNip44;
+                  }
+                  debugPrint('🔐 Comprovante NIP-44 criptografado para ${orderId.substring(0, 8)}');
+                } else if (proofImage == '[encrypted:nip44v2]') {
+                  if (result['proofImage'] == null) {
+                    result['encrypted'] = true;
+                  }
+                }
+              } catch (_) {}
+            }
+            if (data is List && data[0] == 'EOSE') {
+              eoseCount++;
+              if (eoseCount >= filters.length) break;
+            }
+          }
+          
+          for (int i = 0; i < filters.length; i++) {
+            channel.sink.add(jsonEncode(['CLOSE', '${subId}_$i']));
+          }
+          channel.sink.close();
+          
+          // Se já encontrou plaintext, parar
+          if (result['proofImage'] != null && result['encrypted'] == false) break;
+        } catch (e) {
+          debugPrint('⚠️ fetchProofForOrder relay error: $e');
+        }
+      }
+      
+      debugPrint('🔍 fetchProofForOrder: orderId=${orderId.substring(0, 8)}, found=${result['proofImage'] != null}, encrypted=${result['encrypted']}');
+      return result;
+    } catch (e) {
+      debugPrint('❌ fetchProofForOrder EXCEPTION: $e');
+      return {'proofImage': null, 'encrypted': false};
+    }
+  }
+
+  /// Busca o provedor que aceitou uma ordem (via kind 30079 accept event)
+  /// Retorna o pubkey do provedor ou null
+  Future<String?> fetchOrderProviderPubkey(String orderId) async {
+    try {
+      for (final relay in _relays.take(3)) {
+        try {
+          final events = await _fetchFromRelay(
+            relay,
+            kinds: [kindBroAccept],
+            tags: {'#orderId': [orderId]},
+            limit: 5,
+          ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]);
+          
+          for (final event in events) {
+            try {
+              final content = event['parsedContent'] ?? jsonDecode(event['content']);
+              if (content['orderId'] == orderId) {
+                final providerId = content['providerId'] as String?;
+                if (providerId != null && providerId.isNotEmpty) {
+                  debugPrint('✅ fetchOrderProviderPubkey: ${providerId.substring(0, 8)} para ordem ${orderId.substring(0, 8)}');
+                  return providerId;
+                }
+              }
+            } catch (_) {}
+          }
+        } catch (_) {}
+      }
+      debugPrint('🔍 fetchOrderProviderPubkey: não encontrado para ${orderId.substring(0, 8)}');
+      return null;
+    } catch (e) {
+      debugPrint('❌ fetchOrderProviderPubkey EXCEPTION: $e');
+      return null;
     }
   }
 }

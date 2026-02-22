@@ -20,14 +20,18 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
   bool _isLoading = false;
   bool _isResolved = false;
   String? _proofImageData;
+  bool _proofEncrypted = false;
   bool _loadingProof = false;
+  
+  // Provider ID pode ser descoberto dinamicamente se não estiver nos dados da disputa
+  String? _resolvedProviderId;
   
   String get orderId => widget.dispute['orderId'] as String? ?? '';
   String get reason => widget.dispute['reason'] as String? ?? 'Não informado';
   String get description => widget.dispute['description'] as String? ?? '';
   String get openedBy => widget.dispute['openedBy'] as String? ?? 'user';
   String get userPubkey => widget.dispute['userPubkey'] as String? ?? '';
-  String get providerId => widget.dispute['provider_id'] as String? ?? '';
+  String get providerId => _resolvedProviderId ?? (widget.dispute['provider_id'] as String? ?? '');
   String get previousStatus => widget.dispute['previous_status'] as String? ?? '';
   String get paymentType => widget.dispute['payment_type'] as String? ?? '';
   String get pixKey => widget.dispute['pix_key'] as String? ?? '';
@@ -38,40 +42,65 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
   @override
   void initState() {
     super.initState();
+    _initData();
+  }
+  
+  /// Inicializa dados: busca provedor (se necessário) e comprovante
+  Future<void> _initData() async {
+    // Se não temos o providerId, tentar descobrir pelo accept event
+    final initialProviderId = widget.dispute['provider_id'] as String? ?? '';
+    if (initialProviderId.isEmpty) {
+      try {
+        final nostrService = NostrOrderService();
+        final foundProvider = await nostrService.fetchOrderProviderPubkey(orderId);
+        if (foundProvider != null && mounted) {
+          setState(() => _resolvedProviderId = foundProvider);
+          debugPrint('✅ Provider descoberto para disputa: ${foundProvider.substring(0, 8)}');
+        }
+      } catch (e) {
+        debugPrint('⚠️ Erro ao buscar provider: $e');
+      }
+    }
     _fetchProofImage();
   }
   
-  /// Busca o comprovante do provedor via Nostr (kind 30080 events da ordem)
+  /// Busca o comprovante do provedor via Nostr
+  /// Usa fetchProofForOrder que pesquisa kind 30081 e 30080 diretamente pelo orderId
   Future<void> _fetchProofImage() async {
     if (orderId.isEmpty) return;
     setState(() => _loadingProof = true);
     
     try {
       final nostrService = NostrOrderService();
-      // Buscar todos os eventos kind 30080 para esta ordem
-      // Usar userPubkey OU providerId como base para busca
-      final searchPubkey = userPubkey.isNotEmpty ? userPubkey : providerId;
-      if (searchPubkey.isEmpty) {
-        debugPrint('⚠️ Sem pubkey para buscar comprovante');
-        return;
-      }
-      
-      final updates = await nostrService.fetchOrderUpdatesForUser(
-        searchPubkey,
-        orderIds: [orderId],
+      final result = await nostrService.fetchProofForOrder(
+        orderId,
+        providerPubkey: providerId.isNotEmpty ? providerId : null,
       );
       
-      final update = updates[orderId];
-      if (update != null) {
-        final proof = update['proofImage'] as String?;
-        if (proof != null && proof.isNotEmpty && proof != '[encrypted:nip44v2]') {
-          setState(() => _proofImageData = proof);
-        }
+      if (!mounted) return;
+      
+      final proof = result['proofImage'] as String?;
+      final encrypted = result['encrypted'] as bool? ?? false;
+      final foundProvider = result['providerPubkey'] as String?;
+      
+      // Se descobrimos o provedor nesta busca, atualizar
+      if (foundProvider != null && foundProvider.isNotEmpty && _resolvedProviderId == null && 
+          (widget.dispute['provider_id'] as String? ?? '').isEmpty) {
+        _resolvedProviderId = foundProvider;
       }
+      
+      setState(() {
+        if (proof != null && proof.isNotEmpty) {
+          _proofImageData = proof;
+          _proofEncrypted = false;
+        } else if (encrypted) {
+          _proofEncrypted = true;
+        }
+      });
     } catch (e) {
       debugPrint('⚠️ Erro ao buscar comprovante: $e');
     } finally {
-      setState(() => _loadingProof = false);
+      if (mounted) setState(() => _loadingProof = false);
     }
   }
   
@@ -289,6 +318,17 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
               style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 30)),
             ),
           ),
+        ] else ...[
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              children: [
+                Text('🏪 Provedor', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                SizedBox(width: 8),
+                Expanded(child: Text('Buscando...', style: TextStyle(color: Colors.white38, fontSize: 12, fontStyle: FontStyle.italic), textAlign: TextAlign.right)),
+              ],
+            ),
+          ),
         ],
       ],
     );
@@ -353,8 +393,42 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
               ),
             ),
           ),
-        ] else
-          Container(
+        ] else if (_proofEncrypted) ...
+          [Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.amber.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.amber.withOpacity(0.2)),
+            ),
+            child: Column(
+              children: [
+                const Icon(Icons.lock, color: Colors.amber, size: 40),
+                const SizedBox(height: 8),
+                const Text('Comprovante Criptografado (NIP-44)', style: TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.w500)),
+                const SizedBox(height: 6),
+                const Text(
+                  'O comprovante foi enviado criptografado entre provedor e usuário. '
+                  'Solicite o comprovante diretamente ao provedor via mensagem.',
+                  style: TextStyle(color: Colors.white54, fontSize: 12),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: () => _showSendMessageDialog('provider'),
+                  icon: const Icon(Icons.message, size: 16),
+                  label: const Text('Solicitar ao Provedor', style: TextStyle(fontSize: 12)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.amber,
+                    side: const BorderSide(color: Colors.amber),
+                  ),
+                ),
+              ],
+            ),
+          ),]
+        else ...
+          [Container(
             width: double.infinity,
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -375,7 +449,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
                 ),
               ],
             ),
-          ),
+          )],
       ],
     );
   }
@@ -443,42 +517,51 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
         const SizedBox(height: 8),
         const Text(
           'Avalie as evidências e decida a favor de uma das partes. '
-          'Uma mensagem será enviada para ambas as partes explicando a decisão.',
+          'Uma mensagem será enviada para ambas as partes explicando a decisão. '
+          'A resolução será publicada nos relays para auditabilidade.',
           style: TextStyle(color: Colors.white54, fontSize: 13),
         ),
         const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: SizedBox(
-                height: 50,
-                child: ElevatedButton.icon(
-                  onPressed: () => _showResolveDialog('resolved_user'),
-                  icon: const Icon(Icons.person, color: Colors.white),
-                  label: const Text('Favor do\nUsuário', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 13)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue.shade700,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-              ),
+        // Botão: Favor do Usuário
+        SizedBox(
+          width: double.infinity,
+          height: 54,
+          child: ElevatedButton(
+            onPressed: () => _showResolveDialog('resolved_user'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue.shade700,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: SizedBox(
-                height: 50,
-                child: ElevatedButton.icon(
-                  onPressed: () => _showResolveDialog('resolved_provider'),
-                  icon: const Icon(Icons.storefront, color: Colors.white),
-                  label: const Text('Favor do\nProvedor', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 13)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green.shade700,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-              ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.person, color: Colors.white, size: 22),
+                SizedBox(width: 10),
+                Text('Resolver a Favor do USUÁRIO', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+              ],
             ),
-          ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        // Botão: Favor do Provedor
+        SizedBox(
+          width: double.infinity,
+          height: 54,
+          child: ElevatedButton(
+            onPressed: () => _showResolveDialog('resolved_provider'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green.shade700,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.storefront, color: Colors.white, size: 22),
+                SizedBox(width: 10),
+                Text('Resolver a Favor do PROVEDOR', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
         ),
       ],
     );

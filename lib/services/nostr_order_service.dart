@@ -5,6 +5,7 @@ import 'package:nostr/nostr.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import '../config.dart';
 import '../models/order.dart';
 import 'nip44_service.dart';
 
@@ -2483,6 +2484,7 @@ class NostrOrderService {
           ['t', 'bro-disputa'],
           ['t', broTag],
           ['r', orderId],
+          ['p', AppConfig.adminPubkey], // Notificar admin/mediador
         ],
         content: content,
         privkey: keychain.private,
@@ -2556,5 +2558,70 @@ class NostrOrderService {
     
     debugPrint('📤 fetchDisputeNotifications: ${allEvents.length} disputas encontradas');
     return allEvents;
+  }
+
+  /// Publica resolução de disputa no Nostr (kind 1 com tag bro-resolucao)
+  /// Chamado pelo admin ao resolver uma disputa a favor de uma das partes
+  Future<bool> publishDisputeResolution({
+    required String privateKey,
+    required String orderId,
+    required String resolution, // 'resolved_user' ou 'resolved_provider'
+    required String notes,
+    String? userPubkey,
+    String? providerId,
+  }) async {
+    try {
+      final keychain = Keychain(privateKey);
+      
+      final content = jsonEncode({
+        'type': 'bro_dispute_resolution',
+        'orderId': orderId,
+        'resolution': resolution,
+        'resolvedBy': 'admin',
+        'adminPubkey': keychain.public,
+        'notes': notes,
+        'userPubkey': userPubkey,
+        'providerId': providerId,
+        'resolvedAt': DateTime.now().toIso8601String(),
+      });
+      
+      final tags = [
+        ['t', 'bro-resolucao'],
+        ['t', broTag],
+        ['r', orderId],
+      ];
+      
+      // Notificar ambas as partes
+      if (userPubkey != null && userPubkey.isNotEmpty) {
+        tags.add(['p', userPubkey]);
+      }
+      if (providerId != null && providerId.isNotEmpty) {
+        tags.add(['p', providerId]);
+      }
+      
+      final event = Event.from(
+        kind: 1,
+        tags: tags,
+        content: content,
+        privkey: keychain.private,
+      );
+      
+      final results = await Future.wait(
+        _relays.map((relay) async {
+          try {
+            return await _publishToRelay(relay, event);
+          } catch (_) {
+            return false;
+          }
+        }),
+      );
+      
+      final successCount = results.where((r) => r).length;
+      debugPrint('📤 publishDisputeResolution: publicado em $successCount/${_relays.length} relays (orderId=${orderId.substring(0, 8)}, resolution=$resolution)');
+      return successCount > 0;
+    } catch (e) {
+      debugPrint('❌ publishDisputeResolution EXCEPTION: $e');
+      return false;
+    }
   }
 }

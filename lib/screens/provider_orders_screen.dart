@@ -71,6 +71,11 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     SecureStorageService.setProviderMode(true, userPubkey: widget.providerId);
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // PERFORMANCE v1.0.219+220: Mostrar ordens aceitas do cache local IMEDIATAMENTE
+      // antes de iniciar o sync pesado do Nostr. Isso elimina o "zeramento" da lista
+      // e mostra as ordens terminais (completed/cancelled) instantaneamente.
+      _loadOrdersFromProvider();
+      
       _loadOrders();
       _startOrdersPolling(); // Iniciar polling de ordens
     });
@@ -203,9 +208,13 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       return;
     }
     
+    // PERFORMANCE v1.0.219+220: Não mostrar loading spinner se já temos ordens em cache
+    // Isso evita que a lista "zere" enquanto o sync roda em background
+    final hasLocalData = _myOrders.isNotEmpty || _availableOrders.isNotEmpty;
+    
     // CORREÇÃO: Não mostrar loading spinner no pull-to-refresh
-    // Senão o RefreshIndicator é removido da tree e o usuário não vê o refresh
-    if (!isRefresh) {
+    // Senso o RefreshIndicator é removido da tree e o usuário não vê o refresh
+    if (!isRefresh && !hasLocalData) {
       setState(() {
         _isLoading = true;
         _isSyncingNostr = true;

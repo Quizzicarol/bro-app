@@ -1205,7 +1205,22 @@ class NostrOrderService {
     final orderIdsToCheck = freshOrders.map((o) => o.id).toList();
     debugPrint('🔍 fetchPendingOrders: buscando status de ${orderIdsToCheck.length} ordens via #d tag');
     final statusUpdates = await _fetchTargetedStatusUpdates(orderIdsToCheck);
-    debugPrint('🔍 fetchPendingOrders: ${statusUpdates.length} ordens com status encontrado');
+    debugPrint('🔍 fetchPendingOrders: ${statusUpdates.length} ordens com status via #d');
+    
+    // PASSO 2.5: Buscar cancelamentos/updates por AUTHOR (pubkey do criador)
+    // Cancelamentos são kind 30080 publicados pelo criador da ordem.
+    // Os relays NÃO indexam tags #r, mas SEMPRE indexam 'authors'.
+    // Coletamos pubkeys dos criadores e buscamos seus events kind 30080.
+    final ordersWithoutStatus = freshOrders.where((o) => !statusUpdates.containsKey(o.id)).toList();
+    if (ordersWithoutStatus.isNotEmpty) {
+      debugPrint('🔍 fetchPendingOrders: ${ordersWithoutStatus.length} ordens sem status - buscando por authors');
+      final authorUpdates = await _fetchStatusByAuthors(ordersWithoutStatus);
+      if (authorUpdates.isNotEmpty) {
+        debugPrint('🔍 fetchPendingOrders: ${authorUpdates.length} updates extras via authors!');
+        statusUpdates.addAll(authorUpdates);
+      }
+    }
+    debugPrint('🔍 fetchPendingOrders: ${statusUpdates.length} ordens com status total');
     
     // LOG DETALHADO de cada ordem
     for (var order in freshOrders) {
@@ -1250,15 +1265,16 @@ class NostrOrderService {
   }
   
   /// Re-fetch direcionado de status updates para ordens específicas
-  /// Usa tag #d (single-letter, indexada pelos relays) com valores orderId_accept/orderId_complete
-  /// NOTA: Tags multi-letter como #orderId NÃO são suportadas pela maioria dos relays Nostr
-  /// Os relays só indexam tags single-letter (#d, #p, #e, #t) para queries
+  /// Usa tags single-letter (#d e #r) que são indexadas pelos relays
+  /// #d: orderId_accept / orderId_complete (para accept/complete events)
+  /// #r: orderId puro (para cancellation/update events via updateOrderStatus)
+  /// NOTA: Tags multi-letter como #orderId NÃO são indexadas pelos relays
   Future<Map<String, Map<String, dynamic>>> _fetchTargetedStatusUpdates(List<String> orderIds) async {
     final updates = <String, Map<String, dynamic>>{};
     if (orderIds.isEmpty) return updates;
     
-    // Dividir em batches de 20 ordens (= 40 valores #d) para não sobrecarregar o relay
-    const batchSize = 20;
+    // Dividir em batches de 15 ordens para não sobrecarregar o relay
+    const batchSize = 15;
     final batches = <List<String>>[];
     for (var i = 0; i < orderIds.length; i += batchSize) {
       batches.add(orderIds.sublist(i, i + batchSize > orderIds.length ? orderIds.length : i + batchSize));
@@ -1266,7 +1282,7 @@ class NostrOrderService {
     
     debugPrint('🔍 _fetchTargetedStatusUpdates: ${orderIds.length} ordens em ${batches.length} batches');
     
-    // Processar todos os batches em paralelo
+    // Processar todos os batches
     final allEvents = <Map<String, dynamic>>[];
     
     for (final batch in batches) {
@@ -1277,18 +1293,34 @@ class NostrOrderService {
         dTags.add('${id}_complete');
       }
       
-      // Buscar de todos os relays em paralelo
+      // Buscar de todos os relays em paralelo com DUAS estratégias
       final relayFutures = _relays.map((relay) async {
         try {
-          // Estratégia ÚNICA: usar #d tag (SEMPRE indexada pelos relays para events kind 30000+)
-          final events = await _fetchFromRelayWithSince(
-            relay,
-            kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete],
-            tags: {'#d': dTags},
-            since: null, // Sem since - queremos QUALQUER status
-            limit: batch.length * 4,
-          ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]);
-          return events;
+          final results = await Future.wait([
+            // Estratégia 1: #d tag para accept/complete events (kind 30079, 30081)
+            _fetchFromRelayWithSince(
+              relay,
+              kinds: [kindBroAccept, kindBroComplete],
+              tags: {'#d': dTags},
+              since: null,
+              limit: batch.length * 2,
+            ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]),
+            // Estratégia 2: #r tag para updates/cancellations (kind 30080)
+            // updateOrderStatus usa tag ['r', orderId] que é indexada como #r
+            _fetchFromRelayWithSince(
+              relay,
+              kinds: [kindBroPaymentProof],
+              tags: {'#r': batch}, // orderId direto na tag #r
+              since: null,
+              limit: batch.length * 3,
+            ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]),
+          ]);
+          
+          final combined = <Map<String, dynamic>>[];
+          for (final eventList in results) {
+            combined.addAll(eventList);
+          }
+          return combined;
         } catch (e) {
           return <Map<String, dynamic>>[];
         }
@@ -1348,6 +1380,101 @@ class NostrOrderService {
             'encryption': encryption,
             'providerInvoice': providerInvoice,
             'completedAt': content['completedAt'],
+            'created_at': createdAt,
+          };
+        }
+      } catch (_) {}
+    }
+    
+    return updates;
+  }
+
+  /// Busca status updates por AUTHOR (pubkey do criador da ordem)
+  /// Resolve: cancelamentos (kind 30080) publicados pelo criador não são encontráveis
+  /// por #d ou #r tags, mas SEMPRE por 'authors' (filtro nativo do relay)
+  Future<Map<String, Map<String, dynamic>>> _fetchStatusByAuthors(List<Order> orders) async {
+    final updates = <String, Map<String, dynamic>>{};
+    if (orders.isEmpty) return updates;
+    
+    // Coletar pubkeys únicos dos criadores
+    final pubkeys = orders
+        .where((o) => o.userPubkey != null && o.userPubkey!.isNotEmpty)
+        .map((o) => o.userPubkey!)
+        .toSet()
+        .toList();
+    
+    if (pubkeys.isEmpty) return updates;
+    
+    // Mapeamento orderId -> set de orderIds que queremos
+    final orderIdSet = orders.map((o) => o.id).toSet();
+    
+    debugPrint('🔍 _fetchStatusByAuthors: buscando kind 30080 de ${pubkeys.length} authors para ${orders.length} ordens');
+    
+    // Buscar de todos os relays em paralelo
+    final allEvents = <Map<String, dynamic>>[];
+    final seenIds = <String>{};
+    
+    // Buscar desde 8 dias atrás (cobre janela de 7 dias das ordens + margem)
+    final sinceSecs = DateTime.now().subtract(const Duration(days: 8)).millisecondsSinceEpoch ~/ 1000;
+    
+    final relayFutures = _relays.map((relay) async {
+      try {
+        // Buscar events kind 30080 publicados pelos criadores das ordens
+        // authors é SEMPRE indexado por todos os relays
+        final events = await _fetchFromRelayWithSince(
+          relay,
+          kinds: [kindBroPaymentProof],
+          authors: pubkeys,
+          since: sinceSecs,
+          limit: pubkeys.length * 50, // ~50 updates por author (margem ampla)
+        ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]);
+        return events;
+      } catch (e) {
+        return <Map<String, dynamic>>[];
+      }
+    }).toList();
+    
+    final results = await Future.wait(relayFutures);
+    for (final relayEvents in results) {
+      for (final e in relayEvents) {
+        final id = e['id'];
+        if (id != null && !seenIds.contains(id)) {
+          seenIds.add(id);
+          allEvents.add(e);
+        }
+      }
+    }
+    
+    debugPrint('🔍 _fetchStatusByAuthors: ${allEvents.length} eventos de ${_relays.length} relays');
+    
+    // Processar: filtrar apenas eventos relevantes para nossas ordens
+    for (final event in allEvents) {
+      try {
+        final content = event['parsedContent'] ?? jsonDecode(event['content']);
+        final eventType = content['type'] as String?;
+        if (eventType != 'bro_order_update' && eventType != 'bro_complete') continue;
+        
+        final orderId = content['orderId'] as String?;
+        if (orderId == null || !orderIdSet.contains(orderId)) continue;
+        
+        final status = content['status'] as String?;
+        if (status == null) continue;
+        
+        final createdAt = event['created_at'] as int? ?? 0;
+        final existingUpdate = updates[orderId];
+        final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
+        
+        // cancelled SEMPRE vence
+        final isCancel = status == 'cancelled';
+        final existingIsCancelled = existingUpdate?['status'] == 'cancelled';
+        if (existingIsCancelled) continue;
+        
+        if (existingUpdate == null || isCancel || createdAt >= existingCreatedAt) {
+          updates[orderId] = {
+            'orderId': orderId,
+            'status': status,
+            'providerId': content['providerId'] as String?,
+            'eventAuthorPubkey': event['pubkey'] as String?,
             'created_at': createdAt,
           };
         }

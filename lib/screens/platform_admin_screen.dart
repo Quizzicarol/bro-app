@@ -139,37 +139,63 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
         
         nostrDisputes = disputesByOrderId.values.toList();
         
-        // Verificar resolução de cada disputa EM PARALELO para separar abertas/resolvidas
-        // CORREÇÃO build 218: Antes era sequencial (N × 3 relays × 8s timeout = muito lento)
+        // CORREÇÃO build 218: Buscar disputas abertas e resoluções EM PARALELO
+        // Problema: após resolução, o relay pode não retornar mais o evento original de disputa.
+        // Solução: buscar resoluções diretamente (bro-resolucao) para popular aba "Resolvidas"
+        // mesmo quando o evento original sumiu.
         final openNostr = <Map<String, dynamic>>[];
         final resolvedNostr = <Map<String, dynamic>>[];
+        final resolvedOrderIds = <String>{};
         
-        // Buscar resoluções em paralelo (todas ao mesmo tempo)
-        final resolutionFutures = nostrDisputes.map((dispute) async {
-          final dOrderId = dispute['orderId'] as String? ?? '';
-          if (dOrderId.isEmpty) return {'dispute': dispute, 'resolution': null};
-          try {
-            final resolution = await nostrOrderService.fetchDisputeResolution(dOrderId)
-                .timeout(const Duration(seconds: 8), onTimeout: () => null);
-            return {'dispute': dispute, 'resolution': resolution};
-          } catch (_) {
-            return {'dispute': dispute, 'resolution': null};
+        // 1. Buscar TODAS as resoluções diretamente do Nostr
+        List<Map<String, dynamic>> allResolutions = [];
+        try {
+          allResolutions = await nostrOrderService.fetchAllDisputeResolutions()
+              .timeout(const Duration(seconds: 10), onTimeout: () => <Map<String, dynamic>>[]);
+        } catch (_) {}
+        
+        // 2. Indexar resoluções por orderId
+        final resolutionsByOrderId = <String, Map<String, dynamic>>{};
+        for (final res in allResolutions) {
+          final orderId = res['orderId'] as String? ?? '';
+          if (orderId.isNotEmpty) {
+            resolutionsByOrderId[orderId] = res;
           }
-        }).toList();
+        }
         
-        final resolutionResults = await Future.wait(resolutionFutures);
-        
-        for (final result in resolutionResults) {
-          final dispute = result['dispute'] as Map<String, dynamic>;
-          final resolution = result['resolution'] as Map<String, dynamic>?;
+        // 3. Classificar disputas do fetch em abertas/resolvidas
+        for (final dispute in nostrDisputes) {
+          final dOrderId = dispute['orderId'] as String? ?? '';
+          final resolution = resolutionsByOrderId[dOrderId];
           if (resolution != null) {
             dispute['resolution'] = resolution;
             dispute['resolved'] = true;
             resolvedNostr.add(dispute);
+            resolvedOrderIds.add(dOrderId);
           } else {
             dispute['resolved'] = false;
             openNostr.add(dispute);
           }
+        }
+        
+        // 4. CRÍTICO: Adicionar resoluções cujo evento original de disputa NÃO foi retornado
+        // Isso garante que disputas resolvidas apareçam mesmo quando o relay limpa o evento original
+        for (final res in allResolutions) {
+          final orderId = res['orderId'] as String? ?? '';
+          if (orderId.isEmpty || resolvedOrderIds.contains(orderId)) continue;
+          
+          // Reconstruir entrada de disputa a partir dos dados da resolução
+          resolvedNostr.add({
+            'orderId': orderId,
+            'userPubkey': res['userPubkey'] ?? '',
+            'providerId': res['providerId'] ?? '',
+            'reason': res['notes'] ?? '',
+            'createdAt': res['resolvedAt'] ?? '',
+            'resolution': res,
+            'resolved': true,
+            'source': 'resolution_only',
+          });
+          resolvedOrderIds.add(orderId);
         }
         
         // Ordenar por data (mais recentes primeiro)

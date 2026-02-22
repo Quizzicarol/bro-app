@@ -2574,6 +2574,74 @@ class NostrOrderService {
     return allEvents;
   }
 
+  /// Busca TODAS as resoluções de disputas do Nostr (kind 1 com bro-resolucao)
+  /// CORREÇÃO build 218: Necessário porque após resolução, o evento original de disputa
+  /// pode não ser mais retornado pelo relay, fazendo a aba "Resolvidas" ficar vazia.
+  /// Buscando resoluções diretamente, podemos reconstruir a lista de disputas resolvidas.
+  Future<List<Map<String, dynamic>>> fetchAllDisputeResolutions() async {
+    final allResolutions = <Map<String, dynamic>>[];
+    final seenOrderIds = <String>{};
+    
+    final results = await Future.wait(
+      _relays.take(3).map((relay) async {
+        try {
+          final channel = WebSocketChannel.connect(Uri.parse(relay));
+          final subId = 'allres_${DateTime.now().millisecondsSinceEpoch % 100000}';
+          final events = <Map<String, dynamic>>[];
+          
+          channel.sink.add(jsonEncode(['REQ', subId, {
+            'kinds': [1],
+            '#t': ['bro-resolucao'],
+            'limit': 100,
+          }]));
+          
+          await for (final msg in channel.stream.timeout(
+            const Duration(seconds: 8), onTimeout: (sink) => sink.close())) {
+            final data = jsonDecode(msg.toString());
+            if (data is List && data.length >= 3 && data[0] == 'EVENT') {
+              events.add(data[2] as Map<String, dynamic>);
+            }
+            if (data is List && data[0] == 'EOSE') break;
+          }
+          
+          channel.sink.add(jsonEncode(['CLOSE', subId]));
+          channel.sink.close();
+          return events;
+        } catch (_) {
+          return <Map<String, dynamic>>[];
+        }
+      }),
+    );
+    
+    // Deduplicar por orderId, mantendo o mais recente
+    final bestByOrderId = <String, Map<String, dynamic>>{};
+    
+    for (final events in results) {
+      for (final event in events) {
+        try {
+          final content = jsonDecode(event['content'] as String) as Map<String, dynamic>;
+          if (content['type'] != 'bro_dispute_resolution') continue;
+          final orderId = content['orderId'] as String? ?? '';
+          if (orderId.isEmpty) continue;
+          
+          final createdAt = event['created_at'] as int? ?? 0;
+          final existing = bestByOrderId[orderId];
+          if (existing == null || createdAt > (existing['_createdAt'] as int? ?? 0)) {
+            bestByOrderId[orderId] = {
+              ...content,
+              '_createdAt': createdAt,
+              '_eventId': event['id'],
+            };
+          }
+        } catch (_) {}
+      }
+    }
+    
+    allResolutions.addAll(bestByOrderId.values);
+    debugPrint('📤 fetchAllDisputeResolutions: ${allResolutions.length} resoluções encontradas');
+    return allResolutions;
+  }
+
   /// Publica resolução de disputa no Nostr (kind 1 com tag bro-resolucao)
   /// Chamado pelo admin ao resolver uma disputa a favor de uma das partes
   Future<bool> publishDisputeResolution({

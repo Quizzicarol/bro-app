@@ -951,11 +951,26 @@ class OrderProvider with ChangeNotifier {
       }
       
       // Executar buscas EM PARALELO com tratamento de erro individual
+      // PERFORMANCE v1.0.219+220: Pular fetchUserOrders se todas ordens são terminais
+      // (mesma otimização já aplicada no syncOrdersFromNostr)
+      const terminalOnly = ['completed', 'cancelled', 'liquidated', 'disputed'];
+      final hasActiveUserOrders = _orders.isEmpty || _orders.any((o) => 
+        (o.userPubkey == _currentUserPubkey || o.providerId == _currentUserPubkey) && 
+        !terminalOnly.contains(o.status)
+      );
+      
+      if (!hasActiveUserOrders) {
+        debugPrint('⚡ syncProvider: todas ordens do user são terminais, pulando fetchUserOrders');
+      }
+      
       final results = await Future.wait([
         safeFetch(() => _nostrOrderService.fetchPendingOrders(), 'fetchPendingOrders'),
-        safeFetch(() => _currentUserPubkey != null 
-            ? _nostrOrderService.fetchUserOrders(_currentUserPubkey!)
-            : Future.value(<Order>[]), 'fetchUserOrders'),
+        if (hasActiveUserOrders)
+          safeFetch(() => _currentUserPubkey != null 
+              ? _nostrOrderService.fetchUserOrders(_currentUserPubkey!)
+              : Future.value(<Order>[]), 'fetchUserOrders')
+        else
+          Future.value(<Order>[]),
         safeFetch(() => _currentUserPubkey != null
             ? _nostrOrderService.fetchProviderOrders(_currentUserPubkey!)
             : Future.value(<Order>[]), 'fetchProviderOrders'),

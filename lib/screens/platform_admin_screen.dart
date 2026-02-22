@@ -1320,9 +1320,223 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
               ],
             ),
           ),
+          
+          // Botões de resolução
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              // Resolver a favor do usuário
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 4),
+                  child: ElevatedButton.icon(
+                    onPressed: () => _showNostrResolveDialog(dispute, 'resolved_user'),
+                    icon: const Icon(Icons.person, size: 16, color: Colors.white),
+                    label: const FittedBox(
+                      child: Text('Favor Usuário', style: TextStyle(fontSize: 11, color: Colors.white)),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue.shade700,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                    ),
+                  ),
+                ),
+              ),
+              // Resolver a favor do provedor
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: ElevatedButton.icon(
+                    onPressed: () => _showNostrResolveDialog(dispute, 'resolved_provider'),
+                    icon: const Icon(Icons.storefront, size: 16, color: Colors.white),
+                    label: const FittedBox(
+                      child: Text('Favor Provedor', style: TextStyle(fontSize: 11, color: Colors.white)),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.shade700,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
+  }
+
+  /// Dialog de resolução para disputas vindas do Nostr
+  void _showNostrResolveDialog(Map<String, dynamic> dispute, String resolveFor) {
+    final notesController = TextEditingController();
+    final isUser = resolveFor == 'resolved_user';
+    final orderId = dispute['orderId'] as String? ?? '';
+    final reason = dispute['reason'] as String? ?? '';
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A2E),
+        title: Row(
+          children: [
+            Icon(
+              isUser ? Icons.person : Icons.storefront,
+              color: isUser ? Colors.blue : Colors.green,
+              size: 28,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Resolver a favor do ${isUser ? 'Usuário' : 'Provedor'}',
+                style: const TextStyle(color: Colors.white, fontSize: 16),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Ordem: ${orderId.length > 20 ? '${orderId.substring(0, 20)}...' : orderId}',
+                style: const TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+              if (reason.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Motivo: $reason',
+                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                ),
+              ],
+              const SizedBox(height: 16),
+              Text(
+                isUser
+                  ? '⚠️ Ao resolver a favor do USUÁRIO:\n• O status da ordem será atualizado\n• Os sats podem ser devolvidos ao usuário\n• A resolução será publicada no Nostr'
+                  : '⚠️ Ao resolver a favor do PROVEDOR:\n• O status da ordem será atualizado\n• Os sats permanecem com o provedor\n• A resolução será publicada no Nostr',
+                style: TextStyle(
+                  color: isUser ? Colors.blue.shade200 : Colors.green.shade200,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: notesController,
+                maxLines: 3,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Notas do mediador (obrigatório)...',
+                  hintStyle: const TextStyle(color: Colors.white38),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  filled: true,
+                  fillColor: Colors.black26,
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (notesController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Adicione notas do mediador'), backgroundColor: Colors.orange),
+                );
+                return;
+              }
+              Navigator.pop(context);
+              _resolveNostrDispute(dispute, resolveFor, notesController.text.trim());
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isUser ? Colors.blue : Colors.green,
+            ),
+            child: const Text('Confirmar Resolução', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Resolve uma disputa vinda do Nostr:
+  /// 1. Publica resolução no Nostr (kind 1, tag bro-resolucao)
+  /// 2. Atualiza status da ordem local para 'completed'
+  /// 3. Recarrega dados
+  Future<void> _resolveNostrDispute(Map<String, dynamic> dispute, String resolution, String notes) async {
+    try {
+      final orderId = dispute['orderId'] as String? ?? '';
+      final userPubkey = dispute['userPubkey'] as String? ?? '';
+      final providerId = dispute['provider_id'] as String? ?? '';
+      
+      // Obter chave privada do admin
+      final orderProvider = context.read<OrderProvider>();
+      final privateKey = orderProvider.nostrPrivateKey;
+      
+      if (privateKey == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('❌ Chave privada não disponível'), backgroundColor: Colors.red),
+          );
+        }
+        return;
+      }
+      
+      // 1. Publicar resolução no Nostr
+      final nostrOrderService = NostrOrderService();
+      final published = await nostrOrderService.publishDisputeResolution(
+        privateKey: privateKey,
+        orderId: orderId,
+        resolution: resolution,
+        notes: notes,
+        userPubkey: userPubkey,
+        providerId: providerId,
+      );
+      
+      // 2. Atualizar status da ordem local
+      // Se favor do usuário: marcar como 'completed' (usuário tem razão, recebe de volta)
+      // Se favor do provedor: marcar como 'completed' (provedor completou o serviço)
+      final newOrderStatus = resolution == 'resolved_user' ? 'cancelled' : 'completed';
+      try {
+        await orderProvider.updateOrderStatus(
+          orderId: orderId,
+          status: newOrderStatus,
+        );
+        
+        // Publicar o novo status no Nostr
+        await nostrOrderService.updateOrderStatus(
+          privateKey: privateKey,
+          orderId: orderId,
+          newStatus: newOrderStatus,
+          providerId: providerId.isNotEmpty ? providerId : null,
+        );
+      } catch (e) {
+        debugPrint('⚠️ Erro ao atualizar status da ordem: $e');
+      }
+      
+      // 3. Recarregar dados
+      await _loadData();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(published 
+              ? '⚖️ Disputa ${orderId.substring(0, 8)} resolvida e publicada no Nostr!'
+              : '⚠️ Disputa resolvida localmente mas falhou ao publicar no Nostr'),
+            backgroundColor: published ? Colors.green : Colors.orange,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 
   Future<void> _updateDisputeStatus(Dispute dispute, String newStatus, {String? resolution, String? notes}) async {

@@ -62,6 +62,14 @@ class AppConfig {
   static const String androidPackage = 'app.bro.mobile';
 
   // ============================================
+  // ADMIN / MEDIAÇÃO
+  // ============================================
+  
+  /// Pubkey hex do admin/mediador da plataforma
+  /// npub14dkurlx4vkd5qmf7q5fwqh52lh3mn078wms2jetl2l4wnmcxnghqlud5dt
+  static const String adminPubkey = 'ab6dc1fcd5659b406d3e0512e05e8afde3b9bfc776e0a9657f57eae9ef069a2e';
+
+  // ============================================
   // NETWORK (Bitcoin)
   // ============================================
   

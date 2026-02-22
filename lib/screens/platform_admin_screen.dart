@@ -64,15 +64,20 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
         final rawEvents = await nostrOrderService.fetchDisputeNotifications()
             .timeout(const Duration(seconds: 10), onTimeout: () => <Map<String, dynamic>>[]);
         
+        // Deduplicar por orderId (manter o mais completo/recente)
+        final disputesByOrderId = <String, Map<String, dynamic>>{};
+        
         for (final event in rawEvents) {
           try {
             final content = event['parsedContent'] ?? jsonDecode(event['content']);
-            if (content['type'] == 'bro_dispute') {
-              final orderId = content['orderId'] as String? ?? '';
-              // Verificar se já existe como disputa local
-              final existsLocally = allDisputes.any((d) => d.orderId == orderId);
-              
-              nostrDisputes.add({
+            final eventKind = event['kind'] as int?;
+            String orderId;
+            Map<String, dynamic> disputeData;
+            
+            if (eventKind == 1 && content['type'] == 'bro_dispute') {
+              // Kind 1: notificação explícita de disputa (tem dados completos)
+              orderId = content['orderId'] as String? ?? '';
+              disputeData = {
                 'orderId': orderId,
                 'reason': content['reason'] ?? 'Não informado',
                 'description': content['description'] ?? '',
@@ -87,12 +92,49 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
                 'createdAt': content['createdAt'] ?? DateTime.fromMillisecondsSinceEpoch(
                   ((event['created_at'] ?? 0) as int) * 1000,
                 ).toIso8601String(),
-                'existsLocally': existsLocally,
                 'eventId': event['id'],
-              });
+                'source': 'kind1',
+              };
+            } else if (content['status'] == 'disputed') {
+              // Kind 30080: status update de disputa (pode não ter razão/descrição)
+              orderId = content['orderId'] as String? ?? '';
+              disputeData = {
+                'orderId': orderId,
+                'reason': content['reason'] ?? 'Disputa via status update',
+                'description': content['description'] ?? '',
+                'openedBy': content['userPubkey'] != null ? 'user' : 'provider',
+                'userPubkey': content['userPubkey'] ?? event['pubkey'] ?? '',
+                'amount_brl': content['amount_brl'],
+                'amount_sats': content['amount_sats'],
+                'payment_type': content['payment_type'],
+                'pix_key': content['pix_key'],
+                'provider_id': content['providerId'] ?? content['provider_id'],
+                'previous_status': null,
+                'createdAt': content['updatedAt'] ?? DateTime.fromMillisecondsSinceEpoch(
+                  ((event['created_at'] ?? 0) as int) * 1000,
+                ).toIso8601String(),
+                'eventId': event['id'],
+                'source': 'kind30080',
+              };
+            } else {
+              continue;
+            }
+            
+            if (orderId.isEmpty) continue;
+            
+            // Verificar se já existe como disputa local
+            final existsLocally = allDisputes.any((d) => d.orderId == orderId);
+            disputeData['existsLocally'] = existsLocally;
+            
+            // Priorizar kind 1 (dados mais completos) sobre kind 30080
+            final existing = disputesByOrderId[orderId];
+            if (existing == null || (existing['source'] == 'kind30080' && disputeData['source'] == 'kind1')) {
+              disputesByOrderId[orderId] = disputeData;
             }
           } catch (_) {}
         }
+        
+        nostrDisputes = disputesByOrderId.values.toList();
         
         // Ordenar por data (mais recentes primeiro)
         nostrDisputes.sort((a, b) => (b['createdAt'] ?? '').compareTo(a['createdAt'] ?? ''));

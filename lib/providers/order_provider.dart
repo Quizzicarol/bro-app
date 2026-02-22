@@ -2337,6 +2337,10 @@ class OrderProvider with ChangeNotifier {
     if (newStatus == 'cancelled') {
       return true;
     }
+    // disputed SEMPRE vence sobre qualquer status nao-terminal
+    if (newStatus == 'disputed') {
+      return true;
+    }
     
     const finalStatuses = ['completed', 'liquidated', 'disputed'];
     if (finalStatuses.contains(currentStatus)) {

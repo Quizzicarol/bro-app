@@ -87,6 +87,10 @@ class NostrOrderService {
     if (currentStatus == 'cancelled') return newStatus == 'disputed';
     // cancelled SEMPRE vence (ação explícita do usuário)
     if (newStatus == 'cancelled') return true;
+    // disputed SEMPRE vence sobre qualquer status não-terminal
+    // CORREÇÃO: 'disputed' não estava no statusOrder linear, causando rejeição
+    // quando processado depois de 'awaiting_confirmation' em fetchOrderUpdatesForUser
+    if (newStatus == 'disputed') return true;
     // Status finais - só disputed pode seguir
     const finalStatuses = ['completed', 'liquidated', 'disputed'];
     if (finalStatuses.contains(currentStatus)) {
@@ -2046,53 +2050,57 @@ class NostrOrderService {
               // Não filtrar mais por pubkey - confiar na assinatura verificada pelo relay
             }
             
-            // Verificar se este evento é mais recente que o atual
-            final existingUpdate = updates[orderId];
-            final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
-            
-            if (existingUpdate == null || createdAt > existingCreatedAt) {
-              // Determinar o novo status baseado no tipo de evento
-              String newStatus;
-              if (eventKind == kindBroAccept) {
-                newStatus = 'accepted';
-              } else if (eventKind == kindBroComplete) {
-                newStatus = 'awaiting_confirmation';
-              } else if (eventKind == kindBroPaymentProof) {
-                // NOVO: Evento do próprio usuário (kind 30080) com status do content
-                // Isso recupera o status 'completed' que o usuário publicou ao confirmar
-                final contentStatus = content['status'] as String?;
-                if (contentStatus != null && contentStatus.isNotEmpty) {
-                  newStatus = contentStatus;
-                } else {
-                  continue;
-                }
+            // Determinar o novo status baseado no tipo de evento
+            String newStatus;
+            if (eventKind == kindBroAccept) {
+              newStatus = 'accepted';
+            } else if (eventKind == kindBroComplete) {
+              newStatus = 'awaiting_confirmation';
+            } else if (eventKind == kindBroPaymentProof) {
+              final contentStatus = content['status'] as String?;
+              if (contentStatus != null && contentStatus.isNotEmpty) {
+                newStatus = contentStatus;
               } else {
                 continue;
               }
-              
-              // PROTEÇÃO: Não regredir status mais avançado
-              // CORREÇÃO v1.0.129: Usar _isStatusProgression com lista COMPLETA
-              // Lista anterior não incluía 'cancelled', permitindo que 'completed'
-              // sobrescrevesse 'cancelled' (bug: ordem cancelada aparecia como concluída)
-              final existingStatus = existingUpdate?['status'] as String?;
-              if (existingStatus != null) {
-                if (!_isStatusProgression(newStatus, existingStatus)) {
-                  continue; // Não regredir
-                }
-              }
-              
-              updates[orderId] = {
-                'orderId': orderId,
-                'status': newStatus,
-                'eventKind': eventKind,
-                'providerId': content['providerId'] ?? event['pubkey'],
-                'proofImage': content['proofImage'],
-                'proofImage_nip44': content['proofImage_nip44'],
-                'encryption': content['encryption'],
-                'created_at': createdAt,
-              };
-              
+            } else {
+              continue;
             }
+            
+            // Verificar se este evento deve atualizar o existente
+            final existingUpdate = updates[orderId];
+            final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
+            final existingStatus = existingUpdate?['status'] as String?;
+            
+            // CORREÇÃO CRÍTICA: Considerar tanto timestamp quanto progressão de status
+            // Antes, eventos com createdAt menor eram IGNORADOS mesmo sendo progressão válida
+            // Isso causava 'disputed' (kind 30080) ser rejeitado quando kind 30081
+            // tinha timestamp mais recente (publicado por outra parte)
+            final isNewer = existingUpdate == null || createdAt > existingCreatedAt;
+            final isValidProgression = existingStatus != null && _isStatusProgression(newStatus, existingStatus);
+            
+            if (isNewer) {
+              // Evento mais recente: aceitar se não regredir
+              if (existingStatus != null && !_isStatusProgression(newStatus, existingStatus)) {
+                continue; // Não regredir
+              }
+            } else if (isValidProgression) {
+              // Evento mais antigo MAS progressão válida de status
+              // Ex: 'disputed' (kind 30080, older) supera 'awaiting_confirmation' (kind 30081, newer)
+            } else {
+              continue; // Evento antigo e não é progressão - ignorar
+            }
+            
+            updates[orderId] = {
+              'orderId': orderId,
+              'status': newStatus,
+              'eventKind': eventKind,
+              'providerId': content['providerId'] ?? event['pubkey'],
+              'proofImage': content['proofImage'],
+              'proofImage_nip44': content['proofImage_nip44'],
+              'encryption': content['encryption'],
+              'created_at': createdAt,
+            };
           } catch (e) {
           }
       }

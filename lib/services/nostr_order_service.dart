@@ -2835,6 +2835,8 @@ class NostrOrderService {
   /// Busca o comprovante de pagamento para uma ordem específica
   /// Pesquisa kind 30081 (bro_complete) e kind 30080 diretamente pelo orderId
   /// Retorna Map com 'proofImage' (plaintext ou null) e 'encrypted' (bool)
+  /// CORREÇÃO build 216: Usar tags single-letter (#d, #r, #t) suportadas por relays
+  /// em vez de #orderId que é multi-char e NÃO é suportada por relays
   Future<Map<String, dynamic>> fetchProofForOrder(String orderId, {String? providerPubkey}) async {
     try {
       final result = <String, dynamic>{
@@ -2848,24 +2850,31 @@ class NostrOrderService {
           final channel = WebSocketChannel.connect(Uri.parse(relay));
           final subId = 'proof_${orderId.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
           
-          // Buscar kind 30081 (complete) e kind 30080 (payment proof) pelo orderId
+          // Buscar kind 30081 (complete) e kind 30080 (payment proof)
           final filters = <Map<String, dynamic>>[];
           
-          // Filter 1: por tag orderId
+          // Filter 1: kind 30081 complete por #d tag = '{orderId}_complete'
           filters.add({
-            'kinds': [kindBroComplete, kindBroPaymentProof],
-            '#orderId': [orderId],
+            'kinds': [kindBroComplete],
+            '#d': ['${orderId}_complete'],
             'limit': 10,
           });
           
-          // Filter 2: por tag #r (alternativa)
+          // Filter 2: kind 30080 por #r tag (reference ao orderId) - funciona!
           filters.add({
-            'kinds': [kindBroComplete, kindBroPaymentProof],
+            'kinds': [kindBroPaymentProof],
             '#r': [orderId],
             'limit': 10,
           });
           
-          // Filter 3: se conhecemos o provedor, buscar por autor
+          // Filter 3: por #t bro-complete (fallback mais amplo, filtrar por content)
+          filters.add({
+            'kinds': [kindBroComplete],
+            '#t': ['bro-complete'],
+            'limit': 20,
+          });
+          
+          // Filter 4: se conhecemos o provedor, buscar por autor
           if (providerPubkey != null && providerPubkey.isNotEmpty) {
             filters.add({
               'kinds': [kindBroComplete, kindBroPaymentProof],
@@ -2948,35 +2957,65 @@ class NostrOrderService {
 
   /// Busca o provedor que aceitou uma ordem (via kind 30079 accept event)
   /// Retorna o pubkey do provedor ou null
+  /// CORREÇÃO build 216: Usar #d tag (single-letter, suportada por relays)
+  /// em vez de #orderId (multi-char, NÃO suportada por relays)
   Future<String?> fetchOrderProviderPubkey(String orderId) async {
     try {
       for (final relay in _relays.take(3)) {
         try {
-          final events = await _fetchFromRelay(
+          // Estratégia 1: Buscar por #d tag = '{orderId}_accept' (accept event padrão)
+          var events = await _fetchFromRelay(
             relay,
             kinds: [kindBroAccept],
-            tags: {'#orderId': [orderId]},
+            tags: {'#d': ['${orderId}_accept']},
             limit: 5,
           ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]);
+          
+          // Estratégia 2: Se não encontrou, buscar por #t bro-accept e filtrar por content
+          if (events.isEmpty) {
+            events = await _fetchFromRelay(
+              relay,
+              kinds: [kindBroAccept],
+              tags: {'#t': ['bro-accept']},
+              limit: 30,
+            ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]);
+          }
+          
+          // Estratégia 3: Buscar por #r (updates que têm referência ao orderId)
+          if (events.isEmpty) {
+            events = await _fetchFromRelay(
+              relay,
+              kinds: [kindBroPaymentProof, kindBroComplete],
+              tags: {'#r': [orderId]},
+              limit: 10,
+            ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]);
+          }
           
           for (final event in events) {
             try {
               final content = event['parsedContent'] ?? jsonDecode(event['content']);
               if (content['orderId'] == orderId) {
+                // Tentar providerId do content
                 final providerId = content['providerId'] as String?;
                 if (providerId != null && providerId.isNotEmpty) {
-                  debugPrint('✅ fetchOrderProviderPubkey: ${providerId.substring(0, 8)} para ordem ${orderId.substring(0, 8)}');
+                  debugPrint('\u2705 fetchOrderProviderPubkey: ${providerId.substring(0, 8)} para ordem ${orderId.substring(0, 8)}');
                   return providerId;
+                }
+                // Fallback: usar pubkey do autor do evento (quem aceitou = provedor)
+                final eventPubkey = event['pubkey'] as String?;
+                if (eventPubkey != null && eventPubkey.isNotEmpty) {
+                  debugPrint('\u2705 fetchOrderProviderPubkey (author): ${eventPubkey.substring(0, 8)} para ordem ${orderId.substring(0, 8)}');
+                  return eventPubkey;
                 }
               }
             } catch (_) {}
           }
         } catch (_) {}
       }
-      debugPrint('🔍 fetchOrderProviderPubkey: não encontrado para ${orderId.substring(0, 8)}');
+      debugPrint('\uD83D\uDD0D fetchOrderProviderPubkey: n\u00e3o encontrado para ${orderId.substring(0, 8)}');
       return null;
     } catch (e) {
-      debugPrint('❌ fetchOrderProviderPubkey EXCEPTION: $e');
+      debugPrint('\u274C fetchOrderProviderPubkey EXCEPTION: $e');
       return null;
     }
   }

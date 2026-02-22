@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:nostr/nostr.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../models/order.dart';
@@ -35,6 +36,47 @@ class NostrOrderService {
   // Quando 3 funções chamam em paralelo, a primeira faz o fetch real,
   // as outras esperam pelo mesmo resultado sem criar novas conexões
   Completer<Map<String, Map<String, dynamic>>>? _statusUpdatesFetching;
+
+  // BLOCKLIST LOCAL: IDs de ordens em estado terminal (completed, cancelled, etc)
+  // Persistida em SharedPreferences para sobreviver a reinicializações
+  // Resolve: relay não retorna evento de status → ordem aparece como disponível
+  static const String _blockedOrdersKey = 'blocked_order_ids';
+  Set<String> _blockedOrderIds = {};
+  bool _blockedOrdersLoaded = false;
+
+  /// Carrega blocklist do SharedPreferences (chamado 1x na inicialização)
+  Future<void> _loadBlockedOrders() async {
+    if (_blockedOrdersLoaded) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_blockedOrdersKey) ?? [];
+      _blockedOrderIds = list.toSet();
+      _blockedOrdersLoaded = true;
+      debugPrint('🚫 Blocklist carregada: ${_blockedOrderIds.length} ordens bloqueadas');
+    } catch (e) {
+      debugPrint('⚠️ Erro ao carregar blocklist: $e');
+      _blockedOrdersLoaded = true;
+    }
+  }
+
+  /// Adiciona IDs à blocklist e persiste
+  Future<void> _addToBlocklist(Set<String> orderIds) async {
+    if (orderIds.isEmpty) return;
+    final newIds = orderIds.difference(_blockedOrderIds);
+    if (newIds.isEmpty) return;
+    _blockedOrderIds.addAll(newIds);
+    debugPrint('🚫 Blocklist: +${newIds.length} ordens (total: ${_blockedOrderIds.length})');
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // Manter apenas últimas 2000 entradas para não crescer infinitamente
+      if (_blockedOrderIds.length > 2000) {
+        _blockedOrderIds = _blockedOrderIds.toList().sublist(_blockedOrderIds.length - 2000).toSet();
+      }
+      await prefs.setStringList(_blockedOrdersKey, _blockedOrderIds.toList());
+    } catch (e) {
+      debugPrint('⚠️ Erro ao salvar blocklist: $e');
+    }
+  }
 
   /// Helper: Verifica se newStatus é progressão válida em relação a currentStatus
   /// Mesma lógica de _isStatusMoreRecent do OrderProvider, mas local
@@ -226,6 +268,17 @@ class NostrOrderService {
 
       final successCount = results.where((r) => r).length;
       debugPrint('📤 updateOrderStatus: publicado em $successCount/${_relays.length} relays (orderId=${orderId.substring(0, 8)}, status=$newStatus)');
+      
+      // Adicionar à blocklist se status é terminal
+      if (successCount > 0) {
+        const terminalStatuses = ['accepted', 'awaiting_confirmation', 'completed', 'cancelled', 'liquidated', 'disputed'];
+        if (terminalStatuses.contains(newStatus)) {
+          _addToBlocklist({orderId});
+          _statusUpdatesCache = null;
+          _statusUpdatesCacheTime = null;
+        }
+      }
+      
       return successCount > 0;
     } catch (e) {
       debugPrint('❌ updateOrderStatus EXCEPTION: $e');
@@ -959,6 +1012,14 @@ class NostrOrderService {
         anySuccess = results.any((s) => s);
       }
 
+      // Adicionar à blocklist local imediatamente (não esperar próximo sync)
+      if (anySuccess) {
+        _addToBlocklist({order.id});
+        // Invalidar cache de status updates para forçar re-fetch
+        _statusUpdatesCache = null;
+        _statusUpdatesCacheTime = null;
+      }
+
       return anySuccess;
     } catch (e, stack) {
       return false;
@@ -1060,6 +1121,13 @@ class NostrOrderService {
         anySuccess = results.any((s) => s);
       }
 
+      // Adicionar à blocklist local + invalidar cache
+      if (anySuccess) {
+        _addToBlocklist({order.id});
+        _statusUpdatesCache = null;
+        _statusUpdatesCacheTime = null;
+      }
+
       return anySuccess;
     } catch (e) {
       return false;
@@ -1068,19 +1136,23 @@ class NostrOrderService {
 
   /// Busca ordens pendentes e retorna como List<Order>
   /// Para modo Bro: retorna APENAS ordens que ainda não foram aceitas por nenhum Bro
+  /// v1.0.129+205: Usa blocklist local + re-fetch direcionado por #d tag
+  /// NOTA: _fetchAllOrderStatusUpdates retorna 0 na maioria dos relays porque
+  /// tags #t e queries sem authors não são suportadas para events kind 30000+
+  /// Por isso usamos _fetchTargetedStatusUpdates (que usa #d tag) como PRIMARY
   Future<List<Order>> fetchPendingOrders() async {
+    
+    // PASSO 0: Garantir que blocklist local está carregada
+    await _loadBlockedOrders();
     
     final rawOrders = await _fetchPendingOrdersRaw();
     debugPrint('📋 fetchPendingOrders: ${rawOrders.length} raw events do relay');
-    
-    // Buscar eventos de UPDATE para saber quais ordens já foram aceitas
-    final statusUpdates = await _fetchAllOrderStatusUpdates();
-    debugPrint('📋 fetchPendingOrders: ${statusUpdates.length} status updates encontrados');
     
     // Converter para Orders COM DEDUPLICAÇÃO por orderId
     final seenOrderIds = <String>{};
     final allOrders = <Order>[];
     int nullOrders = 0;
+    int blockedCount = 0;
     for (final e in rawOrders) {
       final order = eventToOrder(e);
       if (order == null) { nullOrders++; continue; }
@@ -1090,45 +1162,83 @@ class NostrOrderService {
         continue;
       }
       seenOrderIds.add(order.id);
+      
+      // BLOCKLIST: Filtrar ordens que já sabemos estar em estado terminal
+      if (_blockedOrderIds.contains(order.id)) {
+        blockedCount++;
+        continue;
+      }
+      
       allOrders.add(order);
     }
     
-    debugPrint('📋 fetchPendingOrders: ${allOrders.length} ordens válidas ($nullOrders rejeitadas)');
+    debugPrint('📋 fetchPendingOrders: ${allOrders.length} ordens válidas ($nullOrders rejeitadas, $blockedCount bloqueadas localmente)');
+    
+    // Filtrar ordens expiradas ANTES do fetch de status (economiza queries)
+    final now = DateTime.now();
+    final maxOrderAge = const Duration(days: 3);
+    final freshOrders = <Order>[];
+    final expiredIds = <String>{};
+    
+    for (var order in allOrders) {
+      final orderAge = now.difference(order.createdAt);
+      if (orderAge > maxOrderAge && (order.status == 'pending')) {
+        debugPrint('  ⏰ Ordem ${order.id.substring(0, 8)} expirada: ${orderAge.inDays} dias atrás');
+        expiredIds.add(order.id);
+        continue;
+      }
+      freshOrders.add(order);
+    }
+    
+    if (expiredIds.isNotEmpty) {
+      _addToBlocklist(expiredIds);
+      debugPrint('📋 ${expiredIds.length} ordens expiradas bloqueadas');
+    }
+    
+    if (freshOrders.isEmpty) {
+      debugPrint('📋 fetchPendingOrders: 0 ordens disponíveis (todas expiradas/bloqueadas)');
+      return [];
+    }
+    
+    // PASSO 2: Buscar status via #d tag (PRIMARY - funciona em todos os relays)
+    // Esta é a fonte de verdade: busca accept/complete events por #d tag
+    final orderIdsToCheck = freshOrders.map((o) => o.id).toList();
+    debugPrint('🔍 fetchPendingOrders: buscando status de ${orderIdsToCheck.length} ordens via #d tag');
+    final statusUpdates = await _fetchTargetedStatusUpdates(orderIdsToCheck);
+    debugPrint('🔍 fetchPendingOrders: ${statusUpdates.length} ordens com status encontrado');
     
     // LOG DETALHADO de cada ordem
-    for (var order in allOrders) {
-      final hasUpdate = statusUpdates.containsKey(order.id);
+    for (var order in freshOrders) {
       final update = statusUpdates[order.id];
       final updateStatus = update?['status'] as String?;
       debugPrint('  📦 Ordem ${order.id.substring(0, 8)}: status=${order.status}, update=$updateStatus, amount=${order.amount}');
     }
     
-    // FILTRAR: Mostrar apenas ordens que NÃO foram aceitas por nenhum Bro
-    // OU que têm status pending/payment_received
-    // TAMBÉM filtrar ordens muito antigas (>7 dias) que provavelmente foram abandonadas
-    final availableOrders = <Order>[];
-    final now = DateTime.now();
-    final maxOrderAge = const Duration(days: 7);
+    // PASSO 3: Salvar ordens com status terminal na blocklist local
+    final newBlockedIds = <String>{};
+    for (final entry in statusUpdates.entries) {
+      final status = entry.value['status'] as String?;
+      if (status == 'accepted' || status == 'awaiting_confirmation' || 
+          status == 'completed' || status == 'liquidated' || 
+          status == 'cancelled' || status == 'disputed') {
+        newBlockedIds.add(entry.key);
+      }
+    }
+    if (newBlockedIds.isNotEmpty) {
+      _addToBlocklist(newBlockedIds);
+    }
     
-    for (var order in allOrders) {
+    // PASSO 4: FILTRAR ordens disponíveis
+    final availableOrders = <Order>[];
+    
+    for (var order in freshOrders) {
       final update = statusUpdates[order.id];
       final updateStatus = update?['status'] as String?;
-      final updateProviderId = update?['providerId'] as String?;
       
-      // CORREÇÃO: Filtrar ordens pendentes muito antigas (>7 dias)
-      // Ordens que ficam pendentes por mais de 7 dias foram abandonadas pelo usuário
-      final orderAge = now.difference(order.createdAt);
-      if (orderAge > maxOrderAge && (order.status == 'pending')) {
-        debugPrint('  ⏰ Ordem ${order.id.substring(0, 8)} expirada: ${orderAge.inDays} dias atrás');
-        continue;
-      }
-      
-      // Se não tem update OU se o update não é de accept/complete/cancelled, está disponível
-      // CORREÇÃO: Incluir 'cancelled' e 'disputed' no filtro — ordens canceladas NÃO devem aparecer!
+      // Se tem update com status avançado, NÃO está disponível
       final isUnavailable = updateStatus == 'accepted' || updateStatus == 'awaiting_confirmation' || updateStatus == 'completed' || updateStatus == 'liquidated' || updateStatus == 'cancelled' || updateStatus == 'disputed';
       
       if (!isUnavailable) {
-        // Ordem ainda não foi aceita/cancelada - DISPONÍVEL para Bros
         availableOrders.add(order);
       } else {
         debugPrint('  🚫 Ordem ${order.id.substring(0, 8)} filtrada: updateStatus=$updateStatus');
@@ -1137,6 +1247,114 @@ class NostrOrderService {
     
     debugPrint('📋 fetchPendingOrders: ${availableOrders.length} ordens disponíveis após filtro');
     return availableOrders;
+  }
+  
+  /// Re-fetch direcionado de status updates para ordens específicas
+  /// Usa tag #d (single-letter, indexada pelos relays) com valores orderId_accept/orderId_complete
+  /// NOTA: Tags multi-letter como #orderId NÃO são suportadas pela maioria dos relays Nostr
+  /// Os relays só indexam tags single-letter (#d, #p, #e, #t) para queries
+  Future<Map<String, Map<String, dynamic>>> _fetchTargetedStatusUpdates(List<String> orderIds) async {
+    final updates = <String, Map<String, dynamic>>{};
+    if (orderIds.isEmpty) return updates;
+    
+    // Dividir em batches de 20 ordens (= 40 valores #d) para não sobrecarregar o relay
+    const batchSize = 20;
+    final batches = <List<String>>[];
+    for (var i = 0; i < orderIds.length; i += batchSize) {
+      batches.add(orderIds.sublist(i, i + batchSize > orderIds.length ? orderIds.length : i + batchSize));
+    }
+    
+    debugPrint('🔍 _fetchTargetedStatusUpdates: ${orderIds.length} ordens em ${batches.length} batches');
+    
+    // Processar todos os batches em paralelo
+    final allEvents = <Map<String, dynamic>>[];
+    
+    for (final batch in batches) {
+      // Construir lista de #d values: orderId_accept + orderId_complete
+      final dTags = <String>[];
+      for (final id in batch) {
+        dTags.add('${id}_accept');
+        dTags.add('${id}_complete');
+      }
+      
+      // Buscar de todos os relays em paralelo
+      final relayFutures = _relays.map((relay) async {
+        try {
+          // Estratégia ÚNICA: usar #d tag (SEMPRE indexada pelos relays para events kind 30000+)
+          final events = await _fetchFromRelayWithSince(
+            relay,
+            kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete],
+            tags: {'#d': dTags},
+            since: null, // Sem since - queremos QUALQUER status
+            limit: batch.length * 4,
+          ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]);
+          return events;
+        } catch (e) {
+          return <Map<String, dynamic>>[];
+        }
+      }).toList();
+      
+      final results = await Future.wait(relayFutures);
+      final seenIds = <String>{};
+      for (final relayEvents in results) {
+        for (final e in relayEvents) {
+          final id = e['id'];
+          if (id != null && !seenIds.contains(id)) {
+            seenIds.add(id);
+            allEvents.add(e);
+          }
+        }
+      }
+    }
+    
+    debugPrint('🔍 _fetchTargetedStatusUpdates: ${allEvents.length} eventos encontrados');
+    
+    // Processar eventos
+    for (final event in allEvents) {
+      try {
+        final content = event['parsedContent'] ?? jsonDecode(event['content']);
+        final eventType = content['type'] as String?;
+        if (eventType != 'bro_accept' && eventType != 'bro_order_update' && eventType != 'bro_complete') continue;
+        
+        final orderId = content['orderId'] as String?;
+        if (orderId == null || !orderIds.contains(orderId)) continue;
+        
+        final createdAt = event['created_at'] as int? ?? 0;
+        final existingUpdate = updates[orderId];
+        final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
+        
+        if (existingUpdate == null || createdAt >= existingCreatedAt) {
+          String? status = content['status'] as String?;
+          final eventKind = event['kind'] as int?;
+          if (eventType == 'bro_accept' || eventKind == kindBroAccept) {
+            status = 'accepted';
+          } else if (eventType == 'bro_complete' || eventKind == kindBroComplete) {
+            status = 'awaiting_confirmation';
+          }
+          
+          final providerId = content['providerId'] as String? ?? event['pubkey'] as String?;
+          final providerInvoice = content['providerInvoice'] as String?;
+          final proofImage = content['proofImage'] as String?;
+          final proofImageNip44 = content['proofImage_nip44'] as String?;
+          final encryption = content['encryption'] as String?;
+          
+          updates[orderId] = {
+            'orderId': orderId,
+            'status': status,
+            'providerId': providerId,
+            'eventAuthorPubkey': event['pubkey'] as String?,
+            'proofImage': proofImage,
+            'proofImage_nip44': proofImageNip44,
+            'encryption': encryption,
+            'providerInvoice': providerInvoice,
+            'completedAt': content['completedAt'],
+            'created_at': createdAt,
+          };
+        }
+      } catch (_) {}
+    }
+    
+    return updates;
   }
 
   /// Pre-fetch status updates para preencher o cache ANTES de chamadas paralelas
@@ -1216,13 +1434,13 @@ class NostrOrderService {
             kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete],
             tags: {'#t': [broTag]},
             since: statusSince,
-            limit: 500,
+            limit: 2000,
           ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]),
           _fetchFromRelayWithSince(
             relay,
             kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete],
             since: statusSince,
-            limit: 500,
+            limit: 2000,
           ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]),
         ]);
         

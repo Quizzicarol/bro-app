@@ -74,6 +74,18 @@
         "/^\\$adb = \"\\$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb\\.exe\"; & \\$adb devices$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^\\$adb = \"\\$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb\\.exe\"; & \\$adb logcat -s flutter -d --pid 24530 \\| Select-String \"fetchPendingOrders\\|blocklist\\|Blocklist\\|targeted\\|re-fetch\\|Disponiveis\\|disponíveis\\|bc58f865\\|bloqueadas\" \\| Select-Object -Last 40$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^\\$adb = \"\\$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb\\.exe\"; & \\$adb logcat -s flutter -d --pid 24530 \\| Select-Object -Last 30$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^\\$adb = \"\\$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb\\.exe\"; & \\$adb logcat -s flutter -d --pid 24530 \\| Select-String \"bc58f865\\|Blocklist\\|bloqueadas\\|blocklist\\|fetchPending\\|re-fetch\\|targeted\\|Disponiveis\\|_fetchTargeted\" \\| Select-Object -Last 40$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }

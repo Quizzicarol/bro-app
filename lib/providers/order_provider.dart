@@ -2155,7 +2155,20 @@ class OrderProvider with ChangeNotifier {
     _isSyncingUser = true;
     
     try {
-      final nostrOrders = await _nostrOrderService.fetchUserOrders(_currentUserPubkey!);
+      // PERFORMANCE v1.0.129+218: Se TODAS as ordens locais são terminais,
+      // pular fetchUserOrders (que abre 9+ WebSocket connections).
+      // Novas ordens do usuário aparecem via syncAllPendingOrdersFromNostr.
+      // Só buscar do Nostr se: sem ordens locais (primeira vez) OU tem ordens ativas.
+      const terminalOnly = ['completed', 'cancelled', 'liquidated', 'disputed'];
+      final hasActiveOrders = _orders.isEmpty || _orders.any((o) => !terminalOnly.contains(o.status));
+      
+      List<Order> nostrOrders;
+      if (hasActiveOrders) {
+        nostrOrders = await _nostrOrderService.fetchUserOrders(_currentUserPubkey!);
+      } else {
+        debugPrint('⚡ syncOrdersFromNostr: todas ${_orders.length} ordens são terminais, pulando fetchUserOrders (9 WebSockets economizados)');
+        nostrOrders = [];
+      }
       
       // Mesclar ordens do Nostr com locais
       int added = 0;

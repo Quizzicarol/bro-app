@@ -303,6 +303,13 @@ class _HomeScreenState extends State<HomeScreen> {
     _ordersUpdateTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
       if (mounted) {
         final orderProvider = context.read<OrderProvider>();
+        // PERFORMANCE v226: Pular sync de user quando provider mode está ativo
+        // O provider sync (ProviderOrdersScreen) já busca tudo que precisamos
+        // Isso elimina ~42 WebSocket conexões/min de redundância
+        if (orderProvider.isProviderMode) {
+          debugPrint('⚡ HomeScreen timer: provider mode ativo, pulando syncOrdersFromNostr');
+          return;
+        }
         try {
           await orderProvider.syncOrdersFromNostr();
         } catch (e) {

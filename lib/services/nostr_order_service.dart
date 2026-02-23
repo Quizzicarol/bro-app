@@ -32,7 +32,10 @@ class NostrOrderService {
   // e garante dados mais frescos entre polls (45s)
   Map<String, Map<String, dynamic>>? _statusUpdatesCache;
   DateTime? _statusUpdatesCacheTime;
-  static const _statusUpdatesCacheTtlSeconds = 15;
+  // PERFORMANCE v226: TTL aumentado de 15s para 40s
+  // O timer de provider é 45s, então cache sobrevive entre ciclos
+  // Cache é invalidado em escritas (_statusUpdatesCache = null), então dados mutados são sempre frescos
+  static const _statusUpdatesCacheTtlSeconds = 40;
   // CORREÇÃO v1.0.129: Lock para evitar chamadas simultâneas de _fetchAllOrderStatusUpdates
   // Quando 3 funções chamam em paralelo, a primeira faz o fetch real,
   // as outras esperam pelo mesmo resultado sem criar novas conexões
@@ -1154,11 +1157,40 @@ class NostrOrderService {
     debugPrint('📋 fetchPendingOrders: ${rawOrders.length} raw events do relay');
     
     // Converter para Orders COM DEDUPLICAÇÃO por orderId
+    // PERFORMANCE v226: Verificar blocklist ANTES de eventToOrder() usando tag 'd'
+    // Isso evita JSON decode + construção de Order para ~94% dos eventos (que são bloqueados)
     final seenOrderIds = <String>{};
     final allOrders = <Order>[];
     int nullOrders = 0;
     int blockedCount = 0;
+    int skippedByTagCount = 0;
     for (final e in rawOrders) {
+      // PERFORMANCE v226: Extrair orderId da tag 'd' ANTES do parsing pesado
+      // Tags já estão parseadas pelo WebSocket handler (são List<dynamic>)
+      String? tagOrderId;
+      final tags = e['tags'] as List<dynamic>?;
+      if (tags != null) {
+        for (final tag in tags) {
+          if (tag is List && tag.length >= 2 && tag[0] == 'd') {
+            tagOrderId = tag[1]?.toString();
+            break;
+          }
+        }
+      }
+      
+      // Se temos orderId da tag, verificar blocklist e dedup ANTES de eventToOrder
+      if (tagOrderId != null && tagOrderId.isNotEmpty) {
+        if (seenOrderIds.contains(tagOrderId)) {
+          skippedByTagCount++;
+          continue;
+        }
+        if (_blockedOrderIds.contains(tagOrderId)) {
+          seenOrderIds.add(tagOrderId);
+          blockedCount++;
+          continue;
+        }
+      }
+      
       final order = eventToOrder(e);
       if (order == null) { nullOrders++; continue; }
       
@@ -1168,7 +1200,7 @@ class NostrOrderService {
       }
       seenOrderIds.add(order.id);
       
-      // BLOCKLIST: Filtrar ordens que já sabemos estar em estado terminal
+      // BLOCKLIST: Verificação final (para eventos sem tag 'd')
       if (_blockedOrderIds.contains(order.id)) {
         blockedCount++;
         continue;
@@ -1177,7 +1209,7 @@ class NostrOrderService {
       allOrders.add(order);
     }
     
-    debugPrint('📋 fetchPendingOrders: ${allOrders.length} ordens válidas ($nullOrders rejeitadas, $blockedCount bloqueadas localmente)');
+    debugPrint('📋 fetchPendingOrders: ${allOrders.length} ordens válidas ($nullOrders rejeitadas, $blockedCount bloqueadas localmente, $skippedByTagCount skipped por tag)');
     
     // Filtrar ordens expiradas ANTES do fetch de status (economiza queries)
     final now = DateTime.now();
@@ -1217,13 +1249,18 @@ class NostrOrderService {
     // Os relays NÃO indexam tags #r, mas SEMPRE indexam 'authors'.
     // Coletamos pubkeys dos criadores e buscamos seus events kind 30080.
     final ordersWithoutStatus = freshOrders.where((o) => !statusUpdates.containsKey(o.id)).toList();
-    if (ordersWithoutStatus.isNotEmpty) {
+    // PERFORMANCE v226: Só chamar _fetchStatusByAuthors se > 5 ordens sem status
+    // Para poucas ordens, o _fetchTargetedStatusUpdates (#d tag) já é suficiente
+    // Isso economiza 3 WebSocket conexões na maioria dos ciclos
+    if (ordersWithoutStatus.length > 5) {
       debugPrint('🔍 fetchPendingOrders: ${ordersWithoutStatus.length} ordens sem status - buscando por authors');
       final authorUpdates = await _fetchStatusByAuthors(ordersWithoutStatus);
       if (authorUpdates.isNotEmpty) {
         debugPrint('🔍 fetchPendingOrders: ${authorUpdates.length} updates extras via authors!');
         statusUpdates.addAll(authorUpdates);
       }
+    } else if (ordersWithoutStatus.isNotEmpty) {
+      debugPrint('⚡ fetchPendingOrders: ${ordersWithoutStatus.length} ordens sem status (≤5), pulando fetchStatusByAuthors');
     }
     debugPrint('🔍 fetchPendingOrders: ${statusUpdates.length} ordens com status total');
     

@@ -461,36 +461,9 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         top: false, // AppBar já lida com safe area superior
         child: Consumer2<CollateralProvider, OrderProvider>(
           builder: (context, collateralProvider, orderProvider, child) {
-            // Mostrar loading enquanto sincronizando
-            if (_isLoading) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const CircularProgressIndicator(color: Color(0xFFFF6B6B)),
-                    const SizedBox(height: 16),
-                    Text(
-                      _isSyncingNostr 
-                          ? '🔄 Sincronizando com Nostr...'
-                          : 'Carregando ordens...',
-                      style: const TextStyle(color: Colors.white70, fontSize: 14),
-                    ),
-                    if (_isSyncingNostr)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 8),
-                        child: Text(
-                          'Buscando ordens de todos os usuários',
-                          style: TextStyle(color: Colors.white38, fontSize: 12),
-                        ),
-                      ),
-                  ],
-                ),
-              );
-            }
-            
-            if (!AppConfig.providerTestMode && !_hasCollateral && !collateralProvider.hasCollateral) {
-              return _buildNoCollateralView();
-            }
+            // v227: Loading/collateral checks movidos para DENTRO de cada aba
+            // Assim "Minhas Ordens" e "Estatísticas" ficam sempre acessíveis
+            // mesmo durante sync ou antes do collateral ser verificado
 
             if (_error != null) {
               return _buildErrorView();
@@ -499,11 +472,11 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
             return TabBarView(
               controller: _tabController,
               children: [
-                // Tab 1: Ordens Disponíveis
-                _buildAvailableOrdersTab(collateralProvider),
-                // Tab 2: Minhas Ordens
+                // Tab 1: Ordens Disponíveis (com loading/collateral inline)
+                _buildAvailableOrdersTabWithChecks(collateralProvider),
+                // Tab 2: Minhas Ordens (sempre acessível)
                 _buildMyOrdersTab(),
-                // Tab 3: Estatísticas
+                // Tab 3: Estatísticas (sempre acessível)
                 _buildStatisticsTab(collateralProvider),
               ],
             );
@@ -518,6 +491,44 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   // TAB 1: ORDENS DISPONÍVEIS
   // ============================================
   
+  /// v227: Wrapper que mostra loading/collateral DENTRO da aba "Disponíveis"
+  /// em vez de bloquear todas as abas. Assim "Minhas" e "Estatísticas" ficam acessíveis.
+  Widget _buildAvailableOrdersTabWithChecks(CollateralProvider collateralProvider) {
+    // Mostrar loading enquanto sincronizando (apenas nesta aba)
+    if (_isLoading) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(color: Color(0xFFFF6B6B)),
+            const SizedBox(height: 16),
+            Text(
+              _isSyncingNostr 
+                  ? '🔄 Sincronizando com Nostr...'
+                  : 'Carregando ordens...',
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            if (_isSyncingNostr)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text(
+                  'Buscando ordens de todos os usuários',
+                  style: TextStyle(color: Colors.white38, fontSize: 12),
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+    
+    // Verificar garantia (apenas nesta aba)
+    if (!AppConfig.providerTestMode && !_hasCollateral && !collateralProvider.hasCollateral) {
+      return _buildNoCollateralView();
+    }
+    
+    return _buildAvailableOrdersTab(collateralProvider);
+  }
+
   Widget _buildAvailableOrdersTab(CollateralProvider collateralProvider) {
     return RefreshIndicator(
       onRefresh: () => _loadOrders(isRefresh: true),

@@ -667,19 +667,14 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
         providerId: providerId,
       );
       
-      // 2. Atualizar status da ordem
+      // 2. Atualizar status da ordem LOCALMENTE (NÃO publicar no Nostr como mediador)
+      // CORREÇÃO v1.0.129: O mediador NÃO deve publicar kind 30080 bro_order_update
+      // porque isso faz a ordem aparecer na lista do mediador como se fosse dele.
+      // O publishDisputeResolution acima já publica um kind 30080 audit com type=bro_dispute_resolution
+      // que é processado pelo sync das partes envolvidas.
       final newStatus = resolution == 'resolved_user' ? 'cancelled' : 'completed';
-      try {
-        await orderProvider.updateOrderStatus(orderId: orderId, status: newStatus);
-        await nostrService.updateOrderStatus(
-          privateKey: privateKey,
-          orderId: orderId,
-          newStatus: newStatus,
-          providerId: providerId.isNotEmpty ? providerId : null,
-        );
-      } catch (e) {
-        debugPrint('⚠️ Erro ao atualizar status: $e');
-      }
+      // Nota: Não chamamos orderProvider.updateOrderStatus nem updateOrderStatusLocal
+      // pois ambos publicam kind 30080 com a chave do mediador, poluindo o Nostr.
       
       // 3. Enviar mensagem de resolução para ambas as partes via bro-mediacao
       final resolutionMsg = '⚖️ RESOLUÇÃO DA DISPUTA\n\n'

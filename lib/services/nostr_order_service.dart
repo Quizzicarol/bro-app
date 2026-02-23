@@ -335,6 +335,13 @@ class NostrOrderService {
                 if (eventPubkey != providerPubkey && !results[1].contains(event)) continue;
                 
                 final content = event['parsedContent'] ?? jsonDecode(event['content']);
+                
+                // CORREÇÃO v1.0.129: Ignorar eventos de resolução de disputa
+                // Mediador publica kind 30080 com type=bro_dispute_resolution
+                // que NÃO deve ser tratado como atividade de provedor
+                final eventType = content['type'] as String?;
+                if (eventType == 'bro_dispute_resolution') continue;
+                
                 final orderId = content['orderId'] as String?;
                 if (orderId != null) relayAcceptIds.add(orderId);
               } catch (_) {}
@@ -1649,13 +1656,41 @@ class NostrOrderService {
             final eventType = content['type'] as String?;
             final eventKind = event['kind'] as int?;
             
-            // Processar eventos de accept, update OU complete
+            // Processar eventos de accept, update, complete OU resolução de disputa
+            // CORREÇÃO v1.0.129: Incluir bro_dispute_resolution para que as partes
+            // envolvidas recebam a atualização de status da resolução do mediador
             if (eventType != 'bro_accept' && 
                 eventType != 'bro_order_update' && 
-                eventType != 'bro_complete') continue;
+                eventType != 'bro_complete' &&
+                eventType != 'bro_dispute_resolution') continue;
             
             final orderId = content['orderId'] as String?;
             if (orderId == null) continue;
+            
+            // CORREÇÃO v1.0.129: Para eventos de resolução de disputa,
+            // o pubkey do evento é do mediador, não do provedor/usuário.
+            // Não validar papel do pubkey para estes eventos.
+            if (eventType == 'bro_dispute_resolution') {
+              // Extrair status da resolução
+              final resolutionStatus = content['status'] as String?;
+              if (resolutionStatus == null) continue;
+              
+              final createdAt = event['created_at'] as int? ?? 0;
+              final existingUpdate = updates[orderId];
+              final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
+              
+              if (existingUpdate == null || createdAt >= existingCreatedAt) {
+                final providerId = content['providerId'] as String?;
+                updates[orderId] = {
+                  'orderId': orderId,
+                  'status': resolutionStatus,
+                  'providerId': providerId,
+                  'eventAuthorPubkey': event['pubkey'] as String?,
+                  'created_at': createdAt,
+                };
+              }
+              continue;
+            }
             
             // SEGURANÇA: Validar papel do pubkey do evento
             // Após verificação de assinatura (em _fetchFromRelayWithSince),
@@ -2081,6 +2116,19 @@ class NostrOrderService {
             // PERFORMANCE v1.0.129+218: Ignorar eventos de ordens que não estão na lista ativa
             // Isso filtra eventos de ordens já terminais (completed/cancelled/liquidated)
             if (activeOrderIdSet != null && !activeOrderIdSet.contains(orderId)) continue;
+            
+            // CORREÇÃO v1.0.129: Ignorar eventos de resolução de disputa publicados pelo PRÓPRIO
+            // usuário (quando ele é o mediador). Estes eventos não devem criar/atualizar ordens
+            // na lista do mediador, pois ele não é parte da transação.
+            final contentType = content['type'] as String?;
+            if (contentType == 'bro_dispute_resolution') {
+              // Se este usuário é o mediador (adminPubkey == userPubkey),
+              // ignorar o evento para não poluir a lista do mediador
+              final adminPubkey = content['adminPubkey'] as String?;
+              if (adminPubkey == userPubkey) continue;
+              // Se o usuário é uma das PARTES da disputa, processar normalmente
+              // (o status da resolução é relevante para eles)
+            }
             
             // SEGURANÇA: Validar papel baseado no tipo de evento
             final eventPubkey = event['pubkey'] as String?;

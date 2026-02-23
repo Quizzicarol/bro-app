@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'nostr_service.dart';
@@ -27,6 +28,9 @@ class ContentModerationService {
   
   // Pubkeys mutadas pelo usuário
   Set<String> _mutedPubkeys = {};
+  
+  // Event IDs reportados localmente (ocultar imediatamente)
+  Set<String> _reportedEventIds = {};
 
   // ============================================
   // LISTA DE PALAVRAS PROIBIDAS
@@ -38,8 +42,15 @@ class ContentModerationService {
     // Conteúdo ilegal
     'cp', 'pedo', 'menor', 'criança', 'child',
     'csam', 'underage', 'jailbait',
-    // Drogas pesadas (pode ajustar)
-    'cocaina', 'heroina', 'crack',
+    // Drogas
+    'cocaina', 'heroina', 'crack', 'maconha', 'marijuana',
+    'haze', 'cannabis', 'weed', 'lsd', 'ecstasy', 'mdma',
+    'metanfetamina', 'meth', 'skunk', 'prensado', 'baseado',
+    'haxixe', 'hashish', 'cogumelo magico', 'psilocibina',
+    'ketamina', 'opio', 'fentanil', 'droga', 'entorpecente',
+    // Armas
+    'arma de fogo', 'pistola', 'revolver', 'fuzil', 'rifle',
+    'munição', 'municao', 'explosivo',
     // Violência extrema
     'gore', 'snuff', 'assassinato',
     // Outros termos ofensivos graves
@@ -65,19 +76,25 @@ class ContentModerationService {
     required String title,
     required String description,
     required String sellerPubkey,
+    String? eventId,
   }) {
-    // 1. Verificar palavras proibidas
+    // 1. Verificar se este evento específico foi reportado
+    if (eventId != null && _reportedEventIds.contains(eventId)) {
+      return true;
+    }
+    
+    // 2. Verificar palavras proibidas
     if (containsBannedContent(title) || containsBannedContent(description)) {
       return true;
     }
     
-    // 2. Verificar se está mutado
+    // 3. Verificar se está mutado
     if (_mutedPubkeys.contains(sellerPubkey)) {
       return true;
     }
     
-    // 3. Verificar se tem muitos reports (threshold: 3)
-    if ((_reportedPubkeys[sellerPubkey] ?? 0) >= 3) {
+    // 4. Verificar se tem reports (threshold: 1 para conteúdo ilegal)
+    if ((_reportedPubkeys[sellerPubkey] ?? 0) >= 1) {
       return true;
     }
     
@@ -205,8 +222,23 @@ class ContentModerationService {
       // Adicionar à contagem local também
       _reportedPubkeys[targetPubkey] = (_reportedPubkeys[targetPubkey] ?? 0) + 1;
       
+      // CORREÇÃO v1.0.129+225: Auto-mute + auto-hide ao reportar
+      // Não depender do usuário clicar "SILENCIAR" no SnackBar
+      _mutedPubkeys.add(targetPubkey);
+      if (targetEventId != null) {
+        _reportedEventIds.add(targetEventId);
+      }
+      
       // Salvar reports locais
       await _saveLocalReports();
+      
+      // Salvar mute atualizado
+      final prefs2 = await SharedPreferences.getInstance();
+      final myPubkey2 = _nostrService.publicKey;
+      if (myPubkey2 != null) {
+        await prefs2.setStringList('muted_$myPubkey2', _mutedPubkeys.toList());
+        await prefs2.setStringList('reported_events_$myPubkey2', _reportedEventIds.toList());
+      }
 
       debugPrint('✅ Report publicado em $successCount relays');
       return successCount > 0;
@@ -217,10 +249,25 @@ class ContentModerationService {
   }
 
   Future<bool> _publishReport(String relayUrl, Event event) async {
-    // Usar a mesma lógica de publicação do NostrOrderService
-    // Por simplicidade, retornar true (a publicação real está no NostrOrderService)
-    // TODO: Integrar com NostrOrderService._publishToRelay
-    return true;
+    try {
+      // CORREÇÃO v1.0.129+225: Publicar de fato no relay (antes era stub)
+      final ws = await WebSocket.connect(relayUrl).timeout(
+        const Duration(seconds: 8),
+      );
+      
+      final eventJson = event.serialize();
+      ws.add(eventJson);
+      
+      // Aguardar OK do relay
+      await Future.delayed(const Duration(seconds: 2));
+      await ws.close();
+      
+      debugPrint('✅ Report publicado em $relayUrl');
+      return true;
+    } catch (e) {
+      debugPrint('⚠️ Falha ao publicar report em $relayUrl: $e');
+      return false;
+    }
   }
 
   /// Muta uma pubkey localmente
@@ -284,6 +331,9 @@ class ContentModerationService {
         final decoded = jsonDecode(reportsJson) as Map<String, dynamic>;
         _reportedPubkeys = decoded.map((k, v) => MapEntry(k, v as int));
       }
+      
+      // Carregar event IDs reportados
+      _reportedEventIds = (prefs.getStringList('reported_events_$myPubkey') ?? []).toSet();
 
       debugPrint('📦 Moderação carregada: ${_following.length} seguidos, ${_mutedPubkeys.length} mutados');
     } catch (e) {

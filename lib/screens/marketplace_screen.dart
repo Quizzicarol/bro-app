@@ -102,8 +102,11 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
           title: offer.title,
           description: offer.description,
           sellerPubkey: offer.sellerPubkey,
+          eventId: offer.id,
         );
       }).toList();
+      
+      debugPrint('✅ ${allOffers.length} ofertas (${allOffers.length - filteredOffers.length} filtradas)');
       
       // Ordenar por Web of Trust (ofertas de pessoas confiáveis primeiro)
       filteredOffers.sort((a, b) {
@@ -920,19 +923,16 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(success 
-                        ? '✅ Report enviado! Deseja silenciar este vendedor?'
+                        ? '✅ Report enviado! Oferta ocultada.'
                         : '❌ Erro ao enviar report'),
                       backgroundColor: success ? Colors.green : Colors.red,
-                      action: success ? SnackBarAction(
-                        label: 'SILENCIAR',
-                        textColor: Colors.white,
-                        onPressed: () async {
-                          await _moderationService.mutePubkey(offer.sellerPubkey);
-                          _loadOffers(); // Recarregar sem a oferta
-                        },
-                      ) : null,
                     ),
                   );
+                  
+                  // CORREÇÃO v1.0.129+225: Recarregar lista imediatamente para ocultar a oferta
+                  if (success) {
+                    _loadOffers();
+                  }
                 }
               },
               icon: const Icon(Icons.send),

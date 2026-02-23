@@ -494,34 +494,33 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   /// v227: Wrapper que mostra loading/collateral DENTRO da aba "Disponíveis"
   /// em vez de bloquear todas as abas. Assim "Minhas" e "Estatísticas" ficam acessíveis.
   Widget _buildAvailableOrdersTabWithChecks(CollateralProvider collateralProvider) {
-    // Mostrar loading enquanto sincronizando (apenas nesta aba)
-    if (_isLoading) {
+    // v227: Mostrar sync spinner SEMPRE que estiver sincronizando
+    // Isso evita mostrar "Garantia Necessária" antes do sync terminar
+    // (porque _hasCollateral só é atualizado DEPOIS do sync)
+    if (_isLoading || _isSyncingNostr) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const CircularProgressIndicator(color: Color(0xFFFF6B6B)),
             const SizedBox(height: 16),
-            Text(
-              _isSyncingNostr 
-                  ? '🔄 Sincronizando com Nostr...'
-                  : 'Carregando ordens...',
-              style: const TextStyle(color: Colors.white70, fontSize: 14),
+            const Text(
+              '🔄 Sincronizando com Nostr...',
+              style: TextStyle(color: Colors.white70, fontSize: 14),
             ),
-            if (_isSyncingNostr)
-              const Padding(
-                padding: EdgeInsets.only(top: 8),
-                child: Text(
-                  'Buscando ordens de todos os usuários',
-                  style: TextStyle(color: Colors.white38, fontSize: 12),
-                ),
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text(
+                'Buscando ordens de todos os usuários',
+                style: TextStyle(color: Colors.white38, fontSize: 12),
               ),
+            ),
           ],
         ),
       );
     }
     
-    // Verificar garantia (apenas nesta aba)
+    // Verificar garantia SOMENTE após sync completo
     if (!AppConfig.providerTestMode && !_hasCollateral && !collateralProvider.hasCollateral) {
       return _buildNoCollateralView();
     }

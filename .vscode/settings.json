@@ -86,6 +86,10 @@
         "/^\\$adb = \"\\$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb\\.exe\"; & \\$adb logcat -s flutter -d --pid 24530 \\| Select-String \"bc58f865\\|Blocklist\\|bloqueadas\\|blocklist\\|fetchPending\\|re-fetch\\|targeted\\|Disponiveis\\|_fetchTargeted\" \\| Select-Object -Last 40$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^\\$adb = \"\\$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb\\.exe\"; & \\$adb logcat -s flutter -d \\| Select-String \"0c127f4e\" \\| Select-Object -Last 40$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }

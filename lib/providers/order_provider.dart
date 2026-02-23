@@ -175,7 +175,23 @@ class OrderProvider with ChangeNotifier {
   /// Esta lista NUNCA ÃÂ© salva localmente!
   /// IMPORTANTE: Retorna uma CÃâPIA para evitar ConcurrentModificationException
   /// quando o timer de polling modifica a lista durante iteraÃÂ§ÃÂ£o na UI
-  List<Order> get availableOrdersForProvider => List<Order>.from(_availableOrdersForProvider.where((o) => o.userPubkey != _currentUserPubkey));
+  List<Order> get availableOrdersForProvider {
+    // CORREÇÃO v1.0.129+223: Cross-check com _orders para eliminar ordens stale
+    // Se uma ordem já existe em _orders com status terminal, NÃO mostrar como disponível
+    const terminalStatuses = ['accepted', 'awaiting_confirmation', 'completed', 'cancelled', 'liquidated', 'disputed'];
+    return List<Order>.from(_availableOrdersForProvider.where((o) {
+      if (o.userPubkey == _currentUserPubkey) return false;
+      // Se a ordem já foi movida para _orders e tem status não-pendente, excluir
+      final inOrders = _orders.cast<Order?>().firstWhere(
+        (ord) => ord?.id == o.id,
+        orElse: () => null,
+      );
+      if (inOrders != null && terminalStatuses.contains(inOrders.status)) {
+        return false;
+      }
+      return true;
+    }));
+  }
 
   /// Calcula o total de sats comprometidos com ordens pendentes/ativas (modo cliente)
   /// Este valor deve ser SUBTRAÃÂDO do saldo total para calcular saldo disponÃÂ­vel para garantia
@@ -1084,17 +1100,17 @@ class OrderProvider with ChangeNotifier {
         }
       }
       
-      // v1.0.129+202: SUBSTITUIR lista ao inves de merge
-      // O merge anterior preservava ordens stale indefinidamente (bug: 43 ordens
-      // concluidas ainda apareciam como disponiveis). Com 3 relays em paralelo,
-      // uma ordem so desaparece se sumiu de TODOS os relays (= foi concluida/cancelada).
-      // Protecao: se fetch retornou 0 ordens (falha de rede), manter lista antiga.
-      if (allPendingOrders.isNotEmpty) {
+      // v1.0.129+223: SEMPRE atualizar _availableOrdersForProvider
+      // A proteção contra falha de rede já foi feita acima (return early se TODAS as buscas vazias).
+      // Se chegamos aqui, pelo menos uma busca retornou dados → rede OK → 0 pendentes é genuíno.
+      // BUG ANTERIOR: "if (allPendingOrders.isNotEmpty)" impedia limpeza quando
+      // a única ordem pendente era aceita, causando gasto duplo.
+      {
         final previousCount = _availableOrdersForProvider.length;
         _availableOrdersForProvider = newAvailableOrders;
         
         if (previousCount > 0 && newAvailableOrders.isEmpty) {
-          debugPrint('AVISO: Lista de disponiveis foi de $previousCount para 0 - possivel falha de relay');
+          debugPrint('✅ Lista de disponiveis limpa: $previousCount -> 0 (todas aceitas/concluidas)');
         } else if (previousCount != newAvailableOrders.length) {
           debugPrint('Disponiveis: $previousCount -> ${newAvailableOrders.length}');
         }
@@ -1529,6 +1545,12 @@ class OrderProvider with ChangeNotifier {
         return false;
       }
 
+      // CORREÇÃO v1.0.129+223: Remover da lista de disponíveis IMEDIATAMENTE
+      // Sem isso, a ordem ficava em _availableOrdersForProvider com status stale
+      // e continuava aparecendo na aba "Disponíveis" mesmo após aceita/completada
+      _availableOrdersForProvider.removeWhere((o) => o.id == orderId);
+      debugPrint('🗑️ [acceptOrderAsProvider] Removido de _availableOrdersForProvider');
+      
       // Atualizar localmente
       final index = _orders.indexWhere((o) => o.id == orderId);
       if (index != -1) {
@@ -1616,6 +1638,9 @@ class OrderProvider with ChangeNotifier {
         return false;
       }
 
+      // CORREÇÃO v1.0.129+223: Remover da lista de disponíveis (defesa em profundidade)
+      _availableOrdersForProvider.removeWhere((o) => o.id == orderId);
+      
       // Atualizar localmente
       final index = _orders.indexWhere((o) => o.id == orderId);
       if (index != -1) {

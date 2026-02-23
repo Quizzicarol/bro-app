@@ -255,6 +255,14 @@ class PlatformFeeService {
       return true; // Retorna true pois já foi pago
     }
     
+    // CORREÇÃO v1.0.129+224: LOCK IMEDIATO para prevenir race condition
+    // Adicionar ao Set SINCRONAMENTE antes de qualquer await.
+    // Sem isso, duas chamadas concorrentes (order_status_screen + onPaymentSent)
+    // passam o contains() check acima antes de qualquer uma completar o pagamento,
+    // resultando em taxa duplicada.
+    _paidOrderIds.add(orderId);
+    debugPrint('💼 Lock adquirido para ordem ${orderId.length > 8 ? orderId.substring(0, 8) : orderId}');
+    
     // Calcular taxa da plataforma: 2% do valor total (mínimo 1 sat)
     final platformFeeRaw = (totalSats * AppConfig.platformFeePercent).round();
     final platformFeeSats = platformFeeRaw < 1 ? 1 : platformFeeRaw;
@@ -266,6 +274,7 @@ class PlatformFeeService {
 
     if (AppConfig.platformLightningAddress.isEmpty) {
       debugPrint('⚠️ platformLightningAddress não configurado!');
+      _paidOrderIds.remove(orderId); // Liberar lock para retry
       return false;
     }
 
@@ -283,6 +292,7 @@ class PlatformFeeService {
     if (_payInvoiceCallback == null) {
       debugPrint('❌ ERRO: Callback de pagamento não configurado!');
       debugPrint('   Certifique-se de chamar PlatformFeeService.setPaymentCallback() na inicialização');
+      _paidOrderIds.remove(orderId); // Liberar lock para retry
       return false;
     }
 
@@ -305,6 +315,7 @@ class PlatformFeeService {
 
         if (result['success'] != true || result['invoice'] == null) {
           debugPrint('❌ Falha ao obter invoice do LN Address: ${result['error'] ?? 'unknown'}');
+          _paidOrderIds.remove(orderId); // Liberar lock para retry
           return false;
         }
 
@@ -315,8 +326,8 @@ class PlatformFeeService {
         final payResult = await _payInvoiceCallback!(invoice);
         
         if (payResult != null && payResult['success'] == true) {
-          // CRÍTICO: Registrar que esta ordem já teve taxa paga (persistido)
-          await _markOrderAsPaid(orderId);
+          // Lock já foi adquirido - apenas persistir no storage
+          await _savePaidOrderIds();
           
           debugPrint('');
           debugPrint('✅ ════════════════════════════════════════════════');
@@ -333,12 +344,14 @@ class PlatformFeeService {
           return true;
         } else {
           debugPrint('❌ Falha no pagamento: $payResult');
+          _paidOrderIds.remove(orderId); // Liberar lock para retry
           return false;
         }
 
       } else if (platformAddress.toLowerCase().startsWith('lno1')) {
         // BOLT12 Offer - ainda não suportado
         debugPrint('⚠️ BOLT12 Offer detectado - não suportado ainda');
+        _paidOrderIds.remove(orderId); // Liberar lock para retry
         return false;
 
       } else if (platformAddress.toLowerCase().startsWith('ln')) {
@@ -348,24 +361,27 @@ class PlatformFeeService {
         final payResult = await _payInvoiceCallback!(platformAddress);
         
         if (payResult != null && payResult['success'] == true) {
-          // CRÍTICO: Registrar que esta ordem já teve taxa paga (persistido)
-          await _markOrderAsPaid(orderId);
+          // Lock já foi adquirido - apenas persistir no storage
+          await _savePaidOrderIds();
           
           debugPrint('✅ TAXA DA PLATAFORMA PAGA COM SUCESSO via $_currentBackend!');
           await markAsCollected([orderId]);
           return true;
         } else {
           debugPrint('❌ Falha no pagamento: $payResult');
+          _paidOrderIds.remove(orderId); // Liberar lock para retry
           return false;
         }
       }
 
       debugPrint('⚠️ Tipo de endereço não reconhecido: $platformAddress');
+      _paidOrderIds.remove(orderId); // Liberar lock para retry
       return false;
 
     } catch (e, stack) {
       debugPrint('❌ ERRO ao pagar taxa da plataforma: $e');
       debugPrint('   Stack: $stack');
+      _paidOrderIds.remove(orderId); // Liberar lock para retry
       return false;
     }
   }

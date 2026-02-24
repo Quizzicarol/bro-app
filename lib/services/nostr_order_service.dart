@@ -95,10 +95,14 @@ class NostrOrderService {
     // CORREÇÃO: 'disputed' não estava no statusOrder linear, causando rejeição
     // quando processado depois de 'awaiting_confirmation' em fetchOrderUpdatesForUser
     if (newStatus == 'disputed') return true;
+    // CORREÇÃO v233: disputed pode transicionar para completed/cancelled (resolução de disputa)
+    if (currentStatus == 'disputed') {
+      return newStatus == 'completed' || newStatus == 'cancelled';
+    }
     // Status finais - só disputed pode seguir
-    const finalStatuses = ['completed', 'liquidated', 'disputed'];
+    const finalStatuses = ['completed', 'liquidated'];
     if (finalStatuses.contains(currentStatus)) {
-      return currentStatus != 'disputed' && newStatus == 'disputed';
+      return newStatus == 'disputed';
     }
     // Progressão linear
     const statusOrder = [

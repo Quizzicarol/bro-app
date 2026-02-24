@@ -176,6 +176,12 @@ class Order {
   }
 
   String get statusText {
+    // v233: Verificar se a ordem foi resolvida por mediação de disputa
+    final wasDisputed = metadata?['wasDisputed'] == true;
+    if (wasDisputed) {
+      if (status == 'completed') return 'Resolvida por Mediação ⚖️';
+      if (status == 'cancelled') return 'Cancelada (Disputa) ⚖️';
+    }
     switch (status) {
       case 'pending':
         return 'Aguardando Pagamento';
@@ -204,6 +210,12 @@ class Order {
 
   /// Retorna uma descrição mais detalhada do status para exibição ao usuário
   String get statusDescription {
+    // v233: Verificar se foi resolvida por mediação
+    final wasDisputed = metadata?['wasDisputed'] == true;
+    if (wasDisputed) {
+      if (status == 'completed') return 'Disputa resolvida por mediação a favor do provedor';
+      if (status == 'cancelled') return 'Disputa resolvida por mediação a favor do usuário';
+    }
     switch (status) {
       case 'pending':
         return 'Pague com Bitcoin Lightning para prosseguir';

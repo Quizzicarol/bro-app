@@ -41,39 +41,64 @@ class _OrderCardState extends State<OrderCard> {
     }
   }
 
-  Color _getStatusColor(String status) {
+  Color _getStatusColor(String status, {bool wasDisputed = false}) {
+    if (wasDisputed && (status == 'completed' || status == 'cancelled')) {
+      return Colors.deepPurple;
+    }
     switch (status.toLowerCase()) {
       case 'pending':
+      case 'payment_received':
         return Colors.orange;
       case 'accepted':
+      case 'processing':
         return Colors.blue;
+      case 'awaiting_confirmation':
+        return Colors.teal;
       case 'paid':
         return Colors.green;
       case 'completed':
         return Colors.green.shade700;
+      case 'liquidated':
+        return Colors.purple;
       case 'rejected':
         return Colors.red;
       case 'cancelled':
         return Colors.grey;
+      case 'disputed':
+        return Colors.orange.shade800;
       default:
         return Colors.grey;
     }
   }
 
-  String _getStatusText(String status) {
+  String _getStatusText(String status, {bool wasDisputed = false}) {
+    if (wasDisputed) {
+      if (status == 'completed') return 'Resolvida ⚖️';
+      if (status == 'cancelled') return 'Cancelada (Disputa) ⚖️';
+    }
     switch (status.toLowerCase()) {
       case 'pending':
         return 'Pendente';
+      case 'payment_received':
+        return 'Pagamento Recebido';
       case 'accepted':
         return 'Aceita';
+      case 'processing':
+        return 'Processando';
+      case 'awaiting_confirmation':
+        return 'Aguardando Confirmação';
       case 'paid':
         return 'Paga';
       case 'completed':
         return 'Concluída';
+      case 'liquidated':
+        return 'Liquidada ⚡';
       case 'rejected':
         return 'Rejeitada';
       case 'cancelled':
         return 'Cancelada';
+      case 'disputed':
+        return 'Em Disputa ⚖️';
       default:
         return status;
     }
@@ -87,6 +112,8 @@ class _OrderCardState extends State<OrderCard> {
     final dueDate = widget.order['dueDate'];
     final estimatedEarnings = amount * 0.07; // 7% de ganho
     final orderId = widget.order['_id'] ?? widget.order['id'] ?? 'N/A';
+    final metadata = widget.order['metadata'] as Map<String, dynamic>?;
+    final wasDisputed = metadata?['wasDisputed'] == true;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -94,7 +121,7 @@ class _OrderCardState extends State<OrderCard> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: _getStatusColor(status).withOpacity(0.3),
+          color: _getStatusColor(status, wasDisputed: wasDisputed).withOpacity(0.3),
           width: 1,
         ),
       ),
@@ -164,19 +191,19 @@ class _OrderCardState extends State<OrderCard> {
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: _getStatusColor(status).withOpacity(0.1),
+                      color: _getStatusColor(status, wasDisputed: wasDisputed).withOpacity(0.1),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: _getStatusColor(status),
+                        color: _getStatusColor(status, wasDisputed: wasDisputed),
                         width: 1,
                       ),
                     ),
                     child: Text(
-                      _getStatusText(status),
+                      _getStatusText(status, wasDisputed: wasDisputed),
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: _getStatusColor(status),
+                        color: _getStatusColor(status, wasDisputed: wasDisputed),
                       ),
                     ),
                   ),

@@ -1349,6 +1349,18 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           'color': Colors.purple,
         };
       case 'disputed':
+        // v233: Se há resolução, mostrar como resolvida mesmo que status ainda seja 'disputed'
+        if (_disputeResolution != null) {
+          final isProviderFavor = _disputeResolution!['resolution'] == 'resolved_provider';
+          return {
+            'title': 'Resolvida por Mediação',
+            'description': isProviderFavor
+                ? 'Mediador decidiu a seu favor — pagamento mantido'
+                : 'Mediador decidiu a favor do usuário',
+            'icon': Icons.gavel,
+            'color': isProviderFavor ? Colors.green : Colors.orange,
+          };
+        }
         return {
           'title': 'Em Disputa',
           'description': 'Aguardando mediação',

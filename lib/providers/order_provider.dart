@@ -1455,7 +1455,19 @@ class OrderProvider with ChangeNotifier {
       if (index != -1) {
         // Preservar metadata existente se nÃÂ£o for passado novo
         final existingMetadata = _orders[index].metadata;
-        final newMetadata = metadata ?? existingMetadata;
+        
+        // v233: Marcar como resolvida por mediação se transicionando de disputed
+        Map<String, dynamic>? newMetadata;
+        if (_orders[index].status == 'disputed' && (status == 'completed' || status == 'cancelled')) {
+          newMetadata = {
+            ...?existingMetadata,
+            ...?metadata,
+            'wasDisputed': true,
+            'disputeResolvedAt': DateTime.now().toIso8601String(),
+          };
+        } else {
+          newMetadata = metadata ?? existingMetadata;
+        }
         
         // Usar copyWith para manter dados existentes
         _orders[index] = _orders[index].copyWith(
@@ -2361,11 +2373,16 @@ class OrderProvider with ChangeNotifier {
           String statusToUse = newStatus;
           
           // GUARDA v1.0.129+232: Não aplicar 'completed' de sync se não há providerId
+          // EXCEÇÃO v233: Se a ordem está 'disputed', permitir (resolução de disputa pelo admin)
           if (statusToUse == 'completed') {
             final effectiveProviderId = newProviderId ?? existing.providerId;
             if (effectiveProviderId == null || effectiveProviderId.isEmpty) {
-              debugPrint('syncOrdersFromNostr: BLOQUEADO completed sem providerId');
-              continue;
+              if (existing.status != 'disputed') {
+                debugPrint('syncOrdersFromNostr: BLOQUEADO completed sem providerId');
+                continue;
+              } else {
+                debugPrint('syncOrdersFromNostr: permitido completed de disputed (resolução de disputa)');
+              }
             }
           }
           
@@ -2375,15 +2392,34 @@ class OrderProvider with ChangeNotifier {
           }
           
           if (needsUpdate) {
-            _orders[existingIndex] = existing.copyWith(
-              status: _isStatusMoreRecent(statusToUse, existing.status) ? statusToUse : existing.status,
-              providerId: newProviderId ?? existing.providerId,
-              metadata: (update['proofImage'] != null || update['providerInvoice'] != null) ? {
+            final isStatusAdvancing = _isStatusMoreRecent(statusToUse, existing.status);
+            // TRACKING v233: Marcar ordem como 'wasDisputed' quando transiciona de disputed para completed/cancelled
+            final wasDisputeResolution = existing.status == 'disputed' && 
+                (statusToUse == 'completed' || statusToUse == 'cancelled') && isStatusAdvancing;
+            
+            Map<String, dynamic>? updatedMetadata;
+            if (wasDisputeResolution) {
+              updatedMetadata = {
+                ...?existing.metadata,
+                'wasDisputed': true,
+                'disputeResolvedAt': DateTime.now().toIso8601String(),
+              };
+              debugPrint('⚖️ syncOrdersFromNostr: ordem ${existing.id.substring(0, 8)} resolvida de disputa → $statusToUse');
+            } else if (update['proofImage'] != null || update['providerInvoice'] != null) {
+              updatedMetadata = {
                 ...?existing.metadata,
                 if (update['proofImage'] != null) 'proofImage': update['proofImage'],
                 if (update['providerInvoice'] != null) 'providerInvoice': update['providerInvoice'],
                 'proofReceivedAt': DateTime.now().toIso8601String(),
-              } : existing.metadata,
+              };
+            } else {
+              updatedMetadata = existing.metadata;
+            }
+            
+            _orders[existingIndex] = existing.copyWith(
+              status: isStatusAdvancing ? statusToUse : existing.status,
+              providerId: newProviderId ?? existing.providerId,
+              metadata: updatedMetadata,
             );
             statusUpdated++;
           }

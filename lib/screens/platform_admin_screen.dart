@@ -1758,7 +1758,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
         try {
           final orderProvider = context.read<OrderProvider>();
           // Marcar ordem como completada ou cancelada baseado no resultado
-          final orderStatus = newStatus == 'resolved_user' ? 'completed' : 'completed';
+          final orderStatus = newStatus == 'resolved_user' ? 'cancelled' : 'completed';
           await orderProvider.updateOrderStatus(
             orderId: dispute.orderId,
             status: orderStatus,

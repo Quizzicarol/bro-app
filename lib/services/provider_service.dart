@@ -47,10 +47,10 @@ class ProviderService {
       final orders = await _nostrOrderService.fetchProviderOrders(providerId);
       debugPrint('📋 Encontradas ${orders.length} ordens do provedor no Nostr');
       
-      // Filtrar apenas ordens ativas (não completed, não cancelled)
+      // Filtrar apenas ordens ativas (não completed, não cancelled, não liquidated)
       final activeOrders = orders.where((order) {
         final status = order.status;
-        return status != 'completed' && status != 'cancelled';
+        return status != 'completed' && status != 'cancelled' && status != 'liquidated';
       }).toList();
       
       debugPrint('📋 ${activeOrders.length} ordens ativas após filtro');
@@ -145,10 +145,10 @@ class ProviderService {
       // Buscar do Nostr
       final orders = await _nostrOrderService.fetchProviderOrders(providerId);
       
-      // Filtrar apenas ordens completadas
+      // Filtrar apenas ordens completadas, liquidadas ou canceladas (histórico)
       final completedOrders = orders.where((order) {
         final status = order.status;
-        return status == 'completed';
+        return status == 'completed' || status == 'liquidated' || status == 'cancelled';
       }).toList();
       
       debugPrint('📋 ${completedOrders.length} ordens completadas no histórico');

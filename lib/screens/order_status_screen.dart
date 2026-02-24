@@ -1517,6 +1517,18 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           'color': Colors.red,
         };
       case 'disputed':
+        // v233: Se há resolução, mostrar como resolvida
+        if (_disputeResolution != null) {
+          final isUserFavor = _disputeResolution!['resolution'] == 'resolved_user';
+          return {
+            'icon': Icons.gavel,
+            'title': 'Resolvida por Mediação',
+            'subtitle': isUserFavor
+                ? 'Mediador decidiu a seu favor'
+                : 'Mediador decidiu a favor do provedor',
+            'color': isUserFavor ? Colors.green : Colors.orange,
+          };
+        }
         return {
           'icon': Icons.gavel,
           'title': 'Em Disputa',

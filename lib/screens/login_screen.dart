@@ -774,10 +774,10 @@ class _LoginScreenState extends State<LoginScreen> {
           throw Exception('Input inválido. Use:\n- Seed de 12 palavras (NIP-06)\n- Chave privada hex (64 chars)\n- nsec...');
         }
         
-        // Normalizar chave para hex (pode vir como nsec)
-        // Usar Keychain para converter nsec -> hex
-        final keychain = Keychain(input);
-        privateKey = keychain.private; // Sempre retorna hex
+        // Normalizar chave para hex (converte nsec→hex se necessário)
+        final hexKey = _nostrService.normalizePrivateKey(input);
+        final keychain = Keychain(hexKey);
+        privateKey = keychain.private;
         publicKey = keychain.public;
         
         debugPrint('🔑 Chave normalizada para hex');

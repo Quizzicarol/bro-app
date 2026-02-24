@@ -147,6 +147,7 @@ class Order {
   bool get isProcessing => status == 'processing';
   bool get isAwaitingConfirmation => status == 'awaiting_confirmation';
   bool get isCompleted => status == 'completed';
+  bool get isLiquidated => status == 'liquidated';
   bool get isCancelled => status == 'cancelled';
   bool get isDisputed => status == 'disputed';
 
@@ -190,6 +191,8 @@ class Order {
         return 'Verificar Comprovante';
       case 'completed':
         return 'Concluído ✓';
+      case 'liquidated':
+        return 'Liquidada ⚡';
       case 'cancelled':
         return 'Cancelado';
       case 'disputed':
@@ -216,6 +219,8 @@ class Order {
         return 'Verifique o comprovante enviado pelo Bro';
       case 'completed':
         return 'Sua conta foi paga com sucesso!';
+      case 'liquidated':
+        return 'Ordem liquidada automaticamente após 24h sem confirmação';
       case 'cancelled':
         return 'Ordem cancelada. Seus sats continuam na carteira';
       case 'disputed':

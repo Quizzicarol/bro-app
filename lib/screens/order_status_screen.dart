@@ -46,6 +46,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   final OrderService _orderService = OrderService();
   final NotificationService _notificationService = NotificationService();
   Timer? _statusCheckTimer;
+  Timer? _countdownTimer;
   
   Map<String, dynamic>? _orderDetails;
   String _currentStatus = 'pending';
@@ -72,6 +73,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   @override
   void dispose() {
     _statusCheckTimer?.cancel();
+    _countdownTimer?.cancel();
     _paymentCheckTimer?.cancel();
     super.dispose();
   }
@@ -110,13 +112,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         setState(() {
           _orderDetails = order;
           _currentStatus = order!['status'] ?? 'pending';
-          // Verificar se expires_at existe antes de parsear
-          if (order['expires_at'] != null) {
-            _expiresAt = DateTime.parse(order['expires_at']);
-          } else {
-            // Default: 24 horas a partir de agora
-            _expiresAt = DateTime.now().add(const Duration(hours: 24));
-          }
+          // Calcular expiração baseada em proofReceivedAt (metadado real)
+          _expiresAt = _calculateExpiresAt(order!);
           _isLoading = false;
         });
       } else {
@@ -189,6 +186,43 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     }
   }
 
+  /// Calcula quando a ordem expira baseado no timestamp real do comprovante
+  DateTime _calculateExpiresAt(Map<String, dynamic> order) {
+    // 1. Tentar expires_at do backend
+    if (order['expires_at'] != null) {
+      try {
+        return DateTime.parse(order['expires_at']);
+      } catch (_) {}
+    }
+    // 2. Tentar proofReceivedAt ou receipt_submitted_at do metadata
+    final metadata = order['metadata'] as Map<String, dynamic>?;
+    if (metadata != null) {
+      final submittedAt = metadata['receipt_submitted_at'] as String?
+          ?? metadata['proofReceivedAt'] as String?;
+      if (submittedAt != null) {
+        try {
+          return DateTime.parse(submittedAt).add(const Duration(hours: 24));
+        } catch (_) {}
+      }
+    }
+    // 3. Fallback: updatedAt + 24h
+    if (order['updatedAt'] != null) {
+      try {
+        return DateTime.parse(order['updatedAt']).add(const Duration(hours: 24));
+      } catch (_) {}
+    }
+    // 4. Último recurso
+    return DateTime.now().add(const Duration(hours: 24));
+  }
+
+  /// Inicia timer para atualizar o countdown na UI a cada 30s
+  void _startCountdownTimer() {
+    _countdownTimer?.cancel();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
   void _startStatusPolling() {
     // PERFORMANCE: Intervalo aumentado de 5s para 15s
     // O syncOrdersFromNostr tem throttle interno que evita syncs < 10s
@@ -216,8 +250,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       
       // Atualizar orderDetails com dados mais recentes (incluindo metadata/proofImage)
       if (order != null && mounted) {
+        final orderMap = order.toJson();
         setState(() {
-          _orderDetails = order.toJson();
+          _orderDetails = orderMap;
+          _expiresAt = _calculateExpiresAt(orderMap);
         });
       }
       
@@ -229,11 +265,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           _currentStatus = status;
         });
 
+        // Iniciar countdown timer quando chega em awaiting_confirmation
+        if (status == 'awaiting_confirmation') {
+          _startCountdownTimer();
+        }
+
         // CORREÇÃO: Só parar polling em estados FINAIS (completed, cancelled)
-        // NÃO parar em 'accepted' porque ainda precisamos receber o comprovante!
-        // Fluxo: pending -> payment_received -> accepted -> awaiting_confirmation -> completed
         if (status == 'completed' || status == 'cancelled') {
           timer.cancel();
+          _countdownTimer?.cancel();
         }
       }
 
@@ -256,11 +296,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       builder: (context) => AlertDialog(
         title: const Text('⏰ Tempo Esgotado'),
         content: const Text(
-          'Nenhum Bro aceitou sua ordem em 24 horas.\n\n'
-          'Você pode:\n'
-          '• Aguardar mais tempo\n'
-          '• Cancelar e criar uma nova ordem\n'
-          '• Seus fundos estão seguros no escrow',
+          'O comprovante não foi confirmado em 24 horas.\n\n'
+          'A ordem será liquidada automaticamente.\n'
+          'Os sats do colateral serão liberados para o Bro.\n\n'
+          'Se o pagamento foi feito corretamente, '
+          'abra uma disputa antes da liquidação.',
         ),
         actions: [
           TextButton(

@@ -31,6 +31,9 @@ class ContentModerationService {
   
   // Event IDs reportados localmente (ocultar imediatamente)
   Set<String> _reportedEventIds = {};
+  
+  // Reports globais de todos os usuários (eventId -> set de pubkeys que reportaram)
+  Map<String, Set<String>> _globalEventReports = {};
 
   // ============================================
   // LISTA DE PALAVRAS PROIBIDAS
@@ -57,6 +60,9 @@ class ContentModerationService {
     'nazista', 'nazi', 'hitler',
     // Golpes conhecidos
     'dobrar bitcoin', 'double your btc', 'send btc get back',
+    // Conteúdo inadequado / scam
+    'nft', 'cripto', 'shitcoin', 'token',
+    'bunda', 'pau', 'puta',
   ];
 
   /// Verifica se um texto contém termos proibidos
@@ -93,8 +99,13 @@ class ContentModerationService {
       return true;
     }
     
-    // 4. Verificar se tem reports (threshold: 1 para conteúdo ilegal)
+    // 4. Verificar se tem reports locais (threshold: 1 para conteúdo ilegal)
     if ((_reportedPubkeys[sellerPubkey] ?? 0) >= 1) {
+      return true;
+    }
+    
+    // 5. Verificar reports globais (2+ usuários diferentes = ocultar para todos)
+    if (eventId != null && (_globalEventReports[eventId]?.length ?? 0) >= 2) {
       return true;
     }
     
@@ -245,6 +256,78 @@ class ContentModerationService {
     } catch (e) {
       debugPrint('❌ Erro ao reportar: $e');
       return false;
+    }
+  }
+
+  /// Busca reports NIP-56 (kind 1984) dos relays para uma lista de event IDs
+  /// Retorna mapa de eventId -> quantidade de reporters únicos
+  Future<void> fetchGlobalReports(List<String> eventIds) async {
+    if (eventIds.isEmpty) return;
+    
+    final relays = [
+      'wss://relay.damus.io',
+      'wss://nos.lol',
+      'wss://relay.primal.net',
+    ];
+    
+    for (final relayUrl in relays) {
+      try {
+        final ws = await WebSocket.connect(relayUrl).timeout(
+          const Duration(seconds: 8),
+        );
+        
+        // Query for kind 1984 events with 'e' tags matching our event IDs
+        // NIP-56: kind 1984, tags: ['e', eventId, reportType]
+        final subscriptionId = 'reports-${DateTime.now().millisecondsSinceEpoch}';
+        final filter = jsonEncode([
+          'REQ',
+          subscriptionId,
+          {
+            'kinds': [1984],
+            '#e': eventIds,
+            'limit': 500,
+          }
+        ]);
+        
+        ws.add(filter);
+        
+        await for (final msg in ws.timeout(const Duration(seconds: 6))) {
+          try {
+            final data = jsonDecode(msg.toString());
+            if (data is List && data.length >= 3 && data[0] == 'EVENT') {
+              final eventData = data[2] as Map<String, dynamic>;
+              final reporterPubkey = eventData['pubkey'] as String? ?? '';
+              final tags = (eventData['tags'] as List?) ?? [];
+              
+              for (final tag in tags) {
+                if (tag is List && tag.length >= 2 && tag[0] == 'e') {
+                  final reportedEventId = tag[1] as String;
+                  _globalEventReports.putIfAbsent(reportedEventId, () => {});
+                  _globalEventReports[reportedEventId]!.add(reporterPubkey);
+                }
+              }
+            } else if (data is List && data[0] == 'EOSE') {
+              break;
+            }
+          } catch (_) {}
+        }
+        
+        await ws.close();
+      } catch (e) {
+        debugPrint('⚠️ Erro ao buscar reports de $relayUrl: $e');
+      }
+    }
+    
+    // Log
+    int totalReported = 0;
+    _globalEventReports.forEach((eventId, reporters) {
+      if (reporters.length >= 2) {
+        totalReported++;
+        debugPrint('🚩 Oferta $eventId tem ${reporters.length} reports globais');
+      }
+    });
+    if (totalReported > 0) {
+      debugPrint('🚩 $totalReported ofertas com 2+ reports globais (ocultas para todos)');
     }
   }
 

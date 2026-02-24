@@ -96,6 +96,10 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
         createdAt: DateTime.tryParse(data['createdAt'] ?? '') ?? DateTime.now(),
       )).toList();
       
+      // Buscar reports globais (NIP-56) dos relays para contar reports de outros usuários
+      final eventIds = allOffers.map((o) => o.id).where((id) => id.isNotEmpty).toList();
+      await _moderationService.fetchGlobalReports(eventIds);
+      
       // Filtrar conteúdo proibido/reportado
       final filteredOffers = allOffers.where((offer) {
         return !_moderationService.shouldHideOffer(
@@ -822,11 +826,14 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
   void _showReportDialog(MarketplaceOffer offer) {
     String selectedType = 'spam';
     final reasonController = TextEditingController();
+    // Salvar referência ao ScaffoldMessenger e Navigator ANTES de abrir o dialog
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
 
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
           backgroundColor: const Color(0xFF1A1A1A),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Row(
@@ -899,15 +906,18 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(dialogContext),
               child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
             ),
             ElevatedButton.icon(
               onPressed: () async {
-                Navigator.pop(context);
+                // Fechar o dialog de report
+                Navigator.pop(dialogContext);
+                // Fechar o bottom sheet da oferta também
+                navigator.pop();
                 
                 // Mostrar loading
-                ScaffoldMessenger.of(context).showSnackBar(
+                scaffoldMessenger.showSnackBar(
                   const SnackBar(content: Text('Enviando report...')),
                 );
                 
@@ -920,19 +930,17 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                 );
                 
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  scaffoldMessenger.showSnackBar(
                     SnackBar(
                       content: Text(success 
                         ? '✅ Report enviado! Oferta ocultada.'
-                        : '❌ Erro ao enviar report'),
-                      backgroundColor: success ? Colors.green : Colors.red,
+                        : '❌ Oferta ocultada localmente (relay offline)'),
+                      backgroundColor: success ? Colors.green : Colors.orange,
                     ),
                   );
                   
-                  // CORREÇÃO v1.0.129+225: Recarregar lista imediatamente para ocultar a oferta
-                  if (success) {
-                    _loadOffers();
-                  }
+                  // Sempre recarregar - a oferta foi ocultada localmente mesmo se relay falhou
+                  _loadOffers();
                 }
               },
               icon: const Icon(Icons.send),

@@ -217,6 +217,12 @@ class NostrOrderService {
     String? paymentProof,
   }) async {
     try {
+      // LOG v1.0.129+232: Alertar quando completed é publicado sem providerId
+      // A proteção principal está no OrderProvider.updateOrderStatus()
+      if (newStatus == 'completed' && (providerId == null || providerId.isEmpty)) {
+        debugPrint('⚠️ [NostrOrderService] completed sem providerId para ${orderId.substring(0, 8)} - verificar fluxo');
+      }
+      
       final keychain = Keychain(privateKey);
       final userPubkey = keychain.public;
       

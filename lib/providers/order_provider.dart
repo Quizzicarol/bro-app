@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1404,6 +1404,24 @@ class OrderProvider with ChangeNotifier {
     _immediateNotify();
 
     try {
+      // GUARDA v1.0.129+232: 'completed' SÓ pode ser publicado se a ordem está num estado avançado
+      // Isso evita auto-complete indevido quando a ordem ainda está em pending/payment_received
+      if (status == 'completed') {
+        final existingOrder = getOrderById(orderId);
+        final currentStatus = existingOrder?.status ?? '';
+        final effectiveProviderId = providerId ?? existingOrder?.providerId;
+        
+        // Se a ordem está em estágios iniciais (pending, payment_received) E não tem provider,
+        // é definitivamente um auto-complete indevido - BLOQUEAR
+        const earlyStatuses = ['', 'draft', 'pending', 'payment_received'];
+        if (earlyStatuses.contains(currentStatus) && (effectiveProviderId == null || effectiveProviderId.isEmpty)) {
+          debugPrint('🚨 BLOQUEADO: completed para ${orderId.length > 8 ? orderId.substring(0, 8) : orderId} em status "$currentStatus" sem providerId!');
+          _isLoading = false;
+          _immediateNotify();
+          return false;
+        }
+      }
+
       // IMPORTANTE: Publicar no Nostr PRIMEIRO e sÃÂ³ atualizar localmente se der certo
       final privateKey = _nostrService.privateKey;
       bool nostrSuccess = false;
@@ -2342,6 +2360,15 @@ class OrderProvider with ChangeNotifier {
           
           String statusToUse = newStatus;
           
+          // GUARDA v1.0.129+232: Não aplicar 'completed' de sync se não há providerId
+          if (statusToUse == 'completed') {
+            final effectiveProviderId = newProviderId ?? existing.providerId;
+            if (effectiveProviderId == null || effectiveProviderId.isEmpty) {
+              debugPrint('syncOrdersFromNostr: BLOQUEADO completed sem providerId');
+              continue;
+            }
+          }
+          
           // Verificar se o novo status ÃÂ© mais avanÃÂ§ado
           if (_isStatusMoreRecent(statusToUse, existing.status)) {
             needsUpdate = true;
@@ -2564,68 +2591,20 @@ class OrderProvider with ChangeNotifier {
   }
 
   /// Callback chamado quando o Breez SDK detecta um pagamento ENVIADO
-  /// Usado para marcar ordens como completed automaticamente
+  /// DESATIVADO v1.0.129+232: Este callback causava auto-complete indevido!
+  /// A ordem DEVE ser completada APENAS via _handleConfirmPayment (tela de ordem)
+  /// O problema: qualquer pagamento enviado (inclusive para outros fins) podia
+  /// ser matchado por valor e auto-completar uma ordem sem confirmação do usuário.
   Future<void> onPaymentSent({
     required String paymentId,
     required int amountSats,
     String? paymentHash,
   }) async {
-    debugPrint('Ã°Å¸âÂª OrderProvider.onPaymentSent: $amountSats sats (hash: ${paymentHash ?? "N/A"})');
-    
-    // CORREÃâ¡ÃÆO CRÃÂTICA: SÃÂ³ buscar ordens que EU CRIEI
-    final currentUserPubkey = _nostrService.publicKey;
-    final awaitingOrders = _orders.where((o) => 
-      (o.status == 'awaiting_confirmation' || o.status == 'accepted') &&
-      o.userPubkey == currentUserPubkey // IMPORTANTE: SÃÂ³ minhas ordens!
-    ).toList();
-    
-    if (awaitingOrders.isEmpty) {
-      debugPrint('Ã°Å¸âÂ¡ Nenhuma ordem aguardando liberaÃÂ§ÃÂ£o de BTC');
-      return;
-    }
-    
-    debugPrint('Ã°Å¸âÅ Verificando ${awaitingOrders.length} ordens...');
-    
-    // Procurar ordem com valor correspondente
-    for (final order in awaitingOrders) {
-      final expectedSats = (order.btcAmount * 100000000).toInt();
-      
-      // TolerÃÂ¢ncia de 5% para taxas
-      final tolerance = (expectedSats * 0.05).toInt();
-      final diff = (amountSats - expectedSats).abs();
-      
-      if (diff <= tolerance) {
-        
-        // IMPORTANTE: Enviar taxa da plataforma (2%) ANTES de marcar como completed
-        final feeSuccess = await PlatformFeeService.sendPlatformFee(
-          orderId: order.id,
-          totalSats: expectedSats,
-        );
-        if (!feeSuccess) {
-        }
-        
-        await updateOrderStatus(
-          orderId: order.id,
-          status: 'completed',
-          metadata: {
-            ...?order.metadata,
-            'completedAt': DateTime.now().toIso8601String(),
-            'completedFrom': 'breez_sdk_payment_sent',
-            'paymentAmount': amountSats,
-            'paymentId': paymentId,
-            'paymentHash': paymentHash,
-            'platformFeeSent': feeSuccess,
-          },
-        );
-        
-        // Republicar no Nostr com status completed
-        final updatedOrder = _orders.firstWhere((o) => o.id == order.id);
-        await _publishOrderToNostr(updatedOrder);
-        
-        return;
-      }
-    }
-    
+    debugPrint('OrderProvider.onPaymentSent: $amountSats sats (hash: ${paymentHash ?? "N/A"})');
+    debugPrint('onPaymentSent: Auto-complete DESATIVADO (v1.0.129+232)');
+    debugPrint('   Ordens só podem ser completadas via confirmação manual do usuário');
+    // NÃO fazer nada - a confirmação é feita via _handleConfirmPayment na tela de ordem
+    // que já chama updateOrderStatus('completed') após o pagamento ao provedor ser confirmado
   }
 
   /// RECONCILIAÃâ¡ÃÆO FORÃâ¡ADA - Analisa TODAS as ordens e TODOS os pagamentos

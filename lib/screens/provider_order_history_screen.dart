@@ -36,7 +36,7 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
     // Filtrar ordens completadas por este provedor
     return orderProvider.orders.where((order) {
       return order.providerId == widget.providerId && 
-             order.status == 'completed';
+             (order.status == 'completed' || order.status == 'liquidated');
     }).toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt)); // Mais recentes primeiro
   }
@@ -241,13 +241,15 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
   Widget _buildOrderCard(Order order) {
     final earnedAmount = order.amount * 0.03;
     final completedDate = _formatDate(order.createdAt);
+    final isLiquidated = order.status == 'liquidated';
+    final statusColor = isLiquidated ? Colors.purple : Colors.green;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: const Color(0xFF1E1E1E),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.green.withOpacity(0.3)),
+        border: Border.all(color: statusColor.withOpacity(0.3)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -259,16 +261,34 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.check_circle, color: Colors.green, size: 20),
+                    Icon(
+                      isLiquidated ? Icons.bolt : Icons.check_circle,
+                      color: statusColor,
+                      size: 20,
+                    ),
                     const SizedBox(width: 8),
                     Text(
                       order.billType.toUpperCase(),
-                      style: const TextStyle(
-                        color: Colors.green,
+                      style: TextStyle(
+                        color: statusColor,
                         fontWeight: FontWeight.bold,
                         fontSize: 12,
                       ),
                     ),
+                    if (isLiquidated) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.purple.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'Auto ⚡',
+                          style: TextStyle(color: Colors.purple, fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
                 Text(
@@ -305,21 +325,21 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.2),
+                    color: statusColor.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.green.withOpacity(0.5)),
+                    border: Border.all(color: statusColor.withOpacity(0.5)),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      const Text(
-                        'Ganho',
-                        style: TextStyle(color: Colors.green, fontSize: 10),
+                      Text(
+                        isLiquidated ? 'Auto ⚡' : 'Ganho',
+                        style: TextStyle(color: statusColor, fontSize: 10),
                       ),
                       Text(
                         'R\$ ${earnedAmount.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          color: Colors.green,
+                        style: TextStyle(
+                          color: statusColor,
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                         ),

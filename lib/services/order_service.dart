@@ -194,7 +194,7 @@ class OrderService {
     return expiresAt.difference(now);
   }
 
-  /// Formatar tempo restante
+  /// Formatar tempo restante (formato universal)
   String formatTimeRemaining(Duration duration) {
     if (duration.inSeconds <= 0) return 'Expirado';
     
@@ -202,9 +202,9 @@ class OrderService {
     final minutes = duration.inMinutes.remainder(60);
     
     if (hours > 0) {
-      return '$hours hora${hours > 1 ? 's' : ''} e $minutes min';
+      return '${hours}h ${minutes}min';
     } else {
-      return '$minutes minuto${minutes > 1 ? 's' : ''}';
+      return '${minutes}min';
     }
   }
 }

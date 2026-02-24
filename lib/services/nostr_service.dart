@@ -128,10 +128,22 @@ class NostrService {
     );
   }
 
-  // Validar chave privada
+  /// Converte nsec (bech32) para hex, ou retorna a chave se já for hex
+  String normalizePrivateKey(String key) {
+    final trimmed = key.trim();
+    if (trimmed.startsWith('nsec1')) {
+      final hex = Nip19.decodePrivkey(trimmed);
+      if (hex.isEmpty) throw Exception('nsec inválido');
+      return hex;
+    }
+    return trimmed;
+  }
+
+  // Validar chave privada (aceita hex ou nsec)
   bool isValidPrivateKey(String key) {
     try {
-      final keyPair = Keychain(key);
+      final hex = normalizePrivateKey(key);
+      final keyPair = Keychain(hex);
       return keyPair.public.isNotEmpty;
     } catch (e) {
       return false;

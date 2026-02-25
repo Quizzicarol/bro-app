@@ -116,6 +116,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           _expiresAt = _calculateExpiresAt(order!);
           _isLoading = false;
         });
+        // CORREÇÃO v234: Iniciar countdown se a ordem JÁ está em awaiting_confirmation
+        // Antes o timer só era iniciado na transição de status, não ao abrir a tela
+        if (_currentStatus == 'awaiting_confirmation' && _expiresAt != null) {
+          _startCountdownTimer();
+        }
       } else {
         if (!mounted) return;
         setState(() {

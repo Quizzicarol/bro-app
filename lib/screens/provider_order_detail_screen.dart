@@ -102,19 +102,29 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         debugPrint('🔄 [POLLING] Verificando status da ordem ${widget.orderId.substring(0, 8)}...');
         await _loadOrderDetails();
         
-        // Se mudou para completed, parar o polling
+        // CORREÇÃO v234: Recalcular _timeRemaining a cada tick pra manter o countdown atualizado
+        if (_receiptSubmittedAt != null && mounted) {
+          final deadline = _receiptSubmittedAt!.add(const Duration(hours: 24));
+          setState(() {
+            _timeRemaining = deadline.difference(DateTime.now());
+          });
+        }
+        
+        // Se mudou para completed ou liquidated, parar o polling
         final newStatus = _orderDetails?['status'] ?? '';
-        if (newStatus == 'completed') {
-          debugPrint('🎉 [POLLING] Ordem confirmada! Parando polling.');
+        if (newStatus == 'completed' || newStatus == 'liquidated') {
+          debugPrint('🎉 [POLLING] Ordem ${newStatus}! Parando polling.');
           timer.cancel();
           
           // Mostrar notificação ao Bro
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('🎉 Pagamento confirmado pelo usuário!'),
+              SnackBar(
+                content: Text(newStatus == 'completed' 
+                    ? '🎉 Pagamento confirmado pelo usuário!' 
+                    : '⚡ Ordem liquidada automaticamente!'),
                 backgroundColor: Colors.green,
-                duration: Duration(seconds: 5),
+                duration: const Duration(seconds: 5),
               ),
             );
           }
@@ -735,7 +745,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     final providerFee = amount * EscrowService.providerFeePercent / 100;
     
     // Verificar se ordem está concluída ou aguardando confirmação
-    final isCompleted = status == 'completed';
+    final isCompleted = status == 'completed' || status == 'liquidated';
     final isAwaitingConfirmation = status == 'awaiting_confirmation';
     final isAccepted = status == 'accepted';
     final isPending = status == 'pending' || status == 'payment_received';
@@ -815,37 +825,46 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     final createdAt = _orderDetails?['createdAt'] != null 
         ? DateTime.tryParse(_orderDetails!['createdAt'].toString())
         : null;
+    final status = _orderDetails?['status'] as String? ?? '';
+    final isLiquidated = status == 'liquidated';
+    final cardColor = isLiquidated ? Colors.purple : Colors.green;
     
     return Column(
       children: [
-        // Card de Sucesso
+        // Card de Sucesso / Liquidação
         Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [Colors.green.withOpacity(0.2), Colors.green.withOpacity(0.05)],
+              colors: [cardColor.withOpacity(0.2), cardColor.withOpacity(0.05)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.green.withOpacity(0.5)),
+            border: Border.all(color: cardColor.withOpacity(0.5)),
           ),
           child: Column(
             children: [
-              const Icon(Icons.check_circle, color: Colors.green, size: 64),
+              Icon(
+                isLiquidated ? Icons.electric_bolt : Icons.check_circle, 
+                color: cardColor, 
+                size: 64,
+              ),
               const SizedBox(height: 16),
-              const Text(
-                '🎉 Ordem Concluída!',
-                style: TextStyle(
+              Text(
+                isLiquidated ? '⚡ Liquidada Automaticamente' : '🎉 Ordem Concluída!',
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'O usuário confirmou o recebimento',
-                style: TextStyle(color: Colors.white70, fontSize: 14),
+              Text(
+                isLiquidated 
+                    ? 'Usuário não confirmou em 24h. Valores liberados para você.'
+                    : 'O usuário confirmou o recebimento',
+                style: const TextStyle(color: Colors.white70, fontSize: 14),
               ),
               const SizedBox(height: 24),
               
@@ -1366,6 +1385,13 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           'description': 'Aguardando mediação',
           'icon': Icons.gavel,
           'color': Colors.orange,
+        };
+      case 'liquidated':
+        return {
+          'title': 'Liquidada Automaticamente ⚡',
+          'description': 'Usuário não confirmou em 24h. Valores liberados para você.',
+          'icon': Icons.electric_bolt,
+          'color': Colors.purple,
         };
       case 'confirmed':
       case 'completed':

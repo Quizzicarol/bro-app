@@ -2429,6 +2429,9 @@ class OrderProvider with ChangeNotifier {
       if (statusUpdated > 0) {
       }
       
+      // AUTO-LIQUIDAÇÃO v234: Também verificar no sync do usuário
+      await _checkAutoLiquidation();
+      
       // Ordenar por data (mais recente primeiro)
       _orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       

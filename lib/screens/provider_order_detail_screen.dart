@@ -49,6 +49,10 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   // Dados de resolução de disputa (vindo do mediador)
   Map<String, dynamic>? _disputeResolution;
   
+  // v237: Mensagens do mediador para o provedor
+  List<Map<String, dynamic>> _providerMediatorMessages = [];
+  bool _loadingProviderMediatorMessages = false;
+  
   // Timer de 36h para auto-liquidação
   Duration? _timeRemaining;
   DateTime? _receiptSubmittedAt;
@@ -64,6 +68,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       _loadOrderDetails(forceSync: true);
       _startStatusPolling();
       _fetchResolutionIfNeeded();
+      _fetchProviderMediatorMessages();
     });
   }
 
@@ -89,6 +94,42 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       }
     } catch (e) {
       debugPrint('⚠️ Provider: erro ao buscar resolução: $e');
+    }
+  }
+  
+  /// v237: Busca mensagens do mediador direcionadas a este provedor para esta ordem
+  Future<void> _fetchProviderMediatorMessages() async {
+    await Future.delayed(const Duration(seconds: 3));
+    if (!mounted) return;
+    
+    setState(() => _loadingProviderMediatorMessages = true);
+    
+    try {
+      final orderProvider = context.read<OrderProvider>();
+      final providerPubkey = orderProvider.currentUserPubkey;
+      if (providerPubkey == null || providerPubkey.isEmpty) {
+        if (mounted) setState(() => _loadingProviderMediatorMessages = false);
+        return;
+      }
+      
+      final nostrService = NostrOrderService();
+      final messages = await nostrService.fetchMediatorMessages(
+        providerPubkey,
+        orderId: widget.orderId,
+      );
+      
+      if (mounted) {
+        setState(() {
+          _providerMediatorMessages = messages;
+          _loadingProviderMediatorMessages = false;
+        });
+        if (messages.isNotEmpty) {
+          debugPrint('📨 Provider: ${messages.length} mensagens do mediador para ordem ${widget.orderId.substring(0, 8)}');
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Provider: erro ao buscar mensagens do mediador: $e');
+      if (mounted) setState(() => _loadingProviderMediatorMessages = false);
     }
   }
   
@@ -814,6 +855,115 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             ],
             // v236: Botão enviar evidência quando em disputa
             if (status == 'disputed' && _disputeResolution == null) ...[
+              // v237: Mensagens do mediador para o provedor
+              if (_providerMediatorMessages.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0D0D0D),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.purple.withOpacity(0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.message, color: Colors.purple, size: 18),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Mensagens do Mediador (${_providerMediatorMessages.length})',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: Colors.purple,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      ..._providerMediatorMessages.map((msg) {
+                        final sentAt = msg['sentAt'] as String? ?? '';
+                        String dateStr = '';
+                        try {
+                          final dt = DateTime.parse(sentAt);
+                          dateStr = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+                        } catch (_) {}
+                        final message = msg['message'] as String? ?? '';
+                        return Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.purple.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.purple.withOpacity(0.15)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.admin_panel_settings, color: Colors.purple, size: 14),
+                                  const SizedBox(width: 6),
+                                  const Text('Mediador', style: TextStyle(color: Colors.purple, fontSize: 11, fontWeight: FontWeight.bold)),
+                                  const Spacer(),
+                                  if (dateStr.isNotEmpty)
+                                    Text(dateStr, style: const TextStyle(color: Colors.white38, fontSize: 10)),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                message,
+                                style: const TextStyle(color: Colors.white70, fontSize: 13),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ] else if (_loadingProviderMediatorMessages) ...[
+                const SizedBox(height: 16),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0D0D0D),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.purple.withOpacity(0.2)),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purple)),
+                      SizedBox(width: 10),
+                      Text('Buscando mensagens do mediador...', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                    ],
+                  ),
+                ),
+              ],
+              // v237: Botão para responder ao mediador (se houver mensagens)
+              if (_providerMediatorMessages.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showSendEvidenceDialog(),
+                    icon: const Icon(Icons.reply, size: 18),
+                    label: const Text('Responder ao Mediador'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.purple,
+                      side: const BorderSide(color: Colors.purple),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
@@ -2508,7 +2658,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                const Text('📸 Foto / Print *', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                const Text('📸 Foto / Print (opcional)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
                 if (evidencePhoto != null) ...[
                   ClipRRect(
@@ -2572,7 +2722,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: (evidenceBase64 == null || sending) ? null : () async {
+                    onPressed: ((evidenceBase64 == null && descController.text.trim().isEmpty) || sending) ? null : () async {
                       setModalState(() => sending = true);
                       try {
                         final orderProvider = context.read<OrderProvider>();
@@ -2605,7 +2755,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                     icon: sending
                         ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                         : const Icon(Icons.send),
-                    label: Text(sending ? 'Enviando...' : 'Enviar Evidência'),
+                    label: Text(sending ? 'Enviando...' : (evidenceBase64 != null ? 'Enviar Evidência' : 'Enviar Mensagem')),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
                       disabledBackgroundColor: Colors.grey[700],

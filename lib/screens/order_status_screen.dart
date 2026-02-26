@@ -63,6 +63,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   
   // Dados de resolução de disputa (vindo do mediador)
   Map<String, dynamic>? _disputeResolution;
+  
+  // v237: Mensagens do mediador para o usuário
+  List<Map<String, dynamic>> _mediatorMessages = [];
+  bool _loadingMediatorMessages = false;
 
   @override
   void initState() {
@@ -70,6 +74,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     _loadOrderDetails();
     _startStatusPolling();
     _fetchResolutionIfNeeded();
+    _fetchMediatorMessagesForUser();
   }
 
   @override
@@ -155,6 +160,43 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       }
     } catch (e) {
       debugPrint('⚠️ Erro ao buscar resolução: $e');
+    }
+  }
+  
+  /// v237: Busca mensagens do mediador direcionadas a este usuário para esta ordem
+  Future<void> _fetchMediatorMessagesForUser() async {
+    // Aguardar dados da ordem carregarem
+    await Future.delayed(const Duration(seconds: 3));
+    if (!mounted) return;
+    
+    setState(() => _loadingMediatorMessages = true);
+    
+    try {
+      final orderProvider = context.read<OrderProvider>();
+      final userPubkey = orderProvider.currentUserPubkey;
+      if (userPubkey == null || userPubkey.isEmpty) {
+        if (mounted) setState(() => _loadingMediatorMessages = false);
+        return;
+      }
+      
+      final nostrService = NostrOrderService();
+      final messages = await nostrService.fetchMediatorMessages(
+        userPubkey, 
+        orderId: widget.orderId,
+      );
+      
+      if (mounted) {
+        setState(() {
+          _mediatorMessages = messages;
+          _loadingMediatorMessages = false;
+        });
+        if (messages.isNotEmpty) {
+          debugPrint('📨 Usuário: ${messages.length} mensagens do mediador para ordem ${widget.orderId.substring(0, 8)}');
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Erro ao buscar mensagens do mediador: $e');
+      if (mounted) setState(() => _loadingMediatorMessages = false);
     }
   }
   
@@ -4345,6 +4387,113 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             ),
             const SizedBox(height: 12),
             
+            // v237: Mensagens do mediador
+            if (_mediatorMessages.isNotEmpty) ...[            
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0D0D0D),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.purple.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.message, color: Colors.purple, size: 18),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Mensagens do Mediador (${_mediatorMessages.length})',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: Colors.purple,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    ..._mediatorMessages.map((msg) {
+                      final sentAt = msg['sentAt'] as String? ?? '';
+                      String dateStr = '';
+                      try {
+                        final dt = DateTime.parse(sentAt);
+                        dateStr = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+                      } catch (_) {}
+                      final message = msg['message'] as String? ?? '';
+                      return Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.purple.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.purple.withOpacity(0.15)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.admin_panel_settings, color: Colors.purple, size: 14),
+                                const SizedBox(width: 6),
+                                const Text('Mediador', style: TextStyle(color: Colors.purple, fontSize: 11, fontWeight: FontWeight.bold)),
+                                const Spacer(),
+                                if (dateStr.isNotEmpty)
+                                  Text(dateStr, style: const TextStyle(color: Colors.white38, fontSize: 10)),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              message,
+                              style: const TextStyle(color: Colors.white70, fontSize: 13),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+              // v237: Botão para responder ao mediador
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _showSendEvidenceDialog('user'),
+                  icon: const Icon(Icons.reply, size: 18),
+                  label: const Text('Responder ao Mediador'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.purple,
+                    side: const BorderSide(color: Colors.purple),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ] else if (_loadingMediatorMessages) ...[            
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0D0D0D),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.purple.withOpacity(0.2)),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purple)),
+                    SizedBox(width: 10),
+                    Text('Buscando mensagens do mediador...', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            
             // v236: Botão para enviar evidência adicional
             SizedBox(
               width: double.infinity,
@@ -4469,7 +4618,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 const SizedBox(height: 16),
                 
                 // Foto
-                const Text('📸 Foto / Print *', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                const Text('📸 Foto / Print (opcional)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
                 if (evidencePhoto != null) ...[
                   ClipRRect(
@@ -4535,7 +4684,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: (evidenceBase64 == null || sending) ? null : () async {
+                    onPressed: ((evidenceBase64 == null && descController.text.trim().isEmpty) || sending) ? null : () async {
                       setModalState(() => sending = true);
                       try {
                         final orderProvider = context.read<OrderProvider>();
@@ -4568,7 +4717,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     icon: sending
                         ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                         : const Icon(Icons.send),
-                    label: Text(sending ? 'Enviando...' : 'Enviar Evidência'),
+                    label: Text(sending ? 'Enviando...' : (evidenceBase64 != null ? 'Enviar Evidência' : 'Enviar Mensagem')),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue,
                       disabledBackgroundColor: Colors.grey[700],

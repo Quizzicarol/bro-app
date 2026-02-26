@@ -1712,8 +1712,10 @@ class OrderProvider with ChangeNotifier {
     final expiredOrders = _orders.where((order) {
       if (order.status != 'awaiting_confirmation') return false;
       // Verificar se a ordem ÃÂ© do provedor atual
-      final providerId = order.metadata?['providerId'] ?? order.metadata?['provider_id'] ?? '';
-      if (providerId != _currentUserPubkey) return false;
+      final providerId = order.providerId ?? order.metadata?['providerId'] ?? order.metadata?['provider_id'] ?? '';
+      final isProvider = providerId.isNotEmpty && providerId == _currentUserPubkey;
+      final isCreator = order.userPubkey == _currentUserPubkey;
+      if (!isProvider && !isCreator) return false;
       // JÃÂ¡ foi auto-liquidada?
       if (order.metadata?['autoLiquidated'] == true) return false;
       

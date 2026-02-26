@@ -10,6 +10,7 @@ import '../services/storage_service.dart';
 import '../services/secure_storage_service.dart';
 import '../services/local_collateral_service.dart';
 import '../services/platform_fee_service.dart';
+import '../services/version_check_service.dart';
 import '../widgets/stat_card.dart';
 import '../widgets/gradient_button.dart';
 import '../widgets/transaction_card.dart';
@@ -44,6 +45,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _startOrdersPolling(); // Iniciar polling de ordens
       _checkSeedRecoveryStatus();
       _checkAndShowBackupReminder();
+      _checkForAppUpdate();
     });
   }
   
@@ -106,6 +108,20 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       );
+    }
+  }
+
+  /// v239: Verificar se há atualização disponível
+  Future<void> _checkForAppUpdate() async {
+    // Atraso para não competir com outros dialogs de inicialização
+    await Future.delayed(const Duration(seconds: 4));
+    if (!mounted) return;
+    
+    final versionService = VersionCheckService();
+    final hasUpdate = await versionService.checkForUpdate();
+    
+    if (hasUpdate && mounted) {
+      await versionService.showUpdateDialog(context);
     }
   }
   

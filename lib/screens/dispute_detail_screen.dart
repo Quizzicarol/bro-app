@@ -26,6 +26,10 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
   // Provider ID pode ser descoberto dinamicamente se não estiver nos dados da disputa
   String? _resolvedProviderId;
   
+  // v235: Histórico de mensagens de mediação
+  List<Map<String, dynamic>> _mediatorMessages = [];
+  bool _loadingMessages = false;
+  
   String get orderId => widget.dispute['orderId'] as String? ?? '';
   String get reason => widget.dispute['reason'] as String? ?? 'Não informado';
   String get description => widget.dispute['description'] as String? ?? '';
@@ -62,6 +66,28 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
       }
     }
     _fetchProofImage();
+    _fetchMediatorMessages();
+  }
+  
+  /// Busca histórico de mensagens de mediação desta ordem
+  Future<void> _fetchMediatorMessages() async {
+    if (orderId.isEmpty) return;
+    setState(() => _loadingMessages = true);
+    
+    try {
+      final nostrService = NostrOrderService();
+      final messages = await nostrService.fetchAllMediatorMessagesForOrder(orderId);
+      
+      if (mounted) {
+        setState(() {
+          _mediatorMessages = messages;
+          _loadingMessages = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('⚠️ Erro ao buscar mensagens: $e');
+      if (mounted) setState(() => _loadingMessages = false);
+    }
   }
   
   /// Busca o comprovante do provedor via Nostr
@@ -178,6 +204,14 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
                   
                   // Comprovante
                   _buildProofSection(),
+                  const SizedBox(height: 16),
+                  
+                  // v235: Evidência do usuário (se houver)
+                  _buildUserEvidenceSection(),
+                  const SizedBox(height: 16),
+                  
+                  // v235: Histórico de mensagens de mediação
+                  _buildMessageHistory(),
                   const SizedBox(height: 24),
                   
                   // Botões de resolução
@@ -509,6 +543,195 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
     );
   }
   
+  /// v235: Seção de evidência do usuário (foto/print enviado na disputa)
+  Widget _buildUserEvidenceSection() {
+    final userEvidence = widget.dispute['user_evidence'] as String?;
+    if (userEvidence == null || userEvidence.isEmpty) {
+      return const SizedBox.shrink(); // Não mostrar se não há evidência
+    }
+    
+    return _buildSection(
+      title: '📎 Evidência do Usuário',
+      icon: Icons.attach_file,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: _buildProofImageWidget(userEvidence),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () => _showFullScreenImage(userEvidence),
+            icon: const Icon(Icons.fullscreen, size: 18),
+            label: const Text('Ver em Tela Cheia'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.blue,
+              side: const BorderSide(color: Colors.blue),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+  
+  /// v235: Histórico de mensagens de mediação
+  Widget _buildMessageHistory() {
+    return _buildSection(
+      title: '💬 Mensagens de Mediação',
+      icon: Icons.chat,
+      children: [
+        if (_loadingMessages)
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Center(child: Column(
+              children: [
+                CircularProgressIndicator(color: Colors.orange, strokeWidth: 2),
+                SizedBox(height: 8),
+                Text('Buscando mensagens...', style: TextStyle(color: Colors.white54, fontSize: 12)),
+              ],
+            )),
+          )
+        else if (_mediatorMessages.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              children: [
+                const Icon(Icons.chat_bubble_outline, color: Colors.white24, size: 32),
+                const SizedBox(height: 8),
+                const Text('Nenhuma mensagem enviada ainda', style: TextStyle(color: Colors.white38, fontSize: 13)),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: _fetchMediatorMessages,
+                  icon: const Icon(Icons.refresh, size: 16),
+                  label: const Text('Atualizar', style: TextStyle(fontSize: 12)),
+                  style: OutlinedButton.styleFrom(foregroundColor: Colors.orange, side: const BorderSide(color: Colors.orange)),
+                ),
+              ],
+            ),
+          )
+        else ...[
+          ..._mediatorMessages.map((msg) => _buildMessageBubble(msg)),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('${_mediatorMessages.length} mensagen${_mediatorMessages.length == 1 ? '' : 's'}',
+                style: const TextStyle(color: Colors.white38, fontSize: 11)),
+              TextButton.icon(
+                onPressed: _fetchMediatorMessages,
+                icon: const Icon(Icons.refresh, size: 14),
+                label: const Text('Atualizar', style: TextStyle(fontSize: 11)),
+                style: TextButton.styleFrom(foregroundColor: Colors.orange, padding: EdgeInsets.zero, minimumSize: const Size(0, 24)),
+              ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 8),
+        // Botões rápidos de envio de mensagem
+        Row(
+          children: [
+            Expanded(
+              child: _quickMsgButton('👤 Usuário', Colors.blue, () => _showSendMessageDialog('user')),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _quickMsgButton('🏪 Provedor', Colors.green, () => _showSendMessageDialog('provider')),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _quickMsgButton('👥 Ambos', Colors.orange, () => _showSendMessageDialog('both')),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+  
+  Widget _quickMsgButton(String label, Color color, VoidCallback onPressed) {
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: color,
+        side: BorderSide(color: color.withOpacity(0.5)),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        minimumSize: const Size(0, 32),
+      ),
+      child: Text(label, style: const TextStyle(fontSize: 10), textAlign: TextAlign.center),
+    );
+  }
+  
+  Widget _buildMessageBubble(Map<String, dynamic> msg) {
+    final message = msg['message'] as String? ?? '';
+    final target = msg['target'] as String? ?? 'both';
+    final sentAt = msg['sentAt'] as String? ?? '';
+    
+    // Formatar data
+    String dateStr = '';
+    try {
+      final dt = DateTime.parse(sentAt);
+      dateStr = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    } catch (_) {}
+    
+    // Cor e ícone baseado no target
+    Color targetColor;
+    IconData targetIcon;
+    String targetLabel;
+    switch (target) {
+      case 'user':
+        targetColor = Colors.blue;
+        targetIcon = Icons.person;
+        targetLabel = 'Para: Usuário';
+        break;
+      case 'provider':
+        targetColor = Colors.green;
+        targetIcon = Icons.storefront;
+        targetLabel = 'Para: Provedor';
+        break;
+      default:
+        targetColor = Colors.orange;
+        targetIcon = Icons.groups;
+        targetLabel = 'Para: Ambos';
+    }
+    
+    // Extrair apenas o corpo da mensagem (remover header formatado)
+    String displayMsg = message;
+    if (message.contains('\n\n')) {
+      final parts = message.split('\n\n');
+      if (parts.length > 2) {
+        displayMsg = parts.sublist(2).join('\n\n'); // Pegar a partir do 3º bloco
+      } else if (parts.length > 1) {
+        displayMsg = parts.last;
+      }
+    }
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: targetColor.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: targetColor.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(targetIcon, color: targetColor, size: 14),
+              const SizedBox(width: 6),
+              Text(targetLabel, style: TextStyle(color: targetColor, fontSize: 11, fontWeight: FontWeight.w600)),
+              const Spacer(),
+              Text(dateStr, style: const TextStyle(color: Colors.white38, fontSize: 10)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(displayMsg, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4)),
+        ],
+      ),
+    );
+  }
+  
   Widget _buildResolutionButtons() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -814,6 +1037,8 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
                     backgroundColor: success ? Colors.green : Colors.red,
                   ),
                 );
+                // v235: Recarregar mensagens após envio
+                if (success) _fetchMediatorMessages();
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: targetColor),

@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:image_picker/image_picker.dart';
 import '../services/order_service.dart';
 import '../services/dispute_service.dart';
 import '../services/lnaddress_service.dart';
@@ -58,6 +59,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   String? _disputeReason;
   String? _disputeDescription;
   DateTime? _disputeCreatedAt;
+  String? _userEvidence; // v236: evidência foto do usuário (base64)
   
   // Dados de resolução de disputa (vindo do mediador)
   Map<String, dynamic>? _disputeResolution;
@@ -206,18 +208,18 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           ?? metadata['proofReceivedAt'] as String?;
       if (submittedAt != null) {
         try {
-          return DateTime.parse(submittedAt).add(const Duration(hours: 24));
+          return DateTime.parse(submittedAt).add(const Duration(hours: 36));
         } catch (_) {}
       }
     }
-    // 3. Fallback: updatedAt + 24h
+    // 3. Fallback: updatedAt + 36h
     if (order['updatedAt'] != null) {
       try {
-        return DateTime.parse(order['updatedAt']).add(const Duration(hours: 24));
+        return DateTime.parse(order['updatedAt']).add(const Duration(hours: 36));
       } catch (_) {}
     }
     // 4. Último recurso
-    return DateTime.now().add(const Duration(hours: 24));
+    return DateTime.now().add(const Duration(hours: 36));
   }
 
   /// Inicia timer para atualizar o countdown na UI a cada 30s
@@ -283,7 +285,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       }
 
       // REMOVIDO: Ordens em 'pending' NÃO expiram
-      // Só expiram após Bro aceitar e usuário demorar 24h para confirmar
+      // Só expiram após Bro aceitar e usuário demorar 36h para confirmar
       // A expiração só deve ocorrer no status 'awaiting_confirmation'
       if (!mounted) return;
       if (_currentStatus == 'awaiting_confirmation' && _expiresAt != null && _orderService.isOrderExpired(_expiresAt!)) {
@@ -301,7 +303,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       builder: (context) => AlertDialog(
         title: const Text('⏰ Tempo Esgotado'),
         content: const Text(
-          'O comprovante não foi confirmado em 24 horas.\n\n'
+          'O comprovante não foi confirmado em 36 horas.\n\n'
           'A ordem será liquidada automaticamente.\n'
           'Os sats do colateral serão liberados para o Bro.\n\n'
           'Se o pagamento foi feito corretamente, '
@@ -1501,7 +1503,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return {
           'icon': Icons.auto_fix_high,
           'title': 'Liquidada Automaticamente',
-          'subtitle': 'Você não confirmou em 24h. Valores liberados para o Bro que comprovou o pagamento. Se houver discrepância, abra disputa.',
+          'subtitle': 'Você não confirmou em 36h. Valores liberados para o Bro que comprovou o pagamento. Se houver discrepância, abra disputa.',
           'color': Colors.purple,
         };
       case 'cancelled':
@@ -1781,7 +1783,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            _buildInfoItem('⏰', 'O Bro tem até 24 horas para aceitar e pagar sua conta'),
+            _buildInfoItem('⏰', 'O Bro tem até 36 horas para aceitar e pagar sua conta'),
             const SizedBox(height: 12),
             _buildInfoItem('🔒', 'Seus Bitcoin estão seguros no escrow até a conclusão'),
             const SizedBox(height: 12),
@@ -2307,6 +2309,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   void _openDisputeForm() {
     final TextEditingController reasonController = TextEditingController();
     String? selectedReason;
+    File? _evidencePhoto; // v236: foto de evidência
+    String? _evidenceBase64; // v236: base64 da foto
 
     showModalBottomSheet(
       context: context,
@@ -2406,6 +2410,113 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     ),
                   ),
                 ),
+                // v236: Seção de foto de evidência
+                const SizedBox(height: 16),
+                const Text(
+                  '📸 Foto de Evidência (opcional)',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Anexe um print ou foto que comprove seu lado',
+                  style: TextStyle(color: Color(0x99FFFFFF), fontSize: 12),
+                ),
+                const SizedBox(height: 8),
+                if (_evidencePhoto != null) ...[                  
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Stack(
+                      children: [
+                        Image.file(
+                          _evidencePhoto!,
+                          height: 150,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                        ),
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: GestureDetector(
+                            onTap: () {
+                              setModalState(() {
+                                _evidencePhoto = null;
+                                _evidenceBase64 = null;
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(
+                                color: Colors.black54,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.close, color: Colors.white, size: 18),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ] else
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final picker = ImagePicker();
+                            final picked = await picker.pickImage(
+                              source: ImageSource.gallery,
+                              maxWidth: 1024,
+                              maxHeight: 1024,
+                              imageQuality: 70,
+                            );
+                            if (picked != null) {
+                              final file = File(picked.path);
+                              final bytes = await file.readAsBytes();
+                              setModalState(() {
+                                _evidencePhoto = file;
+                                _evidenceBase64 = base64Encode(bytes);
+                              });
+                            }
+                          },
+                          icon: const Icon(Icons.photo_library, size: 18),
+                          label: const Text('Galeria'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.orange,
+                            side: const BorderSide(color: Colors.orange),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final picker = ImagePicker();
+                            final picked = await picker.pickImage(
+                              source: ImageSource.camera,
+                              maxWidth: 1024,
+                              maxHeight: 1024,
+                              imageQuality: 70,
+                            );
+                            if (picked != null) {
+                              final file = File(picked.path);
+                              final bytes = await file.readAsBytes();
+                              setModalState(() {
+                                _evidencePhoto = file;
+                                _evidenceBase64 = base64Encode(bytes);
+                              });
+                            }
+                          },
+                          icon: const Icon(Icons.camera_alt, size: 18),
+                          label: const Text('Câmera'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.orange,
+                            side: const BorderSide(color: Colors.orange),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 const SizedBox(height: 20),
                 SizedBox(
                   width: double.infinity,
@@ -2413,7 +2524,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     onPressed: selectedReason != null && reasonController.text.trim().isNotEmpty
                         ? () {
                             Navigator.pop(context);
-                            _submitDispute(selectedReason!, reasonController.text.trim());
+                            _submitDispute(selectedReason!, reasonController.text.trim(), userEvidence: _evidenceBase64);
                           }
                         : null,
                     style: ElevatedButton.styleFrom(
@@ -2435,7 +2546,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     );
   }
 
-  Future<void> _submitDispute(String reason, String description) async {
+  Future<void> _submitDispute(String reason, String description, {String? userEvidence}) async {
     // Mostrar loading
     showDialog(
       context: context,
@@ -2495,6 +2606,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               description: description,
               openedBy: 'user',
               orderDetails: orderDetails,
+              userEvidence: userEvidence,
             );
             debugPrint('📤 Disputa publicada no Nostr com sucesso');
           }
@@ -2507,6 +2619,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           _disputeReason = reason;
           _disputeDescription = description;
           _disputeCreatedAt = DateTime.now();
+          _userEvidence = userEvidence;
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -4132,6 +4245,49 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 ],
               ),
             ),
+            // v236: Evidência do usuário
+            if (_userEvidence != null && _userEvidence!.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0D0D0D),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '📎 Sua Evidência Anexada',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: Colors.blue,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.memory(
+                        base64Decode(_userEvidence!),
+                        height: 150,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          height: 60,
+                          color: Colors.black26,
+                          child: const Center(
+                            child: Text('Imagem anexada ✓', style: TextStyle(color: Colors.blue)),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             
             // Tempo estimado

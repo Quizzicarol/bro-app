@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1700,13 +1700,13 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
-  /// Verifica ordens em 'awaiting_confirmation' com prazo de 24h expirado
+  /// Verifica ordens em 'awaiting_confirmation' com prazo de 36h expirado
   /// e executa auto-liquidaÃÂ§ÃÂ£o em background durante o sync
   Future<void> _checkAutoLiquidation() async {
     if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return;
     
     final now = DateTime.now();
-    const deadline = Duration(hours: 24);
+    const deadline = Duration(hours: 36);
     
     // Filtrar ordens do provedor atual em awaiting_confirmation
     final expiredOrders = _orders.where((order) {
@@ -1736,7 +1736,7 @@ class OrderProvider with ChangeNotifier {
     }).toList();
     
     for (final order in expiredOrders) {
-      debugPrint('[AutoLiquidation] Ordem ${order.id} expirou 24h - auto-liquidando...');
+      debugPrint('[AutoLiquidation] Ordem ${order.id} expirou 36h - auto-liquidando...');
       final proof = order.metadata?['paymentProof'] ?? '';
       await autoLiquidateOrder(order.id, proof.toString());
     }
@@ -1746,7 +1746,7 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
-  /// Auto-liquidaÃÂ§ÃÂ£o quando usuÃÂ¡rio nÃÂ£o confirma em 24h
+  /// Auto-liquidaÃÂ§ÃÂ£o quando usuÃÂ¡rio nÃÂ£o confirma em 36h
   /// Marca a ordem como 'liquidated' e notifica o usuÃÂ¡rio
   Future<bool> autoLiquidateOrder(String orderId, String proof) async {
     _isLoading = true;
@@ -1798,7 +1798,7 @@ class OrderProvider with ChangeNotifier {
             ...(_orders[index].metadata ?? {}),
             'autoLiquidated': true,
             'liquidatedAt': DateTime.now().toIso8601String(),
-            'reason': 'UsuÃÂ¡rio nÃÂ£o confirmou em 24h',
+            'reason': 'UsuÃÂ¡rio nÃÂ£o confirmou em 36h',
           },
         );
         
@@ -2486,7 +2486,7 @@ class OrderProvider with ChangeNotifier {
       'processing',
       'awaiting_confirmation',  // Bro enviou comprovante, aguardando validaÃÂ§ÃÂ£o do usuÃÂ¡rio
       'completed',
-      'liquidated',  // Auto-liquidaÃÂ§ÃÂ£o apÃÂ³s 24h
+      'liquidated',  // Auto-liquidaÃÂ§ÃÂ£o apÃÂ³s 36h
     ];
     final newIndex = statusOrder.indexOf(newStatus);
     final currentIndex = statusOrder.indexOf(currentStatus);

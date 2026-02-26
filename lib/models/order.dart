@@ -1,4 +1,4 @@
-class Order {
+﻿class Order {
   final String id;
   final String? eventId; // ID do evento Nostr
   final String? userPubkey; // Pubkey do usuário que criou a ordem
@@ -232,7 +232,7 @@ class Order {
       case 'completed':
         return 'Sua conta foi paga com sucesso!';
       case 'liquidated':
-        return 'Ordem liquidada automaticamente após 24h sem confirmação';
+        return 'Ordem liquidada automaticamente após 36h sem confirmação';
       case 'cancelled':
         return 'Ordem cancelada. Seus sats continuam na carteira';
       case 'disputed':

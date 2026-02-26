@@ -1236,6 +1236,32 @@ class _PaymentScreenState extends State<PaymentScreen> {
           const SizedBox(height: 12),
           _buildInstructionStep('6', 'Pronto, conta paga de Bro para Bro! 🤝'),
           const SizedBox(height: 16),
+          // v237: Aviso sobre vencimento de contas
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0x1AFF9800),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0x33FF9800)),
+            ),
+            child: const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Color(0xFFFF9800), size: 20),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '⚠️ Evite contas próximas ao vencimento! Um Bro pode não aceitar sua ordem imediatamente. Planeje-se com antecedência para garantir que o pagamento seja feito a tempo.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFFFF9800),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(

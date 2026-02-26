@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -1303,7 +1303,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           'label': 'LIQUIDADA ⚡',
           'icon': Icons.electric_bolt,
           'color': Colors.purple,
-          'description': 'Auto-liquidada após 24h sem confirmação',
+          'description': 'Auto-liquidada após 36h sem confirmação',
         };
       case 'disputed':
         return {

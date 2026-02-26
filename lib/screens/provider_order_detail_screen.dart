@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
@@ -48,7 +48,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   // Dados de resolução de disputa (vindo do mediador)
   Map<String, dynamic>? _disputeResolution;
   
-  // Timer de 24h para auto-liquidação
+  // Timer de 36h para auto-liquidação
   Duration? _timeRemaining;
   DateTime? _receiptSubmittedAt;
   
@@ -104,7 +104,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         
         // CORREÇÃO v234: Recalcular _timeRemaining a cada tick pra manter o countdown atualizado
         if (_receiptSubmittedAt != null && mounted) {
-          final deadline = _receiptSubmittedAt!.add(const Duration(hours: 24));
+          final deadline = _receiptSubmittedAt!.add(const Duration(hours: 36));
           setState(() {
             _timeRemaining = deadline.difference(DateTime.now());
           });
@@ -201,9 +201,9 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           if (submittedAtStr != null) {
             _receiptSubmittedAt = DateTime.tryParse(submittedAtStr);
             if (_receiptSubmittedAt != null) {
-              final deadline = _receiptSubmittedAt!.add(const Duration(hours: 24));
+              final deadline = _receiptSubmittedAt!.add(const Duration(hours: 36));
               _timeRemaining = deadline.difference(DateTime.now());
-              debugPrint('⏱️ Timer 24h: prazo=${deadline.toIso8601String()}, restante=${_timeRemaining?.inHours ?? 0}h ${(_timeRemaining?.inMinutes.abs() ?? 0) % 60}m');
+              debugPrint('⏱️ Timer 36h: prazo=${deadline.toIso8601String()}, restante=${_timeRemaining?.inHours ?? 0}h ${(_timeRemaining?.inMinutes.abs() ?? 0) % 60}m');
             }
           } else {
             debugPrint('⚠️ Nenhum timestamp de comprovante encontrado');
@@ -862,7 +862,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               const SizedBox(height: 8),
               Text(
                 isLiquidated 
-                    ? 'Usuário não confirmou em 24h. Valores liberados para você.'
+                    ? 'Usuário não confirmou em 36h. Valores liberados para você.'
                     : 'O usuário confirmou o recebimento',
                 style: const TextStyle(color: Colors.white70, fontSize: 14),
               ),
@@ -1389,7 +1389,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       case 'liquidated':
         return {
           'title': 'Liquidada Automaticamente ⚡',
-          'description': 'Usuário não confirmou em 24h. Valores liberados para você.',
+          'description': 'Usuário não confirmou em 36h. Valores liberados para você.',
           'icon': Icons.electric_bolt,
           'color': Colors.purple,
         };
@@ -1785,7 +1785,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  '💡 Se o usuário não confirmar em 24 horas, a auto-liquidação libera seu pagamento automaticamente.',
+                  '💡 Se o usuário não confirmar em 36 horas, a auto-liquidação libera seu pagamento automaticamente.',
                   style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
                 ),
               ),
@@ -1814,7 +1814,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   
   bool _isProcessingAutoLiquidation = false;
   
-  /// Executa auto-liquidação quando prazo de 24h expira
+  /// Executa auto-liquidação quando prazo de 36h expira
   Future<void> _executeAutoLiquidation() async {
     if (_isProcessingAutoLiquidation) return;
     
@@ -1939,7 +1939,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Lembre-se: após 24h sem confirmação, a auto-liquidação ocorre automaticamente.',
+                        'Lembre-se: após 36h sem confirmação, a auto-liquidação ocorre automaticamente.',
                         style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 12),
                       ),
                     ),

@@ -223,7 +223,7 @@ class NotificationService {
     await _showNotification(
       id: orderId.hashCode + 21,
       title: '⚡ Ordem Liquidada Automaticamente',
-      body: 'A ordem de R\$ ${amountBrl.toStringAsFixed(2)} foi liquidada. Você não confirmou em 24h, então os valores foram liberados para o Bro.',
+      body: 'A ordem de R\$ ${amountBrl.toStringAsFixed(2)} foi liquidada. Você não confirmou em 36h, então os valores foram liberados para o Bro.',
       payload: 'order_liquidated:$orderId',
       importance: Importance.high,
     );

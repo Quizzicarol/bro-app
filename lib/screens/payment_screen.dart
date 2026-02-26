@@ -1262,7 +1262,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 ),
                 SizedBox(height: 8),
                 Text(
-                  'Obs: Se você não confirmar em 24h o pagamento da conta, sua garantia depositada em bitcoin é liberada automaticamente para o Bro que enviou o comprovante.',
+                  'Obs: Se você não confirmar em 36h o pagamento da conta, sua garantia depositada em bitcoin é liberada automaticamente para o Bro que enviou o comprovante.',
                   style: TextStyle(
                     fontSize: 11,
                     color: Color(0xB3FFFFFF),

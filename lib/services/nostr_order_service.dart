@@ -2567,11 +2567,12 @@ class NostrOrderService {
     required String description,
     required String openedBy,
     Map<String, dynamic>? orderDetails,
+    String? userEvidence, // v236: foto de evidência do usuário (base64)
   }) async {
     try {
       final keychain = Keychain(privateKey);
       
-      final content = jsonEncode({
+      final contentMap = {
         'type': 'bro_dispute',
         'orderId': orderId,
         'reason': reason,
@@ -2585,7 +2586,12 @@ class NostrOrderService {
         'previous_status': orderDetails?['status'],
         'provider_id': orderDetails?['provider_id'],
         'createdAt': DateTime.now().toIso8601String(),
-      });
+      };
+      // v236: incluir evidência do usuário se fornecida
+      if (userEvidence != null && userEvidence.isNotEmpty) {
+        contentMap['user_evidence'] = userEvidence;
+      }
+      final content = jsonEncode(contentMap);
       
       final event = Event.from(
         kind: 1, // Nota regular - #t tags SÃO indexadas!
@@ -2953,6 +2959,58 @@ class NostrOrderService {
     } catch (e) {
       debugPrint('❌ fetchDisputeResolution EXCEPTION: $e');
       return null;
+    }
+  }
+
+  /// Busca TODAS as mensagens de mediação de uma ordem (admin vê tudo)
+  /// Diferente de fetchMediatorMessages que filtra por pubkey do destinatário
+  Future<List<Map<String, dynamic>>> fetchAllMediatorMessagesForOrder(String orderId) async {
+    try {
+      final filter = <String, dynamic>{
+        'kinds': [1],
+        '#t': ['bro-mediacao'],
+        '#r': [orderId],
+        'limit': 50,
+      };
+      
+      final messages = <Map<String, dynamic>>[];
+      
+      for (final relay in _relays.take(3)) {
+        try {
+          final channel = WebSocketChannel.connect(Uri.parse(relay));
+          final subId = 'medord_${orderId.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
+          
+          channel.sink.add(jsonEncode(['REQ', subId, filter]));
+          
+          await for (final msg in channel.stream.timeout(const Duration(seconds: 8), onTimeout: (sink) => sink.close())) {
+            final data = jsonDecode(msg.toString());
+            if (data is List && data.length >= 3 && data[0] == 'EVENT') {
+              final eventData = data[2] as Map<String, dynamic>;
+              try {
+                final content = jsonDecode(eventData['content'] as String) as Map<String, dynamic>;
+                if (content['type'] == 'bro_mediator_message') {
+                  content['eventCreatedAt'] = eventData['created_at'];
+                  content['eventId'] = eventData['id'];
+                  final existing = messages.any((m) => m['sentAt'] == content['sentAt'] && m['message'] == content['message']);
+                  if (!existing) messages.add(content);
+                }
+              } catch (_) {}
+            }
+            if (data is List && data[0] == 'EOSE') break;
+          }
+          
+          channel.sink.add(jsonEncode(['CLOSE', subId]));
+          channel.sink.close();
+        } catch (_) {}
+      }
+      
+      // Ordenar por data (mais antiga primeiro para exibir como chat)
+      messages.sort((a, b) => (a['eventCreatedAt'] as int? ?? 0).compareTo(b['eventCreatedAt'] as int? ?? 0));
+      debugPrint('📨 fetchAllMediatorMessagesForOrder: ${messages.length} mensagens para ordem ${orderId.substring(0, 8)}');
+      return messages;
+    } catch (e) {
+      debugPrint('❌ fetchAllMediatorMessagesForOrder EXCEPTION: $e');
+      return [];
     }
   }
 

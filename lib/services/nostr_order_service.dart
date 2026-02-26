@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../config.dart';
 import '../models/order.dart';
+import 'nip04_service.dart';
 import 'nip44_service.dart';
 
 /// Serviço para publicar e buscar ordens via Nostr Relays
@@ -2916,6 +2917,54 @@ class NostrOrderService {
       return successCount > 0;
     } catch (e) {
       debugPrint('❌ publishMediatorMessage EXCEPTION: $e');
+      return false;
+    }
+  }
+
+  // Instância NIP-04 para DMs do admin
+  final _nip04 = Nip04Service();
+
+  /// v239: Envia DM NIP-04 (kind 4) do admin para um pubkey específico.
+  /// Isso garante que o destinatário veja a mensagem na caixa de entrada Nostr,
+  /// mesmo em versões antigas do app que não suportam bro-mediacao.
+  Future<bool> sendAdminNip04DM({
+    required String adminPrivateKey,
+    required String recipientPubkey,
+    required String message,
+  }) async {
+    try {
+      if (recipientPubkey.isEmpty) {
+        debugPrint('⚠️ sendAdminNip04DM: recipientPubkey vazia, pulando');
+        return false;
+      }
+
+      final keychain = Keychain(adminPrivateKey);
+      
+      // Criptografar mensagem usando NIP-04
+      final encryptedContent = _nip04.encrypt(
+        message,
+        adminPrivateKey,
+        recipientPubkey,
+      );
+      
+      // Criar evento kind 4 (NIP-04 DM)
+      final event = Event.from(
+        kind: 4,
+        tags: [['p', recipientPubkey]],
+        content: encryptedContent,
+        privkey: keychain.private,
+      );
+      
+      final results = await Future.wait(
+        _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
+      );
+      
+      final successCount = results.where((r) => r).length;
+      debugPrint('📨 sendAdminNip04DM: DM enviada para ${recipientPubkey.substring(0, 16)}... '
+          'em $successCount/${_relays.length} relays');
+      return successCount > 0;
+    } catch (e) {
+      debugPrint('❌ sendAdminNip04DM EXCEPTION: $e');
       return false;
     }
   }

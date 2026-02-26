@@ -1280,6 +1280,23 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
         providerId: providerId,
       );
       
+      // v239: Também enviar como DM NIP-04 para aparecer na caixa de entrada
+      // (compatível com versões antigas do app)
+      if (userPubkey.isNotEmpty) {
+        await nostrService.sendAdminNip04DM(
+          adminPrivateKey: privateKey,
+          recipientPubkey: userPubkey,
+          message: '⚖️ [Bro Mediação] $resolutionMsg',
+        );
+      }
+      if (providerId.isNotEmpty) {
+        await nostrService.sendAdminNip04DM(
+          adminPrivateKey: privateKey,
+          recipientPubkey: providerId,
+          message: '⚖️ [Bro Mediação] $resolutionMsg',
+        );
+      }
+      
       setState(() => _isResolved = true);
       
       if (mounted) {
@@ -1421,16 +1438,37 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
               if (privateKey == null) return;
               
               final nostrService = NostrOrderService();
+              final msgText = '📩 MENSAGEM DO MEDIADOR\n\n'
+                  'Ordem: ${orderId.length > 8 ? orderId.substring(0, 8) : orderId}...\n\n'
+                  '${messageController.text.trim()}';
               final success = await nostrService.publishMediatorMessage(
                 privateKey: privateKey,
                 orderId: orderId,
-                message: '📩 MENSAGEM DO MEDIADOR\n\n'
-                  'Ordem: ${orderId.length > 8 ? orderId.substring(0, 8) : orderId}...\n\n'
-                  '${messageController.text.trim()}',
+                message: msgText,
                 target: target,
                 userPubkey: userPubkey,
                 providerId: providerId,
               );
+              
+              // v239: Também enviar como DM NIP-04 para caixa de entrada Nostr
+              // (compatível com versões antigas do app)
+              if (success) {
+                final dmMsg = '📩 [Bro Mediação] ${messageController.text.trim()}\n\n(Ordem: ${orderId.length > 8 ? orderId.substring(0, 8) : orderId}...)';
+                if ((target == 'user' || target == 'both') && userPubkey.isNotEmpty) {
+                  await nostrService.sendAdminNip04DM(
+                    adminPrivateKey: privateKey,
+                    recipientPubkey: userPubkey,
+                    message: dmMsg,
+                  );
+                }
+                if ((target == 'provider' || target == 'both') && providerId.isNotEmpty) {
+                  await nostrService.sendAdminNip04DM(
+                    adminPrivateKey: privateKey,
+                    recipientPubkey: providerId,
+                    message: dmMsg,
+                  );
+                }
+              }
               
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(

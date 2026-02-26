@@ -220,6 +220,7 @@ class NostrOrderService {
     required String newStatus,
     String? providerId,
     String? paymentProof,
+    String? orderUserPubkey, // v240: pubkey do dono da ordem para notificação
   }) async {
     try {
       // LOG v1.0.129+232: Alertar quando completed é publicado sem providerId
@@ -259,6 +260,12 @@ class NostrOrderService {
         debugPrint('📤 updateOrderStatus: orderId=${orderId.substring(0, 8)} status=$newStatus providerId=${providerId.substring(0, 16)}');
       } else {
         debugPrint('⚠️ updateOrderStatus: orderId=${orderId.substring(0, 8)} status=$newStatus SEM providerId!');
+      }
+      // v240: Adicionar tag p do dono da ordem para que o usuário encontre este update
+      // CORREÇÃO CRÍTICA: Sem isso, updates do provedor (liquidated, etc) nunca chegam ao usuário
+      if (orderUserPubkey != null && orderUserPubkey.isNotEmpty && orderUserPubkey != providerId) {
+        tags.add(['p', orderUserPubkey]);
+        debugPrint('📤 updateOrderStatus: +tag p do dono da ordem ${orderUserPubkey.substring(0, 16)}');
       }
 
       // IMPORTANTE: Usa kindBroPaymentProof (30080) para não substituir o evento original!
@@ -2092,7 +2099,7 @@ class NostrOrderService {
       _relays.take(3).map((relay) async {
         try {
           // PERFORMANCE: Buscar TODAS as estratégias em paralelo
-          final results = await Future.wait([
+          final strategies = <Future<List<Map<String, dynamic>>>>[
             // Estratégia 1: Eventos do Bro direcionados ao usuário (accept/complete)
             _fetchFromRelay(relay, kinds: [kindBroAccept, kindBroComplete], tags: {'#p': [userPubkey]}, limit: 100)
               .catchError((_) => <Map<String, dynamic>>[]),
@@ -2107,8 +2114,18 @@ class NostrOrderService {
             // Isso captura disputas/updates publicados pela OUTRA parte (ex: usuário publica 'disputed', provedor recebe)
             _fetchFromRelay(relay, kinds: [kindBroPaymentProof], tags: {'#p': [userPubkey]}, limit: 100)
               .catchError((_) => <Map<String, dynamic>>[]),
-          ]);
-          return [...results[0], ...results[1], ...results[2], ...results[3]];
+          ];
+          // v240: Estratégia 5: Buscar por #r (orderId) - captura updates do provedor
+          // que NÃO têm tag #p do usuário (ex: auto-liquidação publicada pelo provedor)
+          // CORREÇÃO CRÍTICA: Sem isso, liquidated/cancelled pelo provedor nunca chega ao usuário
+          if (activeOrderIdSet != null && activeOrderIdSet.isNotEmpty) {
+            strategies.add(
+              _fetchFromRelay(relay, kinds: [kindBroPaymentProof], tags: {'#r': activeOrderIdSet.toList()}, limit: 100)
+                .catchError((_) => <Map<String, dynamic>>[]),
+            );
+          }
+          final results = await Future.wait(strategies);
+          return results.expand((list) => list).toList();
         } catch (e) {
           return <Map<String, dynamic>>[];
         }
@@ -2692,7 +2709,10 @@ class NostrOrderService {
     return allEvents;
   }
 
-  /// Busca TODAS as resoluções de disputas do Nostr (kind 1 com bro-resolucao)
+  /// Busca TODAS as resoluções de disputas do Nostr
+  /// Estratégia dupla (v240):
+  /// 1. Kind 1 com tag bro-resolucao (evento principal de resolução)
+  /// 2. Kind 30080 com tag bro-resolucao (evento audit de resolução)
   /// CORREÇÃO build 218: Necessário porque após resolução, o evento original de disputa
   /// pode não ser mais retornado pelo relay, fazendo a aba "Resolvidas" ficar vazia.
   /// Buscando resoluções diretamente, podemos reconstruir a lista de disputas resolvidas.
@@ -2701,28 +2721,41 @@ class NostrOrderService {
     final seenOrderIds = <String>{};
     
     final results = await Future.wait(
-      _relays.take(3).map((relay) async {
+      _relays.map((relay) async {
         try {
           final channel = WebSocketChannel.connect(Uri.parse(relay));
           final subId = 'allres_${DateTime.now().millisecondsSinceEpoch % 100000}';
+          final subId2 = 'allresA_${DateTime.now().millisecondsSinceEpoch % 100000}';
           final events = <Map<String, dynamic>>[];
           
+          // Estratégia 1: Kind 1 com bro-resolucao
           channel.sink.add(jsonEncode(['REQ', subId, {
             'kinds': [1],
             '#t': ['bro-resolucao'],
             'limit': 100,
           }]));
+          // Estratégia 2: Kind 30080 (audit) com bro-resolucao (v240)
+          channel.sink.add(jsonEncode(['REQ', subId2, {
+            'kinds': [kindBroPaymentProof],
+            '#t': ['bro-resolucao'],
+            'limit': 100,
+          }]));
           
+          int eoseCount = 0;
           await for (final msg in channel.stream.timeout(
-            const Duration(seconds: 8), onTimeout: (sink) => sink.close())) {
+            const Duration(seconds: 10), onTimeout: (sink) => sink.close())) {
             final data = jsonDecode(msg.toString());
             if (data is List && data.length >= 3 && data[0] == 'EVENT') {
               events.add(data[2] as Map<String, dynamic>);
             }
-            if (data is List && data[0] == 'EOSE') break;
+            if (data is List && data[0] == 'EOSE') {
+              eoseCount++;
+              if (eoseCount >= 2) break;
+            }
           }
           
           channel.sink.add(jsonEncode(['CLOSE', subId]));
+          channel.sink.add(jsonEncode(['CLOSE', subId2]));
           channel.sink.close();
           return events;
         } catch (_) {

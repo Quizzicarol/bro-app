@@ -1781,6 +1781,7 @@ class OrderProvider with ChangeNotifier {
         orderId: orderId,
         newStatus: 'liquidated',
         providerId: _currentUserPubkey,
+        orderUserPubkey: order.userPubkey,
       );
 
       if (!success) {

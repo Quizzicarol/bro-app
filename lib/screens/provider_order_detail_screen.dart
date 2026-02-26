@@ -36,6 +36,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   final EscrowService _escrowService = EscrowService();
   final ImagePicker _picker = ImagePicker();
   final TextEditingController _confirmationCodeController = TextEditingController();
+  final TextEditingController _e2eIdController = TextEditingController(); // v236: E2E ID do PIX
   
   Map<String, dynamic>? _orderDetails;
   bool _isLoading = false;
@@ -70,6 +71,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   void dispose() {
     _statusPollingTimer?.cancel();
     _confirmationCodeController.dispose();
+    _e2eIdController.dispose();
     super.dispose();
   }
   
@@ -484,6 +486,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     try {
       String proofImageBase64 = '';
       String confirmationCode = _confirmationCodeController.text.trim();
+      String e2eId = _e2eIdController.text.trim(); // v236
       
       if (_receiptImage != null) {
         // Converter imagem para base64 para publicar no Nostr
@@ -599,6 +602,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           widget.orderId, 
           proofImageBase64.isNotEmpty ? proofImageBase64 : confirmationCode,
           providerInvoice: generatedInvoice,
+          e2eId: e2eId.isNotEmpty ? e2eId : null, // v236
         );
         if (success) break;
         if (attempt < 2) {
@@ -807,6 +811,24 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             if (_disputeResolution != null) ...[
               const SizedBox(height: 16),
               _buildDisputeResolutionCard(),
+            ],
+            // v236: Botão enviar evidência quando em disputa
+            if (status == 'disputed' && _disputeResolution == null) ...[
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _showSendEvidenceDialog(),
+                  icon: const Icon(Icons.add_photo_alternate, size: 20),
+                  label: const Text('Enviar Evidência / Comprovante'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.blue,
+                    side: const BorderSide(color: Colors.blue),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
             ],
           ],
           
@@ -2239,6 +2261,32 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             style: const TextStyle(color: Colors.white),
             keyboardType: TextInputType.text,
           ),
+          const SizedBox(height: 12),
+          
+          // v236: Campo E2E ID do PIX
+          TextField(
+            controller: _e2eIdController,
+            decoration: InputDecoration(
+              labelText: 'Código E2E do PIX (opcional)',
+              hintText: 'Ex: E09089356202602251806...',
+              helperText: 'Encontre nos detalhes do comprovante no app do banco',
+              helperStyle: const TextStyle(color: Colors.white38, fontSize: 11),
+              prefixIcon: const Icon(Icons.fingerprint, color: Colors.cyan),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Colors.white24),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Colors.cyan, width: 2),
+              ),
+            ),
+            style: const TextStyle(color: Colors.white, fontFamily: 'monospace', fontSize: 13),
+            keyboardType: TextInputType.text,
+          ),
           const SizedBox(height: 16),
           
           const Divider(color: Colors.white12),
@@ -2385,5 +2433,191 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       default:
         return Icons.payment;
     }
+  }
+
+  /// v236: Dialog para provedor enviar evidência na disputa
+  void _showSendEvidenceDialog() {
+    final descController = TextEditingController();
+    File? evidencePhoto;
+    String? evidenceBase64;
+    bool sending = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: EdgeInsets.only(
+            left: 20, right: 20, top: 20,
+            bottom: MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom + 24,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(width: 40, height: 4,
+                    decoration: BoxDecoration(color: Colors.grey[600], borderRadius: BorderRadius.circular(2))),
+                ),
+                const SizedBox(height: 20),
+                const Text('📎 Enviar Evidência', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Text('Ordem: ${widget.orderId.substring(0, 8)}...', style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 14)),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.green.withOpacity(0.2)),
+                  ),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('💡 Evidências aceitas:', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13)),
+                      SizedBox(height: 6),
+                      Text('• Comprovante completo do PIX com código E2E (endToEndId)', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                      SizedBox(height: 3),
+                      Text('• Print do Registrato (registrato.bcb.gov.br) mostrando PIX enviados', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                      SizedBox(height: 3),
+                      Text('• Print do site do beneficiário mostrando conta paga', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                      SizedBox(height: 3),
+                      Text('• Qualquer documento que comprove o pagamento', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text('Descrição (opcional)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: descController,
+                  maxLines: 3,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: 'Explique o que esta evidência comprova...',
+                    hintStyle: const TextStyle(color: Color(0x66FFFFFF)),
+                    filled: true, fillColor: const Color(0x0DFFFFFF),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0x33FFFFFF))),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0x33FFFFFF))),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.green)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text('📸 Foto / Print *', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                if (evidencePhoto != null) ...[
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Stack(
+                      children: [
+                        Image.file(evidencePhoto!, height: 150, width: double.infinity, fit: BoxFit.cover),
+                        Positioned(
+                          top: 4, right: 4,
+                          child: GestureDetector(
+                            onTap: () => setModalState(() { evidencePhoto = null; evidenceBase64 = null; }),
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                              child: const Icon(Icons.close, color: Colors.white, size: 18),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ] else
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final picker = ImagePicker();
+                            final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 1024, maxHeight: 1024, imageQuality: 70);
+                            if (picked != null) {
+                              final file = File(picked.path);
+                              final bytes = await file.readAsBytes();
+                              setModalState(() { evidencePhoto = file; evidenceBase64 = base64Encode(bytes); });
+                            }
+                          },
+                          icon: const Icon(Icons.photo_library, size: 18),
+                          label: const Text('Galeria'),
+                          style: OutlinedButton.styleFrom(foregroundColor: Colors.green, side: const BorderSide(color: Colors.green)),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final picker = ImagePicker();
+                            final picked = await picker.pickImage(source: ImageSource.camera, maxWidth: 1024, maxHeight: 1024, imageQuality: 70);
+                            if (picked != null) {
+                              final file = File(picked.path);
+                              final bytes = await file.readAsBytes();
+                              setModalState(() { evidencePhoto = file; evidenceBase64 = base64Encode(bytes); });
+                            }
+                          },
+                          icon: const Icon(Icons.camera_alt, size: 18),
+                          label: const Text('Câmera'),
+                          style: OutlinedButton.styleFrom(foregroundColor: Colors.green, side: const BorderSide(color: Colors.green)),
+                        ),
+                      ),
+                    ],
+                  ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: (evidenceBase64 == null || sending) ? null : () async {
+                      setModalState(() => sending = true);
+                      try {
+                        final orderProvider = context.read<OrderProvider>();
+                        final privateKey = orderProvider.nostrPrivateKey;
+                        if (privateKey == null) throw Exception('Chave não disponível');
+                        
+                        final nostrService = NostrOrderService();
+                        final success = await nostrService.publishDisputeEvidence(
+                          privateKey: privateKey,
+                          orderId: widget.orderId,
+                          senderRole: 'provider',
+                          imageBase64: evidenceBase64,
+                          description: descController.text.trim(),
+                        );
+                        
+                        if (mounted) {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text(success ? '✅ Evidência enviada! O mediador irá analisar.' : '❌ Erro ao enviar'),
+                            backgroundColor: success ? Colors.green : Colors.red,
+                          ));
+                        }
+                      } catch (e) {
+                        setModalState(() => sending = false);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
+                        }
+                      }
+                    },
+                    icon: sending
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.send),
+                    label: Text(sending ? 'Enviando...' : 'Enviar Evidência'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      disabledBackgroundColor: Colors.grey[700],
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

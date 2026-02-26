@@ -1059,6 +1059,7 @@ class NostrOrderService {
     required String providerPrivateKey,
     required String proofImageBase64,
     String? providerInvoice, // Invoice Lightning para o provedor receber pagamento
+    String? e2eId, // v236: E2E ID do PIX para validação cruzada
   }) async {
     try {
       final keychain = Keychain(providerPrivateKey);
@@ -1100,6 +1101,11 @@ class NostrOrderService {
       // Incluir invoice do provedor se fornecido
       if (providerInvoice != null && providerInvoice.isNotEmpty) {
         contentMap['providerInvoice'] = providerInvoice;
+      }
+      
+      // v236: Incluir E2E ID do PIX se fornecido
+      if (e2eId != null && e2eId.isNotEmpty) {
+        contentMap['e2eId'] = e2eId;
       }
       
       final content = jsonEncode(contentMap);
@@ -2587,9 +2593,19 @@ class NostrOrderService {
         'provider_id': orderDetails?['provider_id'],
         'createdAt': DateTime.now().toIso8601String(),
       };
-      // v236: incluir evidência do usuário se fornecida
+      // v236: incluir evidência do usuário se fornecida (criptografada com NIP-44)
       if (userEvidence != null && userEvidence.isNotEmpty) {
-        contentMap['user_evidence'] = userEvidence;
+        try {
+          final encryptedEvidence = _nip44.encryptBetween(
+            userEvidence, keychain.private, AppConfig.adminPubkey,
+          );
+          contentMap['user_evidence_nip44'] = encryptedEvidence;
+          contentMap['user_evidence'] = '[encrypted:nip44v2]'; // Marcador
+          debugPrint('🔐 user_evidence criptografada com NIP-44 (${encryptedEvidence.length} chars)');
+        } catch (e) {
+          debugPrint('⚠️ Falha ao criptografar user_evidence: $e — não incluindo imagem');
+          // NÃO enviar em plaintext — dados sensíveis (fotos de banco/CPF)
+        }
       }
       final content = jsonEncode(contentMap);
       
@@ -3067,6 +3083,159 @@ class NostrOrderService {
     }
   }
 
+  /// v236: Publica evidência de disputa (foto + texto) por qualquer parte
+  /// Usado por usuário e provedor para enviar provas durante a mediação
+  Future<bool> publishDisputeEvidence({
+    required String privateKey,
+    required String orderId,
+    required String senderRole, // 'user' ou 'provider'
+    String? imageBase64, // foto em base64
+    String? description, // texto descritivo
+  }) async {
+    try {
+      final keychain = Keychain(privateKey);
+      
+      final contentMap = {
+        'type': 'bro_dispute_evidence',
+        'orderId': orderId,
+        'senderRole': senderRole,
+        'senderPubkey': keychain.public,
+        'sentAt': DateTime.now().toIso8601String(),
+      };
+      if (description != null && description.isNotEmpty) {
+        contentMap['description'] = description;
+      }
+      if (imageBase64 != null && imageBase64.isNotEmpty) {
+        contentMap['image'] = imageBase64;
+      }
+      
+      final plainContent = jsonEncode(contentMap);
+      
+      // 🔒 Criptografar conteúdo com NIP-44 entre remetente e admin
+      // Apenas o admin (mediador) pode descriptografar as evidências
+      String content;
+      try {
+        content = jsonEncode({
+          'encrypted': true,
+          'encryption': 'nip44v2',
+          'senderPubkey': keychain.public,
+          'payload': _nip44.encryptBetween(plainContent, keychain.private, AppConfig.adminPubkey),
+        });
+        debugPrint('🔐 Evidência criptografada com NIP-44 para admin');
+      } catch (e) {
+        debugPrint('⚠️ Falha ao criptografar evidência: $e — abortando envio por segurança');
+        return false; // NÃO enviar em plaintext — dados sensíveis
+      }
+      
+      final event = Event.from(
+        kind: 1,
+        tags: [
+          ['t', 'bro-disputa-evidencia'],
+          ['t', broTag],
+          ['r', orderId],
+          ['p', AppConfig.adminPubkey],
+        ],
+        content: content,
+        privkey: keychain.private,
+      );
+      
+      final results = await Future.wait(
+        _relays.map((relay) async {
+          try {
+            return await _publishToRelay(relay, event);
+          } catch (_) {
+            return false;
+          }
+        }),
+      );
+      
+      final successCount = results.where((r) => r).length;
+      debugPrint('📤 publishDisputeEvidence: $senderRole enviou evidência para ordem ${orderId.substring(0, 8)}, $successCount relays');
+      return successCount > 0;
+    } catch (e) {
+      debugPrint('❌ publishDisputeEvidence EXCEPTION: $e');
+      return false;
+    }
+  }
+  
+  /// v236: Busca todas as evidências de disputa para uma ordem
+  /// Retorna lista de evidências de ambas as partes, ordenadas por data
+  /// Se adminPrivateKey for fornecido, tenta descriptografar conteúdo NIP-44
+  Future<List<Map<String, dynamic>>> fetchDisputeEvidence(String orderId, {String? adminPrivateKey}) async {
+    final evidences = <Map<String, dynamic>>[];
+    
+    try {
+      for (final relay in _relays.take(3)) {
+        try {
+          final channel = WebSocketChannel.connect(Uri.parse(relay));
+          final subId = 'evid_${orderId.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
+          
+          channel.sink.add(jsonEncode(['REQ', subId, {
+            'kinds': [1],
+            '#t': ['bro-disputa-evidencia'],
+            '#r': [orderId],
+            'limit': 50,
+          }]));
+          
+          await for (final msg in channel.stream.timeout(const Duration(seconds: 8), onTimeout: (sink) => sink.close())) {
+            final data = jsonDecode(msg.toString());
+            if (data is List && data.length >= 3 && data[0] == 'EVENT') {
+              try {
+                final eventData = data[2] as Map<String, dynamic>;
+                var content = jsonDecode(eventData['content'] as String) as Map<String, dynamic>;
+                
+                // 🔓 Tentar descriptografar se o conteúdo está criptografado com NIP-44
+                if (content['encrypted'] == true && content['encryption'] == 'nip44v2' && adminPrivateKey != null) {
+                  try {
+                    final senderPubkey = content['senderPubkey'] as String? ?? eventData['pubkey'] as String? ?? '';
+                    final payload = content['payload'] as String;
+                    final decrypted = _nip44.decryptBetween(payload, adminPrivateKey, senderPubkey);
+                    content = jsonDecode(decrypted) as Map<String, dynamic>;
+                    debugPrint('🔓 Evidência descriptografada de ${senderPubkey.substring(0, 8)}');
+                  } catch (e) {
+                    debugPrint('⚠️ Falha ao descriptografar evidência: $e');
+                    content['description'] = '[Conteúdo criptografado — não foi possível descriptografar]';
+                    content['image'] = null;
+                  }
+                }
+                
+                if (content['orderId'] == orderId && content['type'] == 'bro_dispute_evidence') {
+                  // Evitar duplicatas por eventId
+                  final eventId = eventData['id'] as String? ?? '';
+                  if (!evidences.any((e) => e['eventId'] == eventId)) {
+                    content['eventId'] = eventId;
+                    evidences.add(content);
+                  }
+                }
+              } catch (_) {}
+            }
+            if (data is List && data[0] == 'EOSE') break;
+          }
+          
+          channel.sink.add(jsonEncode(['CLOSE', subId]));
+          channel.sink.close();
+          
+          if (evidences.isNotEmpty) break; // Já achou, não precisa de mais relays
+        } catch (e) {
+          debugPrint('⚠️ fetchDisputeEvidence relay error: $e');
+        }
+      }
+      
+      // Ordenar por data (mais antiga primeiro)
+      evidences.sort((a, b) {
+        final aDate = a['sentAt'] as String? ?? '';
+        final bDate = b['sentAt'] as String? ?? '';
+        return aDate.compareTo(bDate);
+      });
+      
+      debugPrint('📥 fetchDisputeEvidence: ${evidences.length} evidências para ${orderId.substring(0, 8)}');
+      return evidences;
+    } catch (e) {
+      debugPrint('❌ fetchDisputeEvidence EXCEPTION: $e');
+      return [];
+    }
+  }
+
   /// Busca o comprovante de pagamento para uma ordem específica
   /// Pesquisa kind 30081 (bro_complete) e kind 30080 diretamente pelo orderId
   /// Retorna Map com 'proofImage' (plaintext ou null) e 'encrypted' (bool)
@@ -3139,6 +3308,12 @@ class NostrOrderService {
                 final eventProviderId = content['providerId'] as String?;
                 if (eventProviderId != null && eventProviderId.isNotEmpty) {
                   result['providerPubkey'] = eventProviderId;
+                }
+                
+                // v236: Extrair E2E ID do PIX se disponível
+                final e2eId = content['e2eId'] as String?;
+                if (e2eId != null && e2eId.isNotEmpty) {
+                  result['e2eId'] = e2eId;
                 }
                 
                 // Verificar proofImage

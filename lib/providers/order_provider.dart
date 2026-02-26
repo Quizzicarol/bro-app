@@ -1610,7 +1610,7 @@ class OrderProvider with ChangeNotifier {
   }
 
   /// Provedor completa uma ordem - publica comprovante no Nostr e atualiza localmente
-  Future<bool> completeOrderAsProvider(String orderId, String proof, {String? providerInvoice}) async {
+  Future<bool> completeOrderAsProvider(String orderId, String proof, {String? providerInvoice, String? e2eId}) async {
     _isLoading = true;
     _error = null;
     _immediateNotify();
@@ -1681,6 +1681,7 @@ class OrderProvider with ChangeNotifier {
             // CORRIGIDO: Salvar imagem completa em base64, nÃÂ£o truncar!
             'paymentProof': proof,
             'proofSentAt': DateTime.now().toIso8601String(),
+            if (e2eId != null && e2eId.isNotEmpty) 'e2eId': e2eId,
             if (providerInvoice != null) 'providerInvoice': providerInvoice,
           },
         );

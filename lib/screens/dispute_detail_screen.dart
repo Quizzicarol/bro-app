@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/order_provider.dart';
+import '../services/nip44_service.dart';
 import '../services/nostr_order_service.dart';
 
 /// Tela de detalhes de disputa para o mediador (admin)
@@ -25,10 +26,15 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
   
   // Provider ID pode ser descoberto dinamicamente se não estiver nos dados da disputa
   String? _resolvedProviderId;
+  String? _fetchedE2eId; // v236: E2E ID buscado do comprovante
   
   // v235: Histórico de mensagens de mediação
   List<Map<String, dynamic>> _mediatorMessages = [];
   bool _loadingMessages = false;
+  
+  // v236: Evidências de ambas as partes
+  List<Map<String, dynamic>> _allEvidence = [];
+  bool _loadingEvidence = false;
   
   String get orderId => widget.dispute['orderId'] as String? ?? '';
   String get reason => widget.dispute['reason'] as String? ?? 'Não informado';
@@ -42,6 +48,9 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
   String get createdAtStr => widget.dispute['createdAt'] as String? ?? '';
   dynamic get amountBrl => widget.dispute['amount_brl'];
   dynamic get amountSats => widget.dispute['amount_sats'];
+  
+  // Singleton NIP-44 para descriptografia
+  Nip44Service __getNip44() => Nip44Service();
   
   @override
   void initState() {
@@ -67,6 +76,31 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
     }
     _fetchProofImage();
     _fetchMediatorMessages();
+    _fetchAllEvidence(); // v236
+  }
+  
+  /// v236: Busca todas as evidências de disputa enviadas pelas partes
+  Future<void> _fetchAllEvidence() async {
+    if (orderId.isEmpty) return;
+    setState(() => _loadingEvidence = true);
+    
+    try {
+      final nostrService = NostrOrderService();
+      // 🔓 Passar chave privada do admin para descriptografar evidências NIP-44
+      final orderProvider = context.read<OrderProvider>();
+      final adminPrivKey = orderProvider.nostrPrivateKey;
+      final evidence = await nostrService.fetchDisputeEvidence(orderId, adminPrivateKey: adminPrivKey);
+      
+      if (mounted) {
+        setState(() {
+          _allEvidence = evidence;
+          _loadingEvidence = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('⚠️ Erro ao buscar evidências: $e');
+      if (mounted) setState(() => _loadingEvidence = false);
+    }
   }
   
   /// Busca histórico de mensagens de mediação desta ordem
@@ -121,6 +155,11 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
           _proofEncrypted = false;
         } else if (encrypted) {
           _proofEncrypted = true;
+        }
+        // v236: Guardar E2E ID se veio do comprovante
+        final e2e = result['e2eId'] as String?;
+        if (e2e != null && e2e.isNotEmpty) {
+          _fetchedE2eId = e2e;
         }
       });
     } catch (e) {
@@ -206,8 +245,16 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
                   _buildProofSection(),
                   const SizedBox(height: 16),
                   
+                  // v236: Validação E2E do PIX
+                  _buildE2eValidationSection(),
+                  const SizedBox(height: 16),
+                  
                   // v235: Evidência do usuário (se houver)
                   _buildUserEvidenceSection(),
+                  const SizedBox(height: 16),
+                  
+                  // v236: Todas as evidências de disputa (ambas as partes)
+                  _buildAllEvidenceSection(),
                   const SizedBox(height: 16),
                   
                   // v235: Histórico de mensagens de mediação
@@ -284,8 +331,10 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            spacing: 8,
+            runSpacing: 6,
             children: [
               Text('📅 $dateStr', style: const TextStyle(color: Colors.white54, fontSize: 13)),
               if (previousStatus.isNotEmpty)
@@ -544,8 +593,205 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
   }
   
   /// v235: Seção de evidência do usuário (foto/print enviado na disputa)
+  /// v236: Validação cruzada do E2E ID do PIX
+  Widget _buildE2eValidationSection() {
+    // Buscar E2E ID dos dados do comprovante (pode vir do evento bro-complete)
+    final e2eId = _fetchedE2eId ?? 
+                  widget.dispute['e2eId'] as String? ?? 
+                  widget.dispute['proof_e2eId'] as String? ?? '';
+    
+    if (e2eId.isEmpty) {
+      return _buildSection(
+        title: '🔍 Validação E2E do PIX',
+        icon: Icons.fingerprint,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.yellow.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.yellow.withOpacity(0.2)),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.warning_amber, color: Colors.yellow, size: 18),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Provedor não informou o código E2E do PIX. Solicite via mensagem para validação cruzada.',
+                    style: TextStyle(color: Colors.yellow, fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+    
+    // Validar formato do E2E
+    // Formato padrão: E + 8 dígitos ISPB + 14 dígitos datetime + 11 caracteres alfanuméricos
+    // Ex: E09089356202602251806abc123def45
+    final e2eRegex = RegExp(r'^E(\d{8})(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(.+)$');
+    final match = e2eRegex.firstMatch(e2eId);
+    
+    // Dados da disputa para cruzamento
+    final disputeDate = widget.dispute['createdAt'] as String? ?? '';
+    final amount = widget.dispute['amount_brl']?.toString() ?? '';
+    
+    // ISPB conhecidos (principais bancos)
+    const ispbMap = {
+      '00000000': 'Banco do Brasil',
+      '00360305': 'Caixa Econômica',
+      '60701190': 'Itaú',
+      '60746948': 'Bradesco',
+      '90400888': 'Santander',
+      '00416968': 'Banco Inter',
+      '18236120': 'Nu Pagamentos (Nubank)',
+      '09089356': 'Efí (antigo Gerencianet)',
+      '13140088': 'PagBank/PagSeguro',
+      '60394079': 'Mercado Pago',
+      '11165756': 'C6 Bank',
+      '07679404': 'Banco Original',
+      '92894922': 'Banrisul',
+      '01181521': 'Stone',
+    };
+    
+    List<Widget> validationItems = [];
+    
+    if (match != null) {
+      final ispb = match.group(1)!;
+      final year = match.group(2)!;
+      final month = match.group(3)!;
+      final day = match.group(4)!;
+      final hour = match.group(5)!;
+      final minute = match.group(6)!;
+      final second = match.group(7)!;
+      
+      final bankName = ispbMap[ispb] ?? 'Banco ISPB $ispb';
+      final dateFromE2e = '$day/$month/$year $hour:$minute:$second';
+      
+      // Verificar se data do E2E bate com período da disputa
+      bool dateMatch = true;
+      if (disputeDate.isNotEmpty) {
+        try {
+          final disputeDt = DateTime.parse(disputeDate);
+          final e2eDt = DateTime(
+            int.parse(year), int.parse(month), int.parse(day),
+            int.parse(hour), int.parse(minute), int.parse(second),
+          );
+          // Deve ser antes da disputa e dentro de 48h
+          final diff = disputeDt.difference(e2eDt);
+          dateMatch = diff.inHours >= 0 && diff.inHours <= 48;
+        } catch (_) {}
+      }
+      
+      validationItems = [
+        _e2eValidationRow('📐 Formato', '✅ Válido', Colors.green),
+        _e2eValidationRow('🏦 Banco Origem', '$bankName (ISPB: $ispb)', 
+          ispbMap.containsKey(ispb) ? Colors.green : Colors.orange),
+        _e2eValidationRow('📅 Data no E2E', dateFromE2e, 
+          dateMatch ? Colors.green : Colors.red),
+        if (!dateMatch)
+          _e2eValidationRow('⚠️ Alerta', 'Data do E2E não corresponde ao período da ordem', Colors.red),
+      ];
+    } else {
+      // Formato inválido
+      validationItems = [
+        _e2eValidationRow('📐 Formato', '❌ Inválido — não corresponde ao padrão do BCB', Colors.red),
+        const Padding(
+          padding: EdgeInsets.only(top: 4),
+          child: Text(
+            'Formato esperado: E + 8 dígitos ISPB + data/hora + hash',
+            style: TextStyle(color: Colors.white38, fontSize: 11),
+          ),
+        ),
+      ];
+    }
+    
+    return _buildSection(
+      title: '🔍 Validação E2E do PIX',
+      icon: Icons.fingerprint,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.cyan.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.fingerprint, color: Colors.cyan, size: 16),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: SelectableText(
+                      e2eId,
+                      style: const TextStyle(
+                        color: Colors.cyan,
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              const Divider(color: Colors.white12),
+              const SizedBox(height: 6),
+              ...validationItems,
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+  
+  Widget _e2eValidationRow(String label, String value, Color valueColor) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 110,
+            child: Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+          ),
+          Expanded(
+            child: Text(value, style: TextStyle(color: valueColor, fontSize: 12, fontWeight: FontWeight.w500)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildUserEvidenceSection() {
-    final userEvidence = widget.dispute['user_evidence'] as String?;
+    String? userEvidence = widget.dispute['user_evidence'] as String?;
+    
+    // 🔓 Tentar descriptografar se a evidência está encriptada com NIP-44
+    if (userEvidence == '[encrypted:nip44v2]') {
+      final encryptedPayload = widget.dispute['user_evidence_nip44'] as String?;
+      final senderPubkey = widget.dispute['userPubkey'] as String? ?? '';
+      if (encryptedPayload != null && senderPubkey.isNotEmpty) {
+        try {
+          final orderProvider = context.read<OrderProvider>();
+          final adminPrivKey = orderProvider.nostrPrivateKey;
+          if (adminPrivKey != null) {
+            final nip44 = __getNip44();
+            userEvidence = nip44.decryptBetween(encryptedPayload, adminPrivKey, senderPubkey);
+            debugPrint('🔓 user_evidence descriptografada com NIP-44');
+          }
+        } catch (e) {
+          debugPrint('⚠️ Falha ao descriptografar user_evidence: $e');
+          userEvidence = null;
+        }
+      } else {
+        userEvidence = null;
+      }
+    }
+    
     if (userEvidence == null || userEvidence.isEmpty) {
       return const SizedBox.shrink(); // Não mostrar se não há evidência
     }
@@ -556,13 +802,13 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child: _buildProofImageWidget(userEvidence),
+          child: _buildProofImageWidget(userEvidence!),
         ),
         const SizedBox(height: 8),
         SizedBox(
           width: double.infinity,
           child: OutlinedButton.icon(
-            onPressed: () => _showFullScreenImage(userEvidence),
+            onPressed: () => _showFullScreenImage(userEvidence!),
             icon: const Icon(Icons.fullscreen, size: 18),
             label: const Text('Ver em Tela Cheia'),
             style: OutlinedButton.styleFrom(
@@ -575,6 +821,108 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
     );
   }
   
+  /// v236: Seção com TODAS as evidências enviadas pelas partes durante a disputa
+  Widget _buildAllEvidenceSection() {
+    if (_allEvidence.isEmpty && !_loadingEvidence) {
+      return const SizedBox.shrink();
+    }
+    
+    return _buildSection(
+      title: '📂 Evidências das Partes (${_allEvidence.length})',
+      icon: Icons.folder_open,
+      children: [
+        if (_loadingEvidence)
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Center(child: Column(children: [
+              CircularProgressIndicator(color: Colors.blue, strokeWidth: 2),
+              SizedBox(height: 8),
+              Text('Buscando evidências...', style: TextStyle(color: Colors.white54, fontSize: 12)),
+            ])),
+          )
+        else ...[
+          ..._allEvidence.asMap().entries.map((entry) {
+            final idx = entry.key;
+            final ev = entry.value;
+            final role = ev['senderRole'] as String? ?? 'unknown';
+            final desc = ev['description'] as String? ?? '';
+            final image = ev['image'] as String? ?? '';
+            final sentAt = ev['sentAt'] as String? ?? '';
+            final isUser = role == 'user';
+            
+            String dateStr = '';
+            try {
+              final dt = DateTime.parse(sentAt);
+              dateStr = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+            } catch (_) {}
+            
+            return Container(
+              margin: EdgeInsets.only(bottom: idx < _allEvidence.length - 1 ? 12 : 0),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: (isUser ? Colors.blue : Colors.green).withOpacity(0.06),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: (isUser ? Colors.blue : Colors.green).withOpacity(0.2)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(isUser ? Icons.person : Icons.storefront, 
+                        color: isUser ? Colors.blue : Colors.green, size: 16),
+                      const SizedBox(width: 6),
+                      Text(isUser ? 'Usuário' : 'Provedor',
+                        style: TextStyle(color: isUser ? Colors.blue : Colors.green, 
+                          fontWeight: FontWeight.bold, fontSize: 12)),
+                      const Spacer(),
+                      if (dateStr.isNotEmpty)
+                        Text(dateStr, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                    ],
+                  ),
+                  if (desc.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(desc, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                  ],
+                  if (image.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: _buildProofImageWidget(image),
+                    ),
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _showFullScreenImage(image),
+                        icon: const Icon(Icons.fullscreen, size: 16),
+                        label: const Text('Ver em Tela Cheia', style: TextStyle(fontSize: 11)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: isUser ? Colors.blue : Colors.green,
+                          side: BorderSide(color: (isUser ? Colors.blue : Colors.green).withOpacity(0.5)),
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            );
+          }),
+          const SizedBox(height: 8),
+          Center(
+            child: TextButton.icon(
+              onPressed: _fetchAllEvidence,
+              icon: const Icon(Icons.refresh, size: 14),
+              label: const Text('Atualizar Evidências', style: TextStyle(fontSize: 11)),
+              style: TextButton.styleFrom(foregroundColor: Colors.blue),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   /// v235: Histórico de mensagens de mediação
   Widget _buildMessageHistory() {
     return _buildSection(
@@ -658,6 +1006,23 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
         minimumSize: const Size(0, 32),
       ),
       child: Text(label, style: const TextStyle(fontSize: 10), textAlign: TextAlign.center),
+    );
+  }
+
+  /// v236: Chip de mensagem pré-definida para pedir evidências
+  Widget _predefinedMsgChip(TextEditingController controller, String label, String message) {
+    return ActionChip(
+      label: Text(label, style: const TextStyle(fontSize: 10, color: Colors.white70)),
+      backgroundColor: const Color(0xFF2A2A3E),
+      side: BorderSide(color: Colors.white.withOpacity(0.1)),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      onPressed: () {
+        controller.text = message;
+        controller.selection = TextSelection.fromPosition(
+          TextPosition(offset: message.length),
+        );
+      },
     );
   }
   
@@ -983,13 +1348,50 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
                 'Use este campo para solicitar mais informações, esclarecer dúvidas ou comunicar decisões parciais.',
                 style: TextStyle(color: Colors.white54, fontSize: 12),
               ),
+              const SizedBox(height: 8),
+              // v236: Mensagens pré-definidas para pedir evidências
+              const Text('Mensagens rápidas:', style: TextStyle(color: Colors.white38, fontSize: 11)),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 4,
+                runSpacing: 4,
+                children: [
+                  if (target == 'user' || target == 'both') ...[
+                    _predefinedMsgChip(messageController, '📋 Pedir print do beneficiário',
+                      'Por favor, acesse o site/app da empresa beneficiária (ex: SANEPAR, CEMIG, CPFL) e envie um print mostrando que a conta consta como NÃO PAGA/EM ABERTO. Isso nos ajuda a resolver sua disputa mais rápido.'),
+                    _predefinedMsgChip(messageController, '🏦 Pedir print do Registrato',
+                      'Por favor, acesse registrato.bcb.gov.br (login via gov.br), vá em "Consultas" > "PIX" e envie um print da lista de PIX recebidos na data do pagamento. Este é um documento oficial do Banco Central.'),
+                  ],
+                  if (target == 'provider' || target == 'both') ...[
+                    _predefinedMsgChip(messageController, '📸 Pedir comprovante completo',
+                      'Por favor, envie o comprovante completo do PIX com todos os dados visíveis: valor, data/hora, chave PIX destino, código E2E (endToEndId) e nome do beneficiário.'),
+                    _predefinedMsgChip(messageController, '🏦 Pedir Registrato do provedor',
+                      'Por favor, acesse registrato.bcb.gov.br (login via gov.br), vá em "Consultas" > "PIX" e envie um print da lista de PIX enviados na data do pagamento. Este documento do Banco Central comprova o envio.'),
+                  ],
+                  _predefinedMsgChip(messageController, '⏰ Prazo 24h',
+                    'Você tem 24 horas para enviar as evidências solicitadas. Caso não envie, a disputa será resolvida com base nas evidências disponíveis.'),
+                  _predefinedMsgChip(messageController, '⚖️ Solicitar evidências (ambos)',
+                    'Prezado(a), estamos mediando esta disputa e precisamos da colaboração de ambas as partes para uma resolução justa.\n\n'
+                    '📌 O QUE PRECISAMOS:\n\n'
+                    '1️⃣ COMPROVANTE COMPLETO DO PIX — com valor, data/hora, chave PIX destino, nome do beneficiário e código E2E (endToEndId). Disponível nos detalhes da transação no app do seu banco.\n\n'
+                    '2️⃣ PRINT DO REGISTRATO (Banco Central) — acesse registrato.bcb.gov.br → login com gov.br → Consultas → PIX → Transações. Filtre pela data do pagamento. Este é um documento oficial e irrefutável do BCB.\n\n'
+                    '3️⃣ PRINT DO SITE DO BENEFICIÁRIO — se for conta de serviço (SANEPAR, CEMIG, CPFL, etc.), acesse o site/app da empresa e envie print mostrando o status da conta (paga ou em aberto).\n\n'
+                    '� PRIVACIDADE: Todas as evidências enviadas são criptografadas de ponta a ponta (NIP-44) e visíveis APENAS para o mediador. Nenhum outro usuário do Nostr pode ver seus dados.\n\n'
+                    '📲 COMO ENVIAR:\n'
+                    '• Atualize o app Bro para a versão mais recente\n'
+                    '• ⚠️ IMPORTANTE: Antes de atualizar, anote suas 12 palavras de recuperação (seed). Após a atualização pode ser necessário reinserir.\n'
+                    '• Faça login, acesse a ordem em disputa e toque no botão "Enviar Evidência / Comprovante"\n'
+                    '• Você pode enviar várias evidências\n\n'
+                    '⏰ PRAZO: 24 horas para envio. Após esse prazo, a disputa será resolvida com base nas evidências disponíveis.'),
+                ],
+              ),
               const SizedBox(height: 12),
               TextField(
                 controller: messageController,
                 maxLines: 5,
                 style: const TextStyle(color: Colors.white),
                 decoration: InputDecoration(
-                  hintText: 'Escreva sua mensagem...',
+                  hintText: 'Escreva sua mensagem ou toque uma rápida acima...',
                   hintStyle: const TextStyle(color: Colors.white24),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                   filled: true,

@@ -2410,7 +2410,40 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     ),
                   ),
                 ),
-                // v236: Seção de foto de evidência
+                // v236: Instruções de evidência
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.blue.withOpacity(0.2)),
+                  ),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '💡 Dicas para resolver mais rápido:',
+                        style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        '• Se a conta não foi paga, acesse o site da empresa (SANEPAR, CEMIG, etc.) e tire um print mostrando que está em aberto',
+                        style: TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        '• Acesse registrato.bcb.gov.br (login gov.br) e tire um print da lista de PIX recebidos na data',
+                        style: TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        '• Quanto mais evidências, mais rápida a resolução',
+                        style: TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 16),
                 const Text(
                   '📸 Foto de Evidência (opcional)',
@@ -2418,7 +2451,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 ),
                 const SizedBox(height: 4),
                 const Text(
-                  'Anexe um print ou foto que comprove seu lado',
+                  'Anexe um print do site do beneficiário, do Registrato, ou outra prova',
                   style: TextStyle(color: Color(0x99FFFFFF), fontSize: 12),
                 ),
                 const SizedBox(height: 8),
@@ -4310,6 +4343,23 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 ],
               ),
             ),
+            const SizedBox(height: 12),
+            
+            // v236: Botão para enviar evidência adicional
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _showSendEvidenceDialog('user'),
+                icon: const Icon(Icons.add_photo_alternate, size: 20),
+                label: const Text('Enviar Evidência / Comprovante'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.blue,
+                  side: const BorderSide(color: Colors.blue),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -4337,6 +4387,200 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  /// v236: Dialog para enviar evidência adicional na disputa
+  void _showSendEvidenceDialog(String role) {
+    final descController = TextEditingController();
+    File? evidencePhoto;
+    String? evidenceBase64;
+    bool sending = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: EdgeInsets.only(
+            left: 20, right: 20, top: 20,
+            bottom: MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom + 24,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(width: 40, height: 4,
+                    decoration: BoxDecoration(color: Colors.grey[600], borderRadius: BorderRadius.circular(2))),
+                ),
+                const SizedBox(height: 20),
+                const Text('📎 Enviar Evidência', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Text('Ordem: ${widget.orderId.substring(0, 8)}...', style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 14)),
+                const SizedBox(height: 16),
+                
+                // Dicas
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.blue.withOpacity(0.2)),
+                  ),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('💡 Evidências aceitas:', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 13)),
+                      SizedBox(height: 6),
+                      Text('• Print do site do beneficiário (SANEPAR, CEMIG, etc.) mostrando status da conta', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                      SizedBox(height: 3),
+                      Text('• Print do Registrato (registrato.bcb.gov.br) mostrando PIX enviados/recebidos', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                      SizedBox(height: 3),
+                      Text('• Comprovante completo com código E2E do PIX', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                      SizedBox(height: 3),
+                      Text('• Qualquer documento que comprove seu lado', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                
+                // Descrição
+                const Text('Descrição (opcional)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: descController,
+                  maxLines: 3,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: 'Explique o que esta evidência comprova...',
+                    hintStyle: const TextStyle(color: Color(0x66FFFFFF)),
+                    filled: true, fillColor: const Color(0x0DFFFFFF),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0x33FFFFFF))),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0x33FFFFFF))),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.blue)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                
+                // Foto
+                const Text('📸 Foto / Print *', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                if (evidencePhoto != null) ...[
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Stack(
+                      children: [
+                        Image.file(evidencePhoto!, height: 150, width: double.infinity, fit: BoxFit.cover),
+                        Positioned(
+                          top: 4, right: 4,
+                          child: GestureDetector(
+                            onTap: () => setModalState(() { evidencePhoto = null; evidenceBase64 = null; }),
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                              child: const Icon(Icons.close, color: Colors.white, size: 18),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ] else
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final picker = ImagePicker();
+                            final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 1024, maxHeight: 1024, imageQuality: 70);
+                            if (picked != null) {
+                              final file = File(picked.path);
+                              final bytes = await file.readAsBytes();
+                              setModalState(() { evidencePhoto = file; evidenceBase64 = base64Encode(bytes); });
+                            }
+                          },
+                          icon: const Icon(Icons.photo_library, size: 18),
+                          label: const Text('Galeria'),
+                          style: OutlinedButton.styleFrom(foregroundColor: Colors.blue, side: const BorderSide(color: Colors.blue)),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final picker = ImagePicker();
+                            final picked = await picker.pickImage(source: ImageSource.camera, maxWidth: 1024, maxHeight: 1024, imageQuality: 70);
+                            if (picked != null) {
+                              final file = File(picked.path);
+                              final bytes = await file.readAsBytes();
+                              setModalState(() { evidencePhoto = file; evidenceBase64 = base64Encode(bytes); });
+                            }
+                          },
+                          icon: const Icon(Icons.camera_alt, size: 18),
+                          label: const Text('Câmera'),
+                          style: OutlinedButton.styleFrom(foregroundColor: Colors.blue, side: const BorderSide(color: Colors.blue)),
+                        ),
+                      ),
+                    ],
+                  ),
+                const SizedBox(height: 20),
+                
+                // Botão enviar
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: (evidenceBase64 == null || sending) ? null : () async {
+                      setModalState(() => sending = true);
+                      try {
+                        final orderProvider = context.read<OrderProvider>();
+                        final privateKey = orderProvider.nostrPrivateKey;
+                        if (privateKey == null) throw Exception('Chave não disponível');
+                        
+                        final nostrService = NostrOrderService();
+                        final success = await nostrService.publishDisputeEvidence(
+                          privateKey: privateKey,
+                          orderId: widget.orderId,
+                          senderRole: role,
+                          imageBase64: evidenceBase64,
+                          description: descController.text.trim(),
+                        );
+                        
+                        if (mounted) {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text(success ? '✅ Evidência enviada! O mediador irá analisar.' : '❌ Erro ao enviar'),
+                            backgroundColor: success ? Colors.green : Colors.red,
+                          ));
+                        }
+                      } catch (e) {
+                        setModalState(() => sending = false);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
+                        }
+                      }
+                    },
+                    icon: sending
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.send),
+                    label: Text(sending ? 'Enviando...' : 'Enviar Evidência'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      disabledBackgroundColor: Colors.grey[700],
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

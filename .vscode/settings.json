@@ -90,6 +90,10 @@
         "/^\\$adb = \"\\$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb\\.exe\"; & \\$adb logcat -s flutter -d \\| Select-String \"0c127f4e\" \\| Select-Object -Last 40$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^& \"\\$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb\\.exe\" install -r \"c:\\\\Users\\\\produ\\\\Documents\\\\GitHub\\\\bro_app\\\\build\\\\app\\\\outputs\\\\flutter-apk\\\\app-debug\\.apk\" 2>&1$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }

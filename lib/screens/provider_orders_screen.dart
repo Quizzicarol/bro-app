@@ -321,7 +321,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       final providerBalanceProvider = context.read<ProviderBalanceProvider>();
       for (final order in myOrders) {
         final status = order['status'] as String?;
-        if (status == 'completed') {
+        if (status == 'completed' || status == 'liquidated') {
           final orderId = order['id'] as String? ?? '';
           if (orderId.isEmpty) continue; // Pular ordens sem ID
           final amount = (order['amount'] as num?)?.toDouble() ?? 0;
@@ -1298,11 +1298,18 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           'color': Colors.red,
           'description': 'Ordem foi cancelada',
         };
+      case 'liquidated':
+        return {
+          'label': 'LIQUIDADA ⚡',
+          'icon': Icons.electric_bolt,
+          'color': Colors.purple,
+          'description': 'Auto-liquidada após 24h sem confirmação',
+        };
       case 'disputed':
         return {
           'label': 'EM DISPUTA',
           'icon': Icons.gavel,
-          'color': Colors.purple,
+          'color': Colors.orange.shade800,
           'description': 'Disputa aberta',
         };
       default:

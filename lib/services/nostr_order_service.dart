@@ -2533,6 +2533,78 @@ class NostrOrderService {
     }
   }
 
+  /// v248: Atualiza quantidade vendida de uma oferta do marketplace
+  /// Republica o evento NIP-33 (kind 30019) com o mesmo 'd' tag para substituir
+  Future<bool> updateMarketplaceOfferSold({
+    required String privateKey,
+    required String offerId,
+    required String title,
+    required String description,
+    required int priceSats,
+    required String category,
+    String? siteUrl,
+    String? city,
+    List<String>? photos,
+    required int quantity,
+    required int newSold,
+  }) async {
+    try {
+      final keychain = Keychain(privateKey);
+      
+      final contentMap = {
+        'type': 'bro_marketplace_offer',
+        'version': '2.0',
+        'offerId': offerId,
+        'title': title,
+        'description': description,
+        'priceSats': priceSats,
+        'category': category,
+        'siteUrl': siteUrl,
+        'city': city,
+        'photos': photos ?? [],
+        'quantity': quantity,
+        'sold': newSold,
+        'createdAt': DateTime.now().toIso8601String(),
+      };
+      
+      final content = jsonEncode(contentMap);
+
+      final tags = [
+        ['d', offerId],
+        ['t', marketplaceTag],
+        ['t', 'bro-app'],
+        ['t', category],
+        ['title', title],
+        ['price', priceSats.toString(), 'sats'],
+      ];
+      
+      if (siteUrl != null && siteUrl.isNotEmpty) {
+        tags.add(['r', siteUrl]);
+      }
+      if (city != null && city.isNotEmpty) {
+        tags.add(['location', city]);
+      }
+
+      final event = Event.from(
+        kind: kindMarketplaceOffer,
+        tags: tags,
+        content: content,
+        privkey: keychain.private,
+      );
+
+      final publishResults = await Future.wait(
+        _relays.take(5).map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
+      );
+      final successCount = publishResults.where((s) => s).length;
+      
+      debugPrint('📦 updateMarketplaceOfferSold: offerId=${offerId.substring(0, 8)}, sold=$newSold, publicado em $successCount relays');
+      return successCount > 0;
+    } catch (e) {
+      debugPrint('❌ updateMarketplaceOfferSold EXCEPTION: $e');
+      return false;
+    }
+  }
+
   /// Busca ofertas do marketplace
   Future<List<Map<String, dynamic>>> fetchMarketplaceOffers() async {
     final offers = <Map<String, dynamic>>[];

@@ -85,6 +85,24 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
     _fetchMediatorMessages();
     _fetchAllEvidence(); // v236
     _fetchDisputeLosses(); // v247
+    _fetchExistingResolution(); // v248: Verificar se já foi resolvida
+  }
+  
+  /// v248: Verifica se a disputa já foi resolvida anteriormente
+  Future<void> _fetchExistingResolution() async {
+    if (orderId.isEmpty) return;
+    try {
+      final nostrService = NostrOrderService();
+      final resolution = await nostrService.fetchDisputeResolution(orderId);
+      if (resolution != null && mounted) {
+        setState(() {
+          _isResolved = true;
+        });
+        debugPrint('⚖️ Disputa $orderId já resolvida: ${resolution['resolution']}');
+      }
+    } catch (e) {
+      debugPrint('⚠️ Erro ao verificar resolução existente: $e');
+    }
   }
   
   /// v236: Busca todas as evidências de disputa enviadas pelas partes

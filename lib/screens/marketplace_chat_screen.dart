@@ -4,6 +4,9 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../services/chat_service.dart';
 import '../services/storage_service.dart';
+import '../services/platform_fee_service.dart';
+import '../services/nostr_service.dart';
+import '../services/nostr_order_service.dart';
 import '../providers/breez_provider.dart';
 
 /// Tela de Chat P2P via Nostr DMs (NIP-04)
@@ -122,6 +125,12 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
         }
       });
       _scrollToBottom();
+      
+      // v249: Quando receber confirmação de pagamento do comprador, atualizar sold count
+      if (!message.isFromMe && message.content.contains('✅ PAGAMENTO CONFIRMADO')) {
+        debugPrint('📦 Pagamento confirmado detectado — atualizando sold count');
+        _updateOfferSoldCount();
+      }
     }
   }
 
@@ -185,10 +194,12 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
   Future<void> _sendPaymentRequest() async {
     if (widget.priceSats == null || widget.priceSats! <= 0) return;
     
-    final message = '$_paymentRequestPrefix\n'
+    final txCode = _generateTransactionCode();
+    final message = '$_paymentRequestPrefix #$txCode\n'
         '━━━━━━━━━━━━━━━━━━━━\n'
         '📦 ${widget.offerTitle ?? "Produto"}\n'
         '💰 ${_formatSatsCompact(widget.priceSats!)} sats\n'
+        '🔖 Pedido #$txCode\n'
         '━━━━━━━━━━━━━━━━━━━━\n'
         'Olá! Gostaria de comprar este item. '
         'Por favor, gere uma invoice Lightning de ${_formatSatsCompact(widget.priceSats!)} sats '
@@ -229,10 +240,22 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
           return;
         }
         
+        // Extrair código de transação da última mensagem de pedido
+        String txCode = '';
+        for (int i = _messages.length - 1; i >= 0; i--) {
+          final match = RegExp(r'PEDIDO DE PAGAMENTO #(\d{6})').firstMatch(_messages[i].content);
+          if (match != null) {
+            txCode = match.group(1) ?? '';
+            break;
+          }
+        }
+        if (txCode.isEmpty) txCode = _generateTransactionCode();
+        
         final message = '$_invoicePrefix\n'
             '━━━━━━━━━━━━━━━━━━━━\n'
             '💰 ${_formatSatsCompact(amountSats)} sats\n'
             '📦 ${widget.offerTitle ?? "Produto"}\n'
+            '🔖 Pedido #$txCode\n'
             '━━━━━━━━━━━━━━━━━━━━\n'
             '$bolt11';
         
@@ -249,6 +272,8 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
               ),
             );
           }
+          
+          // v249: sold count movido para _onNewMessage (quando buyer confirma pagamento)
         }
       } else {
         final error = result?['error'] ?? 'Erro desconhecido';
@@ -319,11 +344,23 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
       final result = await breezProvider.payInvoice(bolt11);
       
       if (result != null && result['success'] == true) {
+        // Extrair código de transação da invoice ou pedido anterior
+        String txCode = '';
+        for (int i = _messages.length - 1; i >= 0; i--) {
+          final match = RegExp(r'Pedido #(\d{6})').firstMatch(_messages[i].content);
+          if (match != null) {
+            txCode = match.group(1) ?? '';
+            break;
+          }
+        }
+        if (txCode.isEmpty) txCode = _generateTransactionCode();
+        
         // Enviar confirmação no chat
         final confirmMsg = '✅ PAGAMENTO CONFIRMADO\n'
             '━━━━━━━━━━━━━━━━━━━━\n'
             '📦 ${widget.offerTitle ?? "Produto"}\n'
             '⚡ Pago com sucesso via Lightning!\n'
+            '🔖 Pedido #$txCode\n'
             '━━━━━━━━━━━━━━━━━━━━\n'
             'Obrigado pela venda!';
         
@@ -331,6 +368,22 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
         _messages = _chatService.getMessages(widget.sellerPubkey);
         setState(() {});
         _scrollToBottom();
+        
+        // v250: Enviar taxa de 2% da plataforma para Coinos (mínimo 1 sat)
+        // ID único por transação para evitar bloqueio de dedup em compras repetidas
+        if (widget.priceSats != null && widget.priceSats! > 0) {
+          try {
+            final feeOrderId = 'mkt_${txCode}_${DateTime.now().millisecondsSinceEpoch}';
+            debugPrint('💼 Marketplace: Enviando taxa 2% de ${widget.priceSats} sats (orderId=$feeOrderId, min=1sat)');
+            final feePaid = await PlatformFeeService.sendPlatformFee(
+              orderId: feeOrderId,
+              totalSats: widget.priceSats!,
+            );
+            debugPrint('💼 Marketplace taxa: ${feePaid ? "PAGA" : "FALHOU"}');
+          } catch (e) {
+            debugPrint('⚠️ Marketplace taxa erro (não-bloqueante): $e');
+          }
+        }
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -384,6 +437,23 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
     // BOLT11 começa com lnbc (mainnet) ou lntb (testnet) seguido de dígitos
     final match = RegExp(r'(ln(?:bc|tb)\w{50,})', caseSensitive: false).firstMatch(content);
     return match?.group(1);
+  }
+
+  /// Gera ID curto de 6 dígitos a partir de uma string (mesmo algoritmo do marketplace_screen)
+  String _generateShortId(String input) {
+    if (input.isEmpty) return '000000';
+    int hash = 0;
+    for (int i = 0; i < input.length; i++) {
+      hash = (hash * 31 + input.codeUnitAt(i)) & 0x7FFFFFFF;
+    }
+    return (hash % 999999 + 1).toString().padLeft(6, '0');
+  }
+
+  /// Gera um código único de transação para cada pedido de pagamento
+  String _generateTransactionCode() {
+    final now = DateTime.now().millisecondsSinceEpoch.toString();
+    final offerId = widget.offerId ?? 'unknown';
+    return _generateShortId('${offerId}_$now');
   }
 
   /// Formata sats com separador de milhar
@@ -1015,5 +1085,64 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
         duration: Duration(seconds: 2),
       ),
     );
+  }
+
+  /// v249: Atualiza sold count da oferta no Nostr quando comprador confirma pagamento
+  Future<void> _updateOfferSoldCount() async {
+    final offerId = widget.offerId;
+    if (offerId == null || offerId.isEmpty) {
+      debugPrint('⚠️ _updateOfferSoldCount: offerId é null/vazio');
+      return;
+    }
+    
+    try {
+      final nostrService = NostrService();
+      final nostrOrderService = NostrOrderService();
+      final privateKey = nostrService.privateKey;
+      if (privateKey == null) {
+        debugPrint('⚠️ _updateOfferSoldCount: privateKey é null');
+        return;
+      }
+      
+      debugPrint('📦 _updateOfferSoldCount: buscando oferta $offerId...');
+      
+      // Buscar oferta atual para pegar dados + sold count
+      final offers = await nostrOrderService.fetchMarketplaceOffers();
+      final myOffer = offers.where((o) => o['id'] == offerId).toList();
+      
+      if (myOffer.isEmpty) {
+        debugPrint('⚠️ Oferta $offerId não encontrada para atualizar sold (${offers.length} ofertas totais)');
+        return;
+      }
+      
+      final offer = myOffer.first;
+      final currentSold = offer['sold'] as int? ?? 0;
+      final quantity = offer['quantity'] as int? ?? 0;
+      final newSold = currentSold + 1;
+      
+      debugPrint('📦 Atualizando sold: $currentSold → $newSold (quantity=$quantity, offerId=${offerId.substring(0, 8)})');
+      
+      List<String> photos = [];
+      if (offer['photos'] is List) {
+        photos = (offer['photos'] as List).cast<String>();
+      }
+      
+      final success = await nostrOrderService.updateMarketplaceOfferSold(
+        privateKey: privateKey,
+        offerId: offerId,
+        title: offer['title'] ?? '',
+        description: offer['description'] ?? '',
+        priceSats: offer['priceSats'] ?? 0,
+        category: offer['category'] ?? 'outro',
+        siteUrl: offer['siteUrl'],
+        city: offer['city'],
+        photos: photos.isNotEmpty ? photos : null,
+        quantity: quantity,
+        newSold: newSold,
+      );
+      debugPrint('📦 updateMarketplaceOfferSold resultado: $success');
+    } catch (e) {
+      debugPrint('⚠️ Erro ao atualizar sold count: $e');
+    }
   }
 }

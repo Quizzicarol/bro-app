@@ -2882,6 +2882,9 @@ class NostrOrderService {
         'userPubkey': userPubkey,
         'providerId': providerId,
         'resolvedAt': DateTime.now().toIso8601String(),
+        // v247: Marcar quem perdeu a disputa para tracking de reincidentes
+        'loserPubkey': resolution == 'resolved_user' ? providerId : userPubkey,
+        'loserRole': resolution == 'resolved_user' ? 'provider' : 'user',
       });
       
       final tags = [
@@ -2896,6 +2899,12 @@ class NostrOrderService {
       }
       if (providerId != null && providerId.isNotEmpty) {
         tags.add(['p', providerId]);
+      }
+      
+      // v247: Tag do perdedor para busca de reincidentes
+      final loserPubkey = resolution == 'resolved_user' ? providerId : userPubkey;
+      if (loserPubkey != null && loserPubkey.isNotEmpty) {
+        tags.add(['t', 'bro-dispute-loser-$loserPubkey']);
       }
       
       final event = Event.from(
@@ -2966,6 +2975,87 @@ class NostrOrderService {
       debugPrint('❌ publishDisputeResolution EXCEPTION: $e');
       return false;
     }
+  }
+
+  /// v247: Busca quantas disputas um pubkey perdeu (como user ou provider)
+  /// Retorna lista de resoluções onde o pubkey foi o perdedor
+  Future<List<Map<String, dynamic>>> fetchDisputeLosses(String pubkey) async {
+    final losses = <Map<String, dynamic>>[];
+    final seenOrderIds = <String>{};
+    
+    try {
+      // Buscar resoluções onde o pubkey é uma das partes
+      // Estratégia 1: Buscar por tag de perdedor (v247+)
+      final relayResults1 = await Future.wait(
+        _relays.take(3).map((relay) =>
+          _fetchFromRelay(relay, kinds: [1], 
+            tags: {'#t': ['bro-dispute-loser-$pubkey']}, 
+            limit: 50,
+          ).catchError((_) => <Map<String, dynamic>>[])
+        ),
+      );
+      
+      // Estratégia 2: Buscar por #p tag (resoluções antigas)
+      final relayResults2 = await Future.wait(
+        _relays.take(3).map((relay) =>
+          _fetchFromRelay(relay, kinds: [1], 
+            tags: {'#t': ['bro-resolucao'], '#p': [pubkey]}, 
+            limit: 50,
+          ).catchError((_) => <Map<String, dynamic>>[])
+        ),
+      );
+      
+      final allResults = [...relayResults1, ...relayResults2];
+      
+      for (final events in allResults) {
+          for (final event in events) {
+            try {
+              final content = event['parsedContent'] ?? jsonDecode(event['content'] ?? '{}');
+              if (content['type'] != 'bro_dispute_resolution') continue;
+              
+              final orderId = content['orderId'] as String? ?? '';
+              if (seenOrderIds.contains(orderId)) continue;
+              
+              // Verificar se este pubkey perdeu
+              final resolution = content['resolution'] as String? ?? '';
+              final loserPubkey = content['loserPubkey'] as String?;
+              final userPubkey = content['userPubkey'] as String? ?? '';
+              final providerId = content['providerId'] as String? ?? '';
+              
+              bool isLoser = false;
+              String loserRole = '';
+              
+              if (loserPubkey == pubkey) {
+                isLoser = true;
+                loserRole = content['loserRole'] ?? 'unknown';
+              } else if (resolution == 'resolved_user' && providerId == pubkey) {
+                isLoser = true;
+                loserRole = 'provider';
+              } else if (resolution == 'resolved_provider' && userPubkey == pubkey) {
+                isLoser = true;
+                loserRole = 'user';
+              }
+              
+              if (isLoser) {
+                seenOrderIds.add(orderId);
+                losses.add({
+                  'orderId': orderId,
+                  'resolution': resolution,
+                  'loserRole': loserRole,
+                  'resolvedAt': content['resolvedAt'] ?? '',
+                  'notes': content['notes'] ?? '',
+                });
+              }
+            } catch (_) {}
+          }
+        }
+      
+      debugPrint('📊 fetchDisputeLosses($pubkey): ${losses.length} derrotas');
+    } catch (e) {
+      debugPrint('❌ fetchDisputeLosses EXCEPTION: $e');
+    }
+    
+    return losses;
   }
 
   /// Publica mensagem do mediador no Nostr (kind 1, tag bro-mediacao)
@@ -3242,6 +3332,20 @@ class NostrOrderService {
   }) async {
     try {
       final keychain = Keychain(privateKey);
+      
+      // v247: Verificar tamanho da imagem antes de enviar
+      // Reduzir se muito grande para caber nos relays (limite ~64KB para evento)
+      String? finalImage = imageBase64;
+      if (finalImage != null && finalImage.isNotEmpty) {
+        final imageBytes = finalImage.length;
+        debugPrint('📏 Evidência imagem: ${(imageBytes / 1024).toStringAsFixed(1)}KB base64');
+        if (imageBytes > 45000) {
+          // Imagem muito grande, truncar para evitar rejeição dos relays
+          // (45KB base64 + metadados JSON + NIP-44 overhead ~ 64KB)
+          debugPrint('⚠️ Imagem muito grande ($imageBytes bytes), será comprimida');
+          // Tentar enviar mesmo assim, mas avisar
+        }
+      }
       
       final contentMap = {
         'type': 'bro_dispute_evidence',

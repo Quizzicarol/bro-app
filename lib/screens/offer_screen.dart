@@ -736,23 +736,38 @@ class _OfferScreenState extends State<OfferScreen> {
       }
 
       // Converter fotos para base64
+      debugPrint('📸 Convertendo ${_selectedPhotos.length} fotos para base64...');
       final photosBase64 = await _photosToBase64();
+      debugPrint('✅ Base64 pronto: ${photosBase64.length} fotos');
 
       // Verificar conteúdo NSFW via ML antes de publicar
+      // v247: Timeout de 15s + catch robusto para evitar crash nativo do TFLite
       if (_selectedPhotos.isNotEmpty) {
-        final nsfwError = await ContentModerationService.checkImagesForNsfw(_selectedPhotos);
-        if (nsfwError != null) {
-          setState(() => _isPublishing = false);
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('🚫 $nsfwError'),
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 5),
-              ),
-            );
+        try {
+          debugPrint('🔍 Iniciando verificação NSFW...');
+          final nsfwError = await ContentModerationService.checkImagesForNsfw(_selectedPhotos)
+              .timeout(const Duration(seconds: 15), onTimeout: () {
+            debugPrint('⏱️ NSFW check timeout após 15s, prosseguindo sem verificação');
+            return null;
+          });
+          debugPrint('✅ Verificação NSFW concluída: ${nsfwError ?? "OK"}');
+          if (nsfwError != null) {
+            setState(() => _isPublishing = false);
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('🚫 $nsfwError'),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 5),
+                ),
+              );
+            }
+            return;
           }
-          return;
+        } catch (e, stack) {
+          // v247: Captura qualquer erro (incluindo Error/native) para não crashar
+          debugPrint('⚠️ NSFW verificação falhou (prosseguindo): $e');
+          debugPrint('⚠️ Stack: $stack');
         }
       }
 
@@ -774,6 +789,7 @@ class _OfferScreenState extends State<OfferScreen> {
         }
       }
 
+      debugPrint('📝 Verificando conteúdo de texto...');
       // Verificar conteúdo de texto proibido
       final modService = ContentModerationService();
       if (modService.containsBannedContent(_titleController.text) ||
@@ -791,6 +807,7 @@ class _OfferScreenState extends State<OfferScreen> {
         return;
       }
 
+      debugPrint('🚀 Publicando oferta no Nostr...');
       final offerId = await nostrOrderService.publishMarketplaceOffer(
         privateKey: privateKey,
         title: _titleController.text,

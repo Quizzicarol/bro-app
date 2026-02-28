@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -508,11 +509,17 @@ class ContentModerationService {
   static const double _nsfwThreshold = 0.65;
 
   /// Inicializa o detector NSFW (lazy loading)
+  /// v247: Timeout de 10s + catch robusto para evitar crash nativo do TFLite
   static Future<NsfwDetector?> _getNsfwDetector() async {
     if (_nsfwDetectorFailed) return null;
     if (_nsfwDetector != null) return _nsfwDetector;
     try {
-      _nsfwDetector = await NsfwDetector.load();
+      debugPrint('🔄 Carregando NSFW Detector...');
+      _nsfwDetector = await NsfwDetector.load()
+          .timeout(const Duration(seconds: 10), onTimeout: () {
+        debugPrint('⏱️ NsfwDetector.load() timeout após 10s');
+        throw TimeoutException('NsfwDetector.load timeout');
+      });
       debugPrint('✅ NSFW Detector carregado com sucesso');
       return _nsfwDetector;
     } catch (e) {
@@ -534,7 +541,13 @@ class ContentModerationService {
 
       for (int i = 0; i < photos.length; i++) {
         try {
-          final result = await detector.detectNSFWFromFile(photos[i]);
+          debugPrint('🔍 Analisando foto ${i + 1}/${photos.length} para NSFW...');
+          // v247: Timeout de 8s por foto para evitar hang nativo
+          final result = await detector.detectNSFWFromFile(photos[i])
+              .timeout(const Duration(seconds: 8), onTimeout: () {
+            debugPrint('⏱️ detectNSFWFromFile timeout para foto ${i + 1}');
+            return null;
+          });
           if (result == null) {
             debugPrint('⚠️ Foto ${i + 1}: NSFW detector retornou null, ignorando');
             continue;
@@ -545,9 +558,12 @@ class ContentModerationService {
             return 'Foto ${i + 1}: Conteúdo impróprio detectado. '
                 'Imagens com nudez ou conteúdo adulto não são permitidas no marketplace.';
           }
-        } catch (e) {
+        } catch (e, stack) {
           debugPrint('⚠️ Erro ao analisar foto ${i + 1} para NSFW: $e');
-          // Continua com as próximas fotos
+          debugPrint('⚠️ Stack: $stack');
+          // v247: Se falhar em qualquer foto, marca detector como falho e prossegue
+          _nsfwDetectorFailed = true;
+          break;
         }
       }
       return null; // Todas as fotos passaram

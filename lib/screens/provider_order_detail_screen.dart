@@ -2687,7 +2687,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                         child: OutlinedButton.icon(
                           onPressed: () async {
                             final picker = ImagePicker();
-                            final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 1024, maxHeight: 1024, imageQuality: 70);
+                            // v247: Reduzida resolução para caber nos relays Nostr (limite ~64KB)
+                            final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 600, maxHeight: 600, imageQuality: 40);
                             if (picked != null) {
                               final file = File(picked.path);
                               final bytes = await file.readAsBytes();
@@ -2704,7 +2705,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                         child: OutlinedButton.icon(
                           onPressed: () async {
                             final picker = ImagePicker();
-                            final picked = await picker.pickImage(source: ImageSource.camera, maxWidth: 1024, maxHeight: 1024, imageQuality: 70);
+                            // v247: Reduzida resolução para caber nos relays Nostr (limite ~64KB)
+                            final picked = await picker.pickImage(source: ImageSource.camera, maxWidth: 600, maxHeight: 600, imageQuality: 40);
                             if (picked != null) {
                               final file = File(picked.path);
                               final bytes = await file.readAsBytes();

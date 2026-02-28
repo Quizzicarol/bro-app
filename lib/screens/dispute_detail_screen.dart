@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../providers/order_provider.dart';
 import '../services/nip44_service.dart';
@@ -35,6 +37,11 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
   // v236: Evidências de ambas as partes
   List<Map<String, dynamic>> _allEvidence = [];
   bool _loadingEvidence = false;
+  
+  // v247: Histórico de disputas perdidas das partes
+  int _userDisputeLosses = 0;
+  int _providerDisputeLosses = 0;
+  bool _loadingLosses = false;
   
   String get orderId => widget.dispute['orderId'] as String? ?? '';
   String get reason => widget.dispute['reason'] as String? ?? 'Não informado';
@@ -77,6 +84,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
     _fetchProofImage();
     _fetchMediatorMessages();
     _fetchAllEvidence(); // v236
+    _fetchDisputeLosses(); // v247
   }
   
   /// v236: Busca todas as evidências de disputa enviadas pelas partes
@@ -102,7 +110,35 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
       if (mounted) setState(() => _loadingEvidence = false);
     }
   }
+  /// v247: Busca historico de disputas perdidas pelas partes envolvidas
+  Future<void> _fetchDisputeLosses() async {
+    setState(() => _loadingLosses = true);
+    try {
+      final nostrService = NostrOrderService();
+      
+      // Buscar perdas do usuário
+      if (userPubkey.isNotEmpty) {
+        final userLosses = await nostrService.fetchDisputeLosses(userPubkey);
+        if (mounted) {
+          setState(() => _userDisputeLosses = userLosses.length);
+        }
+      }
+      
+      // Buscar perdas do provedor
+      if (providerId.isNotEmpty) {
+        final providerLosses = await nostrService.fetchDisputeLosses(providerId);
+        if (mounted) {
+          setState(() => _providerDisputeLosses = providerLosses.length);
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Erro ao buscar histórico de disputas: $e');
+    } finally {
+      if (mounted) setState(() => _loadingLosses = false);
+    }
+  }
   
+  /// 
   /// Busca histórico de mensagens de mediação desta ordem
   Future<void> _fetchMediatorMessages() async {
     if (orderId.isEmpty) return;
@@ -237,6 +273,10 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
                   _buildPartiesInfo(),
                   const SizedBox(height: 16),
                   
+                  // v247: Histórico de disputas perdidas
+                  _buildDisputeHistoryWarning(),
+                  const SizedBox(height: 16),
+                  
                   // Motivo e descrição da disputa
                   _buildDisputeDetails(),
                   const SizedBox(height: 16),
@@ -256,6 +296,10 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
                   // v236: Todas as evidências de disputa (ambas as partes)
                   _buildAllEvidenceSection(),
                   const SizedBox(height: 16),
+                  
+                  // v246: Upload de imagem do mediador (criptografada)
+                  if (!_isResolved) _buildMediatorImageUploadSection(),
+                  if (!_isResolved) const SizedBox(height: 16),
                   
                   // v235: Histórico de mensagens de mediação
                   _buildMessageHistory(),
@@ -413,6 +457,93 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
             ),
           ),
         ],
+      ],
+    );
+  }
+  
+  /// v247: Mostra alertas se alguma das partes já perdeu disputas anteriores
+  Widget _buildDisputeHistoryWarning() {
+    if (_loadingLosses) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 4),
+        child: Center(child: SizedBox(width: 20, height: 20, 
+          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange))),
+      );
+    }
+    
+    if (_userDisputeLosses == 0 && _providerDisputeLosses == 0) {
+      return const SizedBox.shrink();
+    }
+    
+    return _buildSection(
+      title: '⚠️ Histórico de Disputas',
+      icon: Icons.warning_amber,
+      children: [
+        if (_userDisputeLosses > 0)
+          Container(
+            padding: const EdgeInsets.all(10),
+            margin: const EdgeInsets.only(bottom: 8),
+            decoration: BoxDecoration(
+              color: Colors.red.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.red.withOpacity(0.3)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.person, color: Colors.red, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'USUÁRIO — $_userDisputeLosses disputa${_userDisputeLosses > 1 ? 's' : ''} perdida${_userDisputeLosses > 1 ? 's' : ''}',
+                        style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                      Text(
+                        _userDisputeLosses >= 3 
+                            ? '🚨 REINCIDENTE! Este usuário já perdeu $_userDisputeLosses disputas. Possível má-fé.'
+                            : 'Este usuário já teve decisão desfavorável em disputa anterior.',
+                        style: TextStyle(color: Colors.red.shade200, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        if (_providerDisputeLosses > 0)
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.orange.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange.withOpacity(0.3)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.storefront, color: Colors.orange, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'PROVEDOR — $_providerDisputeLosses disputa${_providerDisputeLosses > 1 ? 's' : ''} perdida${_providerDisputeLosses > 1 ? 's' : ''}',
+                        style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                      Text(
+                        _providerDisputeLosses >= 3 
+                            ? '🚨 REINCIDENTE! Este provedor já perdeu $_providerDisputeLosses disputas. Possível fraude recorrente.'
+                            : 'Este provedor já teve decisão desfavorável em disputa anterior.',
+                        style: TextStyle(color: Colors.orange.shade200, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }
@@ -849,6 +980,12 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
             final image = ev['image'] as String? ?? '';
             final sentAt = ev['sentAt'] as String? ?? '';
             final isUser = role == 'user';
+            final isMediator = role == 'mediator'; // v246
+            
+            // v246: Cor por papel
+            final roleColor = isMediator ? Colors.purple : (isUser ? Colors.blue : Colors.green);
+            final roleLabel = isMediator ? 'Mediador' : (isUser ? 'Usuário' : 'Provedor');
+            final roleIcon = isMediator ? Icons.gavel : (isUser ? Icons.person : Icons.storefront);
             
             String dateStr = '';
             try {
@@ -860,20 +997,19 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
               margin: EdgeInsets.only(bottom: idx < _allEvidence.length - 1 ? 12 : 0),
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: (isUser ? Colors.blue : Colors.green).withOpacity(0.06),
+                color: roleColor.withOpacity(0.06),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: (isUser ? Colors.blue : Colors.green).withOpacity(0.2)),
+                border: Border.all(color: roleColor.withOpacity(0.2)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      Icon(isUser ? Icons.person : Icons.storefront, 
-                        color: isUser ? Colors.blue : Colors.green, size: 16),
+                      Icon(roleIcon, color: roleColor, size: 16),
                       const SizedBox(width: 6),
-                      Text(isUser ? 'Usuário' : 'Provedor',
-                        style: TextStyle(color: isUser ? Colors.blue : Colors.green, 
+                      Text(roleLabel,
+                        style: TextStyle(color: roleColor, 
                           fontWeight: FontWeight.bold, fontSize: 12)),
                       const Spacer(),
                       if (dateStr.isNotEmpty)
@@ -898,8 +1034,8 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
                         icon: const Icon(Icons.fullscreen, size: 16),
                         label: const Text('Ver em Tela Cheia', style: TextStyle(fontSize: 11)),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: isUser ? Colors.blue : Colors.green,
-                          side: BorderSide(color: (isUser ? Colors.blue : Colors.green).withOpacity(0.5)),
+                          foregroundColor: roleColor,
+                          side: BorderSide(color: roleColor.withOpacity(0.5)),
                           padding: const EdgeInsets.symmetric(vertical: 6),
                         ),
                       ),
@@ -1097,6 +1233,199 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
     );
   }
   
+  /// v246: Seção para o mediador subir imagens como evidência
+  /// Imagens são criptografadas com NIP-44 para cada parte envolvida
+  Widget _buildMediatorImageUploadSection() {
+    return _buildSection(
+      title: '📎 Evidência do Mediador',
+      icon: Icons.add_photo_alternate,
+      children: [
+        const Text(
+          'Suba imagens que documentam a decisão. Elas serão criptografadas (NIP-44) e visíveis apenas para as partes envolvidas.',
+          style: TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _pickAndUploadMediatorImage(ImageSource.gallery),
+                icon: const Icon(Icons.photo_library, size: 18),
+                label: const Text('Galeria'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.purple,
+                  side: const BorderSide(color: Colors.purple),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _pickAndUploadMediatorImage(ImageSource.camera),
+                icon: const Icon(Icons.camera_alt, size: 18),
+                label: const Text('Câmera'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.purple,
+                  side: const BorderSide(color: Colors.purple),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+  
+  /// v246: Selecionar e enviar imagem como evidência do mediador
+  /// Criptografa com NIP-44 para ambas as partes (user + provider)
+  Future<void> _pickAndUploadMediatorImage(ImageSource source) async {
+    try {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(
+        source: source, 
+        maxWidth: 600, // v247: Reduzida para caber nos relays Nostr
+        maxHeight: 600, 
+        imageQuality: 40,
+      );
+      if (picked == null) return;
+      
+      final file = File(picked.path);
+      final bytes = await file.readAsBytes();
+      final imageBase64 = base64Encode(bytes);
+      
+      // Mostrar dialog para adicionar descrição antes de enviar
+      if (!mounted) return;
+      final descController = TextEditingController();
+      
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A2E),
+          title: const Row(
+            children: [
+              Icon(Icons.add_photo_alternate, color: Colors.purple, size: 24),
+              SizedBox(width: 10),
+              Expanded(child: Text('Enviar Evidência', style: TextStyle(color: Colors.white, fontSize: 16))),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Preview da imagem
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.memory(
+                    bytes,
+                    height: 150,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.purple.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.purple.withOpacity(0.3)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.lock, color: Colors.purple, size: 16),
+                      SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Criptografada NIP-44 — visível apenas para as partes',
+                          style: TextStyle(color: Colors.purple, fontSize: 11),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: descController,
+                  maxLines: 3,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: 'Descrição da evidência (opcional)...',
+                    hintStyle: const TextStyle(color: Colors.white24, fontSize: 12),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    filled: true,
+                    fillColor: Colors.black26,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.purple),
+              child: const Text('Enviar Criptografado', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
+      
+      if (confirm != true || !mounted) return;
+      
+      setState(() => _isLoading = true);
+      
+      final orderProvider = context.read<OrderProvider>();
+      final privateKey = orderProvider.nostrPrivateKey;
+      if (privateKey == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('❌ Chave privada não disponível'), backgroundColor: Colors.red),
+        );
+        setState(() => _isLoading = false);
+        return;
+      }
+      
+      final nostrService = NostrOrderService();
+      
+      // Publicar evidência do mediador como senderRole 'mediator'
+      final success = await nostrService.publishDisputeEvidence(
+        privateKey: privateKey,
+        orderId: orderId,
+        senderRole: 'mediator',
+        imageBase64: imageBase64,
+        description: descController.text.trim().isNotEmpty 
+            ? '⚖️ Evidência do Mediador: ${descController.text.trim()}'
+            : '⚖️ Evidência do Mediador',
+      );
+      
+      setState(() => _isLoading = false);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(success 
+                ? '✅ Evidência enviada e criptografada!' 
+                : '❌ Erro ao enviar evidência'),
+            backgroundColor: success ? Colors.green : Colors.red,
+          ),
+        );
+        // Recarregar evidências
+        if (success) _fetchAllEvidence();
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
   Widget _buildResolutionButtons() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

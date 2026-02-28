@@ -532,6 +532,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
         // Lista de Ordens
         _buildTransactionsList(orderProvider),
+        const SizedBox(height: 16),
+        
+        // v246: Atividade do Marketplace
+        _buildMarketplaceActivity(breezProvider),
         
         // Extra space
         const SizedBox(height: 80),
@@ -988,6 +992,168 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  /// v246: Seção de atividade recente do Marketplace na dashboard
+  Widget _buildMarketplaceActivity(BreezProvider breezProvider) {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: breezProvider.listPayments(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const SizedBox.shrink();
+        
+        final allPayments = snapshot.data!;
+        // Filtrar apenas transações do marketplace
+        final marketplaceTxs = allPayments.where((p) {
+          final desc = p['description']?.toString() ?? '';
+          return desc.contains('Bro Marketplace');
+        }).take(5).toList();
+        
+        if (marketplaceTxs.isEmpty) return const SizedBox.shrink();
+        
+        return Container(
+          decoration: BoxDecoration(
+            color: const Color(0x0DFFFFFF),
+            border: Border.all(
+              color: const Color(0x33FF8A00),
+              width: 1,
+            ),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFFFF8A00), Color(0xFFFFAA33)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.storefront, color: Colors.white, size: 20),
+                    const SizedBox(width: 12),
+                    const Text(
+                      '🛒 Marketplace',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '${marketplaceTxs.length} transaç${marketplaceTxs.length == 1 ? 'ão' : 'ões'}',
+                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              // Transactions list
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(12),
+                itemCount: marketplaceTxs.length,
+                itemBuilder: (context, index) {
+                  final tx = marketplaceTxs[index];
+                  final isReceived = tx['type'] == 'received' || 
+                                     tx['direction'] == 'incoming' ||
+                                     tx['type'] == 'Receive';
+                  final amount = tx['amountSats'] ?? tx['amount'] ?? 0;
+                  final description = tx['description']?.toString() ?? '';
+                  final product = description
+                      .replaceFirst('Bro Marketplace: ', '')
+                      .replaceFirst('Bro Marketplace:', '')
+                      .trim();
+                  final date = tx['createdAt'] ?? tx['timestamp'];
+                  
+                  String dateStr = '';
+                  if (date != null) {
+                    try {
+                      final dt = date is int 
+                          ? DateTime.fromMillisecondsSinceEpoch(date * 1000) 
+                          : DateTime.parse(date.toString());
+                      dateStr = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+                    } catch (_) {}
+                  }
+                  
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1A2A),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.orange.withOpacity(0.2)),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: (isReceived ? Colors.green : Colors.orange).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(17),
+                          ),
+                          child: Icon(
+                            isReceived ? Icons.storefront : Icons.shopping_cart,
+                            color: isReceived ? Colors.green : Colors.orange,
+                            size: 17,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                isReceived 
+                                    ? 'Venda: ${product.isEmpty ? 'Produto' : product}' 
+                                    : 'Compra: ${product.isEmpty ? 'Produto' : product}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              if (dateStr.isNotEmpty)
+                                Text(
+                                  dateStr,
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.4),
+                                    fontSize: 11,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          '${isReceived ? '+' : '-'}$amount sats',
+                          style: TextStyle(
+                            color: isReceived ? Colors.green : Colors.orange,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 

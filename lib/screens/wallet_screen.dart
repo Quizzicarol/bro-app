@@ -2158,12 +2158,31 @@ class _WalletScreenState extends State<WalletScreen> {
       }
     }
     
+    // v246: Detectar transações do Marketplace pela descrição do invoice
+    final isMarketplace = description.contains('Bro Marketplace');
+    String marketplaceProduct = '';
+    if (isMarketplace) {
+      marketplaceProduct = description.replaceFirst('Bro Marketplace: ', '').replaceFirst('Bro Marketplace:', '').trim();
+      if (marketplaceProduct.isEmpty) marketplaceProduct = 'Produto';
+    }
+    
     // Determinar o label e cor baseado no tipo
     String label;
     Color iconColor;
     IconData icon;
     
-    if (isBroEarning || isBroOrderPayment) {
+    if (isMarketplace) {
+      // v246: Transação do Marketplace
+      if (isReceived) {
+        label = '🛒 Venda Marketplace: $marketplaceProduct';
+        iconColor = Colors.green;
+        icon = Icons.storefront;
+      } else {
+        label = '🛒 Compra Marketplace: $marketplaceProduct';
+        iconColor = Colors.orange;
+        icon = Icons.shopping_cart;
+      }
+    } else if (isBroEarning || isBroOrderPayment) {
       label = '💪 Ganho como Bro';
       iconColor = Colors.green;
       icon = Icons.volunteer_activism;
@@ -2216,8 +2235,9 @@ class _WalletScreenState extends State<WalletScreen> {
       }
     }
     
-    // Usar estilo destacado para ganhos Bro (tanto do provider quanto do Lightning)
+    // Usar estilo destacado para ganhos Bro e marketplace
     final showBroStyle = isBroEarning || isBroOrderPayment;
+    final showMarketplaceStyle = isMarketplace;
 
     return GestureDetector(
       onTap: () => _showTransactionDetails(payment),
@@ -2225,9 +2245,9 @@ class _WalletScreenState extends State<WalletScreen> {
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: showBroStyle ? const Color(0xFF1A2A1A) : const Color(0xFF1A1A1A),
+          color: showBroStyle ? const Color(0xFF1A2A1A) : showMarketplaceStyle ? const Color(0xFF1A1A2A) : const Color(0xFF1A1A1A),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: showBroStyle ? Colors.green.withOpacity(0.3) : const Color(0xFF333333)),
+          border: Border.all(color: showBroStyle ? Colors.green.withOpacity(0.3) : showMarketplaceStyle ? Colors.orange.withOpacity(0.3) : const Color(0xFF333333)),
         ),
         child: Row(
           children: [

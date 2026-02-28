@@ -1,7 +1,7 @@
 name: bro_app
 description: "Bro - Plataforma P2P para pagamento de contas com Bitcoin via Lightning Network"
 publish_to: 'none'
-version: 1.0.131+243
+version: 1.0.131+244
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -46,6 +46,7 @@ dependencies:
 
   # Image
   image_picker: ^1.0.7
+  nsfw_detector_flutter: ^1.0.5
 
   # Storage
   shared_preferences: ^2.5.4

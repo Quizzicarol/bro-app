@@ -9,8 +9,6 @@ import '../services/nostr_order_service.dart';
 import '../services/bitcoin_price_service.dart';
 import '../services/content_moderation_service.dart';
 import '../services/marketplace_reputation_service.dart';
-import '../services/version_check_service.dart';
-import '../services/lnaddress_service.dart';
 import '../config.dart';
 import 'marketplace_chat_screen.dart';
 import 'offer_screen.dart';
@@ -104,7 +102,6 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
           photoBase64List: photos,
           quantity: data['quantity'] ?? 0,
           sold: data['sold'] ?? 0,
-          lightningAddress: data['lightningAddress'],
         );
       }).toList();
       
@@ -194,12 +191,6 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
         backgroundColor: const Color(0xFF1A1A1A),
         title: const Text('Marketplace'),
         actions: [
-          // Botão de atualização do app
-          IconButton(
-            icon: const Icon(Icons.system_update, size: 22),
-            onPressed: () => _checkForUpdate(),
-            tooltip: 'Verificar Atualização',
-          ),
           IconButton(
             icon: const Icon(Icons.add),
             onPressed: () {
@@ -615,34 +606,6 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
   // ============================================
   // CHECK FOR UPDATE
   // ============================================
-
-  Future<void> _checkForUpdate() async {
-    final versionService = VersionCheckService();
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
-    
-    scaffoldMessenger.showSnackBar(
-      const SnackBar(
-        content: Text('Verificando atualizações...'),
-        duration: Duration(seconds: 2),
-      ),
-    );
-    
-    await versionService.checkForUpdate(force: true);
-    
-    if (!mounted) return;
-    
-    if (versionService.updateAvailable) {
-      versionService.showUpdateDialog(context);
-    } else {
-      scaffoldMessenger.showSnackBar(
-        const SnackBar(
-          content: Text('✅ Você já está na versão mais recente!'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 3),
-        ),
-      );
-    }
-  }
 
   // ============================================
   // OFFER DETAIL (Bottom Sheet)
@@ -1410,12 +1373,11 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
   // ============================================
 
   void _showPaymentFlow(MarketplaceOffer offer) {
+    // Preço com spread embutido (taxa da plataforma oculta no câmbio)
+    final spreadMultiplier = 1.0 + AppConfig.platformFeePercent;
     final priceInBrl = offer.priceSats > 0 && _btcPrice > 0
-        ? (offer.priceSats / 100000000) * _btcPrice
+        ? (offer.priceSats / 100000000) * _btcPrice * spreadMultiplier
         : 0.0;
-    final hasLnAddress = offer.lightningAddress != null && offer.lightningAddress!.isNotEmpty;
-    final platformFee = (offer.priceSats * AppConfig.platformFeePercent).round();
-    final totalWithFee = offer.priceSats + platformFee;
 
     showModalBottomSheet(
       context: context,
@@ -1425,292 +1387,136 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
       ),
       isScrollControlled: true,
       builder: (sheetContext) {
-        bool isGenerating = false;
-        String? generatedInvoice;
-        String? invoiceError;
-        
-        return StatefulBuilder(
-          builder: (sheetContext, setSheetState) => SafeArea(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.only(
-                left: 24,
-                right: 24,
-                top: 24,
-                bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 24,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.white24,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+        return SafeArea(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.only(
+              left: 24,
+              right: 24,
+              top: 24,
+              bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 24,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  const SizedBox(height: 20),
-                  
-                  const Icon(Icons.bolt, color: Colors.amber, size: 48),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Pagamento Lightning',
-                    style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 20),
+                
+                const Icon(Icons.bolt, color: Colors.amber, size: 48),
+                const SizedBox(height: 12),
+                const Text(
+                  'Pagamento Lightning',
+                  style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                
+                // Resumo do pedido
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  const SizedBox(height: 16),
-                  
-                  // Resumo do pedido
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.05),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      children: [
-                        _buildPaymentRow('Produto', offer.title),
+                  child: Column(
+                    children: [
+                      _buildPaymentRow('Produto', offer.title),
+                      const Divider(color: Colors.white12),
+                      _buildPaymentRow('Vendedor', offer.sellerName),
+                      const Divider(color: Colors.white12),
+                      _buildPaymentRow('Valor', '${_formatSats(offer.priceSats)} sats'),
+                      if (priceInBrl > 0) ...[
                         const Divider(color: Colors.white12),
-                        _buildPaymentRow('Vendedor', offer.sellerName),
-                        const Divider(color: Colors.white12),
-                        _buildPaymentRow('Valor', '${_formatSats(offer.priceSats)} sats'),
-                        const Divider(color: Colors.white12),
-                        _buildPaymentRow('Taxa plataforma (2%)', '${_formatSats(platformFee)} sats'),
-                        const Divider(color: Colors.white12),
-                        _buildPaymentRow('Total', '${_formatSats(totalWithFee)} sats'),
-                        if (priceInBrl > 0) ...[
-                          const Divider(color: Colors.white12),
-                          _buildPaymentRow('≈ BRL', 'R\$ ${(priceInBrl * 1.02).toStringAsFixed(2)}'),
-                        ],
+                        _buildPaymentRow('≈ BRL', 'R\$ ${priceInBrl.toStringAsFixed(2)}'),
                       ],
-                    ),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  
-                  // Invoice gerada automaticamente ou instruções manuais
-                  if (hasLnAddress && generatedInvoice != null) ...[
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.green.withOpacity(0.3)),
-                      ),
-                      child: Column(
+                ),
+                const SizedBox(height: 16),
+                
+                // Instruções de pagamento
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Column(
+                    children: [
+                      Row(
                         children: [
-                          const Row(
-                            children: [
-                              Icon(Icons.check_circle, color: Colors.green, size: 16),
-                              SizedBox(width: 8),
-                              Text(
-                                'Invoice gerada!',
-                                style: TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.black26,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: SelectableText(
-                              generatedInvoice!,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 10,
-                                fontFamily: 'monospace',
-                              ),
-                              maxLines: 4,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  onPressed: () {
-                                    Clipboard.setData(ClipboardData(text: generatedInvoice!));
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Invoice copiada!'),
-                                        duration: Duration(seconds: 2),
-                                      ),
-                                    );
-                                  },
-                                  icon: const Icon(Icons.copy, size: 16),
-                                  label: const Text('Copiar Invoice'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.green,
-                                    padding: const EdgeInsets.symmetric(vertical: 10),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Cole esta invoice na sua carteira Lightning para pagar.',
-                      style: TextStyle(color: Colors.white54, fontSize: 12),
-                      textAlign: TextAlign.center,
-                    ),
-                  ] else if (hasLnAddress && invoiceError != null) ...[
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.red.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.error_outline, color: Colors.redAccent, size: 16),
-                          const SizedBox(width: 8),
+                          Icon(Icons.info_outline, color: Colors.blue, size: 16),
+                          SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              invoiceError!,
-                              style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+                              'Como funciona:',
+                              style: TextStyle(color: Colors.blue, fontSize: 13, fontWeight: FontWeight.bold),
                             ),
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    _buildManualPaymentInstructions(),
-                  ] else if (!hasLnAddress) ...[
-                    _buildManualPaymentInstructions(),
-                  ],
-                  
-                  const SizedBox(height: 16),
-                  
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.red.withOpacity(0.2)),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.warning_amber, color: Colors.redAccent, size: 16),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Pagamentos Lightning são irreversíveis. Só pague após confirmar a procedência do vendedor.',
-                            style: TextStyle(color: Colors.redAccent, fontSize: 11),
-                          ),
-                        ),
-                      ],
-                    ),
+                      SizedBox(height: 8),
+                      Text(
+                        '1. Clique em "Pagar via Chat" abaixo\n'
+                        '2. Combine os detalhes com o vendedor\n'
+                        '3. O vendedor envia a invoice Lightning\n'
+                        '4. Pague diretamente pela sua carteira Bro',
+                        style: TextStyle(color: Colors.white54, fontSize: 12, height: 1.5),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 20),
-                  
-                  // Botões de ação
-                  if (hasLnAddress && generatedInvoice == null && invoiceError == null) ...[
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: isGenerating ? null : () async {
-                          setSheetState(() {
-                            isGenerating = true;
-                            invoiceError = null;
-                          });
-                          try {
-                            final lnService = LnAddressService();
-                            final result = await lnService.getInvoice(
-                              lnAddress: offer.lightningAddress!,
-                              amountSats: offer.priceSats,
-                              comment: 'Bro Marketplace: ${offer.title}',
-                            );
-                            if (result['success'] == true) {
-                              setSheetState(() {
-                                generatedInvoice = result['invoice'] as String;
-                                isGenerating = false;
-                              });
-                            } else {
-                              setSheetState(() {
-                                invoiceError = result['error'] ?? 'Erro ao gerar invoice';
-                                isGenerating = false;
-                              });
-                            }
-                          } catch (e) {
-                            setSheetState(() {
-                              invoiceError = 'Erro: $e';
-                              isGenerating = false;
-                            });
-                          }
-                        },
-                        icon: isGenerating
-                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                            : const Icon(Icons.bolt),
-                        label: Text(isGenerating ? 'Gerando invoice...' : 'Gerar Invoice Lightning'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.amber,
-                          foregroundColor: Colors.black,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                
+                const SizedBox(height: 16),
+                
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red.withOpacity(0.2)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.warning_amber, color: Colors.redAccent, size: 16),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Pagamentos Lightning são irreversíveis. Só pague após confirmar a procedência do vendedor.',
+                          style: TextStyle(color: Colors.redAccent, fontSize: 11),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                  
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(sheetContext);
-                        _contactSeller(offer);
-                      },
-                      icon: const Icon(Icons.message),
-                      label: const Text('Negociar via Chat'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                
+                // Botão de ação
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(sheetContext);
+                      _contactSeller(offer);
+                    },
+                    icon: const Icon(Icons.bolt),
+                    label: const Text('Pagar via Chat'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         );
       },
-    );
-  }
-
-  Widget _buildManualPaymentInstructions() {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.blue.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: const Column(
-        children: [
-          Row(
-            children: [
-              Icon(Icons.info_outline, color: Colors.blue, size: 16),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Como pagar:',
-                  style: TextStyle(color: Colors.blue, fontSize: 13, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 8),
-          Text(
-            '1. Entre em contato com o vendedor pelo chat\n'
-            '2. Peça o endereço Lightning (invoice ou LNURL)\n'
-            '3. Use sua carteira para pagar\n'
-            '4. Confirme o pagamento com o vendedor',
-            style: TextStyle(color: Colors.white54, fontSize: 12, height: 1.5),
-          ),
-        ],
-      ),
     );
   }
 

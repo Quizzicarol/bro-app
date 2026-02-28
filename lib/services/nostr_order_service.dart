@@ -2471,7 +2471,6 @@ class NostrOrderService {
     String? city,
     List<String>? photos, // Lista de fotos em base64
     int quantity = 0, // Quantidade disponível (0 = ilimitado)
-    String? lightningAddress, // Lightning Address do vendedor
   }) async {
     try {
       final keychain = Keychain(privateKey);
@@ -2490,7 +2489,6 @@ class NostrOrderService {
         'photos': photos ?? [],
         'quantity': quantity,
         'sold': 0,
-        'lightningAddress': lightningAddress,
         'createdAt': DateTime.now().toIso8601String(),
       };
       
@@ -2580,7 +2578,6 @@ class NostrOrderService {
               'photos': photos,
               'quantity': content['quantity'] ?? 0,
               'sold': content['sold'] ?? 0,
-              'lightningAddress': content['lightningAddress'],
               'createdAt': DateTime.fromMillisecondsSinceEpoch(
                 (event['created_at'] as int) * 1000,
               ).toIso8601String(),
@@ -2638,7 +2635,6 @@ class NostrOrderService {
               'photos': photos,
               'quantity': content['quantity'] ?? 0,
               'sold': content['sold'] ?? 0,
-              'lightningAddress': content['lightningAddress'],
               'createdAt': DateTime.fromMillisecondsSinceEpoch(
                 (event['created_at'] as int) * 1000,
               ).toIso8601String(),

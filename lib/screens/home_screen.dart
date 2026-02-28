@@ -486,6 +486,25 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       actions: [
         IconButton(
+          icon: const Icon(Icons.system_update, color: Colors.white, size: 22),
+          onPressed: () async {
+            final versionService = VersionCheckService();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Verificando atualizações...'), duration: Duration(seconds: 2)),
+            );
+            await versionService.checkForUpdate(force: true);
+            if (!mounted) return;
+            if (versionService.updateAvailable) {
+              versionService.showUpdateDialog(context);
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('✅ Você já está na versão mais recente!'), backgroundColor: Colors.green, duration: Duration(seconds: 3)),
+              );
+            }
+          },
+          tooltip: 'Verificar Atualização',
+        ),
+        IconButton(
           icon: const Icon(Icons.chat_bubble_outline, color: Colors.white),
           onPressed: _openMessages,
           tooltip: 'Mensagens',

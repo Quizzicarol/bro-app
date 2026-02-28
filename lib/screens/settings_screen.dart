@@ -6,6 +6,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:crypto/crypto.dart';
 import '../services/storage_service.dart';
+import '../services/version_check_service.dart';
 import '../providers/breez_provider.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -889,10 +890,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           leading: const Icon(Icons.info_outline, color: Colors.orange),
                           title: const Text('Versão', style: TextStyle(color: Colors.white)),
                           subtitle: Text(_appVersion, style: const TextStyle(color: Colors.white54)),
+                          trailing: const Icon(Icons.system_update, color: Colors.orange, size: 20),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20,
                             vertical: 8,
                           ),
+                          onTap: () async {
+                            final versionService = VersionCheckService();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Verificando atualizações...'),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                            await versionService.checkForUpdate(force: true);
+                            if (!mounted) return;
+                            if (versionService.updateAvailable) {
+                              versionService.showUpdateDialog(context);
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('✅ Você já está na versão mais recente!'),
+                                  backgroundColor: Colors.green,
+                                  duration: Duration(seconds: 3),
+                                ),
+                              );
+                            }
+                          },
                         ),
                         Divider(height: 1, color: Colors.white12),
                         ListTile(

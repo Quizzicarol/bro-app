@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import '../services/bitcoin_price_service.dart';
 import '../services/nostr_service.dart';
 import '../services/nostr_order_service.dart';
+import '../services/content_moderation_service.dart';
 
 /// Tela para criar uma oferta de produto ou servico
 class OfferScreen extends StatefulWidget {
@@ -21,6 +22,8 @@ class _OfferScreenState extends State<OfferScreen> {
   final _priceController = TextEditingController();
   final _cityController = TextEditingController();
   final _siteController = TextEditingController();
+  final _quantityController = TextEditingController();
+  final _lnAddressController = TextEditingController();
   
   String _selectedCategory = 'produto';
   bool _isPublishing = false;
@@ -65,6 +68,8 @@ class _OfferScreenState extends State<OfferScreen> {
     _priceController.dispose();
     _cityController.dispose();
     _siteController.dispose();
+    _quantityController.dispose();
+    _lnAddressController.dispose();
     super.dispose();
   }
 
@@ -219,6 +224,36 @@ class _OfferScreenState extends State<OfferScreen> {
               ),
               const SizedBox(height: 24),
 
+              // Quantidade (para produtos)
+              if (_selectedCategory == 'produto') ...[              const Text(
+                'Quantidade disponível',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _quantityController,
+                style: const TextStyle(color: Colors.white),
+                keyboardType: TextInputType.number,
+                decoration: _buildInputDecoration(
+                  hint: 'Ex: 10 (deixe vazio para ilimitado)',
+                  icon: Icons.inventory_2,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Padding(
+                padding: EdgeInsets.only(left: 4),
+                child: Text(
+                  'O estoque diminui conforme você confirma vendas. Deixe vazio para serviços ou itens sem limite.',
+                  style: TextStyle(color: Color(0x66FFFFFF), fontSize: 11),
+                ),
+              ),
+              const SizedBox(height: 24),
+              ],
+
               // Site ou Referências
               const Text(
                 'Site ou Referências (opcional)',
@@ -250,6 +285,34 @@ class _OfferScreenState extends State<OfferScreen> {
               ),
               const SizedBox(height: 8),
               _buildPhotoSelector(),
+              const SizedBox(height: 24),
+
+              // Lightning Address
+              const Text(
+                'Lightning Address (opcional)',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _lnAddressController,
+                style: const TextStyle(color: Colors.white),
+                decoration: _buildInputDecoration(
+                  hint: 'Ex: voce@walletofsatoshi.com',
+                  icon: Icons.bolt,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Padding(
+                padding: EdgeInsets.only(left: 4),
+                child: Text(
+                  'Permite que compradores gerem invoice automaticamente para te pagar.',
+                  style: TextStyle(color: Color(0x66FFFFFF), fontSize: 11),
+                ),
+              ),
               const SizedBox(height: 32),
 
               // Botao publicar
@@ -582,6 +645,16 @@ class _OfferScreenState extends State<OfferScreen> {
         imageQuality: 60,
       );
       if (image != null && mounted) {
+        // Verificar nome do arquivo
+        if (ContentModerationService.hasProhibitedFileName(image.name)) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('❌ Nome de arquivo suspeito. Imagem rejeitada.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
         setState(() => _selectedPhotos.add(File(image.path)));
       }
     } catch (e) {
@@ -693,6 +766,41 @@ class _OfferScreenState extends State<OfferScreen> {
       // Converter fotos para base64
       final photosBase64 = await _photosToBase64();
 
+      // Verificar conteúdo das imagens antes de publicar
+      if (photosBase64.isNotEmpty) {
+        final imageError = ContentModerationService.checkImagesForPublishing(photosBase64);
+        if (imageError != null) {
+          setState(() => _isPublishing = false);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('❌ $imageError'),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
+          return;
+        }
+      }
+
+      // Verificar conteúdo de texto proibido
+      final modService = ContentModerationService();
+      if (modService.containsBannedContent(_titleController.text) ||
+          modService.containsBannedContent(_descriptionController.text)) {
+        setState(() => _isPublishing = false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('❌ Conteúdo proibido detectado. Revise o título e descrição.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+        return;
+      }
+
       final offerId = await nostrOrderService.publishMarketplaceOffer(
         privateKey: privateKey,
         title: _titleController.text,
@@ -702,6 +810,8 @@ class _OfferScreenState extends State<OfferScreen> {
         siteUrl: _siteController.text.trim().isEmpty ? null : _siteController.text.trim(),
         city: _cityController.text.trim().isEmpty ? null : _cityController.text.trim(),
         photos: photosBase64.isNotEmpty ? photosBase64 : null,
+        quantity: int.tryParse(_quantityController.text) ?? 0,
+        lightningAddress: _lnAddressController.text.trim().isEmpty ? null : _lnAddressController.text.trim(),
       );
 
       if (offerId == null) {

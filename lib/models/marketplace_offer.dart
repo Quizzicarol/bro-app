@@ -15,6 +15,9 @@ class MarketplaceOffer {
   final String? siteUrl;
   final List<String> photoBase64List; // Fotos do produto em base64
   final String? city;
+  final int quantity; // Quantidade disponível (0 = ilimitado/serviço)
+  final int sold; // Quantidade já vendida
+  final String? lightningAddress; // Lightning Address do vendedor para pagamentos
   final double? avgRatingAtendimento; // Média de avaliações do vendedor
   final double? avgRatingProduto;
   final int totalReviews;
@@ -33,16 +36,28 @@ class MarketplaceOffer {
     this.siteUrl,
     this.photoBase64List = const [],
     this.city,
+    this.quantity = 0,
+    this.sold = 0,
+    this.lightningAddress,
     this.avgRatingAtendimento,
     this.avgRatingProduto,
     this.totalReviews = 0,
   });
+
+  /// Verifica se está esgotado (apenas para produtos com estoque)
+  bool get isOutOfStock => quantity > 0 && sold >= quantity;
+  
+  /// Quantidade restante (0 = ilimitado)
+  int get remaining => quantity > 0 ? (quantity - sold).clamp(0, quantity) : 0;
 
   /// Cria cópia com novos campos de reputação
   MarketplaceOffer copyWith({
     double? avgRatingAtendimento,
     double? avgRatingProduto,
     int? totalReviews,
+    int? quantity,
+    int? sold,
+    String? lightningAddress,
   }) {
     return MarketplaceOffer(
       id: id,
@@ -58,6 +73,9 @@ class MarketplaceOffer {
       siteUrl: siteUrl,
       photoBase64List: photoBase64List,
       city: city,
+      quantity: quantity ?? this.quantity,
+      sold: sold ?? this.sold,
+      lightningAddress: lightningAddress ?? this.lightningAddress,
       avgRatingAtendimento: avgRatingAtendimento ?? this.avgRatingAtendimento,
       avgRatingProduto: avgRatingProduto ?? this.avgRatingProduto,
       totalReviews: totalReviews ?? this.totalReviews,
@@ -102,18 +120,20 @@ class MarketplaceOffer {
     }
 
     // Tentar extrair fotos do content JSON
+    Map<String, dynamic> contentMap = {};
     try {
-      final content = jsonDecode(event['content'] ?? '{}');
-      if (content is Map) {
-        if (content['photos'] is List) {
-          photos = (content['photos'] as List).cast<String>();
+      final parsed = jsonDecode(event['content'] ?? '{}');
+      if (parsed is Map) {
+        contentMap = Map<String, dynamic>.from(parsed);
+        if (contentMap['photos'] is List) {
+          photos = (contentMap['photos'] as List).cast<String>();
         }
-        if (title.isEmpty) title = content['title'] ?? '';
-        if (description.isEmpty) description = content['description'] ?? '';
-        if (priceSats == 0) priceSats = content['priceSats'] ?? 0;
-        if (category == 'outros') category = content['category'] ?? 'outros';
-        if (siteUrl == null) siteUrl = content['siteUrl'];
-        if (city == null) city = content['city'];
+        if (title.isEmpty) title = contentMap['title'] ?? '';
+        if (description.isEmpty) description = contentMap['description'] ?? '';
+        if (priceSats == 0) priceSats = contentMap['priceSats'] ?? 0;
+        if (category == 'outros') category = contentMap['category'] ?? 'outros';
+        if (siteUrl == null) siteUrl = contentMap['siteUrl'];
+        if (city == null) city = contentMap['city'];
       }
     } catch (_) {
       if (description.isEmpty) description = event['content'] ?? '';
@@ -134,6 +154,9 @@ class MarketplaceOffer {
       siteUrl: siteUrl,
       city: city,
       photoBase64List: photos,
+      quantity: contentMap['quantity'] as int? ?? 0,
+      sold: contentMap['sold'] as int? ?? 0,
+      lightningAddress: contentMap['lightningAddress'] as String?,
     );
   }
 
@@ -151,6 +174,9 @@ class MarketplaceOffer {
         'siteUrl': siteUrl,
         'photos': photoBase64List,
         'city': city,
+        'quantity': quantity,
+        'sold': sold,
+        'lightningAddress': lightningAddress,
       };
 }
 

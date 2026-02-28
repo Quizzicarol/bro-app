@@ -1,4 +1,7 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../services/bitcoin_price_service.dart';
 import '../services/nostr_service.dart';
 import '../services/nostr_order_service.dart';
@@ -20,9 +23,13 @@ class _OfferScreenState extends State<OfferScreen> {
   final _siteController = TextEditingController();
   
   String _selectedCategory = 'produto';
-  bool _acceptsPhotos = true;
   bool _isPublishing = false;
-  double? _btcPriceBrl; // Preço atual do BTC em BRL
+  double? _btcPriceBrl;
+  
+  // Fotos do produto
+  final List<File> _selectedPhotos = [];
+  final ImagePicker _imagePicker = ImagePicker();
+  static const int _maxPhotos = 3;
 
   @override
   void initState() {
@@ -230,6 +237,19 @@ class _OfferScreenState extends State<OfferScreen> {
                   icon: Icons.link,
                 ),
               ),
+              const SizedBox(height: 24),
+
+              // Fotos do Produto
+              const Text(
+                'Fotos do Produto (opcional)',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _buildPhotoSelector(),
               const SizedBox(height: 32),
 
               // Botao publicar
@@ -464,79 +484,152 @@ class _OfferScreenState extends State<OfferScreen> {
     );
   }
 
-  Widget _buildPhotoOption() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0x0DFFFFFF),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0x1AFFFFFF)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+  Widget _buildPhotoSelector() {
+    return Column(
+      children: [
+        // Grid de fotos selecionadas
+        if (_selectedPhotos.isNotEmpty) ...[
+          SizedBox(
+            height: 120,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: _selectedPhotos.length,
+              itemBuilder: (context, index) {
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.file(
+                          _selectedPhotos[index],
+                          width: 120,
+                          height: 120,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() => _selectedPhotos.removeAt(index));
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.close, color: Colors.white, size: 16),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+        // Botões para adicionar foto
+        if (_selectedPhotos.length < _maxPhotos)
           Row(
             children: [
-              const Icon(Icons.photo_camera, color: Color(0xFF9C27B0), size: 24),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Fotos Privadas',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      'Envie fotos do produto apenas para interessados via DM',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Color(0x99FFFFFF),
-                      ),
-                    ),
-                  ],
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _pickPhotoFromGallery,
+                  icon: const Icon(Icons.photo_library, color: Color(0xFF9C27B0)),
+                  label: const Text('Galeria', style: TextStyle(color: Color(0xFF9C27B0))),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Color(0xFF9C27B0)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
                 ),
               ),
-              Switch(
-                value: _acceptsPhotos,
-                onChanged: (value) => setState(() => _acceptsPhotos = value),
-                activeColor: const Color(0xFF9C27B0),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _pickPhotoFromCamera,
+                  icon: const Icon(Icons.camera_alt, color: Color(0xFF9C27B0)),
+                  label: const Text('Câmera', style: TextStyle(color: Color(0xFF9C27B0))),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Color(0xFF9C27B0)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
               ),
             ],
           ),
-          if (_acceptsPhotos) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF9C27B0).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.lock, color: Color(0xFFBA68C8), size: 16),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Fotos sao enviadas de forma criptografada via Nostr DM',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFFBA68C8),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
+        const SizedBox(height: 8),
+        Text(
+          '${_selectedPhotos.length}/$_maxPhotos fotos • Máx. 200KB cada (comprimida automaticamente)',
+          style: const TextStyle(fontSize: 11, color: Color(0x66FFFFFF)),
+        ),
+      ],
     );
+  }
+
+  Future<void> _pickPhotoFromGallery() async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 800,
+        maxHeight: 800,
+        imageQuality: 60,
+      );
+      if (image != null && mounted) {
+        setState(() => _selectedPhotos.add(File(image.path)));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao selecionar foto: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _pickPhotoFromCamera() async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 800,
+        maxHeight: 800,
+        imageQuality: 60,
+      );
+      if (image != null && mounted) {
+        setState(() => _selectedPhotos.add(File(image.path)));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao tirar foto: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  /// Converte fotos para base64 (comprimidas)
+  Future<List<String>> _photosToBase64() async {
+    final result = <String>[];
+    for (final photo in _selectedPhotos) {
+      try {
+        final bytes = await photo.readAsBytes();
+        // Limitar a 200KB
+        if (bytes.length <= 200 * 1024) {
+          result.add(base64Encode(bytes));
+        } else {
+          debugPrint('⚠️ Foto muito grande: ${bytes.length} bytes, ignorando');
+        }
+      } catch (e) {
+        debugPrint('⚠️ Erro ao converter foto: $e');
+      }
+    }
+    return result;
   }
 
   Widget _buildNostrInfo() {
@@ -597,6 +690,9 @@ class _OfferScreenState extends State<OfferScreen> {
         fullDescription = '📍 ${_cityController.text}\n\n$fullDescription';
       }
 
+      // Converter fotos para base64
+      final photosBase64 = await _photosToBase64();
+
       final offerId = await nostrOrderService.publishMarketplaceOffer(
         privateKey: privateKey,
         title: _titleController.text,
@@ -604,6 +700,8 @@ class _OfferScreenState extends State<OfferScreen> {
         priceSats: int.tryParse(_priceController.text) ?? 0,
         category: _selectedCategory,
         siteUrl: _siteController.text.trim().isEmpty ? null : _siteController.text.trim(),
+        city: _cityController.text.trim().isEmpty ? null : _cityController.text.trim(),
+        photos: photosBase64.isNotEmpty ? photosBase64 : null,
       );
 
       if (offerId == null) {

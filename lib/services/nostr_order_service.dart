@@ -484,6 +484,22 @@ class NostrOrderService {
     return orders;
   }
 
+  /// Publica evento em relay (wrapper público para uso externo)
+  Future<bool> publishToRelayPublic(String relayUrl, Event event) async {
+    return _publishToRelay(relayUrl, event);
+  }
+
+  /// Busca eventos de relay (wrapper público para uso externo)
+  Future<List<Map<String, dynamic>>> fetchFromRelayPublic(
+    String relayUrl, {
+    required List<int> kinds,
+    List<String>? authors,
+    Map<String, List<String>>? tags,
+    int limit = 50,
+  }) async {
+    return _fetchFromRelay(relayUrl, kinds: kinds, authors: authors, tags: tags, limit: limit);
+  }
+
   /// Publica evento em um relay específico
   /// Tenta WebSocket primeiro, com timeout maior para iOS
   Future<bool> _publishToRelay(String relayUrl, Event event) async {
@@ -2452,22 +2468,28 @@ class NostrOrderService {
     required int priceSats,
     required String category,
     String? siteUrl,
+    String? city,
+    List<String>? photos, // Lista de fotos em base64
   }) async {
     try {
       final keychain = Keychain(privateKey);
       final offerId = const Uuid().v4();
       
-      final content = jsonEncode({
+      final contentMap = {
         'type': 'bro_marketplace_offer',
-        'version': '1.0',
+        'version': '2.0',
         'offerId': offerId,
         'title': title,
         'description': description,
         'priceSats': priceSats,
         'category': category,
         'siteUrl': siteUrl,
+        'city': city,
+        'photos': photos ?? [],
         'createdAt': DateTime.now().toIso8601String(),
-      });
+      };
+      
+      final content = jsonEncode(contentMap);
 
       final tags = [
         ['d', offerId],
@@ -2481,6 +2503,11 @@ class NostrOrderService {
       // Adicionar tag de site se fornecido
       if (siteUrl != null && siteUrl.isNotEmpty) {
         tags.add(['r', siteUrl]); // NIP-12 reference tag
+      }
+      
+      // Adicionar tag de localização se fornecida
+      if (city != null && city.isNotEmpty) {
+        tags.add(['location', city]);
       }
 
       final event = Event.from(
@@ -2523,6 +2550,19 @@ class NostrOrderService {
           seenIds.add(id);
           try {
             final content = event['parsedContent'] ?? jsonDecode(event['content']);
+            List<String> photos = [];
+            if (content['photos'] is List) {
+              photos = (content['photos'] as List).cast<String>();
+            }
+            String? siteUrl = content['siteUrl'];
+            String? city = content['city'];
+            final tags = event['tags'] as List<dynamic>? ?? [];
+            for (final tag in tags) {
+              if (tag is List && tag.length > 1) {
+                if (tag[0] == 'r' && siteUrl == null) siteUrl = tag[1];
+                if (tag[0] == 'location' && city == null) city = tag[1];
+              }
+            }
             offers.add({
               'id': content['offerId'] ?? id,
               'title': content['title'] ?? '',
@@ -2530,6 +2570,9 @@ class NostrOrderService {
               'priceSats': content['priceSats'] ?? 0,
               'category': content['category'] ?? 'outros',
               'sellerPubkey': event['pubkey'],
+              'siteUrl': siteUrl,
+              'city': city,
+              'photos': photos,
               'createdAt': DateTime.fromMillisecondsSinceEpoch(
                 (event['created_at'] as int) * 1000,
               ).toIso8601String(),
@@ -2562,6 +2605,19 @@ class NostrOrderService {
           seenIds.add(id);
           try {
             final content = event['parsedContent'] ?? jsonDecode(event['content']);
+            List<String> photos = [];
+            if (content['photos'] is List) {
+              photos = (content['photos'] as List).cast<String>();
+            }
+            String? siteUrl = content['siteUrl'];
+            String? city = content['city'];
+            final evtTags = event['tags'] as List<dynamic>? ?? [];
+            for (final tag in evtTags) {
+              if (tag is List && tag.length > 1) {
+                if (tag[0] == 'r' && siteUrl == null) siteUrl = tag[1];
+                if (tag[0] == 'location' && city == null) city = tag[1];
+              }
+            }
             offers.add({
               'id': content['offerId'] ?? id,
               'title': content['title'] ?? '',
@@ -2569,6 +2625,9 @@ class NostrOrderService {
               'priceSats': content['priceSats'] ?? 0,
               'category': content['category'] ?? 'outros',
               'sellerPubkey': event['pubkey'],
+              'siteUrl': siteUrl,
+              'city': city,
+              'photos': photos,
               'createdAt': DateTime.fromMillisecondsSinceEpoch(
                 (event['created_at'] as int) * 1000,
               ).toIso8601String(),

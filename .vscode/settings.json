@@ -94,6 +94,10 @@
         "/^& \"\\$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb\\.exe\" install -r \"c:\\\\Users\\\\produ\\\\Documents\\\\GitHub\\\\bro_app\\\\build\\\\app\\\\outputs\\\\flutter-apk\\\\app-debug\\.apk\" 2>&1$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^& \"\\$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb\\.exe\" install -r \"c:\\\\Users\\\\produ\\\\Documents\\\\GitHub\\\\bro_app\\\\build\\\\app\\\\outputs\\\\flutter-apk\\\\app-debug\\.apk\"$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }

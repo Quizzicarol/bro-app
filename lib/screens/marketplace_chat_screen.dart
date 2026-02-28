@@ -1,15 +1,22 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import '../services/chat_service.dart';
 import '../services/storage_service.dart';
+import '../providers/breez_provider.dart';
 
 /// Tela de Chat P2P via Nostr DMs (NIP-04)
+/// Suporta pagamentos Lightning automáticos:
+/// - Comprador: envia pedido de pagamento → detecta invoice → paga com 1 clique
+/// - Vendedor: detecta pedido → gera invoice → envia automaticamente
 class MarketplaceChatScreen extends StatefulWidget {
   final String sellerPubkey;
   final String? sellerName;
   final String? offerTitle;
   final String? offerId;
+  final int? priceSats; // Preço para pagamento automático
+  final bool autoPaymentRequest; // Enviar pedido automaticamente ao abrir
 
   const MarketplaceChatScreen({
     super.key,
@@ -17,6 +24,8 @@ class MarketplaceChatScreen extends StatefulWidget {
     this.sellerName,
     this.offerTitle,
     this.offerId,
+    this.priceSats,
+    this.autoPaymentRequest = false,
   });
 
   @override
@@ -33,6 +42,9 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
   StreamSubscription<ChatMessage>? _messageSubscription;
   bool _isLoading = true;
   bool _isSending = false;
+  bool _isPayingInvoice = false;
+  bool _isGeneratingInvoice = false;
+  bool _autoRequestSent = false;
   String? _myPubkey;
 
   @override
@@ -80,6 +92,15 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
           _isLoading = false;
         });
         _scrollToBottom();
+        
+        // Enviar pedido de pagamento automaticamente se solicitado
+        if (widget.autoPaymentRequest && !_autoRequestSent && widget.priceSats != null) {
+          _autoRequestSent = true;
+          await Future.delayed(const Duration(milliseconds: 500));
+          if (mounted) {
+            await _sendPaymentRequest();
+          }
+        }
       }
     } catch (e) {
       debugPrint('❌ Erro ao inicializar chat: $e');
@@ -150,6 +171,233 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
         });
       }
     }
+  }
+
+  // ============================================
+  // PAYMENT AUTOMATION
+  // ============================================
+
+  /// Prefixo para mensagens estruturadas de pagamento
+  static const String _paymentRequestPrefix = '⚡ PEDIDO DE PAGAMENTO';
+  static const String _invoicePrefix = '⚡ INVOICE LIGHTNING';
+
+  /// Envia pedido de pagamento estruturado
+  Future<void> _sendPaymentRequest() async {
+    if (widget.priceSats == null || widget.priceSats! <= 0) return;
+    
+    final message = '$_paymentRequestPrefix\n'
+        '━━━━━━━━━━━━━━━━━━━━\n'
+        '📦 ${widget.offerTitle ?? "Produto"}\n'
+        '💰 ${_formatSatsCompact(widget.priceSats!)} sats\n'
+        '━━━━━━━━━━━━━━━━━━━━\n'
+        'Olá! Gostaria de comprar este item. '
+        'Por favor, gere uma invoice Lightning de ${_formatSatsCompact(widget.priceSats!)} sats '
+        'para eu efetuar o pagamento. Obrigado!';
+    
+    setState(() => _isSending = true);
+    try {
+      final success = await _chatService.sendMessage(widget.sellerPubkey, message);
+      if (success) {
+        _messages = _chatService.getMessages(widget.sellerPubkey);
+        setState(() {});
+        _scrollToBottom();
+      }
+    } finally {
+      if (mounted) setState(() => _isSending = false);
+    }
+  }
+
+  /// Gera invoice via BreezProvider e envia no chat
+  Future<void> _generateAndSendInvoice(int amountSats) async {
+    setState(() => _isGeneratingInvoice = true);
+    
+    try {
+      final breezProvider = Provider.of<BreezProvider>(context, listen: false);
+      final result = await breezProvider.createInvoice(
+        amountSats: amountSats,
+        description: 'Bro Marketplace: ${widget.offerTitle ?? "Produto"}',
+      );
+      
+      if (result != null && result['success'] == true) {
+        final bolt11 = result['bolt11'] as String? ?? '';
+        if (bolt11.isEmpty) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('❌ Invoice vazia'), backgroundColor: Colors.red),
+            );
+          }
+          return;
+        }
+        
+        final message = '$_invoicePrefix\n'
+            '━━━━━━━━━━━━━━━━━━━━\n'
+            '💰 ${_formatSatsCompact(amountSats)} sats\n'
+            '📦 ${widget.offerTitle ?? "Produto"}\n'
+            '━━━━━━━━━━━━━━━━━━━━\n'
+            '$bolt11';
+        
+        final success = await _chatService.sendMessage(widget.sellerPubkey, message);
+        if (success) {
+          _messages = _chatService.getMessages(widget.sellerPubkey);
+          setState(() {});
+          _scrollToBottom();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('✅ Invoice enviada! Aguardando pagamento...'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        }
+      } else {
+        final error = result?['error'] ?? 'Erro desconhecido';
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('❌ Falha ao gerar invoice: $error'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Erro: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isGeneratingInvoice = false);
+    }
+  }
+
+  /// Paga uma invoice BOLT11 detectada no chat
+  Future<void> _payInvoice(String bolt11) async {
+    // Confirmar antes de pagar
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.bolt, color: Colors.amber, size: 24),
+            SizedBox(width: 8),
+            Text('Confirmar Pagamento', style: TextStyle(color: Colors.white, fontSize: 18)),
+          ],
+        ),
+        content: const Text(
+          'Deseja pagar esta invoice Lightning?\n\n'
+          '⚠️ Pagamentos Lightning são irreversíveis.',
+          style: TextStyle(color: Colors.white70, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.bolt, size: 18),
+            label: const Text('Pagar'),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirm != true || !mounted) return;
+    
+    setState(() => _isPayingInvoice = true);
+    
+    try {
+      final breezProvider = Provider.of<BreezProvider>(context, listen: false);
+      final result = await breezProvider.payInvoice(bolt11);
+      
+      if (result != null && result['success'] == true) {
+        // Enviar confirmação no chat
+        final confirmMsg = '✅ PAGAMENTO CONFIRMADO\n'
+            '━━━━━━━━━━━━━━━━━━━━\n'
+            '📦 ${widget.offerTitle ?? "Produto"}\n'
+            '⚡ Pago com sucesso via Lightning!\n'
+            '━━━━━━━━━━━━━━━━━━━━\n'
+            'Obrigado pela venda!';
+        
+        await _chatService.sendMessage(widget.sellerPubkey, confirmMsg);
+        _messages = _chatService.getMessages(widget.sellerPubkey);
+        setState(() {});
+        _scrollToBottom();
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Pagamento realizado com sucesso!'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+      } else {
+        final error = result?['error']?.toString() ?? 'Erro desconhecido';
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('❌ Falha no pagamento: $error'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Erro: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isPayingInvoice = false);
+    }
+  }
+
+  /// Detecta se uma mensagem contém um pedido de pagamento
+  int? _extractPaymentRequestAmount(String content) {
+    if (!content.contains(_paymentRequestPrefix)) return null;
+    // Extrair sats do formato "X.XXX sats" ou "XXXX sats"
+    final match = RegExp(r'💰\s*([\d.,]+)\s*sats').firstMatch(content);
+    if (match != null) {
+      final numStr = match.group(1)!.replaceAll('.', '').replaceAll(',', '');
+      return int.tryParse(numStr);
+    }
+    return null;
+  }
+
+  /// Detecta se uma mensagem contém uma invoice BOLT11
+  String? _extractBolt11(String content) {
+    // BOLT11 começa com lnbc (mainnet) ou lntb (testnet) seguido de dígitos
+    final match = RegExp(r'(ln(?:bc|tb)\w{50,})', caseSensitive: false).firstMatch(content);
+    return match?.group(1);
+  }
+
+  /// Formata sats com separador de milhar
+  String _formatSatsCompact(int sats) {
+    if (sats >= 1000) {
+      final str = sats.toString();
+      final buf = StringBuffer();
+      for (int i = 0; i < str.length; i++) {
+        if (i > 0 && (str.length - i) % 3 == 0) buf.write('.');
+        buf.write(str[i]);
+      }
+      return buf.toString();
+    }
+    return sats.toString();
   }
 
   @override
@@ -342,6 +590,11 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
 
   Widget _buildMessageBubble(ChatMessage message) {
     final isMe = message.isFromMe;
+    final bolt11 = _extractBolt11(message.content);
+    final paymentRequestAmount = _extractPaymentRequestAmount(message.content);
+    final isInvoiceMsg = bolt11 != null && message.content.contains(_invoicePrefix);
+    final isPaymentRequest = paymentRequestAmount != null;
+    final isPaymentConfirmation = message.content.contains('✅ PAGAMENTO CONFIRMADO');
     
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -366,17 +619,32 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
           Flexible(
             child: Container(
               constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.7,
+                maxWidth: MediaQuery.of(context).size.width * 0.75,
               ),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
-                color: isMe ? Colors.orange : const Color(0xFF2A2A2A),
+                color: isPaymentConfirmation
+                    ? Colors.green.withOpacity(0.2)
+                    : isInvoiceMsg
+                        ? Colors.amber.withOpacity(0.15)
+                        : isPaymentRequest
+                            ? Colors.blue.withOpacity(0.15)
+                            : isMe
+                                ? Colors.orange
+                                : const Color(0xFF2A2A2A),
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(16),
                   topRight: const Radius.circular(16),
                   bottomLeft: Radius.circular(isMe ? 16 : 4),
                   bottomRight: Radius.circular(isMe ? 4 : 16),
                 ),
+                border: isInvoiceMsg
+                    ? Border.all(color: Colors.amber.withOpacity(0.4))
+                    : isPaymentRequest
+                        ? Border.all(color: Colors.blue.withOpacity(0.4))
+                        : isPaymentConfirmation
+                            ? Border.all(color: Colors.green.withOpacity(0.4))
+                            : null,
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.2),
@@ -388,13 +656,102 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Conteúdo da mensagem (sem o BOLT11 raw)
                   Text(
-                    message.content,
+                    isInvoiceMsg
+                        ? message.content.substring(0, message.content.indexOf(RegExp(r'ln(?:bc|tb)', caseSensitive: false))).trim()
+                        : message.content,
                     style: TextStyle(
-                      color: isMe ? Colors.white : Colors.white.withOpacity(0.9),
-                      fontSize: 15,
+                      color: isMe && !isInvoiceMsg && !isPaymentRequest && !isPaymentConfirmation
+                          ? Colors.white
+                          : Colors.white.withOpacity(0.9),
+                      fontSize: 14,
                     ),
                   ),
+                  
+                  // === Botão PAGAR (para o comprador, quando recebe invoice do vendedor) ===
+                  if (isInvoiceMsg && !isMe && bolt11 != null) ...[
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _isPayingInvoice ? null : () => _payInvoice(bolt11),
+                        icon: _isPayingInvoice
+                            ? const SizedBox(
+                                width: 16, height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Icon(Icons.bolt, size: 18),
+                        label: Text(_isPayingInvoice ? 'Pagando...' : '⚡ Pagar agora'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.amber,
+                          foregroundColor: Colors.black,
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                    ),
+                  ],
+                  
+                  // === Botão GERAR INVOICE (para o vendedor, quando recebe pedido do comprador) ===
+                  if (isPaymentRequest && !isMe && paymentRequestAmount != null) ...[
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _isGeneratingInvoice
+                            ? null
+                            : () => _generateAndSendInvoice(paymentRequestAmount),
+                        icon: _isGeneratingInvoice
+                            ? const SizedBox(
+                                width: 16, height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Icon(Icons.receipt_long, size: 18),
+                        label: Text(_isGeneratingInvoice
+                            ? 'Gerando invoice...'
+                            : 'Gerar Invoice (${_formatSatsCompact(paymentRequestAmount)} sats)'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                    ),
+                  ],
+                  
+                  // === Botão Copiar Invoice (fallback) ===
+                  if (isInvoiceMsg && bolt11 != null) ...[
+                    const SizedBox(height: 6),
+                    GestureDetector(
+                      onTap: () {
+                        Clipboard.setData(ClipboardData(text: bolt11));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Invoice copiada!'),
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.copy, size: 12, color: Colors.white.withOpacity(0.5)),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Copiar invoice',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.white.withOpacity(0.5),
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  
                   const SizedBox(height: 4),
                   Row(
                     mainAxisSize: MainAxisSize.min,
@@ -402,16 +759,20 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
                       Text(
                         _formatTime(message.timestamp),
                         style: TextStyle(
-                          color: isMe ? Colors.white60 : Colors.white38,
+                          color: isMe && !isInvoiceMsg && !isPaymentRequest && !isPaymentConfirmation
+                              ? Colors.white60
+                              : Colors.white38,
                           fontSize: 11,
                         ),
                       ),
                       if (isMe) ...[
                         const SizedBox(width: 4),
-                        const Icon(
+                        Icon(
                           Icons.done_all,
                           size: 14,
-                          color: Colors.white60,
+                          color: isMe && !isInvoiceMsg && !isPaymentRequest && !isPaymentConfirmation
+                              ? Colors.white60
+                              : Colors.white38,
                         ),
                       ],
                     ],

@@ -1439,33 +1439,34 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                 ),
                 const SizedBox(height: 16),
                 
-                // Instruções de pagamento
+                // Instruções de pagamento automático
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.1),
+                    color: Colors.green.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green.withOpacity(0.3)),
                   ),
                   child: const Column(
                     children: [
                       Row(
                         children: [
-                          Icon(Icons.info_outline, color: Colors.blue, size: 16),
+                          Icon(Icons.bolt, color: Colors.green, size: 16),
                           SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              'Como funciona:',
-                              style: TextStyle(color: Colors.blue, fontSize: 13, fontWeight: FontWeight.bold),
+                              'Pagamento automático:',
+                              style: TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold),
                             ),
                           ),
                         ],
                       ),
                       SizedBox(height: 8),
                       Text(
-                        '1. Clique em "Pagar via Chat" abaixo\n'
-                        '2. Combine os detalhes com o vendedor\n'
-                        '3. O vendedor envia a invoice Lightning\n'
-                        '4. Pague diretamente pela sua carteira Bro',
+                        '1. Clique em "Comprar" → pedido enviado ao vendedor\n'
+                        '2. O vendedor gera a invoice com 1 clique\n'
+                        '3. Você recebe e paga com 1 clique\n'
+                        '4. Tudo dentro do Bro, sem sair do app!',
                         style: TextStyle(color: Colors.white54, fontSize: 12, height: 1.5),
                       ),
                     ],
@@ -1496,19 +1497,39 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                 ),
                 const SizedBox(height: 20),
                 
-                // Botão de ação
+                // Botão comprar (abre chat com pedido automático)
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: () {
                       Navigator.pop(sheetContext);
-                      _contactSeller(offer);
+                      _startPaymentChat(offer);
                     },
-                    icon: const Icon(Icons.bolt),
-                    label: const Text('Pagar via Chat'),
+                    icon: const Icon(Icons.shopping_cart),
+                    label: const Text('Comprar'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange,
                       padding: const EdgeInsets.symmetric(vertical: 14),
+                      textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                
+                // Botão só chat (sem pedido automático)
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(sheetContext);
+                      _contactSeller(offer);
+                    },
+                    icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                    label: const Text('Apenas conversar'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white54,
+                      side: const BorderSide(color: Colors.white24),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                   ),
                 ),
@@ -1517,6 +1538,23 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
           ),
         );
       },
+    );
+  }
+
+  /// Abre chat com pedido de pagamento automático
+  void _startPaymentChat(MarketplaceOffer offer) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MarketplaceChatScreen(
+          sellerPubkey: offer.sellerPubkey,
+          sellerName: offer.sellerName,
+          offerTitle: offer.title,
+          offerId: offer.id,
+          priceSats: offer.priceSats,
+          autoPaymentRequest: true,
+        ),
+      ),
     );
   }
 

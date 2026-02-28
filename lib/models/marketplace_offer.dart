@@ -17,7 +17,6 @@ class MarketplaceOffer {
   final String? city;
   final int quantity; // Quantidade disponível (0 = ilimitado/serviço)
   final int sold; // Quantidade já vendida
-  final String? lightningAddress; // Lightning Address do vendedor para pagamentos
   final double? avgRatingAtendimento; // Média de avaliações do vendedor
   final double? avgRatingProduto;
   final int totalReviews;
@@ -38,7 +37,6 @@ class MarketplaceOffer {
     this.city,
     this.quantity = 0,
     this.sold = 0,
-    this.lightningAddress,
     this.avgRatingAtendimento,
     this.avgRatingProduto,
     this.totalReviews = 0,
@@ -57,7 +55,6 @@ class MarketplaceOffer {
     int? totalReviews,
     int? quantity,
     int? sold,
-    String? lightningAddress,
   }) {
     return MarketplaceOffer(
       id: id,
@@ -75,7 +72,6 @@ class MarketplaceOffer {
       city: city,
       quantity: quantity ?? this.quantity,
       sold: sold ?? this.sold,
-      lightningAddress: lightningAddress ?? this.lightningAddress,
       avgRatingAtendimento: avgRatingAtendimento ?? this.avgRatingAtendimento,
       avgRatingProduto: avgRatingProduto ?? this.avgRatingProduto,
       totalReviews: totalReviews ?? this.totalReviews,
@@ -156,7 +152,6 @@ class MarketplaceOffer {
       photoBase64List: photos,
       quantity: contentMap['quantity'] as int? ?? 0,
       sold: contentMap['sold'] as int? ?? 0,
-      lightningAddress: contentMap['lightningAddress'] as String?,
     );
   }
 
@@ -176,7 +171,6 @@ class MarketplaceOffer {
         'city': city,
         'quantity': quantity,
         'sold': sold,
-        'lightningAddress': lightningAddress,
       };
 }
 

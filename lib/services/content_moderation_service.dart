@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:nsfw_detector_flutter/nsfw_detector_flutter.dart';
 import 'nostr_service.dart';
 import 'package:nostr/nostr.dart';
 
@@ -496,6 +497,64 @@ class ContentModerationService {
       if (lower.contains(term)) return true;
     }
     return false;
+  }
+
+  // ============================================
+  // NSFW DETECTION (ML-based)
+  // ============================================
+
+  static NsfwDetector? _nsfwDetector;
+  static bool _nsfwDetectorFailed = false;
+  static const double _nsfwThreshold = 0.65;
+
+  /// Inicializa o detector NSFW (lazy loading)
+  static Future<NsfwDetector?> _getNsfwDetector() async {
+    if (_nsfwDetectorFailed) return null;
+    if (_nsfwDetector != null) return _nsfwDetector;
+    try {
+      _nsfwDetector = await NsfwDetector.load();
+      debugPrint('✅ NSFW Detector carregado com sucesso');
+      return _nsfwDetector;
+    } catch (e) {
+      debugPrint('⚠️ Falha ao carregar NSFW Detector: $e');
+      _nsfwDetectorFailed = true;
+      return null;
+    }
+  }
+
+  /// Analisa uma lista de arquivos de imagem para conteúdo NSFW
+  /// Retorna null se todas passaram, ou mensagem de erro da primeira que falhou
+  static Future<String?> checkImagesForNsfw(List<File> photos) async {
+    try {
+      final detector = await _getNsfwDetector();
+      if (detector == null) {
+        debugPrint('⚠️ NSFW detector não disponível, usando apenas verificações básicas');
+        return null; // Graceful fallback - não bloquear se o detector falhar
+      }
+
+      for (int i = 0; i < photos.length; i++) {
+        try {
+          final result = await detector.detectNSFWFromFile(photos[i]);
+          if (result == null) {
+            debugPrint('⚠️ Foto ${i + 1}: NSFW detector retornou null, ignorando');
+            continue;
+          }
+          debugPrint('🔍 Foto ${i + 1} NSFW score: ${result.score.toStringAsFixed(3)} (isNsfw: ${result.isNsfw})');
+          
+          if (result.score >= _nsfwThreshold) {
+            return 'Foto ${i + 1}: Conteúdo impróprio detectado. '
+                'Imagens com nudez ou conteúdo adulto não são permitidas no marketplace.';
+          }
+        } catch (e) {
+          debugPrint('⚠️ Erro ao analisar foto ${i + 1} para NSFW: $e');
+          // Continua com as próximas fotos
+        }
+      }
+      return null; // Todas as fotos passaram
+    } catch (e) {
+      debugPrint('❌ Erro geral na verificação NSFW: $e');
+      return null; // Graceful fallback
+    }
   }
 
   /// Limpa todo o cache de moderação

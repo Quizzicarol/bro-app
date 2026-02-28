@@ -23,7 +23,6 @@ class _OfferScreenState extends State<OfferScreen> {
   final _cityController = TextEditingController();
   final _siteController = TextEditingController();
   final _quantityController = TextEditingController();
-  final _lnAddressController = TextEditingController();
   
   String _selectedCategory = 'produto';
   bool _isPublishing = false;
@@ -69,7 +68,6 @@ class _OfferScreenState extends State<OfferScreen> {
     _cityController.dispose();
     _siteController.dispose();
     _quantityController.dispose();
-    _lnAddressController.dispose();
     super.dispose();
   }
 
@@ -287,32 +285,6 @@ class _OfferScreenState extends State<OfferScreen> {
               _buildPhotoSelector(),
               const SizedBox(height: 24),
 
-              // Lightning Address
-              const Text(
-                'Lightning Address (opcional)',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _lnAddressController,
-                style: const TextStyle(color: Colors.white),
-                decoration: _buildInputDecoration(
-                  hint: 'Ex: voce@walletofsatoshi.com',
-                  icon: Icons.bolt,
-                ),
-              ),
-              const SizedBox(height: 4),
-              const Padding(
-                padding: EdgeInsets.only(left: 4),
-                child: Text(
-                  'Permite que compradores gerem invoice automaticamente para te pagar.',
-                  style: TextStyle(color: Color(0x66FFFFFF), fontSize: 11),
-                ),
-              ),
               const SizedBox(height: 32),
 
               // Botao publicar
@@ -766,7 +738,25 @@ class _OfferScreenState extends State<OfferScreen> {
       // Converter fotos para base64
       final photosBase64 = await _photosToBase64();
 
-      // Verificar conteúdo das imagens antes de publicar
+      // Verificar conteúdo NSFW via ML antes de publicar
+      if (_selectedPhotos.isNotEmpty) {
+        final nsfwError = await ContentModerationService.checkImagesForNsfw(_selectedPhotos);
+        if (nsfwError != null) {
+          setState(() => _isPublishing = false);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('🚫 $nsfwError'),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 5),
+              ),
+            );
+          }
+          return;
+        }
+      }
+
+      // Verificar conteúdo das imagens antes de publicar (formato, tamanho)
       if (photosBase64.isNotEmpty) {
         final imageError = ContentModerationService.checkImagesForPublishing(photosBase64);
         if (imageError != null) {
@@ -811,7 +801,6 @@ class _OfferScreenState extends State<OfferScreen> {
         city: _cityController.text.trim().isEmpty ? null : _cityController.text.trim(),
         photos: photosBase64.isNotEmpty ? photosBase64 : null,
         quantity: int.tryParse(_quantityController.text) ?? 0,
-        lightningAddress: _lnAddressController.text.trim().isEmpty ? null : _lnAddressController.text.trim(),
       );
 
       if (offerId == null) {

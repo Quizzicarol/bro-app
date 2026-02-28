@@ -1,5 +1,37 @@
 # 📋 Changelog - Bro App
 
+## [1.0.131+251] - 2026-02-28
+
+### 🐛 Bugs Corrigidos
+
+- **Taxa 2% marketplace não chegava na Coinos**
+  - Problema: `feeOrderId` usava `mkt_{offerId}` fixo — dedup guard bloqueava compras repetidas da mesma oferta
+  - Solução: ID único por transação: `mkt_{txCode}_{timestamp}` (cada compra gera novo ID)
+  - Mínimo 1 sat já estava implementado no `sendPlatformFee()` (v1.0.129+224)
+
+- **Pagamento com carteira travava na tela de loading**
+  - Removido self-payment circular (createInvoice + payInvoice para si mesmo, delay 60-90s)
+  - Navegação imediata após `createOrder`, operações Nostr em background com timeout 15s
+
+- **Disputa já resolvida permitia re-resolução**
+  - Adicionado `_fetchExistingResolution()` no `_initData()` para verificar no Nostr
+
+- **Sold count do marketplace não atualizava após compra**
+  - Movido trigger para `_onNewMessage()` (confirmação de pagamento do comprador)
+
+### ✨ Melhorias
+
+- **Código de pedido no marketplace** (#XXXXXX)
+  - Cada pedido de pagamento, invoice e confirmação agora tem um código único de 6 dígitos
+  - Ex: "⚡ PEDIDO DE PAGAMENTO #482931" / "🔖 Pedido #482931"
+
+### Arquivos Modificados
+- `lib/screens/marketplace_chat_screen.dart` — Código de pedido, fee orderId único, sold count fix
+- `lib/screens/payment_screen.dart` — Removido self-payment, navegação imediata
+- `lib/screens/dispute_detail_screen.dart` — Fetch existing resolution on init
+
+---
+
 ## [1.0.107] - 2026-02-17
 
 ### 🐛 Bugs Críticos Corrigidos

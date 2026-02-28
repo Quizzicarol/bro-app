@@ -666,82 +666,35 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final dynamic priceData = _conversionData!['bitcoinPrice'];
       final double btcPrice = (priceData is num) ? priceData.toDouble() : 0.0;
 
-      // Criar invoice para si mesmo (mantém registro no Lightning)
-      final invoiceData = await lightningProvider.createInvoice(
-        amountSats: amountSats,
-        description: 'Bro Wallet Payment',
-      ).timeout(const Duration(seconds: 30), onTimeout: () {
-        return {'success': false, 'error': 'Timeout'};
-      });
+      // Gerar paymentHash local (sem auto-pagamento - débito direto)
+      final walletPayId = DateTime.now().millisecondsSinceEpoch.toRadixString(16);
+      final paymentHash = 'wallet_$walletPayId';
+      final invoice = 'wallet_balance_payment_$walletPayId';
 
-      if (invoiceData == null || invoiceData['success'] != true) {
-        if (mounted) Navigator.of(context).pop();
-        _showError('Erro ao preparar pagamento: ${invoiceData?['error'] ?? 'desconhecido'}');
-        return;
-      }
+      debugPrint('💰 Pagamento com saldo da carteira: $amountSats sats (hash: $paymentHash)');
 
-      final invoice = invoiceData['invoice'] as String;
-      final paymentHash = (invoiceData['paymentHash'] ?? '') as String;
-
-      // Pagar a própria invoice (auto-pagamento)
-      final payResult = await lightningProvider.payInvoice(invoice)
-          .timeout(const Duration(seconds: 60), onTimeout: () {
-        return {'success': false, 'error': 'Timeout ao pagar (60s)'};
-      });
-      
-      if (payResult == null || payResult['success'] != true) {
-        if (mounted) Navigator.of(context).pop();
-        _showError('Erro no pagamento: ${payResult?['error'] ?? 'desconhecido'}');
-        return;
-      }
-
-      debugPrint('✅ Auto-pagamento realizado com sucesso!');
-
-      // 4. Criar ordem (mesmo fluxo do LightningPaymentScreen._handlePaymentSuccess)
+      // Criar ordem diretamente (sem auto-pagamento Lightning)
       final order = await orderProvider.createOrder(
         billType: _billData!['billType'] as String,
         billCode: _codeController.text.trim(),
         amount: billAmount,
         btcAmount: btcAmount,
         btcPrice: btcPrice,
-      );
+      ).timeout(const Duration(seconds: 15), onTimeout: () {
+        return null;
+      });
 
       if (order == null) {
         if (mounted) Navigator.of(context).pop();
-        _showError('Pagamento realizado mas erro ao criar ordem.');
+        _showError('Erro ao criar ordem. Tente novamente.');
         return;
       }
 
       debugPrint('✅ Ordem criada: ${order.id}');
 
-      // Salvar paymentHash
-      if (paymentHash.isNotEmpty) {
-        await orderProvider.setOrderPaymentHash(order.id, paymentHash, invoice);
-      }
-
-      // Atualizar status para payment_received
-      await orderProvider.updateOrderStatus(
-        orderId: order.id,
-        status: 'payment_received',
-      );
-
-      // Registrar taxa da plataforma (2%)
-      try {
-        await PlatformFeeService.recordFee(
-          orderId: order.id,
-          transactionBrl: totalBrl,
-          transactionSats: amountSats,
-          providerPubkey: 'unknown',
-          clientPubkey: userPubkey,
-        );
-      } catch (e) {
-        debugPrint('Erro ao registrar taxa: $e');
-      }
-
-      // Fechar loading
+      // Fechar loading e navegar IMEDIATAMENTE
       if (mounted) Navigator.of(context).pop();
 
-      // Navegar para status da ordem
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -761,6 +714,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
           },
         );
       }
+
+      // Fire-and-forget: atualizar Nostr em background (não bloqueia a UI)
+      _completeWalletPaymentInBackground(
+        orderProvider: orderProvider,
+        orderId: order.id,
+        paymentHash: paymentHash,
+        invoice: invoice,
+        totalBrl: totalBrl,
+        amountSats: amountSats,
+        userPubkey: userPubkey,
+      );
     } catch (e) {
       debugPrint('❌ Erro em _payWithWalletBalance: $e');
       if (mounted) Navigator.of(context).pop();
@@ -769,6 +733,53 @@ class _PaymentScreenState extends State<PaymentScreen> {
       if (mounted) {
         setState(() => _isProcessing = false);
       }
+    }
+  }
+
+  /// Completa operações de Nostr em background após criar ordem com saldo da carteira
+  Future<void> _completeWalletPaymentInBackground({
+    required OrderProvider orderProvider,
+    required String orderId,
+    required String paymentHash,
+    required String invoice,
+    required double totalBrl,
+    required int amountSats,
+    required String userPubkey,
+  }) async {
+    try {
+      // Salvar paymentHash (com timeout)
+      if (paymentHash.isNotEmpty) {
+        await orderProvider.setOrderPaymentHash(orderId, paymentHash, invoice)
+            .timeout(const Duration(seconds: 15), onTimeout: () {
+          debugPrint('⚠️ Timeout ao salvar paymentHash (15s) - continuando...');
+        });
+      }
+
+      // Atualizar status para payment_received (com timeout)
+      await orderProvider.updateOrderStatus(
+        orderId: orderId,
+        status: 'payment_received',
+      ).timeout(const Duration(seconds: 15), onTimeout: () {
+        debugPrint('⚠️ Timeout ao atualizar status (15s) - continuando...');
+        return false;
+      });
+
+      // Registrar taxa da plataforma (2%)
+      try {
+        await PlatformFeeService.recordFee(
+          orderId: orderId,
+          transactionBrl: totalBrl,
+          transactionSats: amountSats,
+          providerPubkey: 'unknown',
+          clientPubkey: userPubkey,
+        );
+      } catch (e) {
+        debugPrint('Erro ao registrar taxa: $e');
+      }
+
+      debugPrint('✅ Operações background do wallet payment concluídas para ordem $orderId');
+    } catch (e) {
+      debugPrint('⚠️ Erro em operações background do wallet payment: $e');
     }
   }
 

@@ -10,7 +10,9 @@ import '../services/bitcoin_price_service.dart';
 import '../services/content_moderation_service.dart';
 import '../services/marketplace_reputation_service.dart';
 import '../config.dart';
+import '../services/chat_service.dart';
 import 'marketplace_chat_screen.dart';
+import 'nostr_conversations_screen.dart';
 import 'offer_screen.dart';
 
 /// Tela do Marketplace para ver ofertas publicadas no Nostr
@@ -397,15 +399,26 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              Text(
-                                offer.title,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      offer.title,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    '#${_generateShortId(offer.id)}',
+                                    style: const TextStyle(color: Colors.white30, fontSize: 11, fontFamily: 'monospace'),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
@@ -616,6 +629,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
     final priceInBrl = offer.priceSats > 0 && _btcPrice > 0
         ? (offer.priceSats / 100000000) * _btcPrice
         : 0.0;
+    final isMine = offer.sellerPubkey == _nostrService.publicKey;
+    final shortId = _generateShortId(offer.id);
 
     showModalBottomSheet(
       context: context,
@@ -710,6 +725,12 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
               ),
+            ),
+            const SizedBox(height: 4),
+            // v248: ID do anúncio
+            Text(
+              'Anúncio #$shortId',
+              style: const TextStyle(color: Colors.white38, fontSize: 12, fontFamily: 'monospace'),
             ),
             const SizedBox(height: 16),
             
@@ -928,6 +949,42 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
             const SizedBox(height: 24),
             
             // Botões de ação
+            if (isMine) ...[
+              // v248: Botões específicos do vendedor
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _showOfferMessages(offer);
+                  },
+                  icon: const Icon(Icons.message),
+                  label: const Text('Ver Mensagens de Interessados'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: 'Anúncio #$shortId'));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('ID #$shortId copiado!')),
+                    );
+                  },
+                  icon: const Icon(Icons.copy, color: Colors.white54, size: 18),
+                  label: Text('Copiar ID #$shortId', style: const TextStyle(color: Colors.white54)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.white24),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+            ] else ...[
             // 1. Contato via DM
             SizedBox(
               width: double.infinity,
@@ -981,6 +1038,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                 ),
               ),
             ),
+            ],
             const SizedBox(height: 12),
             
             // Compartilhar e Reportar
@@ -1829,5 +1887,30 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
     } else {
       return 'Agora';
     }
+  }
+
+  // ============================================
+  // v248: OFFER ID + SELLER MESSAGES
+  // ============================================
+
+  /// Gera ID curto numérico a partir do UUID do anúncio (6 dígitos)
+  String _generateShortId(String offerId) {
+    if (offerId.isEmpty) return '000000';
+    // Hash simples: soma dos codeUnits módulo 999999
+    int hash = 0;
+    for (int i = 0; i < offerId.length; i++) {
+      hash = (hash * 31 + offerId.codeUnitAt(i)) & 0x7FFFFFFF;
+    }
+    return (hash % 999999 + 1).toString().padLeft(6, '0');
+  }
+
+  /// Abre lista de conversas filtrada para mensagens do marketplace
+  void _showOfferMessages(MarketplaceOffer offer) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const NostrConversationsScreen(),
+      ),
+    );
   }
 }

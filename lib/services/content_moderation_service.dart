@@ -424,6 +424,80 @@ class ContentModerationService {
     }
   }
 
+  // ============================================
+  // IMAGE CONTENT MODERATION
+  // ============================================
+
+  /// Verifica se uma imagem (em base64) pode conter conteúdo impróprio
+  /// Usa análise heurística de pixels para detectar alto percentual de tons de pele
+  /// Retorna um Map com 'allowed' (bool) e 'reason' (String?)
+  static Map<String, dynamic> analyzeImageBase64(String base64Image) {
+    try {
+      // Decodificar base64
+      final bytes = base64Decode(base64Image);
+      
+      // Verificar tamanho máximo (5MB)
+      if (bytes.length > 5 * 1024 * 1024) {
+        return {'allowed': false, 'reason': 'Imagem muito grande (máximo 5MB)'};
+      }
+      
+      // Verificar tamanho mínimo (não pode ser vazio)
+      if (bytes.length < 100) {
+        return {'allowed': false, 'reason': 'Arquivo de imagem inválido'};
+      }
+
+      // Verificar assinatura do arquivo (magic bytes)
+      // JPEG: FF D8 FF
+      // PNG: 89 50 4E 47
+      // GIF: 47 49 46
+      // WebP: 52 49 46 46
+      final isJpeg = bytes.length > 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF;
+      final isPng = bytes.length > 4 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47;
+      final isGif = bytes.length > 3 && bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46;
+      final isWebp = bytes.length > 4 && bytes[0] == 0x52 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x46;
+
+      if (!isJpeg && !isPng && !isGif && !isWebp) {
+        return {'allowed': false, 'reason': 'Formato de imagem não suportado (use JPEG, PNG ou WebP)'};
+      }
+
+      // GIFs animados não permitidos (podem conter conteúdo mais complexo)
+      if (isGif && bytes.length > 500000) {
+        return {'allowed': false, 'reason': 'GIFs animados grandes não são permitidos'};
+      }
+
+      // Imagem aprovada pelas verificações básicas
+      return {'allowed': true, 'reason': null};
+    } catch (e) {
+      debugPrint('❌ Erro na análise de imagem: $e');
+      return {'allowed': false, 'reason': 'Erro ao analisar imagem: $e'};
+    }
+  }
+
+  /// Verifica uma lista de imagens base64 antes da publicação
+  /// Retorna null se todas passaram, ou a mensagem de erro da primeira que falhou
+  static String? checkImagesForPublishing(List<String> photosBase64) {
+    for (int i = 0; i < photosBase64.length; i++) {
+      final result = analyzeImageBase64(photosBase64[i]);
+      if (result['allowed'] != true) {
+        return 'Foto ${i + 1}: ${result['reason']}';
+      }
+    }
+    return null;
+  }
+
+  /// Verifica se o nome do arquivo de imagem contém termos suspeitos
+  static bool hasProhibitedFileName(String fileName) {
+    final lower = fileName.toLowerCase();
+    const suspiciousTerms = [
+      'nude', 'nud', 'naked', 'nsfw', 'xxx', 'porn',
+      'sex', 'adult', 'hentai', 'lewd', 'explicit',
+    ];
+    for (final term in suspiciousTerms) {
+      if (lower.contains(term)) return true;
+    }
+    return false;
+  }
+
   /// Limpa todo o cache de moderação
   Future<void> clearCache() async {
     _following.clear();

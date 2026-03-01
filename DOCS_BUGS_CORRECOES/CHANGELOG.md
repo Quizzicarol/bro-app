@@ -1,5 +1,56 @@
 # 📋 Changelog - Bro App
 
+## [1.0.131+253] - 2026-02-28
+
+### 🛒 Marketplace
+
+- **Layout grade 3 colunas**
+  - ListView substituído por GridView.builder com 3 colunas
+  - Cards compactos retangulares com foto, categoria, título, preço
+  - Detalhes completos acessíveis ao tocar no card
+
+- **Excluir oferta**
+  - Novo botão "Excluir Oferta" nas ofertas próprias (detail sheet)
+  - Dupla estratégia: NIP-33 replacement (marcador deleted) + NIP-09 kind 5
+  - Ofertas deletadas filtradas no fetch (ambos endpoints)
+
+### 🐛 Bugs Corrigidos
+
+- **Notificação de disputa não chegava ao provedor**
+  - `publishDisputeNotification()` agora inclui `['p', providerId]` nos tags
+  - Provedor recebe a disputa via #p tag nos relays
+
+- **orderDetails da disputa sem provider_id (lado usuário)**
+  - `order_status_screen.dart` agora inclui `provider_id` no mapa de detalhes
+  - Garante que a disputa publicada tem referência ao provedor
+
+### Arquivos Modificados
+- `lib/screens/marketplace_screen.dart` — Grid layout, card compacto, botão excluir
+- `lib/services/nostr_order_service.dart` — deleteMarketplaceOffer(), filtro deleted, fix dispute #p
+- `lib/screens/order_status_screen.dart` — provider_id no orderDetails da disputa
+
+---
+
+## [1.0.131+252] - 2026-02-28
+
+### 🐛 Bugs Corrigidos
+
+- **Pull-to-refresh exigia 3 puxadas**
+  - Adicionado Completer pattern para aguardar sync em andamento
+  - `displacement: 20` em todos RefreshIndicators
+  - Corrigido leak de `_isSyncingNostr` no catch block
+
+- **Ordem disputada d37757a8 não aparecia no provedor**
+  - `updateOrderStatus()` agora auto-preenche `providerId` e `orderUserPubkey` da ordem existente
+  - Adicionada estratégia 4 em `_fetchProviderOrdersRaw`: busca kind 30080 com #p tag
+
+### Arquivos Modificados
+- `lib/providers/order_provider.dart` — Completer pattern, auto-fill providerId
+- `lib/services/nostr_order_service.dart` — Estratégia 4 busca #p
+- `lib/screens/provider_orders_screen.dart` — displacement, fix _isSyncingNostr
+
+---
+
 ## [1.0.131+251] - 2026-02-28
 
 ### 🐛 Bugs Corrigidos

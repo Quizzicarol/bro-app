@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1278,6 +1278,15 @@ class OrderProvider with ChangeNotifier {
       // Ordenar por data (mais recente primeiro)
       _orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       
+      // v253: AUTO-REPAIR: Republicar status de ordens que existem localmente
+      // mas nao foram encontradas em nenhuma busca dos relays (eventos perdidos)
+      // Isso resolve o caso d37757a8: ordem disputada cujos eventos sumiram dos relays
+      await _autoRepairMissingOrderEvents(
+        allPendingOrders: allPendingOrders,
+        userOrders: userOrders,
+        providerOrders: providerOrders,
+      );
+      
       // AUTO-LIQUIDAÃâ¡ÃÆO: Verificar ordens awaiting_confirmation com prazo expirado
       await _checkAutoLiquidation();
       
@@ -1710,6 +1719,82 @@ class OrderProvider with ChangeNotifier {
       _isLoading = false;
       _immediateNotify();
     }
+  }
+
+  /// v253: AUTO-REPAIR: Republicar status de ordens perdidas nos relays
+  /// Quando uma ordem existe localmente com status terminal (disputed, completed, etc)
+  /// mas NAO foi encontrada em nenhuma busca dos relays, republicar o status update
+  /// para que o outro lado (provedor ou usuario) possa descobri-la na proxima sync
+  Future<void> _autoRepairMissingOrderEvents({
+    required List<Order> allPendingOrders,
+    required List<Order> userOrders,
+    required List<Order> providerOrders,
+  }) async {
+    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return;
+    
+    final privateKey = _nostrService.privateKey;
+    if (privateKey == null) return;
+    
+    // Coletar todos os IDs encontrados nos relays
+    final relayOrderIds = <String>{};
+    for (final o in allPendingOrders) relayOrderIds.add(o.id);
+    for (final o in userOrders) relayOrderIds.add(o.id);
+    for (final o in providerOrders) relayOrderIds.add(o.id);
+    
+    // Encontrar ordens locais com status NAO-draft que NAO foram encontradas nos relays
+    // e que tem providerId preenchido (ordens com interacao real)
+    const repairableStatuses = ['disputed', 'completed', 'liquidated', 'accepted', 'awaiting_confirmation', 'payment_received'];
+    
+    final ordersToRepair = _orders.where((o) {
+      // So reparar ordens que pertencem a este usuario (como criador ou provedor)
+      final isOwner = o.userPubkey == _currentUserPubkey;
+      final isProvider = o.providerId == _currentUserPubkey;
+      if (!isOwner && !isProvider) return false;
+      
+      // So reparar se tem providerId (houve interacao real)
+      if (o.providerId == null || o.providerId!.isEmpty) return false;
+      
+      // So reparar status reparaveis
+      if (!repairableStatuses.contains(o.status)) return false;
+      
+      // So reparar se NAO foi encontrada nos relays
+      if (relayOrderIds.contains(o.id)) return false;
+      
+      return true;
+    }).toList();
+    
+    if (ordersToRepair.isEmpty) return;
+    
+    debugPrint('AUTO-REPAIR: ${ordersToRepair.length} ordens com eventos perdidos nos relays');
+    
+    int repaired = 0;
+    for (final order in ordersToRepair) {
+      try {
+        debugPrint('Reparando: orderId=${order.id.substring(0, 8)} status=${order.status} providerId=${order.providerId?.substring(0, 16)}');
+        
+        final success = await _nostrOrderService.updateOrderStatus(
+          privateKey: privateKey,
+          orderId: order.id,
+          newStatus: order.status,
+          providerId: order.providerId,
+          orderUserPubkey: order.userPubkey,
+        );
+        
+        if (success) {
+          repaired++;
+          debugPrint('Reparada: orderId=${order.id.substring(0, 8)}');
+        } else {
+          debugPrint('Falha ao reparar: orderId=${order.id.substring(0, 8)}');
+        }
+        
+        // Pequeno delay entre reparacoes para nao sobrecarregar relays
+        await Future.delayed(const Duration(milliseconds: 500));
+      } catch (e) {
+        debugPrint('AUTO-REPAIR exception: $e');
+      }
+    }
+    
+    debugPrint('AUTO-REPAIR concluido: $repaired/${ordersToRepair.length} reparadas');
   }
 
   /// Verifica ordens em 'awaiting_confirmation' com prazo de 36h expirado
@@ -2447,6 +2532,13 @@ class OrderProvider with ChangeNotifier {
       // AUTO-LIQUIDAÇÃO v234: Também verificar no sync do usuário
       await _checkAutoLiquidation();
       
+      
+      // v253: AUTO-REPAIR: Tambem reparar no sync do usuario
+      await _autoRepairMissingOrderEvents(
+        allPendingOrders: <Order>[],
+        userOrders: nostrOrders,
+        providerOrders: <Order>[],
+      );
       // Ordenar por data (mais recente primeiro)
       _orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       

@@ -389,8 +389,14 @@ class _WalletScreenState extends State<WalletScreen> {
 
   Widget _buildBalanceCard() {
     final balanceSats = int.tryParse(_balance?['balance']?.toString() ?? '0') ?? 0;
-    final balanceBtc = balanceSats / 100000000;
     final hasError = _balance?['error'] != null;
+    
+    // v257: Deduzir sats travados (wallet payments em andamento)
+    final orderProvider = context.read<OrderProvider>();
+    final lockedSats = orderProvider.committedSats;
+    final availableSats = (balanceSats - lockedSats).clamp(0, balanceSats);
+    final availableBtc = availableSats / 100000000;
+    final hasLocked = lockedSats > 0;
 
     return Container(
       width: double.infinity,
@@ -437,7 +443,7 @@ class _WalletScreenState extends State<WalletScreen> {
             )
           else ...[
             Text(
-              _formatSats(balanceSats),
+              _formatSats(availableSats),
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 28,
@@ -446,12 +452,33 @@ class _WalletScreenState extends State<WalletScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              '≈ ${balanceBtc.toStringAsFixed(8)} BTC',
+              '≈ ${availableBtc.toStringAsFixed(8)} BTC',
               style: const TextStyle(
                 color: Colors.white70,
                 fontSize: 13,
               ),
             ),
+            if (hasLocked) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.lock, color: Colors.white70, size: 14),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${_formatSats(lockedSats)} em ordens',
+                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ],
       ),

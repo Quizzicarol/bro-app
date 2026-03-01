@@ -215,28 +215,35 @@ class OrderProvider with ChangeNotifier {
   /// Na prÃÂ¡tica, APENAS ordens 'draft' deveriam ser contadas, mas removemos
   /// esse status ao refatorar o fluxo (invoice ÃÂ© pago antes de criar ordem)
   int get committedSats {
-    // CORRIGIDO: NÃÂ£o contar nenhuma ordem como "comprometida" porque:
-    // 1. 'draft' foi removido - invoice ÃÂ© pago ANTES de criar ordem
-    // 2. Todas as outras jÃÂ¡ tiveram a invoice paga (sats nÃÂ£o estÃÂ£o na carteira)
+    // v257: Contar sats de ordens pagas com saldo da carteira (wallet payments)
+    // Ordens com paymentHash 'wallet_*' NAO saem via Lightning - sats continuam na carteira
+    // Precisamos travar esses sats para o saldo exibido ser correto
     //
-    // Se o usuÃÂ¡rio tem uma ordem 'pending', os sats JÃÂ FORAM para o escrow
-    // quando ele pagou a invoice Lightning na tela de pagamento
+    // Para pagamentos Lightning normais, sats JA sairam da carteira (return 0 para eles)
     
-    // Manter o log para debug, mas retornar 0
-    final filteredForDebug = _filteredOrders.where((o) => 
-      o.status == 'pending' || 
-      o.status == 'payment_received' || 
-      o.status == 'confirmed'
-    ).toList();
+    const terminalStatuses = ['completed', 'cancelled', 'liquidated'];
     
-    if (filteredForDebug.isNotEmpty) {
-      for (final o in filteredForDebug) {
+    int locked = 0;
+    for (final o in _filteredOrders) {
+      // So contar ordens com wallet payment (nao-Lightning)
+      if (o.paymentHash == null || !o.paymentHash!.startsWith('wallet_')) continue;
+      
+      // Nao contar ordens terminais (ja foram resolvidas)
+      if (terminalStatuses.contains(o.status)) continue;
+      
+      // Converter btcAmount para sats
+      final sats = (o.btcAmount * 100000000).round();
+      if (sats > 0) {
+        locked += sats;
+        debugPrint('LOCKED: ordem=\${o.id.substring(0, 8)} status=\${o.status} sats=\$sats');
       }
     }
     
-    // RETORNAR 0: Nenhum sat estÃÂ¡ "comprometido" na carteira
-    // Os sats jÃÂ¡ saÃÂ­ram quando o usuÃÂ¡rio pagou a invoice Lightning
-    return 0;
+    if (locked > 0) {
+      debugPrint('TOTAL LOCKED (wallet payments): \$locked sats');
+    }
+    
+    return locked;
   }
 
   // Chave ÃÂºnica para salvar ordens deste usuÃÂ¡rio

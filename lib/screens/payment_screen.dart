@@ -590,7 +590,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final lightningProvider = context.read<LightningProvider>();
     final orderProvider = context.read<OrderProvider>();
 
-    // 1. Verificar saldo
+    // 1. Verificar saldo DISPONÍVEL (descontando sats já travados em wallet payments)
     int walletBalance;
     try {
       walletBalance = await lightningProvider.getBalance();
@@ -599,8 +599,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
       return;
     }
 
-    if (walletBalance < amountSats) {
-      _showError('Saldo insuficiente. Disponível: $walletBalance sats, necessário: $amountSats sats');
+    // v257: Descontar sats já travados em ordens wallet anteriores
+    final lockedSats = orderProvider.committedSats;
+    final availableBalance = walletBalance - lockedSats;
+
+    if (availableBalance < amountSats) {
+      final msg = lockedSats > 0 
+          ? 'Saldo insuficiente. Total: $walletBalance sats, travado em ordens: $lockedSats sats, disponível: $availableBalance sats, necessário: $amountSats sats'
+          : 'Saldo insuficiente. Disponível: $walletBalance sats, necessário: $amountSats sats';
+      _showError(msg);
       return;
     }
 

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
@@ -8,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 /// 
 /// Consulta o GitHub Releases do repo público para verificar se há
 /// uma versão mais recente disponível. Mostra dialog/banner para o usuário.
+/// Detecta plataforma (iOS → TestFlight, Android → APK do GitHub).
 class VersionCheckService {
   static final VersionCheckService _instance = VersionCheckService._internal();
   factory VersionCheckService() => _instance;
@@ -18,6 +20,9 @@ class VersionCheckService {
   static const String _repoName = 'bro-releases';
   static const String _githubApiUrl = 
       'https://api.github.com/repos/$_repoOwner/$_repoName/releases/latest';
+
+  /// URL do TestFlight para iOS
+  static const String _testFlightUrl = 'https://testflight.apple.com/join/rkHbPQ94';
 
   /// Build mínimo obrigatório (abaixo disso, forçar atualização)
   /// Atualizar este valor quando houver mudanças críticas de segurança/protocolo
@@ -192,8 +197,8 @@ class VersionCheckService {
                 _openDownloadUrl();
                 if (!_isCritical) Navigator.pop(ctx);
               },
-              icon: const Icon(Icons.download, size: 18),
-              label: const Text('Atualizar Agora'),
+              icon: Icon(Platform.isIOS ? Icons.apple : Icons.download, size: 18),
+              label: Text(Platform.isIOS ? 'Abrir TestFlight' : 'Baixar APK'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: _isCritical ? Colors.red : Colors.blue,
                 foregroundColor: Colors.white,
@@ -208,12 +213,22 @@ class VersionCheckService {
     );
   }
 
-  /// Abrir URL de download
+  /// Abrir URL de download (iOS → TestFlight, Android → APK GitHub)
   Future<void> _openDownloadUrl() async {
-    if (_downloadUrl == null) return;
-    
     try {
-      final uri = Uri.parse(_downloadUrl!);
+      final String url;
+      if (Platform.isIOS) {
+        // iOS: Redirecionar para TestFlight
+        url = _testFlightUrl;
+        debugPrint('🍎 iOS detectado: abrindo TestFlight');
+      } else {
+        // Android: Baixar APK do GitHub
+        if (_downloadUrl == null) return;
+        url = _downloadUrl!;
+        debugPrint('🤖 Android detectado: abrindo APK download');
+      }
+      
+      final uri = Uri.parse(url);
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       }

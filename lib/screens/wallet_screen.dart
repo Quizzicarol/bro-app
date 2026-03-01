@@ -96,6 +96,49 @@ class _WalletScreenState extends State<WalletScreen> {
       // REMOVIDO: Não mesclar com ProviderBalanceProvider (era tracking local, não saldo real)
       // Isso evita confusão entre saldo real (Breez) e tracking local
       
+      // v257: Incluir pagamentos feitos com saldo da carteira (wallet payments)
+      // Esses pagamentos NÃO passam por Lightning, então o SDK não os registra.
+      // Identificamos pelo paymentHash começando com 'wallet_'
+      try {
+        final orderProvider = context.read<OrderProvider>();
+        final walletPaidOrders = orderProvider.orders.where((o) =>
+          o.paymentHash != null &&
+          o.paymentHash!.startsWith('wallet_') &&
+          o.status != 'draft' &&
+          o.status != 'pending'
+        ).toList();
+        
+        // Verificar se já existe no allPayments (evitar duplicatas)
+        final existingHashes = allPayments
+            .map((p) => p['paymentHash']?.toString() ?? '')
+            .toSet();
+        
+        for (final order in walletPaidOrders) {
+          if (existingHashes.contains(order.paymentHash)) continue;
+          
+          final satsAmount = (order.btcAmount * 100000000).round();
+          final billLabel = order.billType == 'pix' ? 'PIX' : 'Boleto';
+          
+          allPayments.add({
+            'id': order.paymentHash,
+            'paymentType': 'Send',
+            'type': 'sent',
+            'direction': 'outgoing',
+            'status': 'Complete',
+            'amount': satsAmount,
+            'amountSats': satsAmount,
+            'paymentHash': order.paymentHash,
+            'description': 'Pagamento $billLabel (saldo carteira)',
+            'timestamp': order.createdAt,
+            'createdAt': order.createdAt,
+            'isWalletPayment': true,
+          });
+          debugPrint('💰 Adicionado wallet payment ao histórico: ${order.id.substring(0, 8)} $satsAmount sats');
+        }
+      } catch (e) {
+        debugPrint('⚠️ Erro ao adicionar wallet payments: $e');
+      }
+      
       // Ordenar por data (mais recente primeiro)
       allPayments.sort((a, b) {
         final dateA = a['createdAt'] ?? a['timestamp'];
@@ -2214,7 +2257,17 @@ class _WalletScreenState extends State<WalletScreen> {
       }
     } else {
       // Verificar se é pagamento com saldo da carteira ou depósito Lightning
-      if (description == 'Bro Wallet Payment' || description == 'Bro Payment') {
+      final isWalletPayment = payment['isWalletPayment'] == true;
+      if (isWalletPayment) {
+        // v257: Pagamento feito com saldo da carteira
+        if (correlatedOrderId != null) {
+          label = '💰 Pagamento #${correlatedOrderId.substring(0, 8)} (carteira)';
+        } else {
+          label = '💰 $description';
+        }
+        iconColor = Colors.orange;
+        icon = Icons.account_balance_wallet;
+      } else if (description == 'Bro Wallet Payment' || description == 'Bro Payment') {
         // Já correlacionado por paymentHash acima
         if (correlatedOrderId != null) {
           label = '📄 Depósito para Ordem #${correlatedOrderId.substring(0, 8)}';

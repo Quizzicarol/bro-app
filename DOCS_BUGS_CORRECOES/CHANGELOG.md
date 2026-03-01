@@ -1,5 +1,21 @@
 # 📋 Changelog - Bro App
 
+## [1.0.131+254] - 2026-03-01
+
+### 🔧 Auto-Repair
+
+- **Ordens com eventos perdidos nos relays**
+  - Detecta ordens locais em status terminal (disputed, completed, etc) sem eventos nos relays
+  - Republica automaticamente o status update (kind 30080) com tags `#p` do provedor e usuário
+  - Funciona no sync do usuário E no sync do provedor
+  - Delay 500ms entre reparações para não sobrecarregar relays
+  - Resolve caso d37757a8: ordem disputada cujos eventos sumiram dos relays
+
+### Arquivos Modificados
+- `lib/providers/order_provider.dart` — _autoRepairMissingOrderEvents(), chamada em ambos syncs
+
+---
+
 ## [1.0.131+253] - 2026-02-28
 
 ### 🛒 Marketplace

@@ -29,6 +29,7 @@ class OrderProvider with ChangeNotifier {
   Completer<void>? _providerSyncCompleter; // v252: Permite pull-to-refresh aguardar sync em andamento
   bool _isSyncingUser = false; // Guard contra syncs concorrentes (modo usuÃÂ¡rio)
   bool _isSyncingProvider = false; // Guard contra syncs concorrentes (modo provedor)
+  bool _autoRepairDoneThisSession = false; // v256: Auto-repair roda apenas UMA VEZ por sessao
   DateTime? _lastUserSyncTime; // Timestamp do ÃÂºltimo sync de usuÃÂ¡rio
   DateTime? _lastProviderSyncTime; // Timestamp do ÃÂºltimo sync de provedor
   static const int _minSyncIntervalSeconds = 15; // Intervalo mÃÂ­nimo entre syncs automÃÂ¡ticos
@@ -1725,12 +1726,22 @@ class OrderProvider with ChangeNotifier {
   /// Quando uma ordem existe localmente com status terminal (disputed, completed, etc)
   /// mas NAO foi encontrada em nenhuma busca dos relays, republicar o status update
   /// para que o outro lado (provedor ou usuario) possa descobri-la na proxima sync
+  /// 
+  /// v256: Roda APENAS UMA VEZ por sessao para evitar spam nos relays.
+  /// SEGURANCA NIP-33: Cada d-tag e unica por usuario+ordem, entao o auto-repair
+  /// apenas substitui o PROPRIO evento do usuario, sem afetar eventos do outro lado.
   Future<void> _autoRepairMissingOrderEvents({
     required List<Order> allPendingOrders,
     required List<Order> userOrders,
     required List<Order> providerOrders,
   }) async {
     if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return;
+    
+    // v256: So reparar UMA VEZ por sessao para evitar spam nos relays
+    if (_autoRepairDoneThisSession) {
+      debugPrint('AUTO-REPAIR: ja executado nesta sessao, pulando');
+      return;
+    }
     
     final privateKey = _nostrService.privateKey;
     if (privateKey == null) return;
@@ -1742,7 +1753,7 @@ class OrderProvider with ChangeNotifier {
     for (final o in providerOrders) relayOrderIds.add(o.id);
     
     // Encontrar ordens locais com status NAO-draft que NAO foram encontradas nos relays
-    // e que tem providerId preenchido (ordens com interacao real)
+    // v255: disputed permite repair SEM providerId (ordens criadas antes do fix v252)
     const repairableStatuses = ['disputed', 'completed', 'liquidated', 'accepted', 'awaiting_confirmation', 'payment_received'];
     
     final ordersToRepair = _orders.where((o) {
@@ -1751,32 +1762,52 @@ class OrderProvider with ChangeNotifier {
       final isProvider = o.providerId == _currentUserPubkey;
       if (!isOwner && !isProvider) return false;
       
-      // So reparar se tem providerId (houve interacao real)
-      if (o.providerId == null || o.providerId!.isEmpty) return false;
-      
       // So reparar status reparaveis
       if (!repairableStatuses.contains(o.status)) return false;
       
       // So reparar se NAO foi encontrada nos relays
       if (relayOrderIds.contains(o.id)) return false;
       
+      // v255: Para disputed, permitir repair MESMO sem providerId
+      if (o.status == 'disputed') return true;
+      
+      // Para outros status, exigir providerId (houve interacao real)
+      if (o.providerId == null || o.providerId!.isEmpty) return false;
+      
       return true;
     }).toList();
     
-    if (ordersToRepair.isEmpty) return;
+    if (ordersToRepair.isEmpty) {
+      _autoRepairDoneThisSession = true;
+      return;
+    }
     
     debugPrint('AUTO-REPAIR: ${ordersToRepair.length} ordens com eventos perdidos nos relays');
     
     int repaired = 0;
     for (final order in ordersToRepair) {
       try {
-        debugPrint('Reparando: orderId=${order.id.substring(0, 8)} status=${order.status} providerId=${order.providerId?.substring(0, 16)}');
+        // v255: Tentar popular providerId de metadata se estiver null
+        String? effectiveProviderId = order.providerId;
+        if (effectiveProviderId == null || effectiveProviderId.isEmpty) {
+          effectiveProviderId = order.metadata?['providerId'] as String?;
+          effectiveProviderId ??= order.metadata?['provider_id'] as String?;
+          if (effectiveProviderId != null && effectiveProviderId.isNotEmpty) {
+            debugPrint('AUTO-REPAIR: providerId recuperado de metadata: ${effectiveProviderId.substring(0, 16)}');
+            final idx = _orders.indexWhere((o) => o.id == order.id);
+            if (idx != -1) {
+              _orders[idx] = _orders[idx].copyWith(providerId: effectiveProviderId);
+            }
+          }
+        }
+        
+        debugPrint('Reparando: orderId=${order.id.substring(0, 8)} status=${order.status} providerId=${effectiveProviderId?.substring(0, 16) ?? "NULL"}');
         
         final success = await _nostrOrderService.updateOrderStatus(
           privateKey: privateKey,
           orderId: order.id,
           newStatus: order.status,
-          providerId: order.providerId,
+          providerId: effectiveProviderId,
           orderUserPubkey: order.userPubkey,
         );
         
@@ -1794,7 +1825,8 @@ class OrderProvider with ChangeNotifier {
       }
     }
     
-    debugPrint('AUTO-REPAIR concluido: $repaired/${ordersToRepair.length} reparadas');
+    _autoRepairDoneThisSession = true;
+    debugPrint('AUTO-REPAIR concluido: $repaired/${ordersToRepair.length} reparadas (flag sessao ativado)');
   }
 
   /// Verifica ordens em 'awaiting_confirmation' com prazo de 36h expirado

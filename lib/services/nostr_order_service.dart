@@ -2609,6 +2609,64 @@ class NostrOrderService {
     }
   }
 
+  /// v253: Deleta uma oferta do marketplace
+  /// Usa NIP-33 (republica com mesmo d-tag) com marcador de deletado + NIP-09 kind 5
+  Future<bool> deleteMarketplaceOffer({
+    required String privateKey,
+    required String offerId,
+  }) async {
+    try {
+      final keychain = Keychain(privateKey);
+      
+      // Estratégia 1: NIP-33 - Republica com mesmo d-tag mas conteúdo vazio/deletado
+      // Isso substitui a oferta original no relay
+      final contentMap = {
+        'type': 'bro_marketplace_offer',
+        'version': '2.0',
+        'offerId': offerId,
+        'deleted': true,
+        'deletedAt': DateTime.now().toIso8601String(),
+      };
+      
+      final replacementEvent = Event.from(
+        kind: kindMarketplaceOffer,
+        tags: [
+          ['d', offerId],
+          ['t', marketplaceTag],
+          ['t', 'bro-app'],
+          ['t', 'deleted'],
+        ],
+        content: jsonEncode(contentMap),
+        privkey: keychain.private,
+      );
+
+      // Estratégia 2: NIP-09 - Publica kind 5 (deletion) referenciando o evento
+      final deletionEvent = Event.from(
+        kind: 5, // NIP-09 Event Deletion
+        tags: [
+          ['a', '${kindMarketplaceOffer}:${keychain.public}:$offerId'], // Referência NIP-33
+        ],
+        content: 'Oferta removida pelo vendedor',
+        privkey: keychain.private,
+      );
+      
+      // Publicar ambos em paralelo em todos os relays
+      final results = await Future.wait(
+        _relays.take(5).expand((relay) => [
+          _publishToRelay(relay, replacementEvent).catchError((_) => false),
+          _publishToRelay(relay, deletionEvent).catchError((_) => false),
+        ]).toList(),
+      );
+      
+      final successCount = results.where((s) => s).length;
+      debugPrint('🗑️ deleteMarketplaceOffer: offerId=${offerId.substring(0, 8)}, publicado em ${successCount ~/ 2}/${_relays.take(5).length} relays');
+      return successCount > 0;
+    } catch (e) {
+      debugPrint('❌ deleteMarketplaceOffer EXCEPTION: $e');
+      return false;
+    }
+  }
+
   /// Busca ofertas do marketplace
   Future<List<Map<String, dynamic>>> fetchMarketplaceOffers() async {
     final offers = <Map<String, dynamic>>[];
@@ -2629,6 +2687,8 @@ class NostrOrderService {
           seenIds.add(id);
           try {
             final content = event['parsedContent'] ?? jsonDecode(event['content']);
+            // v253: Filtrar ofertas deletadas
+            if (content['deleted'] == true) continue;
             List<String> photos = [];
             if (content['photos'] is List) {
               photos = (content['photos'] as List).cast<String>();
@@ -2686,6 +2746,8 @@ class NostrOrderService {
           seenIds.add(id);
           try {
             final content = event['parsedContent'] ?? jsonDecode(event['content']);
+            // v253: Filtrar ofertas deletadas
+            if (content['deleted'] == true) continue;
             List<String> photos = [];
             if (content['photos'] is List) {
               photos = (content['photos'] as List).cast<String>();
@@ -2769,14 +2831,21 @@ class NostrOrderService {
       }
       final content = jsonEncode(contentMap);
       
+      // v253: Incluir #p tag do provedor para que ele descubra a disputa nos relays
+      final providerIdFromDetails = orderDetails?['provider_id'] as String?;
+      final tags = [
+        ['t', 'bro-disputa'],
+        ['t', broTag],
+        ['r', orderId],
+        ['p', AppConfig.adminPubkey], // Notificar admin/mediador
+      ];
+      if (providerIdFromDetails != null && providerIdFromDetails.isNotEmpty && providerIdFromDetails != AppConfig.adminPubkey) {
+        tags.add(['p', providerIdFromDetails]); // v253: Notificar provedor
+      }
+      
       final event = Event.from(
         kind: 1, // Nota regular - #t tags SÃO indexadas!
-        tags: [
-          ['t', 'bro-disputa'],
-          ['t', broTag],
-          ['r', orderId],
-          ['p', AppConfig.adminPubkey], // Notificar admin/mediador
-        ],
+        tags: tags,
         content: content,
         privkey: keychain.private,
       );

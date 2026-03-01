@@ -2644,12 +2644,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       await disputeService.initialize();
       
       // Preparar detalhes da ordem para o suporte
+      // v253: Incluir provider_id para que a disputa seja descoberta pelo provedor
+      final existingOrder = context.read<OrderProvider>().getOrderById(widget.orderId);
       final orderDetails = {
         'amount_brl': widget.amountBrl,
         'amount_sats': widget.amountSats,
         'status': _currentStatus,
         'payment_type': _orderDetails?['payment_type'],
         'pix_key': _orderDetails?['pix_key'],
+        'provider_id': existingOrder?.providerId ?? _orderDetails?['providerId'],
       };
       
       // Criar a disputa

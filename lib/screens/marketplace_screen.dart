@@ -300,10 +300,16 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
     return RefreshIndicator(
       onRefresh: _loadData,
       color: Colors.orange,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
+      child: GridView.builder(
+        padding: const EdgeInsets.all(8),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 6,
+          mainAxisSpacing: 6,
+          childAspectRatio: 0.55, // Retangular vertical
+        ),
         itemCount: _offers.length,
-        itemBuilder: (context, index) => _buildOfferCard(_offers[index]),
+        itemBuilder: (context, index) => _buildOfferCardGrid(_offers[index]),
       ),
     );
   }
@@ -320,30 +326,34 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
     return RefreshIndicator(
       onRefresh: _loadData,
       color: Colors.orange,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
+      child: GridView.builder(
+        padding: const EdgeInsets.all(8),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 6,
+          mainAxisSpacing: 6,
+          childAspectRatio: 0.55,
+        ),
         itemCount: _myOffers.length,
-        itemBuilder: (context, index) => _buildOfferCard(_myOffers[index], isMine: true),
+        itemBuilder: (context, index) => _buildOfferCardGrid(_myOffers[index], isMine: true),
       ),
     );
   }
 
   // ============================================
-  // OFFER CARD (com foto thumbnail e reputação)
+  // v253: OFFER CARD GRID (compacto, 3 colunas)
   // ============================================
 
-  Widget _buildOfferCard(MarketplaceOffer offer, {bool isMine = false}) {
+  Widget _buildOfferCardGrid(MarketplaceOffer offer, {bool isMine = false}) {
     final categoryInfo = _getCategoryInfo(offer.category);
     final priceInBrl = offer.priceSats > 0 && _btcPrice > 0
         ? (offer.priceSats / 100000000) * _btcPrice
         : 0.0;
-    final timeAgo = _getTimeAgo(offer.createdAt);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isMine ? Colors.orange.withOpacity(0.5) : Colors.white12,
         ),
@@ -352,195 +362,127 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
         color: Colors.transparent,
         child: InkWell(
           onTap: () => _showOfferDetail(offer),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Foto thumbnail no topo do card (se tiver)
-              if (offer.photoBase64List.isNotEmpty)
-                ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                  child: SizedBox(
-                    height: 160,
-                    width: double.infinity,
-                    child: _buildBase64Image(offer.photoBase64List.first, fit: BoxFit.cover),
-                  ),
-                ),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Header
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: (categoryInfo['color'] as Color).withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Icon(
-                            categoryInfo['icon'] as IconData,
-                            color: categoryInfo['color'] as Color,
-                            size: 24,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                categoryInfo['label'] as String,
-                                style: TextStyle(
-                                  color: categoryInfo['color'] as Color,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              Row(
-                                children: [
-                                  Flexible(
-                                    child: Text(
-                                      offer.title,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    '#${_generateShortId(offer.id)}',
-                                    style: const TextStyle(color: Colors.white30, fontSize: 11, fontFamily: 'monospace'),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (isMine)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.orange.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: Colors.orange),
+              // Foto ou placeholder
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+                child: SizedBox(
+                  height: 80,
+                  width: double.infinity,
+                  child: offer.photoBase64List.isNotEmpty
+                      ? _buildBase64Image(offer.photoBase64List.first, fit: BoxFit.cover)
+                      : Container(
+                          color: (categoryInfo['color'] as Color).withOpacity(0.15),
+                          child: Center(
+                            child: Icon(
+                              categoryInfo['icon'] as IconData,
+                              color: (categoryInfo['color'] as Color).withOpacity(0.5),
+                              size: 28,
                             ),
-                            child: const Text(
-                              'MINHA',
+                          ),
+                        ),
+                ),
+              ),
+              // Conteúdo
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Badge MINHA + Categoria
+                      Row(
+                        children: [
+                          if (isMine)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                              margin: const EdgeInsets.only(right: 3),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(3),
+                                border: Border.all(color: Colors.orange, width: 0.5),
+                              ),
+                              child: const Text(
+                                'MINHA',
+                                style: TextStyle(color: Colors.orange, fontSize: 7, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          Expanded(
+                            child: Text(
+                              categoryInfo['label'] as String,
                               style: TextStyle(
-                                color: Colors.orange,
-                                fontSize: 12,
+                                color: categoryInfo['color'] as Color,
+                                fontSize: 8,
                                 fontWeight: FontWeight.bold,
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    
-                    // Descrição
-                    Text(
-                      offer.description,
-                      style: const TextStyle(color: Colors.white70, fontSize: 14),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 12),
-                    
-                    // Reputação do vendedor (sempre visível no card)
-                    ...[
-                      _buildReputationBadge(offer),
-                      const SizedBox(height: 12),
-                    ],
-                    
-                    // Preço e info
-                    Row(
-                      children: [
-                        if (offer.priceSats > 0) ...[
-                          const Icon(Icons.bolt, color: Colors.amber, size: 18),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${_formatSats(offer.priceSats)} sats',
-                            style: const TextStyle(
-                              color: Colors.amber,
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          if (priceInBrl > 0)
-                            Text(
-                              ' (R\$ ${priceInBrl.toStringAsFixed(2)})',
-                              style: const TextStyle(color: Colors.white54, fontSize: 12),
-                            ),
                         ],
-                        const Spacer(),
-                        if (offer.photoBase64List.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: Icon(Icons.photo, color: Colors.purple.shade300, size: 16),
-                          ),
-                        // Estoque
-                        if (offer.quantity > 0)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: offer.isOutOfStock
-                                    ? Colors.red.withOpacity(0.2)
-                                    : Colors.blue.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
+                      ),
+                      const SizedBox(height: 2),
+                      // Título
+                      Text(
+                        offer.title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          height: 1.2,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const Spacer(),
+                      // Preço em sats
+                      if (offer.priceSats > 0) ...[
+                        Row(
+                          children: [
+                            const Icon(Icons.bolt, color: Colors.amber, size: 12),
+                            Expanded(
                               child: Text(
-                                offer.isOutOfStock
-                                    ? 'ESGOTADO'
-                                    : '${offer.remaining} un.',
-                                style: TextStyle(
-                                  color: offer.isOutOfStock ? Colors.red : Colors.blue.shade300,
+                                '${_formatSats(offer.priceSats)}',
+                                style: const TextStyle(
+                                  color: Colors.amber,
                                   fontSize: 10,
                                   fontWeight: FontWeight.bold,
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                          ),
-                        Text(
-                          timeAgo,
-                          style: const TextStyle(color: Colors.white38, fontSize: 12),
+                          ],
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    
-                    // Vendedor + contato
-                    Row(
-                      children: [
-                        const Icon(Icons.person, color: Colors.white38, size: 16),
-                        const SizedBox(width: 6),
-                        Expanded(
+                        if (priceInBrl > 0)
+                          Text(
+                            'R\$ ${priceInBrl.toStringAsFixed(2)}',
+                            style: const TextStyle(color: Colors.white38, fontSize: 8),
+                            maxLines: 1,
+                          ),
+                      ] else
+                        const Text(
+                          'Sob consulta',
+                          style: TextStyle(color: Colors.white38, fontSize: 9),
+                        ),
+                      // Estoque
+                      if (offer.quantity > 0)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
                           child: Text(
-                            offer.sellerName,
-                            style: const TextStyle(color: Colors.white54, fontSize: 13),
-                            overflow: TextOverflow.ellipsis,
+                            offer.isOutOfStock ? 'ESGOTADO' : '${offer.remaining} un.',
+                            style: TextStyle(
+                              color: offer.isOutOfStock ? Colors.red : Colors.blue.shade300,
+                              fontSize: 8,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
-                        TextButton.icon(
-                          onPressed: () => _contactSeller(offer),
-                          icon: const Icon(Icons.message, size: 16),
-                          label: const Text('Contato'),
-                          style: TextButton.styleFrom(
-                            foregroundColor: Colors.orange,
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -980,6 +922,20 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                   label: Text('Copiar ID #$shortId', style: const TextStyle(color: Colors.white54)),
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: Colors.white24),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              // v253: Botão de excluir oferta
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _confirmDeleteOffer(offer),
+                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
+                  label: const Text('Excluir Oferta', style: TextStyle(color: Colors.redAccent)),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: Colors.redAccent.withOpacity(0.5)),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                 ),
@@ -1902,6 +1858,68 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
       hash = (hash * 31 + offerId.codeUnitAt(i)) & 0x7FFFFFFF;
     }
     return (hash % 999999 + 1).toString().padLeft(6, '0');
+  }
+
+  /// v253: Confirma e executa exclusão de uma oferta do marketplace
+  Future<void> _confirmDeleteOffer(MarketplaceOffer offer) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('Excluir Oferta', style: TextStyle(color: Colors.white)),
+        content: Text(
+          'Tem certeza que deseja excluir a oferta "${offer.title}"?\n\nEssa ação não pode ser desfeita.',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Excluir', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    // Fechar o bottom sheet de detalhes
+    Navigator.pop(context);
+
+    final privateKey = _nostrService.privateKey;
+    if (privateKey == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Erro: chave privada não encontrada')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    final success = await _nostrOrderService.deleteMarketplaceOffer(
+      privateKey: privateKey,
+      offerId: offer.id,
+    );
+
+    if (mounted) {
+      if (success) {
+        setState(() {
+          _offers.removeWhere((o) => o.id == offer.id);
+          _myOffers.removeWhere((o) => o.id == offer.id);
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✅ Oferta excluída com sucesso')),
+        );
+      } else {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('❌ Erro ao excluir oferta')),
+        );
+      }
+    }
   }
 
   /// Abre lista de conversas filtrada para mensagens do marketplace

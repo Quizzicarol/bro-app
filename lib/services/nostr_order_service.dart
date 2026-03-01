@@ -329,7 +329,7 @@ class NostrOrderService {
         final relayOrders = <Map<String, dynamic>>[];
         final relayAcceptIds = <String>{};
         try {
-          // PARALELO: 3 estratégias simultâneas por relay
+          // PARALELO: 4 estratégias simultâneas por relay
           final results = await Future.wait([
             // 1. Ordens com tag #p do provedor
             _fetchFromRelay(relay, kinds: [kindBroOrder], tags: {'#p': [providerPubkey]}, limit: 100)
@@ -340,12 +340,16 @@ class NostrOrderService {
             // 3. NOVO: Buscar eventos bro-accept com tag #t (fallback se #p falhar)
             _fetchFromRelay(relay, kinds: [kindBroAccept, kindBroComplete], tags: {'#t': ['bro-accept']}, limit: 100)
               .catchError((_) => <Map<String, dynamic>>[]),
+            // 4. v252: Buscar status updates TAGUEADOS com #p do provedor (descobrir disputas)
+            // Isso captura ordens em disputa mesmo quando o evento original foi excluído do relay
+            _fetchFromRelay(relay, kinds: [kindBroPaymentProof], tags: {'#p': [providerPubkey]}, limit: 100)
+              .catchError((_) => <Map<String, dynamic>>[]),
           ]);
           
           relayOrders.addAll(results[0]);
           
-          // Extrair orderIds dos eventos de aceitação/update (estratégia 2 + 3)
-          for (final eventList in [results[1], results[2]]) {
+          // Extrair orderIds dos eventos de aceitação/update (estratégia 2 + 3 + 4)
+          for (final eventList in [results[1], results[2], results[3]]) {
             for (final event in eventList) {
               try {
                 // Filtrar eventos da estratégia 3 para apenas os do provedor

@@ -26,6 +26,7 @@ class OrderProvider with ChangeNotifier {
   bool _isProviderMode = false;  // Modo provedor ativo (para UI, nÃÂ£o para filtro de ordens)
 
   // PERFORMANCE: Throttle para evitar syncs/saves/notifies excessivos
+  Completer<void>? _providerSyncCompleter; // v252: Permite pull-to-refresh aguardar sync em andamento
   bool _isSyncingUser = false; // Guard contra syncs concorrentes (modo usuÃÂ¡rio)
   bool _isSyncingProvider = false; // Guard contra syncs concorrentes (modo provedor)
   DateTime? _lastUserSyncTime; // Timestamp do ÃÂºltimo sync de usuÃÂ¡rio
@@ -924,21 +925,20 @@ class OrderProvider with ChangeNotifier {
   /// SEGURANÃâ¡A: Ordens de outros usuÃÂ¡rios vÃÂ£o para _availableOrdersForProvider
   /// e NUNCA sÃÂ£o adicionadas ÃÂ  lista principal _orders!
   Future<void> syncAllPendingOrdersFromNostr({bool force = false}) async {
-    // PERFORMANCE: NÃÂ£o sincronizar se jÃÂ¡ tem sync em andamento
+    // v252: Se sync em andamento e force=true (pull-to-refresh), aguardar sync atual
     if (_isSyncingProvider) {
-      debugPrint('Ã¢ÂÂ­Ã¯Â¸Â syncAllPending: sync jÃÂ¡ em andamento, ignorando');
+      if (force && _providerSyncCompleter != null) {
+        debugPrint('syncAllPending: sync em andamento, aguardando (pull-to-refresh)...');
+        try {
+          await _providerSyncCompleter!.future.timeout(const Duration(seconds: 15));
+        } catch (_) {
+          debugPrint('syncAllPending: timeout aguardando sync atual');
+        }
+      }
       return;
     }
     
-    // PERFORMANCE: Cooldown para polling automÃÂ¡tico (ignorado quando force=true)
-    if (!force && _lastProviderSyncTime != null) {
-      final elapsed = DateTime.now().difference(_lastProviderSyncTime!).inSeconds;
-      if (elapsed < _minSyncIntervalSeconds) {
-        debugPrint('Ã¢ÂÂ­Ã¯Â¸Â syncAllPending: ÃÂºltimo sync hÃÂ¡ ${elapsed}s, ignorando');
-        return;
-      }
-    }
-    
+    _providerSyncCompleter = Completer<void>();
     _isSyncingProvider = true;
     
     try {
@@ -1004,6 +1004,8 @@ class OrderProvider with ChangeNotifier {
         debugPrint('Ã¢Å¡Â Ã¯Â¸Â syncProvider: TODAS as buscas retornaram vazio - mantendo dados anteriores');
         _lastProviderSyncTime = DateTime.now();
         _isSyncingProvider = false;
+        _providerSyncCompleter?.complete();
+        _providerSyncCompleter = null;
         return;
       }
       
@@ -1289,6 +1291,8 @@ class OrderProvider with ChangeNotifier {
     } catch (e) {
     } finally {
       _isSyncingProvider = false;
+      _providerSyncCompleter?.complete();
+      _providerSyncCompleter = null;
     }
   }
 
@@ -1426,6 +1430,12 @@ class OrderProvider with ChangeNotifier {
       final privateKey = _nostrService.privateKey;
       bool nostrSuccess = false;
       
+      // v252: SEMPRE incluir providerId e userPubkey da ordem existente
+      // Sem isso, status updates (ex: 'disputed') ficam sem #p tag e o provedor
+      // nao consegue descobrir a ordem em disputa nos relays
+      final existingForUpdate = getOrderById(orderId);
+      final effectiveProviderIdForUpdate = providerId ?? existingForUpdate?.providerId;
+      final orderUserPubkeyForUpdate = existingForUpdate?.userPubkey;
       
       if (privateKey != null && privateKey.isNotEmpty) {
         
@@ -1433,7 +1443,8 @@ class OrderProvider with ChangeNotifier {
           privateKey: privateKey,
           orderId: orderId,
           newStatus: status,
-          providerId: providerId,
+          providerId: effectiveProviderIdForUpdate,
+          orderUserPubkey: orderUserPubkeyForUpdate,
         );
         
         if (nostrSuccess) {

@@ -357,6 +357,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         setState(() {
           _error = e.toString();
           _isLoading = false;
+          _isSyncingNostr = false; // v252: SEMPRE resetar para evitar bloqueio permanente
         });
       }
     }
@@ -532,6 +533,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     return RefreshIndicator(
       onRefresh: () => _loadOrders(isRefresh: true),
       color: const Color(0xFFFF6B6B),
+      displacement: 20, // v252: Trigger mais fácil
       child: _availableOrders.isEmpty
         ? ListView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -756,6 +758,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       return RefreshIndicator(
         onRefresh: () => _loadOrders(isRefresh: true),
         color: const Color(0xFFFF6B6B),
+        displacement: 20, // v252: Trigger mais fácil no pull-to-refresh
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
@@ -800,6 +803,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     return RefreshIndicator(
       onRefresh: () => _loadOrders(isRefresh: true),
       color: const Color(0xFFFF6B6B),
+      displacement: 20, // v252: Trigger mais fácil no pull-to-refresh
       child: ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
@@ -939,6 +943,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     return RefreshIndicator(
       onRefresh: () => _loadOrders(isRefresh: true),
       color: const Color(0xFFFF6B6B),
+      displacement: 20, // v252: Trigger mais fácil
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),

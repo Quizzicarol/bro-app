@@ -1023,6 +1023,72 @@ class NostrOrderService {
     );
   }
 
+  /// v261: Re-publica o evento kind 30078 com status atualizado.
+  /// Como kind 30078 é parameterized replaceable (NIP-33), o relay substitui
+  /// o evento antigo (status=pending) pelo novo (status=accepted/completed/etc).
+  /// Isso garante que outros provedores NÃO vejam a ordem como disponível,
+  /// mesmo se a query de status updates (kind 30079/30080/30081) falhar.
+  /// SÓ deve ser chamado pelo DONO da ordem (userPubkey == signer).
+  Future<bool> republishOrderWithStatus({
+    required String privateKey,
+    required Order order,
+    required String newStatus,
+    String? providerId,
+  }) async {
+    try {
+      final keychain = Keychain(privateKey);
+
+      // Só o dono da ordem pode re-publicar (assinatura deve bater)
+      if (order.userPubkey != null && order.userPubkey != keychain.public) {
+        debugPrint('v261: republishOrderWithStatus: SKIP - não sou o dono da ordem');
+        return false;
+      }
+
+      final content = jsonEncode({
+        'type': 'bro_order',
+        'version': '1.0',
+        'orderId': order.id,
+        'userPubkey': keychain.public,
+        'billType': order.billType,
+        'billCode': order.billCode,
+        'amount': order.amount,
+        'btcAmount': order.btcAmount,
+        'btcPrice': order.btcPrice,
+        'providerFee': order.providerFee,
+        'platformFee': order.platformFee,
+        'total': order.total,
+        'status': newStatus,
+        'providerId': providerId ?? order.providerId,
+        'createdAt': order.createdAt.toIso8601String(),
+        'updatedAt': DateTime.now().toIso8601String(),
+      });
+
+      final event = Event.from(
+        kind: kindBroOrder,
+        tags: [
+          ['d', order.id],
+          ['t', broTag],
+          ['t', broAppTag],
+          ['t', order.billType],
+          ['amount', order.amount.toStringAsFixed(2)],
+          ['status', newStatus],
+        ],
+        content: content,
+        privkey: keychain.private,
+      );
+
+      final results = await Future.wait(
+        _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
+      );
+      final successCount = results.where((r) => r).length;
+      debugPrint('v261: republishOrderWithStatus: ${order.id.substring(0, 8)} -> $newStatus ($successCount/${_relays.length} relays)');
+      return successCount > 0;
+    } catch (e) {
+      debugPrint('v261: republishOrderWithStatus ERROR: $e');
+      return false;
+    }
+  }
+
   /// Provider aceita uma ordem
   Future<bool> acceptOrderOnNostr({
     required Order order,
@@ -1274,6 +1340,18 @@ class NostrOrderService {
       
       // BLOCKLIST: Verificação final (para eventos sem tag 'd')
       if (_blockedOrderIds.contains(order.id)) {
+        blockedCount++;
+        continue;
+      }
+      
+      // v261: DEFENSE-IN-DEPTH — Se o próprio evento 30078 já tem status terminal
+      // (porque o dono re-publicou com status atualizado via republishOrderWithStatus),
+      // filtrar IMEDIATAMENTE sem precisar da query de status separada.
+      // Isso resolve o bug onde orders aceitas/completadas continuavam aparecendo
+      // quando a query de status (kind 30079/30080/30081) falhava por timeout.
+      const terminalInEvent = ['accepted', 'awaiting_confirmation', 'completed', 'cancelled', 'liquidated', 'disputed'];
+      if (terminalInEvent.contains(order.status)) {
+        _addToBlocklist({order.id});
         blockedCount++;
         continue;
       }

@@ -1457,6 +1457,34 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
+  /// v261: Re-publica o evento kind 30078 com status terminal no relay.
+  /// Isso SUBSTITUI o evento original (status=pending) pelo novo (status=accepted/completed/etc).
+  /// Garante que outros provedores NAO vejam a ordem como disponivel,
+  /// mesmo se a query de status updates (kind 30079/30080/30081) falhar.
+  /// So deve ser chamado pelo DONO da ordem.
+  Future<void> _republishOrderEventWithTerminalStatus(Order order, String newStatus) async {
+    // So re-publicar para status terminal-ish
+    const terminalStatuses = ['accepted', 'awaiting_confirmation', 'completed', 'cancelled', 'liquidated', 'disputed'];
+    if (!terminalStatuses.contains(newStatus)) return;
+    
+    // So re-publicar se EU sou o dono da ordem
+    if (order.userPubkey != _currentUserPubkey) return;
+    
+    final privateKey = _nostrService.privateKey;
+    if (privateKey == null || privateKey.isEmpty) return;
+    
+    try {
+      await _nostrOrderService.republishOrderWithStatus(
+        privateKey: privateKey,
+        order: order,
+        newStatus: newStatus,
+        providerId: order.providerId,
+      );
+    } catch (e) {
+      debugPrint('v261: _republishOrderEventWithTerminalStatus ERROR: $e');
+    }
+  }
+
   /// v259: Atualizar status APENAS localmente, SEM publicar no Nostr.
   /// Usado para wallet payments onde o status local (payment_received) não deve
   /// ser publicado no relay, pois a ordem precisa permanecer 'pending' para provedores.
@@ -1507,6 +1535,8 @@ class OrderProvider with ChangeNotifier {
             orderUserPubkey: orderForUpdate.userPubkey,
           );
           if (success) {
+            // v261: Re-publicar o evento 30078 com status terminal para remover da marketplace
+            _republishOrderEventWithTerminalStatus(orderForUpdate, status);
           } else {
           }
         } catch (e) {
@@ -1642,6 +1672,9 @@ class OrderProvider with ChangeNotifier {
         
         // Salvar localmente Ã¢â¬â usar save filtrado para nÃÂ£o vazar ordens de outros
         _debouncedSave();
+        
+        // v261: Re-publicar o evento 30078 com status terminal para remover da marketplace
+        _republishOrderEventWithTerminalStatus(_orders[index], status);
         
       } else {
       }
@@ -2837,6 +2870,12 @@ class OrderProvider with ChangeNotifier {
               metadata: updatedMetadata,
             );
             statusUpdated++;
+            
+            // v261: Re-publicar o evento 30078 com status terminal para remover da marketplace
+            // Isso garante que outros provedores nao vejam a ordem como disponivel
+            if (isStatusAdvancing) {
+              _republishOrderEventWithTerminalStatus(_orders[existingIndex], statusToUse);
+            }
           }
         }
       }

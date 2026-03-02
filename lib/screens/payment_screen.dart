@@ -762,14 +762,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
         });
       }
 
-      // Atualizar status para payment_received (com timeout)
-      await orderProvider.updateOrderStatus(
+      // v259: NÃO publicar payment_received no Nostr para wallet payments!
+      // A ordem deve permanecer 'pending' nos relays para que provedores possam vê-la.
+      // payment_received só faz sentido quando o provedor confirma recebimento Lightning.
+      // Apenas salvar o status LOCALMENTE para a UI mostrar o progresso.
+      orderProvider.updateOrderStatusLocalOnly(
         orderId: orderId,
         status: 'payment_received',
-      ).timeout(const Duration(seconds: 15), onTimeout: () {
-        debugPrint('⚠️ Timeout ao atualizar status (15s) - continuando...');
-        return false;
-      });
+      );
 
       // Registrar taxa da plataforma (2%)
       try {

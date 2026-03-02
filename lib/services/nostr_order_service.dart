@@ -230,14 +230,23 @@ class NostrOrderService {
       }
       
       final keychain = Keychain(privateKey);
-      final userPubkey = keychain.public;
+      final signerPubkey = keychain.public;
+      
+      // v257: CORREÇÃO CRÍTICA — content.userPubkey DEVE ser o DONO da ordem (orderUserPubkey),
+      // NÃO o signatário (keychain.public). Quando o PROVEDOR publica um update,
+      // keychain.public é o provedor, mas userPubkey deve ser o criador da ordem.
+      // Sem isso, o usuário nunca encontra o update nos relays.
+      final contentUserPubkey = (orderUserPubkey != null && orderUserPubkey.isNotEmpty)
+          ? orderUserPubkey
+          : signerPubkey; // fallback para compatibilidade
       
       final content = jsonEncode({
         'type': 'bro_order_update',
         'orderId': orderId,
         'status': newStatus,
         'providerId': providerId,
-        'userPubkey': userPubkey, // Quem publicou este update
+        'userPubkey': contentUserPubkey, // v257: pubkey do DONO da ordem (não do signatário)
+        'publishedBy': signerPubkey, // v257: quem publicou este update
         'paymentProof': paymentProof,
         'updatedAt': DateTime.now().toIso8601String(),
       });
@@ -246,7 +255,7 @@ class NostrOrderService {
       // Isso permite que tanto Bro quanto Usuário publiquem updates independentes
       // NOTA: Removida tag 'e' pois orderId é UUID, não event ID hex de 64 chars
       final tags = [
-        ['d', '${orderId}_${userPubkey.substring(0, 8)}_update'], // Tag única por usuário
+        ['d', '${orderId}_${signerPubkey.substring(0, 8)}_update'], // Tag única por usuário
         ['t', broTag],
         ['t', 'bro-update'],
         ['t', 'status-$newStatus'], // Tag pesquisável por status
@@ -254,19 +263,28 @@ class NostrOrderService {
         ['orderId', orderId], // Tag customizada (não filtrável por relays, só para leitura)
       ];
       
-      // CRÍTICO: Sempre adicionar tag p do provedor para que ele receba
+      // v257: CORREÇÃO CRÍTICA — Garantir que AMBAS as partes (provedor E usuário)
+      // recebam tags #p para descobrir este evento nos relays.
+      // Coletar todas as pubkeys únicas que precisam ser tagueadas
+      final pTagSet = <String>{};
+      
+      // Tag do provedor — para que o provedor encontre o update
       if (providerId != null && providerId.isNotEmpty) {
-        tags.add(['p', providerId]); // Tag do provedor - CRÍTICO para notificação
-        debugPrint('📤 updateOrderStatus: orderId=${orderId.substring(0, 8)} status=$newStatus providerId=${providerId.substring(0, 16)}');
-      } else {
-        debugPrint('⚠️ updateOrderStatus: orderId=${orderId.substring(0, 8)} status=$newStatus SEM providerId!');
+        pTagSet.add(providerId);
       }
-      // v240: Adicionar tag p do dono da ordem para que o usuário encontre este update
-      // CORREÇÃO CRÍTICA: Sem isso, updates do provedor (liquidated, etc) nunca chegam ao usuário
-      if (orderUserPubkey != null && orderUserPubkey.isNotEmpty && orderUserPubkey != providerId) {
-        tags.add(['p', orderUserPubkey]);
-        debugPrint('📤 updateOrderStatus: +tag p do dono da ordem ${orderUserPubkey.substring(0, 16)}');
+      // Tag do dono da ordem — para que o usuário encontre o update
+      if (orderUserPubkey != null && orderUserPubkey.isNotEmpty) {
+        pTagSet.add(orderUserPubkey);
       }
+      // Fallback: se nenhuma #p tag, adicionar o signatário
+      if (pTagSet.isEmpty) {
+        pTagSet.add(signerPubkey);
+      }
+      
+      for (final pk in pTagSet) {
+        tags.add(['p', pk]);
+      }
+      debugPrint('📤 updateOrderStatus: orderId=${orderId.substring(0, 8)} status=$newStatus pTags=${pTagSet.map((p) => p.substring(0, 8)).toList()}');
 
       // IMPORTANTE: Usa kindBroPaymentProof (30080) para não substituir o evento original!
       final event = Event.from(
@@ -275,7 +293,6 @@ class NostrOrderService {
         content: content,
         privkey: keychain.private,
       );
-
 
       // Publicar em PARALELO para ser mais rápido
       final results = await Future.wait(

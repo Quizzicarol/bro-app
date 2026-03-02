@@ -30,6 +30,10 @@ class OrderProvider with ChangeNotifier {
   bool _isSyncingUser = false; // Guard contra syncs concorrentes (modo usuÃÂ¡rio)
   bool _isSyncingProvider = false; // Guard contra syncs concorrentes (modo provedor)
   bool _autoRepairDoneThisSession = false; // v256: Auto-repair roda apenas UMA VEZ por sessao
+  DateTime? _syncUserStartedAt; // v259: Timestamp de quando sync user iniciou (para detectar lock stale)
+  DateTime? _syncProviderStartedAt; // v259: Timestamp de quando sync provider iniciou
+  static const int _maxSyncDurationSeconds = 120; // v259: Max 2 min de sync antes de forcar reset
+  static const int _maxRepairBatchSize = 5; // v259: Max 5 ordens reparadas por sessao
   final Set<String> _ordersNeedingUserPubkeyFix = {}; // v257: Ordens com userPubkey corrompido
   DateTime? _lastUserSyncTime; // Timestamp do ÃÂºltimo sync de usuÃÂ¡rio
   DateTime? _lastProviderSyncTime; // Timestamp do ÃÂºltimo sync de provedor
@@ -978,6 +982,17 @@ class OrderProvider with ChangeNotifier {
   /// e NUNCA sÃÂ£o adicionadas ÃÂ  lista principal _orders!
   Future<void> syncAllPendingOrdersFromNostr({bool force = false}) async {
     // v252: Se sync em andamento e force=true (pull-to-refresh), aguardar sync atual
+    // v259: Detectar lock stale no provider sync
+    if (_isSyncingProvider && _syncProviderStartedAt != null) {
+      final elapsed = DateTime.now().difference(_syncProviderStartedAt!).inSeconds;
+      if (elapsed > _maxSyncDurationSeconds) {
+        debugPrint('v259: syncProvider LOCK STALE detectado (${elapsed}s) - resetando');
+        _isSyncingProvider = false;
+        _syncProviderStartedAt = null;
+        _providerSyncCompleter?.complete();
+        _providerSyncCompleter = null;
+      }
+    }
     if (_isSyncingProvider) {
       if (force && _providerSyncCompleter != null) {
         debugPrint('syncAllPending: sync em andamento, aguardando (pull-to-refresh)...');
@@ -992,6 +1007,7 @@ class OrderProvider with ChangeNotifier {
     
     _providerSyncCompleter = Completer<void>();
     _isSyncingProvider = true;
+    _syncProviderStartedAt = DateTime.now(); // v259: track start time
     
     try {
       
@@ -1056,6 +1072,7 @@ class OrderProvider with ChangeNotifier {
         debugPrint('Ã¢Å¡Â Ã¯Â¸Â syncProvider: TODAS as buscas retornaram vazio - mantendo dados anteriores');
         _lastProviderSyncTime = DateTime.now();
         _isSyncingProvider = false;
+        _syncProviderStartedAt = null; // v259: clear stale tracker
         _providerSyncCompleter?.complete();
         _providerSyncCompleter = null;
         return;
@@ -1333,14 +1350,27 @@ class OrderProvider with ChangeNotifier {
       // v253: AUTO-REPAIR: Republicar status de ordens que existem localmente
       // mas nao foram encontradas em nenhuma busca dos relays (eventos perdidos)
       // Isso resolve o caso d37757a8: ordem disputada cujos eventos sumiram dos relays
-      await _autoRepairMissingOrderEvents(
-        allPendingOrders: allPendingOrders,
-        userOrders: userOrders,
-        providerOrders: providerOrders,
-      );
+      // v259: Timeout global no auto-repair para nao travar sync
+      try {
+        await _autoRepairMissingOrderEvents(
+          allPendingOrders: allPendingOrders,
+          userOrders: userOrders,
+          providerOrders: providerOrders,
+        ).timeout(const Duration(seconds: 30), onTimeout: () {
+          debugPrint('v259: AUTO-REPAIR timeout (30s) no provider sync - continuando');
+        });
+      } catch (e) {
+        debugPrint('v259: AUTO-REPAIR exception no provider sync: \$e');
+      }
       
-      // v257: Corrigir ordens com userPubkey corrompido
-      await _fixCorruptedUserPubkeys();
+      // v257/v259: Corrigir ordens com userPubkey corrompido (com timeout)
+      try {
+        await _fixCorruptedUserPubkeys().timeout(const Duration(seconds: 20), onTimeout: () {
+          debugPrint('v259: _fixCorruptedUserPubkeys timeout (20s) - continuando');
+        });
+      } catch (e) {
+        debugPrint('v259: _fixCorruptedUserPubkeys exception: $e');
+      }
       
       // AUTO-LIQUIDAÃâ¡ÃÆO: Verificar ordens awaiting_confirmation com prazo expirado
       await _checkAutoLiquidation();
@@ -1355,6 +1385,7 @@ class OrderProvider with ChangeNotifier {
     } catch (e) {
     } finally {
       _isSyncingProvider = false;
+      _syncProviderStartedAt = null; // v259: clear stale tracker
       _providerSyncCompleter?.complete();
       _providerSyncCompleter = null;
     }
@@ -1983,8 +2014,16 @@ class OrderProvider with ChangeNotifier {
     
     debugPrint('AUTO-REPAIR: ${ordersToRepair.length} ordens com eventos perdidos nos relays');
     
+    // v259: Limitar batch size para nao travar sync com dezenas de publishes
+    final batch = ordersToRepair.length > _maxRepairBatchSize 
+        ? ordersToRepair.sublist(0, _maxRepairBatchSize)
+        : ordersToRepair;
+    if (ordersToRepair.length > _maxRepairBatchSize) {
+      debugPrint('AUTO-REPAIR: limitado a $_maxRepairBatchSize de ${ordersToRepair.length} (v259 batch limit)');
+    }
+    
     int repaired = 0;
-    for (final order in ordersToRepair) {
+    for (final order in batch) {
       try {
         // v255: Tentar popular providerId de metadata se estiver null
         String? effectiveProviderId = order.providerId;
@@ -2035,7 +2074,7 @@ class OrderProvider with ChangeNotifier {
     }
     
     _autoRepairDoneThisSession = true;
-    debugPrint('AUTO-REPAIR concluido: $repaired/${ordersToRepair.length} reparadas (flag sessao ativado)');
+    debugPrint('AUTO-REPAIR concluido: $repaired/${batch.length} reparadas (de ${ordersToRepair.length} total, flag sessao ativado)');
   }
 
   /// Verifica ordens em 'awaiting_confirmation' com prazo de 36h expirado
@@ -2539,9 +2578,22 @@ class OrderProvider with ChangeNotifier {
   /// [force] = true bypassa cooldown (para aÃÂ§ÃÂµes explÃÂ­citas do usuÃÂ¡rio)
   Future<void> syncOrdersFromNostr({bool force = false}) async {
     // PERFORMANCE: NÃÂ£o sincronizar se jÃÂ¡ tem sync em andamento
+    // v259: Detectar lock stale (sync travou e nunca liberou o lock)
     if (_isSyncingUser) {
-      debugPrint('Ã¢ÂÂ­Ã¯Â¸Â syncOrdersFromNostr: sync jÃÂ¡ em andamento, ignorando');
-      return;
+      if (_syncUserStartedAt != null) {
+        final elapsed = DateTime.now().difference(_syncUserStartedAt!).inSeconds;
+        if (elapsed > _maxSyncDurationSeconds) {
+          debugPrint('v259: syncUser LOCK STALE detectado (${elapsed}s) - resetando');
+          _isSyncingUser = false;
+          _syncUserStartedAt = null;
+        } else {
+          debugPrint('syncOrdersFromNostr: sync em andamento (${elapsed}s), ignorando');
+          return;
+        }
+      } else {
+        debugPrint('syncOrdersFromNostr: sync em andamento, ignorando');
+        return;
+      }
     }
     
     // PERFORMANCE: NÃÂ£o sincronizar se ÃÂºltimo sync foi hÃÂ¡ menos de N segundos
@@ -2564,6 +2616,7 @@ class OrderProvider with ChangeNotifier {
     }
     
     _isSyncingUser = true;
+    _syncUserStartedAt = DateTime.now(); // v259: track start time
     
     try {
       // PERFORMANCE v1.0.129+218: Se TODAS as ordens locais são terminais,
@@ -2779,14 +2832,27 @@ class OrderProvider with ChangeNotifier {
       await _forceRepublishD37757a8();
       
       // v253: AUTO-REPAIR: Tambem reparar no sync do usuario
-      await _autoRepairMissingOrderEvents(
-        allPendingOrders: <Order>[],
-        userOrders: nostrOrders,
-        providerOrders: <Order>[],
-      );
+      // v259: Timeout global no auto-repair para nao travar sync
+      try {
+        await _autoRepairMissingOrderEvents(
+          allPendingOrders: <Order>[],
+          userOrders: nostrOrders,
+          providerOrders: <Order>[],
+        ).timeout(const Duration(seconds: 30), onTimeout: () {
+          debugPrint('v259: AUTO-REPAIR timeout (30s) no user sync - continuando');
+        });
+      } catch (e) {
+        debugPrint('v259: AUTO-REPAIR exception no user sync: $e');
+      }
       
-      // v257: Corrigir ordens com userPubkey corrompido
-      await _fixCorruptedUserPubkeys();
+      // v257/v259: Corrigir ordens com userPubkey corrompido (com timeout)
+      try {
+        await _fixCorruptedUserPubkeys().timeout(const Duration(seconds: 20), onTimeout: () {
+          debugPrint('v259: _fixCorruptedUserPubkeys timeout (20s) no user sync');
+        });
+      } catch (e) {
+        debugPrint('v259: _fixCorruptedUserPubkeys exception: $e');
+      }
       
       // Ordenar por data (mais recente primeiro)
       _orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
@@ -2800,6 +2866,7 @@ class OrderProvider with ChangeNotifier {
     } catch (e) {
     } finally {
       _isSyncingUser = false;
+      _syncUserStartedAt = null; // v259: clear stale tracker
     }
   }
 

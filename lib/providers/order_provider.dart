@@ -1457,6 +1457,27 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
+  /// v259: Atualizar status APENAS localmente, SEM publicar no Nostr.
+  /// Usado para wallet payments onde o status local (payment_received) não deve
+  /// ser publicado no relay, pois a ordem precisa permanecer 'pending' para provedores.
+  void updateOrderStatusLocalOnly({
+    required String orderId,
+    required String status,
+  }) {
+    final index = _orders.indexWhere((o) => o.id == orderId);
+    if (index != -1) {
+      final currentStatus = _orders[index].status;
+      if (status != 'cancelled' && status != 'disputed' && !_isStatusMoreRecent(status, currentStatus)) {
+        debugPrint('updateOrderStatusLocalOnly: bloqueado $currentStatus -> $status');
+        return;
+      }
+      _orders[index] = _orders[index].copyWith(status: status);
+      _debouncedSave();
+      _throttledNotify();
+      debugPrint('v259: updateOrderStatusLocalOnly: $orderId -> $status (SEM publicar no Nostr)');
+    }
+  }
+
   // Atualizar status local E publicar no Nostr
   Future<void> updateOrderStatusLocal(String orderId, String status) async {
     final index = _orders.indexWhere((o) => o.id == orderId);

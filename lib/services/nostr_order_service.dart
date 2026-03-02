@@ -128,9 +128,13 @@ class NostrOrderService {
     'wss://relay.damus.io',
     'wss://nos.lol',
     'wss://relay.primal.net',
-    // 'wss://relay.nostr.band', // DESABILITADO: Retorna 0 eventos e causa timeouts
-    // 'wss://nostr.wine', // DESABILITADO: Rate limit 429 constante
-    // 'wss://relay.snort.social', // DESABILITADO: Causando timeouts frequentes
+  ];
+
+  // v259: Relays de fallback - usados SOMENTE quando os 3 principais falham
+  // Não são usados para publicação, apenas para leitura de emergência
+  static const List<String> _fallbackRelays = [
+    'wss://relay.nostr.band',
+    'wss://nostr.mom',
   ];
 
   // Kind para ordens Bro (usando addressable event para poder atualizar)
@@ -1987,10 +1991,11 @@ class NostrOrderService {
     final results = await Future.wait(futures, eagerError: false);
     
     // Processar resultados
+    int successfulRelays = 0;
     for (int i = 0; i < results.length; i++) {
       final relayOrders = results[i];
-      final relay = _relays[i];
       
+      if (relayOrders.isNotEmpty) successfulRelays++;
       for (final order in relayOrders) {
         final id = order['id'];
         if (!seenIds.contains(id)) {
@@ -1999,6 +2004,28 @@ class NostrOrderService {
         }
       }
     }
+    
+    // v259: Se NENHUM relay principal retornou dados, tentar fallback relays
+    if (orders.isEmpty && successfulRelays == 0) {
+      debugPrint('⚠️ fetchPendingOrdersRaw: 0 relays principais responderam, tentando fallback...');
+      final fallbackFutures = _fallbackRelays.map(
+        (relay) => _fetchPendingFromRelay(relay, sinceTimestamp)
+      ).toList();
+      final fallbackResults = await Future.wait(fallbackFutures, eagerError: false);
+      for (final relayOrders in fallbackResults) {
+        for (final order in relayOrders) {
+          final id = order['id'];
+          if (!seenIds.contains(id)) {
+            seenIds.add(id);
+            orders.add(order);
+          }
+        }
+      }
+      if (orders.isNotEmpty) {
+        debugPrint('✅ Fallback relays retornaram ${orders.length} ordens!');
+      }
+    }
+    
     return orders;
   }
   

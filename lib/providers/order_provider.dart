@@ -30,6 +30,7 @@ class OrderProvider with ChangeNotifier {
   bool _isSyncingUser = false; // Guard contra syncs concorrentes (modo usuÃÂ¡rio)
   bool _isSyncingProvider = false; // Guard contra syncs concorrentes (modo provedor)
   bool _autoRepairDoneThisSession = false; // v256: Auto-repair roda apenas UMA VEZ por sessao
+  final Set<String> _ordersNeedingUserPubkeyFix = {}; // v257: Ordens com userPubkey corrompido
   DateTime? _lastUserSyncTime; // Timestamp do ÃÂºltimo sync de usuÃÂ¡rio
   DateTime? _lastProviderSyncTime; // Timestamp do ÃÂºltimo sync de provedor
   static const int _minSyncIntervalSeconds = 15; // Intervalo mÃÂ­nimo entre syncs automÃÂ¡ticos
@@ -550,7 +551,25 @@ class OrderProvider with ChangeNotifier {
           }
         }
         
-        // Se houve migraÃÂ§ÃÂ£o, salvar
+        // v257: Corrigir userPubkey corrompido em ordens aceitas como provedor
+        // Quando a ordem tem userPubkey == currentUserPubkey E providerId == currentUserPubkey,
+        // o userPubkey esta errado (deveria ser o criador, nao o provedor)
+        if (_currentUserPubkey != null) {
+          for (int i = 0; i < _orders.length; i++) {
+            final order = _orders[i];
+            if (order.userPubkey == _currentUserPubkey &&
+                order.providerId == _currentUserPubkey) {
+              // userPubkey == providerId == eu => userPubkey esta errado
+              // Marcar para correcao durante proximo sync
+              debugPrint('v257-FIX: ordem  tem userPubkey corrompido (== providerId)');
+              needsMigration = true;
+              // Flag para republish posterior
+              _ordersNeedingUserPubkeyFix.add(order.id);
+            }
+          }
+        }
+        
+        // Se houve migracao, salvar
         if (needsMigration) {
           await _saveOrders();
         }
@@ -712,6 +731,7 @@ class OrderProvider with ChangeNotifier {
     await _saveOrders();
     
     // Publicar cancelamento no Nostr
+    // v257: SEMPRE incluir providerId e orderUserPubkey para tags #p corretas
     try {
       final privateKey = _nostrService.privateKey;
       if (privateKey != null) {
@@ -719,6 +739,8 @@ class OrderProvider with ChangeNotifier {
           privateKey: privateKey,
           orderId: orderId,
           newStatus: 'cancelled',
+          providerId: order.providerId,
+          orderUserPubkey: order.userPubkey,
         );
       }
     } catch (e) {
@@ -1317,6 +1339,9 @@ class OrderProvider with ChangeNotifier {
         providerOrders: providerOrders,
       );
       
+      // v257: Corrigir ordens com userPubkey corrompido
+      await _fixCorruptedUserPubkeys();
+      
       // AUTO-LIQUIDAÃâ¡ÃÆO: Verificar ordens awaiting_confirmation com prazo expirado
       await _checkAutoLiquidation();
       
@@ -1416,7 +1441,9 @@ class OrderProvider with ChangeNotifier {
       await _saveOrders();
       _throttledNotify();
       
-      // IMPORTANTE: Publicar atualizaÃÂ§ÃÂ£o no Nostr para sincronizaÃÂ§ÃÂ£o P2P
+      // IMPORTANTE: Publicar no Nostr para sincronizacao P2P
+      // v257: SEMPRE incluir providerId e orderUserPubkey para tags #p corretas
+      final orderForUpdate = _orders[index];
       final privateKey = _nostrService.privateKey;
       if (privateKey != null) {
         try {
@@ -1424,6 +1451,8 @@ class OrderProvider with ChangeNotifier {
             privateKey: privateKey,
             orderId: orderId,
             newStatus: status,
+            providerId: orderForUpdate.providerId,
+            orderUserPubkey: orderForUpdate.userPubkey,
           );
           if (success) {
           } else {
@@ -1474,7 +1503,38 @@ class OrderProvider with ChangeNotifier {
       // nao consegue descobrir a ordem em disputa nos relays
       final existingForUpdate = getOrderById(orderId);
       final effectiveProviderIdForUpdate = providerId ?? existingForUpdate?.providerId;
-      final orderUserPubkeyForUpdate = existingForUpdate?.userPubkey;
+      String? orderUserPubkeyForUpdate = existingForUpdate?.userPubkey;
+      
+      // v257: SAFEGUARD CRITICO - Se orderUserPubkey == currentUserPubkey
+      // E currentUser NAO eh o criador da ordem (eh o provedor),
+      // entao userPubkey esta errado e precisa ser corrigido.
+      // Isso acontece quando o provedor publicou um update e o userPubkey
+      // foi setado como o provedor em vez do criador original.
+      if (orderUserPubkeyForUpdate != null &&
+          orderUserPubkeyForUpdate == _currentUserPubkey &&
+          effectiveProviderIdForUpdate == _currentUserPubkey) {
+        debugPrint('\xe2\x9a\xa0\xef\xb8\x8f [updateOrderStatus] orderUserPubkey == currentUser == providerId! Buscando criador real do Nostr...');
+        try {
+          final originalOrderData = await _nostrOrderService.fetchOrderFromNostr(orderId).timeout(
+            const Duration(seconds: 5),
+            onTimeout: () => null,
+          );
+          if (originalOrderData != null) {
+            final realUserPubkey = originalOrderData['userPubkey'] as String?;
+            if (realUserPubkey != null && realUserPubkey.isNotEmpty && realUserPubkey != _currentUserPubkey) {
+              orderUserPubkeyForUpdate = realUserPubkey;
+              debugPrint('\xe2\x9c\x85 [updateOrderStatus] userPubkey corrigido para ');
+              // Corrigir localmente tambem
+              final fixIdx = _orders.indexWhere((o) => o.id == orderId);
+              if (fixIdx != -1) {
+                _orders[fixIdx] = _orders[fixIdx].copyWith(userPubkey: realUserPubkey);
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint('\xe2\x9a\xa0\xef\xb8\x8f [updateOrderStatus] Falha ao buscar criador real: ');
+        }
+      }
       
       if (privateKey != null && privateKey.isNotEmpty) {
         
@@ -1787,6 +1847,77 @@ class OrderProvider with ChangeNotifier {
       }
     } catch (e) {
       debugPrint('v257-FIX: EXCEPTION: $e');
+    }
+  }
+
+  /// v257: Corrigir ordens com userPubkey corrompido e republicar nos relays
+  /// Quando o provedor publicou um update, o userPubkey no content/tag ficou errado
+  /// (apontava para o provedor em vez do criador da ordem).
+  /// Este metodo busca o criador real no Nostr e republica o evento corrigido.
+  Future<void> _fixCorruptedUserPubkeys() async {
+    if (_ordersNeedingUserPubkeyFix.isEmpty) return;
+    if (_currentUserPubkey == null) return;
+    
+    final privateKey = _nostrService.privateKey;
+    if (privateKey == null) return;
+    
+    debugPrint('v257-FIX:  ordens com userPubkey corrompido');
+    
+    int fixed = 0;
+    final orderIdsToFix = List<String>.from(_ordersNeedingUserPubkeyFix);
+    
+    for (final orderId in orderIdsToFix) {
+      try {
+        // Buscar a ordem original no Nostr para obter o userPubkey correto
+        final originalData = await _nostrOrderService.fetchOrderFromNostr(orderId).timeout(
+          const Duration(seconds: 5),
+          onTimeout: () => null,
+        );
+        
+        if (originalData == null) {
+          debugPrint('v257-FIX:  - nao encontrado no Nostr');
+          continue;
+        }
+        
+        final realUserPubkey = originalData['userPubkey'] as String?;
+        if (realUserPubkey == null || realUserPubkey.isEmpty || realUserPubkey == _currentUserPubkey) {
+          debugPrint('v257-FIX:  - userPubkey do Nostr tambem invalido');
+          continue;
+        }
+        
+        // Corrigir localmente
+        final idx = _orders.indexWhere((o) => o.id == orderId);
+        if (idx != -1) {
+          final order = _orders[idx];
+          _orders[idx] = order.copyWith(userPubkey: realUserPubkey);
+          debugPrint('v257-FIX:  userPubkey corrigido para ');
+          
+          // Republicar evento com tags corretas
+          final success = await _nostrOrderService.updateOrderStatus(
+            privateKey: privateKey,
+            orderId: orderId,
+            newStatus: order.status,
+            providerId: order.providerId,
+            orderUserPubkey: realUserPubkey,
+          );
+          
+          if (success) {
+            fixed++;
+            _ordersNeedingUserPubkeyFix.remove(orderId);
+            debugPrint('v257-FIX:  republicado com sucesso');
+          }
+        }
+        
+        // Delay entre correcoes
+        await Future.delayed(const Duration(milliseconds: 300));
+      } catch (e) {
+        debugPrint('v257-FIX:  erro: ');
+      }
+    }
+    
+    if (fixed > 0) {
+      debugPrint('v257-FIX:  ordens corrigidas e republicadas');
+      await _saveOrders();
     }
   }
 
@@ -2653,6 +2784,10 @@ class OrderProvider with ChangeNotifier {
         userOrders: nostrOrders,
         providerOrders: <Order>[],
       );
+      
+      // v257: Corrigir ordens com userPubkey corrompido
+      await _fixCorruptedUserPubkeys();
+      
       // Ordenar por data (mais recente primeiro)
       _orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       

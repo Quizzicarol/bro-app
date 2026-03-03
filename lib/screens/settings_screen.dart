@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -52,7 +53,175 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     // Sem feedback visual - acesso admin totalmente oculto
   }
-  
+
+  void _showNotificationGuide(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1A1A2E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.75,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) => SingleChildScrollView(
+          controller: scrollController,
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 20),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[600],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const Row(
+                children: [
+                  Icon(Icons.notifications_active, color: Colors.amber, size: 28),
+                  SizedBox(width: 12),
+                  Text(
+                    'Notificações em segundo plano',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Para receber notificações de novas ordens mesmo com o app fechado, '
+                'é necessário desativar a otimização de bateria para o Bro.',
+                style: TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+              const SizedBox(height: 24),
+              _buildGuideSection(
+                'Passo 1 — Abrir Configurações do celular',
+                'Vá em Configurações > Apps (ou Aplicativos) > Bro',
+                Icons.settings,
+              ),
+              _buildGuideSection(
+                'Passo 2 — Bateria',
+                'Toque em "Bateria" (ou "Uso de bateria")',
+                Icons.battery_std,
+              ),
+              _buildGuideSection(
+                'Passo 3 — Sem restrições',
+                'Selecione "Sem restrições" (ou "Não otimizado")',
+                Icons.battery_charging_full,
+              ),
+              const Divider(color: Colors.white24, height: 32),
+              const Text(
+                'Samsung — Passo extra',
+                style: TextStyle(
+                  color: Colors.amber,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _buildGuideSection(
+                'Apps que nunca entram em suspensão',
+                'Configurações > Cuidados com dispositivo > Bateria > '
+                'Apps que nunca entram em suspensão > Adicionar > Bro',
+                Icons.phone_android,
+              ),
+              const SizedBox(height: 24),
+              if (Platform.isAndroid)
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      try {
+                        const platform = MethodChannel('com.pagaconta.mobile/settings');
+                        await platform.invokeMethod('openBatterySettings');
+                      } catch (_) {
+                        // If method channel fails, show fallback message
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Abra manualmente: Configurações > Apps > Bro > Bateria'),
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.open_in_new),
+                    label: const Text('Abrir Configurações de Bateria'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.amber,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 16),
+              Center(
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Entendi', style: TextStyle(color: Colors.amber, fontSize: 16)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGuideSection(String title, String description, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.amber.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: Colors.amber, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  description,
+                  style: const TextStyle(color: Colors.white60, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showAdminPasswordDialog() {
     final passwordController = TextEditingController();
     bool obscure = true;
@@ -796,6 +965,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             vertical: 10,
                           ),
                           onTap: () => Navigator.pushNamed(context, '/nip06-backup'),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 30),
+
+                  // Notificações
+                  const Text(
+                    'Notificações',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.orange,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  Card(
+                    elevation: 0,
+                    color: const Color(0xFF1A1A1A),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: Colors.orange.withOpacity(0.2)),
+                    ),
+                    child: Column(
+                      children: [
+                        ListTile(
+                          leading: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.notifications_active, color: Colors.amber),
+                          ),
+                          title: const Text('Ativar Notificações em Segundo Plano', style: TextStyle(color: Colors.white)),
+                          subtitle: const Text('Receba alertas mesmo com o app fechado', style: TextStyle(color: Colors.white54)),
+                          trailing: const Icon(Icons.chevron_right, color: Colors.white38),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 10,
+                          ),
+                          onTap: () => _showNotificationGuide(context),
                         ),
                       ],
                     ),

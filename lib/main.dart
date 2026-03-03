@@ -37,6 +37,7 @@ import 'providers/theme_provider.dart';
 import 'widgets/alfa_banner.dart';
 
 import 'services/nostr_service.dart';
+import 'services/background_notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -63,6 +64,10 @@ void main() async {
     await _restoreNostrKeys(storage);
     userPubkey = await storage.getNostrPublicKey();
     debugPrint('📦 Pubkey para OrderProvider: ${userPubkey?.substring(0, 16) ?? "null"}...');
+    
+    // v262: Iniciar background notifications (polling Nostr a cada 15min)
+    await initBackgroundNotifications();
+    debugPrint('🔔 Background notifications ativado');
   }
 
   // Breez SDK sera inicializado no provider (lazy initialization)

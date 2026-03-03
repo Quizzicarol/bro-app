@@ -146,15 +146,20 @@ Future<void> _checkNostrForNewEvents() async {
   if (isProvider) {
     final orderEvents = await _queryRelaysForEvents(
       kinds: [_kindBroOrder],
-      tags: {'#t': ['bro-order'], '#status': ['pending']},
+      tags: {'#t': ['bro-order']}, // NAO usar #status — relays nao indexam tags longas
       since: sinceTimestamp,
     );
-    // Filtrar ordens que nao sao do proprio provedor
+    // Filtrar: nao ser do proprio provedor + status pending
     for (final event in orderEvents) {
       final authorPubkey = event['pubkey']?.toString() ?? '';
-      if (authorPubkey != userPubkey) {
-        newEvents.add(event);
-      }
+      if (authorPubkey == userPubkey) continue; // Pular ordens proprias
+      
+      // Verificar status pending (filtro em memoria)
+      final content = event['parsedContent'] as Map<String, dynamic>? ?? {};
+      final status = content['status']?.toString() ?? _getTagValue(event, 'status') ?? 'pending';
+      if (status != 'pending') continue; // Pular ordens ja aceitas/completadas
+      
+      newEvents.add(event);
     }
   }
   

@@ -94,8 +94,12 @@ class RelayService {
     }
   }
 
-  /// Adicionar relay à lista ativa
+  /// Adicionar relay à lista ativa (apenas wss://)
   Future<void> addRelay(String url) async {
+    if (!url.startsWith('wss://')) {
+      debugPrint('❌ Relay rejeitado: apenas wss:// é permitido ($url)');
+      return;
+    }
     if (!_activeRelays.contains(url)) {
       _activeRelays.add(url);
       await _storage.saveRelays(_activeRelays);

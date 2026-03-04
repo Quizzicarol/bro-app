@@ -1,0 +1,40 @@
+#!/bin/sh
+# Bro App - Pre-commit hook
+# Scans for secrets before allowing commits
+#
+# Setup:
+#   git config core.hooksPath .githooks
+#
+# Requires gitleaks: https://github.com/gitleaks/gitleaks#installing
+
+# Check if gitleaks is installed
+if command -v gitleaks >/dev/null 2>&1; then
+    echo "🔍 Running gitleaks scan..."
+    gitleaks protect --staged --config .gitleaks.toml --verbose
+    if [ $? -ne 0 ]; then
+        echo ""
+        echo "❌ SECRETS DETECTED! Commit blocked."
+        echo "   Review the findings above and remove sensitive data."
+        echo "   If this is a false positive, add it to .gitleaks.toml allowlist."
+        echo ""
+        exit 1
+    fi
+    echo "✅ No secrets found."
+else
+    echo "⚠️  gitleaks not installed. Skipping secret scan."
+    echo "   Install: https://github.com/gitleaks/gitleaks#installing"
+fi
+
+# Check for common sensitive files
+SENSITIVE_FILES="env.json key.properties bro-release.b64 .env"
+for file in $SENSITIVE_FILES; do
+    if git diff --cached --name-only | grep -q "^${file}$"; then
+        echo ""
+        echo "❌ BLOCKED: Attempting to commit sensitive file: $file"
+        echo "   This file should remain in .gitignore."
+        echo ""
+        exit 1
+    fi
+done
+
+exit 0

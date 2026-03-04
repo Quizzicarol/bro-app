@@ -191,15 +191,12 @@ class StorageService {
       }
     }
     
-    // BACKUP 1: SecureStorage com chave POR USUÁRIO
+    // SecureStorage com chave POR USUÁRIO (único local seguro)
     await _secureStorage.write(key: seedKey, value: mnemonic);
     
-    // BACKUP 2: SharedPreferences com ofuscação POR USUÁRIO
-    final obfuscated = _obfuscateSeed(mnemonic);
-    await _prefs?.setString(backupKey, obfuscated);
-    
-    // NÃO salvar mais em MASTER_SEED ou breez_mnemonic global!
-    // Isso causava conflito entre seeds de diferentes usuários.
+    // SEGURANÇA: NÃO salvar mais em SharedPreferences (XOR não é criptografia)
+    // Limpar backup inseguro se existir (migração)
+    await _prefs?.remove(backupKey);
     
     debugPrint('🔐 Seed salva para usuário com sucesso');
   }
@@ -267,11 +264,12 @@ class StorageService {
       if (backupObfuscated != null && backupObfuscated.isNotEmpty) {
         mnemonic = _deobfuscateSeed(backupObfuscated);
         if (mnemonic.isNotEmpty && mnemonic.split(' ').length == 12) {
-          debugPrint('✅ Seed encontrada (Fonte 2 - backup)');
-          // Restaurar no SecureStorage
+          debugPrint('✅ Seed encontrada (Fonte 2 - backup), migrando para SecureStorage');
+          // Migrar para SecureStorage e APAGAR backup inseguro
           if (pubkey != null) {
             await _secureStorage.write(key: _getSeedKeyForUser(pubkey), value: mnemonic);
           }
+          await _prefs?.remove(backupKey);
           return mnemonic;
         }
       }
@@ -318,23 +316,31 @@ class StorageService {
       return mnemonic;
     }
     
-    // FONTE 4: SharedPrefs MASTER
+    // FONTE 4: SharedPrefs MASTER (migrar e apagar)
     final masterPrefs = _prefs?.getString('MASTER_SEED_PREFS');
     if (masterPrefs != null && masterPrefs.isNotEmpty) {
       mnemonic = _deobfuscateSeed(masterPrefs);
       if (mnemonic.isNotEmpty && mnemonic.split(' ').length == 12) {
-        debugPrint('✅ FONTE 4: Seed encontrada no MASTER PREFS!');
+        debugPrint('✅ FONTE 4: Seed migrada do MASTER PREFS para SecureStorage');
+        if (pubkey != null) {
+          await _secureStorage.write(key: _getSeedKeyForUser(pubkey), value: mnemonic);
+        }
+        await _prefs?.remove('MASTER_SEED_PREFS');
         return mnemonic;
       }
     }
     
-    // FONTE 4.5: Emergency backup
+    // FONTE 4.5: Emergency backup (migrar e apagar)
     final emergencyBackup = _prefs?.getString('SEED_BACKUP_EMERGENCY');
     debugPrint('   [4.5] SEED_BACKUP_EMERGENCY: ${emergencyBackup != null ? "EXISTE" : "NULL"}');
     if (emergencyBackup != null && emergencyBackup.isNotEmpty) {
       mnemonic = _deobfuscateSeed(emergencyBackup);
       if (mnemonic.isNotEmpty && mnemonic.split(' ').length == 12) {
-        debugPrint('✅ FONTE 4.5: Seed encontrada no EMERGENCY BACKUP!');
+        debugPrint('✅ FONTE 4.5: Seed migrada do EMERGENCY BACKUP para SecureStorage');
+        if (pubkey != null) {
+          await _secureStorage.write(key: _getSeedKeyForUser(pubkey), value: mnemonic);
+        }
+        await _prefs?.remove('SEED_BACKUP_EMERGENCY');
         return mnemonic;
       }
     }
@@ -347,7 +353,7 @@ class StorageService {
       return mnemonic;
     }
     
-    // FONTE 6: Qualquer backup bm_backup_*
+    // FONTE 6: Qualquer backup bm_backup_* (migrar e apagar)
     final allKeys = _prefs?.getKeys() ?? {};
     debugPrint('   [6] Buscando em ${allKeys.length} chaves do SharedPrefs...');
     for (final key in allKeys) {
@@ -356,8 +362,11 @@ class StorageService {
         if (obfuscated != null) {
           mnemonic = _deobfuscateSeed(obfuscated);
           if (mnemonic.isNotEmpty && mnemonic.split(' ').length == 12) {
-            debugPrint('✅ FONTE 6: Seed encontrada em $key!');
-            debugPrint('   Seed encontrada em $key');
+            debugPrint('✅ FONTE 6: Seed migrada de $key para SecureStorage');
+            if (pubkey != null) {
+              await _secureStorage.write(key: _getSeedKeyForUser(pubkey), value: mnemonic);
+            }
+            await _prefs?.remove(key);
             return mnemonic;
           }
         }

@@ -8,6 +8,7 @@ import '../providers/order_provider.dart';
 import '../services/nip44_service.dart';
 import '../services/nostr_order_service.dart';
 import '../services/storage_service.dart';
+import '../services/api_service.dart';
 
 /// Tela de detalhes de disputa para o mediador (admin)
 /// Mostra TODOS os dados da disputa, comprovante, e controles de resolução
@@ -43,6 +44,9 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
   int _userDisputeLosses = 0;
   int _providerDisputeLosses = 0;
   bool _loadingLosses = false;
+
+  // Phase 4: AI Agent suggestion
+  Map<String, dynamic>? _agentAnalysis;
   
   String get orderId => widget.dispute['orderId'] as String? ?? '';
   String get reason => widget.dispute['reason'] as String? ?? 'Não informado';
@@ -87,6 +91,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
     _fetchAllEvidence(); // v236
     _fetchDisputeLosses(); // v247
     _fetchExistingResolution(); // v248: Verificar se já foi resolvida
+    _fetchAgentAnalysis(); // Phase 4: AI Agent
   }
   
   /// v248: Verifica se a disputa já foi resolvida anteriormente
@@ -337,7 +342,11 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
                   
                   // v235: Histórico de mensagens de mediação
                   _buildMessageHistory(),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16),
+                  
+                  // Phase 4: Sugestão do AI Agent
+                  if (!_isResolved) _buildAgentSuggestion(),
+                  if (!_isResolved) const SizedBox(height: 16),
                   
                   // Botões de resolução
                   if (!_isResolved) _buildResolutionButtons(),
@@ -1458,6 +1467,135 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
         );
       }
     }
+  }
+
+  // ========== Phase 4: AI Agent Suggestion ==========
+
+  Future<void> _fetchAgentAnalysis() async {
+    if (orderId.isEmpty) return;
+    try {
+      final analysis = await ApiService().getAgentAnalysis(orderId);
+      if (analysis != null && analysis['success'] == true && mounted) {
+        setState(() => _agentAnalysis = analysis['analysis'] as Map<String, dynamic>?);
+      }
+    } catch (e) {
+      debugPrint('⚠️ Agent analysis não disponível: $e');
+    }
+  }
+
+  Widget _buildAgentSuggestion() {
+    if (_agentAnalysis == null) return const SizedBox.shrink();
+
+    final confidence = (_agentAnalysis!['confidence'] ?? 0.0) as num;
+    final recommendation = _agentAnalysis!['recommendation'] ?? '';
+    final reason = _agentAnalysis!['reason'] ?? '';
+    final tier = _agentAnalysis!['tier'] ?? 0;
+
+    Color confidenceColor;
+    if (confidence >= 0.9) {
+      confidenceColor = Colors.green;
+    } else if (confidence >= 0.6) {
+      confidenceColor = Colors.amber;
+    } else {
+      confidenceColor = Colors.red;
+    }
+
+    String recLabel;
+    IconData recIcon;
+    switch (recommendation) {
+      case 'refund_buyer':
+        recLabel = 'Reembolsar Comprador';
+        recIcon = Icons.person;
+        break;
+      case 'release_to_seller':
+        recLabel = 'Liberar ao Vendedor';
+        recIcon = Icons.storefront;
+        break;
+      case 'split':
+        recLabel = 'Dividir Valor';
+        recIcon = Icons.call_split;
+        break;
+      default:
+        recLabel = recommendation;
+        recIcon = Icons.help_outline;
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.purple.withOpacity(0.15), Colors.blue.withOpacity(0.05)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.purple.withOpacity(0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.smart_toy, color: Colors.purple, size: 20),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Sugestão do AI Agent',
+                  style: TextStyle(
+                    color: Colors.purple,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: confidenceColor.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${(confidence * 100).toStringAsFixed(0)}%',
+                  style: TextStyle(
+                    color: confidenceColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Icon(recIcon, color: Colors.white70, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                recLabel,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '(Tier $tier)',
+                style: const TextStyle(color: Colors.white38, fontSize: 12),
+              ),
+            ],
+          ),
+          if (reason.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              reason,
+              style: const TextStyle(color: Colors.white54, fontSize: 12),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   Widget _buildResolutionButtons() {

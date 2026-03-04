@@ -129,12 +129,8 @@ class StorageService {
     return 'bm_backup_${pubkey.substring(0, 16)}';
   }
   
-  // Ofusca a seed para armazenamento secundário (não é criptografia forte, apenas ofuscação)
-  String _obfuscateSeed(String seed) {
-    final bytes = utf8.encode(seed);
-    final obfuscated = bytes.map((b) => b ^ 0x5A).toList(); // XOR simples
-    return base64.encode(obfuscated);
-  }
+  // _obfuscateSeed removido na v268 (Phase 2 security - XOR não é criptografia)
+  // Mantido apenas _deobfuscateSeed para migração de backups antigos
   
   String _deobfuscateSeed(String obfuscated) {
     try {
@@ -518,18 +514,18 @@ class StorageService {
       debugPrint('   ⚠️ Erro ao limpar dados por usuário: $e');
     }
     
-    // PRIMEIRO: Garantir que a seed atual está salva em TODOS os backups
+    // PRIMEIRO: Garantir que a seed atual está salva no SecureStorage
     final currentSeed = await getBreezMnemonic();
     if (currentSeed != null && currentSeed.split(' ').length == 12) {
-      debugPrint('   🔐 Fazendo backup extra da seed atual antes do logout...');
+      debugPrint('   🔐 Fazendo backup da seed em SecureStorage antes do logout...');
       
-      // Salvar em TODOS os locais de backup
+      // Salvar APENAS em SecureStorage (seguro)
       await _secureStorage.write(key: _masterSeedKey, value: currentSeed);
       await _secureStorage.write(key: 'breez_mnemonic', value: currentSeed);
       
-      final obfuscated = _obfuscateSeed(currentSeed);
-      await _prefs?.setString('MASTER_SEED_PREFS', obfuscated);
-      await _prefs?.setString('SEED_BACKUP_EMERGENCY', obfuscated);
+      // Remover backups inseguros (XOR) se existirem
+      await _prefs?.remove('MASTER_SEED_PREFS');
+      await _prefs?.remove('SEED_BACKUP_EMERGENCY');
     }
     
     // Preservar TODAS as seeds e backups antes de limpar
@@ -537,13 +533,14 @@ class StorageService {
     final dataToPreserve = <String, String>{};
     
     for (final key in allKeys) {
-      // Preservar TUDO relacionado a seeds
+      // Preservar dados relacionados a seeds que ainda possam estar em SharedPrefs
+      // (backups legados de migração - NÃO incluir XOR obfuscated)
       if (key.startsWith('bm_backup_') || 
           key.startsWith('breez_seed_') ||
-          key == 'MASTER_SEED_PREFS' ||
-          key == 'SEED_BACKUP_EMERGENCY' ||
           key.contains('seed') ||
           key.contains('mnemonic')) {
+        // Ignorar backups XOR inseguros (já migrados para SecureStorage)
+        if (key == 'MASTER_SEED_PREFS' || key == 'SEED_BACKUP_EMERGENCY') continue;
         // IMPORTANTE: Verificar se é realmente String antes de fazer cast
         try {
           final rawValue = _prefs?.get(key);

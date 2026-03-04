@@ -102,7 +102,12 @@ class EscrowService {
       debugPrint('🧪 Modo teste: releaseEscrow simulado para ordem $orderId');
       return;
     }
-    await http.post(Uri.parse('$baseUrl/escrow/release'), headers: {'Content-Type': 'application/json'}, body: json.encode({'escrow_id': escrowId, 'order_id': orderId, 'provider_id': providerId}));
+    try {
+      await http.post(Uri.parse('$baseUrl/escrow/release'), headers: {'Content-Type': 'application/json'}, body: json.encode({'escrow_id': escrowId, 'order_id': orderId, 'provider_id': providerId})).timeout(const Duration(seconds: 15));
+    } catch (e) {
+      debugPrint('⚠️ Erro ao liberar escrow no backend: $e');
+      debugPrint('   Sats já foram pagos via Lightning - escrow release é apenas bookkeeping');
+    }
   }
 
   Future<bool> validateProviderCanAcceptOrder({required String providerId, required double orderValueBrl}) async {

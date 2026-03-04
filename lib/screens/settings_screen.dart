@@ -299,6 +299,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
   
   void _validateAdminPassword(String password) {
+    if (_adminPasswordHash.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Admin não configurado neste build'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+    
     final inputHash = sha256.convert(utf8.encode(password)).toString();
     
     if (inputHash == _adminPasswordHash) {

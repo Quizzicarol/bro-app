@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../providers/order_provider.dart';
 import '../services/nip44_service.dart';
 import '../services/nostr_order_service.dart';
+import '../services/storage_service.dart';
 
 /// Tela de detalhes de disputa para o mediador (admin)
 /// Mostra TODOS os dados da disputa, comprovante, e controles de resolução
@@ -92,13 +93,28 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
   Future<void> _fetchExistingResolution() async {
     if (orderId.isEmpty) return;
     try {
+      // 1. Verificar resolução LOCAL primeiro (mais confiável que relay)
+      final locallyResolved = await StorageService().isDisputeResolved(orderId);
+      if (locallyResolved && mounted) {
+        setState(() {
+          _isResolved = true;
+        });
+        final localRes = await StorageService().getLocalDisputeResolution(orderId);
+        debugPrint('⚖️ Disputa $orderId já resolvida (local): $localRes');
+        return;
+      }
+      
+      // 2. Verificar no relay Nostr
       final nostrService = NostrOrderService();
       final resolution = await nostrService.fetchDisputeResolution(orderId);
       if (resolution != null && mounted) {
         setState(() {
           _isResolved = true;
         });
-        debugPrint('⚖️ Disputa $orderId já resolvida: ${resolution['resolution']}');
+        // Persistir localmente para futuras consultas
+        final resText = resolution['resolution'] as String? ?? 'resolved';
+        await StorageService().markDisputeResolved(orderId, resText);
+        debugPrint('⚖️ Disputa $orderId já resolvida (Nostr): ${resolution['resolution']}');
       }
     } catch (e) {
       debugPrint('⚠️ Erro ao verificar resolução existente: $e');

@@ -1355,7 +1355,7 @@ class OrderProvider with ChangeNotifier {
       // As ordens de outros ficam apenas em memÃÂ³ria (para visualizaÃÂ§ÃÂ£o do provedor)
       _debouncedSave();
       _lastProviderSyncTime = DateTime.now();
-      _throttledNotify();
+      _immediateNotify(); // v269: provider sync sempre notifica imediatamente
       
     } catch (e) {
     } finally {
@@ -2818,6 +2818,7 @@ class OrderProvider with ChangeNotifier {
       }
       
       if (statusUpdated > 0) {
+        _immediateNotify(); // v269: notificar UI imediatamente quando status muda
       }
       
       // AUTO-LIQUIDAÇÃO v234: Também verificar no sync do usuário

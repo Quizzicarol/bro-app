@@ -168,26 +168,12 @@ function verifyNip98Event(event, req) {
 
 /**
  * Verifica formato legado com headers customizados.
- * Verifica apenas que o pubkey tem formato válido (hex, 64 chars).
  * 
- * NOTA: Sem o evento completo, não conseguimos verificar a assinatura.
- * Esta é uma verificação fraca — leve em conta no design de segurança.
- * Quando o app migrar para NIP-98 padrão, este fallback deve ser removido.
+ * REMOVIDO na v270 (Phase 3 Security) — formato legado não verifica assinatura.
+ * Todas as requests devem usar NIP-98 padrão com evento base64 completo.
  */
 function verifyLegacyHeaders(pubkey, signature, eventId) {
-  // Validar formato da pubkey (hex, 64 chars)
-  if (!pubkey || !/^[0-9a-f]{64}$/i.test(pubkey)) {
-    return { valid: false, reason: 'Pubkey inválida (deve ser hex de 64 chars)' };
-  }
-  
-  // Validar formato da signature (hex, 128 chars)
-  if (!signature || !/^[0-9a-f]{128}$/i.test(signature)) {
-    return { valid: false, reason: 'Signature inválida (deve ser hex de 128 chars)' };
-  }
-  
-  // NOTA: Não podemos verificar a assinatura sem o evento completo
-  // Aceitar condicionalmente com flag para distinção
-  return { valid: true, pubkey: pubkey.toLowerCase() };
+  return { valid: false, reason: 'Formato legado descontinuado. Use NIP-98 padrão (Authorization: Nostr <base64-event>)' };
 }
 
 module.exports = { requireAuth, optionalAuth, verifyRequest };

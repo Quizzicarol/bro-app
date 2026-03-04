@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { escrows } = require('../models/database');
+const { orders } = require('../models/database');
 
 // POST /escrow/create - Criar escrow com Bitcoin do usuário
 router.post('/create', async (req, res) => {
@@ -15,7 +16,11 @@ router.post('/create', async (req, res) => {
         required: ['orderId', 'btcAmount']
       });
     }
-
+    // v270: Validação de range
+    const btcAmountParsed = parseFloat(btcAmount);
+    if (isNaN(btcAmountParsed) || btcAmountParsed <= 0 || btcAmountParsed > 1) {
+      return res.status(400).json({ error: 'btcAmount deve ser entre 0 e 1 BTC' });
+    }
     const escrow = {
       id: orderId,
       userId,
@@ -44,10 +49,10 @@ router.post('/create', async (req, res) => {
 router.post('/release', async (req, res) => {
   try {
     const { orderId } = req.body;
-    // SEGURANÇA: Usar pubkey verificada como providerId
-    const providerId = req.verifiedPubkey;
+    // SEGURANÇA: Usar pubkey verificada como caller
+    const callerPubkey = req.verifiedPubkey;
 
-    if (!orderId || !providerId) {
+    if (!orderId || !callerPubkey) {
       return res.status(400).json({ 
         error: 'Campos obrigatórios faltando',
         required: ['orderId']
@@ -65,6 +70,17 @@ router.post('/release', async (req, res) => {
         error: 'Escrow já foi liberado',
         currentStatus: escrow.status
       });
+    }
+
+    // SEGURANÇA v270: Verificar que o caller é o dono do escrow (usuário que criou)
+    // Apenas o usuário que depositou pode liberar os fundos
+    if (escrow.userId !== callerPubkey) {
+      // Verificar também se é o provedor da ordem associada
+      const order = orders.get(orderId);
+      if (!order || order.providerId !== callerPubkey) {
+        console.warn(`🔒 Escrow release rejeitado: caller ${callerPubkey.substring(0, 8)} não é dono nem provedor`);
+        return res.status(403).json({ error: 'Sem permissão para liberar este escrow' });
+      }
     }
 
     // Calcular fees

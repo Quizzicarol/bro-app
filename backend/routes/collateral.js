@@ -18,6 +18,12 @@ router.post('/deposit', async (req, res) => {
       });
     }
 
+    // v270: Validação de range
+    const satsParsed = parseInt(amountSats);
+    if (isNaN(satsParsed) || satsParsed <= 0 || satsParsed > 10000000) {
+      return res.status(400).json({ error: 'amountSats deve ser entre 1 e 10.000.000' });
+    }
+
     // Gerar invoice Lightning (simulado)
     const invoiceId = uuidv4();
     const invoice = `lnbc${amountSats}n1...`; // Invoice fake para exemplo

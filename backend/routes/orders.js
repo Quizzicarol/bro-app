@@ -26,6 +26,19 @@ router.post('/create', async (req, res) => {
       });
     }
 
+    // v270: Validação de range
+    const billValueParsed = parseFloat(billValue);
+    const btcAmountParsed = parseFloat(btcAmount);
+    if (isNaN(billValueParsed) || billValueParsed <= 0 || billValueParsed > 100000) {
+      return res.status(400).json({ error: 'billValue deve ser entre 0 e R$ 100.000' });
+    }
+    if (isNaN(btcAmountParsed) || btcAmountParsed <= 0 || btcAmountParsed > 1) {
+      return res.status(400).json({ error: 'btcAmount deve ser entre 0 e 1 BTC' });
+    }
+    if (!['pix', 'boleto'].includes(paymentType)) {
+      return res.status(400).json({ error: 'paymentType deve ser pix ou boleto' });
+    }
+
     // Criar ordem
     const orderId = uuidv4();
     const now = new Date();
@@ -303,11 +316,19 @@ router.post('/:orderId/validate', async (req, res) => {
   try {
     const { orderId } = req.params;
     const { approved, rejectionReason } = req.body;
+    // SEGURANÇA v270: Verificar que o caller é o dono da ordem (usuário)
+    const callerPubkey = req.verifiedPubkey;
 
     const order = orders.get(orderId);
 
     if (!order) {
       return res.status(404).json({ error: 'Ordem não encontrada' });
+    }
+
+    // Apenas o dono da ordem pode validar o pagamento
+    if (order.userId !== callerPubkey) {
+      console.warn(`🔒 Validate rejeitado: caller ${callerPubkey.substring(0, 8)} não é dono da ordem`);
+      return res.status(403).json({ error: 'Sem permissão para validar esta ordem' });
     }
 
     // Validar status

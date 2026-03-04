@@ -1,14 +1,18 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
+import 'package:dio/dio.dart';
 import '../config.dart';
+import 'api_service.dart';
 
 class EscrowService {
   static String get baseUrl => AppConfig.defaultBackendUrl;
   
   /// Taxa do provedor Bro (3%) - usa o valor centralizado do AppConfig
   static double get providerFeePercent => AppConfig.providerFeePercent * 100;
+
+  /// Dio instance do ApiService (com NIP-98 auth)
+  Dio get _dio => ApiService().dio;
 
   Future<Map<String, dynamic>> depositCollateral({required String tierId, required int amountSats}) async {
     // Em modo teste, simular depósito de garantia
@@ -20,12 +24,13 @@ class EscrowService {
       };
     }
     
-    final response = await http.post(Uri.parse('$baseUrl/collateral/deposit'), headers: {'Content-Type': 'application/json'}, body: json.encode({'tier_id': tierId, 'amount_sats': amountSats}));
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return {'invoice': data['invoice'], 'deposit_id': data['deposit_id']};
+    try {
+      final response = await _dio.post('/collateral/deposit', data: {'tier_id': tierId, 'amount_sats': amountSats});
+      return {'invoice': response.data['invoice'], 'deposit_id': response.data['deposit_id']};
+    } catch (e) {
+      debugPrint('⚠️ Erro ao depositar garantia: $e');
+      rethrow;
     }
-    throw Exception('Failed');
   }
 
   Future<void> lockCollateral({required String providerId, required String orderId, required int lockedSats}) async {
@@ -36,17 +41,10 @@ class EscrowService {
     }
     
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/collateral/lock'), 
-        headers: {'Content-Type': 'application/json'}, 
-        body: json.encode({'provider_id': providerId, 'order_id': orderId, 'locked_sats': lockedSats}),
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          debugPrint('⏱️ Timeout ao travar garantia - continuando mesmo assim');
-          return http.Response('{}', 408); // Retorna timeout mas continua
-        },
-      );
+      final response = await _dio.post(
+        '/collateral/lock', 
+        data: {'order_id': orderId, 'locked_sats': lockedSats},
+      ).timeout(const Duration(seconds: 10));
       
       debugPrint('🔒 lockCollateral response: ${response.statusCode}');
     } catch (e) {
@@ -64,17 +62,10 @@ class EscrowService {
     }
     
     try {
-      await http.post(
-        Uri.parse('$baseUrl/collateral/unlock'), 
-        headers: {'Content-Type': 'application/json'}, 
-        body: json.encode({'provider_id': providerId, 'order_id': orderId}),
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          debugPrint('⏱️ Timeout ao liberar garantia - continuando mesmo assim');
-          return http.Response('{}', 408);
-        },
-      );
+      await _dio.post(
+        '/collateral/unlock', 
+        data: {'order_id': orderId},
+      ).timeout(const Duration(seconds: 10));
     } catch (e) {
       debugPrint('⚠️ Erro ao chamar unlockCollateral no backend: $e');
     }
@@ -91,9 +82,13 @@ class EscrowService {
       };
     }
     
-    final response = await http.post(Uri.parse('$baseUrl/escrow/create'), headers: {'Content-Type': 'application/json'}, body: json.encode({'order_id': orderId, 'user_id': userId, 'amount_sats': amountSats}));
-    if (response.statusCode == 200) return json.decode(response.body);
-    throw Exception('Failed');
+    try {
+      final response = await _dio.post('/escrow/create', data: {'order_id': orderId, 'amount_sats': amountSats});
+      return response.data as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('⚠️ Erro ao criar escrow: $e');
+      rethrow;
+    }
   }
 
   Future<void> releaseEscrow({required String escrowId, required String orderId, required String providerId}) async {
@@ -103,7 +98,7 @@ class EscrowService {
       return;
     }
     try {
-      await http.post(Uri.parse('$baseUrl/escrow/release'), headers: {'Content-Type': 'application/json'}, body: json.encode({'escrow_id': escrowId, 'order_id': orderId, 'provider_id': providerId})).timeout(const Duration(seconds: 15));
+      await _dio.post('/escrow/release', data: {'order_id': orderId}).timeout(const Duration(seconds: 15));
     } catch (e) {
       debugPrint('⚠️ Erro ao liberar escrow no backend: $e');
       debugPrint('   Sats já foram pagos via Lightning - escrow release é apenas bookkeeping');
@@ -122,9 +117,9 @@ class EscrowService {
     }
     
     try {
-      final response = await http.get(Uri.parse('$baseUrl/collateral/provider/$providerId'));
+      final response = await _dio.get('/collateral/provider/$providerId');
       if (response.statusCode == 200) {
-        return json.decode(response.body) as Map<String, dynamic>;
+        return response.data as Map<String, dynamic>;
       }
       return null;
     } catch (e) {

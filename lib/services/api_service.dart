@@ -1,4 +1,5 @@
 ﻿import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
@@ -27,6 +28,9 @@ class ApiService {
   String _baseUrl = AppConfig.defaultBackendUrl;
   final _nostrService = NostrService();
   final _storage = StorageService();
+
+  /// v270: Expor Dio para que EscrowService possa reusar (com NIP-98 auth)
+  Dio get dio => _dio;
 
   Future<void> init() async {
     _baseUrl = await _storage.getBackendUrl();
@@ -60,10 +64,18 @@ class ApiService {
             ],
           );
           
-          // Adicionar header de autenticaÃ§Ã£o
-          options.headers['Authorization'] = 'Nostr ${authEvent['id']}';
-          options.headers['X-Nostr-Signature'] = authEvent['sig'];
-          options.headers['X-Nostr-Pubkey'] = publicKey;
+          // Enviar evento NIP-98 completo como base64 (não apenas o eventId)
+          final eventJson = {
+            'id': authEvent['id'],
+            'pubkey': publicKey,
+            'created_at': authEvent['created_at'],
+            'kind': authEvent['kind'],
+            'tags': authEvent['tags'],
+            'content': authEvent['content'] ?? '',
+            'sig': authEvent['sig'],
+          };
+          final eventBase64 = base64Encode(utf8.encode(json.encode(eventJson)));
+          options.headers['Authorization'] = 'Nostr $eventBase64';
         }
         
         return handler.next(options);

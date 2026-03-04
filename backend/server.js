@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const bodyParser = require('body-parser');
 const cron = require('node-cron');
 const rateLimit = require('express-rate-limit');
@@ -17,6 +18,14 @@ const { checkExpiredOrders } = require('./services/orderExpirationService');
 
 const app = express();
 const PORT = process.env.PORT || 3002;
+
+// ============================================
+// Security Headers (helmet)
+// ============================================
+app.use(helmet({
+  contentSecurityPolicy: false, // API não serve HTML
+  crossOriginEmbedderPolicy: false,
+}));
 
 // ============================================
 // CORS — restringir origens em produção

@@ -51,7 +51,6 @@ class ApiService {
         final privateKey = _nostrService.privateKey;
         if (privateKey != null) {
           final publicKey = _nostrService.publicKey!;
-          final timestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
           
           // Criar token JWT simplificado baseado em Nostr
           final authEvent = _nostrService.createEvent(

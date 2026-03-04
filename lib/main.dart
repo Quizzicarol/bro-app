@@ -51,6 +51,9 @@ void main() async {
   // Inicializar PlatformFeeService (carrega ordens já pagas do storage)
   await PlatformFeeService.initialize();
 
+  // Inicializar ApiService (Dio + NIP-98 interceptor)
+  await ApiService().init();
+
   // Verificar se ja esta logado
   final storage = StorageService();
   await storage.init();

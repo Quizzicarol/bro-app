@@ -78,6 +78,39 @@ router.post('/create', async (req, res) => {
   }
 });
 
+// GET /orders/available - Listar ordens disponíveis para provedores
+// IMPORTANTE: Deve vir ANTES de /:orderId para não ser capturado como parâmetro
+router.get('/available', (req, res) => {
+  try {
+    const { providerId } = req.query;
+
+    const availableOrders = Array.from(orders.values())
+      .filter(order => {
+        // Apenas ordens pending e não expiradas
+        if (order.status !== 'pending') return false;
+        
+        const now = new Date();
+        const expiresAt = new Date(order.expiresAt);
+        if (now > expiresAt) return false;
+
+        return true;
+      })
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    console.log(`📋 Listando ${availableOrders.length} ordens disponíveis para provedor ${providerId || 'any'}`);
+
+    res.json({
+      success: true,
+      count: availableOrders.length,
+      orders: availableOrders
+    });
+
+  } catch (error) {
+    console.error('Erro ao listar ordens disponíveis:', error);
+    res.status(500).json({ error: 'Erro ao listar ordens', message: error.message });
+  }
+});
+
 // GET /orders/:orderId - Buscar ordem por ID
 router.get('/:orderId', (req, res) => {
   try {
@@ -176,38 +209,6 @@ router.post('/:orderId/cancel', async (req, res) => {
   } catch (error) {
     console.error('Erro ao cancelar ordem:', error);
     res.status(500).json({ error: 'Erro ao cancelar ordem', message: error.message });
-  }
-});
-
-// GET /orders/available - Listar ordens disponíveis para provedores
-router.get('/available', (req, res) => {
-  try {
-    const { providerId } = req.query;
-
-    const availableOrders = Array.from(orders.values())
-      .filter(order => {
-        // Apenas ordens pending e não expiradas
-        if (order.status !== 'pending') return false;
-        
-        const now = new Date();
-        const expiresAt = new Date(order.expiresAt);
-        if (now > expiresAt) return false;
-
-        return true;
-      })
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-    console.log(`📋 Listando ${availableOrders.length} ordens disponíveis para provedor ${providerId || 'any'}`);
-
-    res.json({
-      success: true,
-      count: availableOrders.length,
-      orders: availableOrders
-    });
-
-  } catch (error) {
-    console.error('Erro ao listar ordens disponíveis:', error);
-    res.status(500).json({ error: 'Erro ao listar ordens', message: error.message });
   }
 });
 

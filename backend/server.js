@@ -95,15 +95,15 @@ app.get('/health', (req, res) => {
 // Rotas protegidas (com auth NIP-98)
 // ============================================
 
+// Rate limiting mais restritivo para criação (ANTES das rotas)
+app.use('/orders/create', createLimiter);
+app.use('/collateral/deposit', createLimiter);
+app.use('/escrow/create', createLimiter);
+
 // Aplicar authenticação NIP-98 em todas as rotas de negócio
 app.use('/orders', requireAuth, ordersRoutes);
 app.use('/collateral', requireAuth, collateralRoutes);
 app.use('/escrow', requireAuth, escrowRoutes);
-
-// Rate limiting mais restritivo para criação
-app.use('/orders/create', createLimiter);
-app.use('/collateral/deposit', createLimiter);
-app.use('/escrow/create', createLimiter);
 
 // Job para verificar ordens expiradas (roda a cada 5 minutos)
 cron.schedule('*/5 * * * *', async () => {

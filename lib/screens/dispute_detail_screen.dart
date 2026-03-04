@@ -1660,6 +1660,9 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
         );
       }
       
+      // v270: Persistir resolução localmente para não depender do relay
+      await StorageService().markDisputeResolved(orderId, resolution);
+      
       setState(() => _isResolved = true);
       
       if (mounted) {

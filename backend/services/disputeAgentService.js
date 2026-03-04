@@ -94,7 +94,7 @@ const HEURISTIC_RULES = [
     id: 'duplicate_dispute',
     description: 'Dispute for same order already resolved',
     check: (dispute, context) => {
-      return context.alreadyResolved === true;
+      return !!context.alreadyResolved;
     },
     suggestion: 'skip',
     confidence: 1.0,

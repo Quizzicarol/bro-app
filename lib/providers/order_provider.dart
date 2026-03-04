@@ -132,18 +132,7 @@ class OrderProvider with ChangeNotifier {
       }
     }
     
-    // DEBUG CRÃÂTICO: Listar todas as ordens e seus providerIds
-    // v256 DEBUG: Listar TODAS as ordens para diagnosticar filtro
-    debugPrint('myAcceptedOrders: _orders.length=\, currentUser=');
-    for (final o in _orders) {
-      final isProvider = o.providerId == _currentUserPubkey;
-      final isOwner = o.userPubkey == _currentUserPubkey;
-      final passes = isProvider && !isOwner;
-      if (o.id.startsWith('d37757a8') || o.status == 'disputed') {
-        debugPrint('  MATCH ordem=\ status=\ providerId=\ userPubkey=\ isProvider=\ isOwner=\ PASSES=');
-      }
-    }
-    
+
     final result = _orders.where((o) {
       // Apenas ordens que EU aceitei como provedor (nÃÂ£o ordens que criei)
       return o.providerId == _currentUserPubkey && o.userPubkey != _currentUserPubkey;
@@ -537,20 +526,6 @@ class OrderProvider with ChangeNotifier {
           if (order.providerId == 'provider_test_001') {
             // Setar providerId como null para que seja recuperado do Nostr
             _orders[i] = order.copyWith(providerId: null);
-            needsMigration = true;
-          }
-        }
-        
-        // v257: Corrigir providerId corrompido da ordem d37757a8
-        // O auto-repair anterior publicou com providerId do USUARIO em vez do PROVEDOR real
-        // Isso fez a ordem nao aparecer na aba Minhas do provedor
-        const _fixOrderId = 'd37757a8-4e82-49b0-a977-9a7e440c99a8';
-        const _wrongProviderId = '4c020f93e3240ba5215ce3f2d6b2b1e9ec57b64d0189b6411b8394d8a60c499d';
-        const _correctProviderId = '0b31181f021539d1afcda76e66577d5a7797a9603ac4a7aa46514745c8acfc26';
-        for (int i = 0; i < _orders.length; i++) {
-          if (_orders[i].id == _fixOrderId && _orders[i].providerId == _wrongProviderId) {
-            debugPrint('v257-FIX: Corrigindo providerId da ordem d37757a8');
-            _orders[i] = _orders[i].copyWith(providerId: _correctProviderId);
             needsMigration = true;
           }
         }
@@ -1349,7 +1324,7 @@ class OrderProvider with ChangeNotifier {
       
       // v253: AUTO-REPAIR: Republicar status de ordens que existem localmente
       // mas nao foram encontradas em nenhuma busca dos relays (eventos perdidos)
-      // Isso resolve o caso d37757a8: ordem disputada cujos eventos sumiram dos relays
+      // v253: AUTO-REPAIR: Republicar status de ordens com eventos perdidos
       // v259: Timeout global no auto-repair para nao travar sync
       try {
         await _autoRepairMissingOrderEvents(
@@ -1896,44 +1871,6 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
-  /// v257: Republish forcado da ordem d37757a8 com providerId correto
-  /// Roda UMA VEZ e usa SharedPreferences flag para nao repetir
-  Future<void> _forceRepublishD37757a8() async {
-    const fixOrderId = 'd37757a8-4e82-49b0-a977-9a7e440c99a8';
-    const correctProviderId = '0b31181f021539d1afcda76e66577d5a7797a9603ac4a7aa46514745c8acfc26';
-    const prefKey = 'v257_fix_d37757a8_done';
-    
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      if (prefs.getBool(prefKey) == true) return; // Ja executou
-      
-      final privateKey = _nostrService.privateKey;
-      if (privateKey == null) return;
-      
-      // Verificar se temos essa ordem localmente
-      final order = _orders.where((o) => o.id == fixOrderId).firstOrNull;
-      if (order == null) return; // Ordem nao existe neste dispositivo
-      
-      debugPrint('v257-FIX: Republicando ordem d37757a8 com providerId correto: ${correctProviderId.substring(0, 16)}');
-      
-      final success = await _nostrOrderService.updateOrderStatus(
-        privateKey: privateKey,
-        orderId: fixOrderId,
-        newStatus: order.status,
-        providerId: correctProviderId,
-        orderUserPubkey: order.userPubkey,
-      );
-      
-      if (success) {
-        debugPrint('v257-FIX: SUCESSO! Ordem d37757a8 republicada com providerId correto');
-        await prefs.setBool(prefKey, true);
-      } else {
-        debugPrint('v257-FIX: FALHA ao republicar ordem d37757a8');
-      }
-    } catch (e) {
-      debugPrint('v257-FIX: EXCEPTION: $e');
-    }
-  }
 
   /// v257: Corrigir ordens com userPubkey corrompido e republicar nos relays
   /// Quando o provedor publicou um update, o userPubkey no content/tag ficou errado
@@ -2885,11 +2822,6 @@ class OrderProvider with ChangeNotifier {
       
       // AUTO-LIQUIDAÇÃO v234: Também verificar no sync do usuário
       await _checkAutoLiquidation();
-      
-      
-      // v257: Republish forcado da ordem d37757a8 com providerId correto
-      // A ordem foi publicada com providerId errado (self-reference) pelo auto-repair anterior
-      await _forceRepublishD37757a8();
       
       // v253: AUTO-REPAIR: Tambem reparar no sync do usuario
       // v259: Timeout global no auto-repair para nao travar sync

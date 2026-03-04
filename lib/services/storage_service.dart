@@ -182,8 +182,7 @@ class StorageService {
         
         if (existingWords != newWords) {
           debugPrint('🛡️ PROTEÇÃO: Seed existente NÃO será sobrescrita!');
-          debugPrint('   Existente: $existingWords...');
-          debugPrint('   Tentando salvar: $newWords...');
+          debugPrint('   Seeds são diferentes (detalhes omitidos por segurança)');
           debugPrint('   Use forceOverwrite=true nas configs para mudar.');
           return; // NÃO SOBRESCREVER!
         } else {
@@ -342,7 +341,7 @@ class StorageService {
     
     // FONTE 5: Seed legada global
     mnemonic = await _secureStorage.read(key: 'breez_mnemonic');
-    debugPrint('   [5] breez_mnemonic (legado): ${mnemonic != null ? "${mnemonic.split(' ').take(2).join(' ')}..." : "NULL"}');
+    debugPrint('   [5] breez_mnemonic (legado): ${mnemonic != null ? "presente (${mnemonic.split(' ').length} palavras)" : "NULL"}');
     if (mnemonic != null && mnemonic.split(' ').length == 12) {
       debugPrint('✅ FONTE 5: Seed encontrada no formato legado!');
       return mnemonic;
@@ -358,7 +357,7 @@ class StorageService {
           mnemonic = _deobfuscateSeed(obfuscated);
           if (mnemonic.isNotEmpty && mnemonic.split(' ').length == 12) {
             debugPrint('✅ FONTE 6: Seed encontrada em $key!');
-            debugPrint('   Seed: ${mnemonic.split(' ').take(2).join(' ')}...');
+            debugPrint('   Seed encontrada em $key');
             return mnemonic;
           }
         }
@@ -514,7 +513,6 @@ class StorageService {
     final currentSeed = await getBreezMnemonic();
     if (currentSeed != null && currentSeed.split(' ').length == 12) {
       debugPrint('   🔐 Fazendo backup extra da seed atual antes do logout...');
-      debugPrint('   Seed: ${currentSeed.split(' ').take(2).join(' ')}...');
       
       // Salvar em TODOS os locais de backup
       await _secureStorage.write(key: _masterSeedKey, value: currentSeed);
@@ -698,84 +696,6 @@ class StorageService {
     await _prefs?.remove('nostr_profile_display_name');
     await _prefs?.remove('nostr_profile_picture');
     await _prefs?.remove('nostr_profile_about');
-  }
-  
-  // ===== DEBUG: LISTAR TODAS AS SEEDS ARMAZENADAS =====
-  
-  /// Lista todas as seeds armazenadas para debug
-  /// Retorna um mapa com pubkey_prefix -> seed_info
-  Future<Map<String, Map<String, dynamic>>> debugListAllStoredSeeds() async {
-    if (_prefs == null) await init();
-    
-    final result = <String, Map<String, dynamic>>{};
-    
-    // Listar todas as chaves que começam com breez_seed_
-    final allKeys = _prefs?.getKeys() ?? {};
-    
-    // Seed legada (global)
-    final legacySeed = await _secureStorage.read(key: 'breez_mnemonic');
-    if (legacySeed != null && legacySeed.isNotEmpty) {
-      result['legacy_global'] = {
-        'source': 'SecureStorage (legacy)',
-        'wordCount': legacySeed.split(' ').length,
-        'first2Words': '${legacySeed.split(' ')[0]} ${legacySeed.split(' ')[1]}',
-      };
-    }
-    
-    // Backup legado
-    final legacyBackup = _prefs?.getString('bm_backup_v1');
-    if (legacyBackup != null && legacyBackup.isNotEmpty) {
-      final decoded = _deobfuscateSeed(legacyBackup);
-      if (decoded.isNotEmpty) {
-        result['legacy_backup'] = {
-          'source': 'SharedPrefs backup (legacy)',
-          'wordCount': decoded.split(' ').length,
-          'first2Words': decoded.isNotEmpty ? '${decoded.split(' ')[0]} ${decoded.split(' ')[1]}' : '?',
-        };
-      }
-    }
-    
-    // Verificar seeds por usuário no SecureStorage
-    // Não conseguimos listar todas as chaves do SecureStorage diretamente,
-    // mas podemos verificar as chaves conhecidas baseado nos backups
-    for (final key in allKeys) {
-      if (key.startsWith('bm_backup_')) {
-        final pubkeyPrefix = key.replaceFirst('bm_backup_', '');
-        final backupValue = _prefs?.getString(key);
-        if (backupValue != null && backupValue.isNotEmpty) {
-          final decoded = _deobfuscateSeed(backupValue);
-          if (decoded.isNotEmpty && decoded.split(' ').length == 12) {
-            result['user_$pubkeyPrefix'] = {
-              'source': 'Per-user backup ($key)',
-              'pubkeyPrefix': pubkeyPrefix,
-              'wordCount': decoded.split(' ').length,
-              'first2Words': '${decoded.split(' ')[0]} ${decoded.split(' ')[1]}',
-            };
-          }
-        }
-      }
-    }
-    
-    // Seed do usuário atual
-    final currentPubkey = await getNostrPublicKey();
-    if (currentPubkey != null) {
-      final currentSeed = await getBreezMnemonic();
-      if (currentSeed != null && currentSeed.isNotEmpty) {
-        result['CURRENT_USER'] = {
-          'source': 'Current user (${currentPubkey.substring(0, 16)})',
-          'pubkeyPrefix': currentPubkey.substring(0, 16),
-          'wordCount': currentSeed.split(' ').length,
-          'first2Words': '${currentSeed.split(' ')[0]} ${currentSeed.split(' ')[1]}',
-        };
-      }
-    }
-    
-    debugPrint('🔍 DEBUG: Seeds armazenadas encontradas: ${result.length}');
-    result.forEach((key, value) {
-      debugPrint('   $key: ${value['first2Words']} (${value['wordCount']} palavras) - ${value['source']}');
-    });
-    
-    return result;
   }
   
   // ===== LOGOUT / LIMPAR DADOS SENSÍVEIS =====

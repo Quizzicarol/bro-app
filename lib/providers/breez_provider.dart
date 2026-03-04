@@ -78,8 +78,6 @@ class BreezProvider with ChangeNotifier {
       
       if (currentWords != newWords) {
         debugPrint('⚠️ SDK inicializado com seed DIFERENTE!');
-        debugPrint('   Atual: $currentWords...');
-        debugPrint('   Nova: $newWords...');
         debugPrint('🔄 Reinicializando com seed correta...');
         
         // Forçar reinicialização com a nova seed
@@ -145,7 +143,7 @@ class BreezProvider with ChangeNotifier {
         // Salvar a seed (se já existir igual, não faz nada)
         await StorageService().saveBreezMnemonic(_mnemonic!);
         
-        debugPrint('🔑 Usando seed FORNECIDA: ${_mnemonic!.split(' ').take(2).join(' ')}...');
+        debugPrint('🔑 Usando seed FORNECIDA (${_mnemonic!.split(' ').length} palavras)');
       } else {
         // Buscar seed salva para este usuário
         debugPrint('');
@@ -168,7 +166,7 @@ class BreezProvider with ChangeNotifier {
           _mnemonic = savedMnemonic;
           _isNewWallet = false;
           debugPrint('✅ Seed EXISTENTE encontrada!');
-          debugPrint('   Seed: ${savedMnemonic.split(' ').take(2).join(' ')}...');
+          debugPrint('   Seed carregada (${savedMnemonic.split(' ').length} palavras)');
         } else {
           // ÚLTIMA TENTATIVA: O getBreezMnemonic agora busca em 6 fontes diferentes
           // Se chegou aqui, realmente não existe seed
@@ -183,14 +181,13 @@ class BreezProvider with ChangeNotifier {
           await StorageService().saveBreezMnemonic(_mnemonic!);
           _isNewWallet = true;
           _seedRecoveryNeeded = true;
-          debugPrint('🆕 Nova seed: ${_mnemonic!.split(' ').take(2).join(' ')}...');
+          debugPrint('🆕 Nova seed gerada (${_mnemonic!.split(' ').length} palavras)');
         }
         debugPrint('═══════════════════════════════════════════════════════════');
       }
 
-      // DEBUG: Mostrar primeiras 2 palavras da seed para confirmar
       final seedWords = _mnemonic!.split(' ');
-      debugPrint('🔐 SEED: ${seedWords[0]} ${seedWords[1]} ... (${seedWords.length} palavras)');
+      debugPrint('🔐 SEED: ${seedWords.length} palavras carregadas');
 
       // Create seed from mnemonic
       final seed = spark.Seed.mnemonic(mnemonic: _mnemonic!);
@@ -1334,11 +1331,6 @@ class BreezProvider with ChangeNotifier {
       // Verificar se diretório existe
       final dir = Directory(storageDir);
       diagnostics['storageDirExists'] = await dir.exists();
-      
-      // NOVO: Listar todas as seeds armazenadas para debug
-      final allSeeds = await StorageService().debugListAllStoredSeeds();
-      diagnostics['totalSeedsFound'] = allSeeds.length;
-      diagnostics['allSeeds'] = allSeeds;
       
       if (_sdk != null) {
         // Sync primeiro

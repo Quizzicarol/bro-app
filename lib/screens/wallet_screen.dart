@@ -70,8 +70,7 @@ class _WalletScreenState extends State<WalletScreen> {
         // Detectar por descrição OU por valor pequeno enviado
         final descLower = description.toLowerCase();
         if (descLower.contains('platform fee') || 
-            descLower.contains('bro platform fee') ||
-            descLower.contains('tutoriais@coinos')) {
+            descLower.contains('bro platform fee')) {
           debugPrint('🔇 Ocultando taxa da plataforma: $description ($amount sats)');
           return false;
         }

@@ -1,6 +1,7 @@
 ﻿import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:crypto/crypto.dart';
+import '../config.dart';
 import 'storage_service.dart';
 import 'relay_service.dart';
 
@@ -88,9 +89,8 @@ class DisputeService {
   final _storage = StorageService();
   final _relayService = RelayService();
 
-  // Pubkey do suporte para notificações Nostr (NIP-01)
-  // npub14dkurlx4vkd5qmf7q5fwqh52lh3mn078wms2jetl2l4wnmcxnghqlud5dt
-  static const String supportPubkey = 'ab6dc1fcd5659b406d3e0512e05e8afde3b9bfc776e0a9657f57eae9ef069a2e';
+  // Pubkey do suporte — loaded from AppConfig (env.json)
+  static String get supportPubkey => AppConfig.adminPubkey;
   
   // Email do suporte para disputas
   static const String supportEmail = 'brostr@proton.me';

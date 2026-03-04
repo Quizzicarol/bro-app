@@ -24,7 +24,8 @@
     "helmet": "^8.1.0",
     "node-cron": "^3.0.3",
     "nostr-tools": "^2.23.1",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "ws": "^8.19.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"

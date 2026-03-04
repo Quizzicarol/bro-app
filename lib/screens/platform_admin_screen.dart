@@ -6,6 +6,7 @@ import '../services/platform_fee_service.dart';
 import '../services/dispute_service.dart';
 import '../services/nostr_order_service.dart';
 import '../services/storage_service.dart';
+import '../services/api_service.dart';
 import '../providers/order_provider.dart';
 import '../config.dart';
 import 'dispute_detail_screen.dart';
@@ -42,6 +43,11 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
   List<Map<String, dynamic>> _nostrDisputes = [];      // Abertas
   List<Map<String, dynamic>> _resolvedNostrDisputes = []; // Resolvidas
   bool _showResolved = false; // Toggle: false = abertas, true = resolvidas
+
+  // AI Dispute Agent (Phase 4)
+  List<Map<String, dynamic>> _agentAnalyses = [];
+  Map<String, dynamic>? _agentStats;
+  bool _agentLoading = false;
 
   @override
   void initState() {
@@ -212,6 +218,16 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
         
         debugPrint('📋 Admin: ${openNostr.length} abertas, ${resolvedNostr.length} resolvidas (Nostr), ${allDisputes.length} locais');
       
+        // Carregar dados do AI Agent (Phase 4)
+        List<Map<String, dynamic>> agentAnalyses = [];
+        Map<String, dynamic>? agentStats;
+        try {
+          agentAnalyses = await ApiService().getAgentPendingAnalyses();
+          agentStats = await ApiService().getAgentStats();
+        } catch (e) {
+          debugPrint('⚠️ Agent não disponível: $e');
+        }
+
         setState(() {
           _totals = totals;
           _pendingRecords = pending;
@@ -219,6 +235,8 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
           _allDisputes = allDisputes;
           _nostrDisputes = openNostr;
           _resolvedNostrDisputes = resolvedNostr;
+          _agentAnalyses = agentAnalyses;
+          _agentStats = agentStats;
         });
       } catch (e) {
         debugPrint('⚠️ Erro ao buscar disputas do Nostr: $e');
@@ -420,6 +438,10 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
 
                   // Card de Totais
                   _buildTotalsCard(),
+                  const SizedBox(height: 24),
+
+                  // AI DISPUTE AGENT
+                  _buildAgentSection(),
                   const SizedBox(height: 24),
 
                   // DISPUTAS ABERTAS
@@ -829,6 +851,415 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
     final totalSats = _totals?['totalSats'] ?? 0;
     if (totalTx == 0) return '0 sats';
     return '${(totalSats / totalTx).round()} sats';
+  }
+
+  // ========== SEÇÃO AI DISPUTE AGENT (Phase 4) ==========
+
+  Widget _buildAgentSection() {
+    final pendingCount = _agentAnalyses.length;
+    final stats = _agentStats;
+    final totalAnalyzed = stats?['stats']?['totalAnalyzed'] ?? 0;
+    final autoResolved = stats?['stats']?['autoResolved'] ?? 0;
+    final accuracy = stats?['stats']?['accuracy'];
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: pendingCount > 0
+              ? Colors.purple.withOpacity(0.5)
+              : const Color(0xFF333333),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
+              Icon(
+                Icons.smart_toy,
+                color: pendingCount > 0 ? Colors.purple : Colors.white54,
+                size: 24,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'AI Dispute Agent',
+                  style: TextStyle(
+                    color: pendingCount > 0 ? Colors.purple : Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+              if (_agentLoading)
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.purple),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Stats row
+          Row(
+            children: [
+              _buildAgentStatPill('Analisadas', '$totalAnalyzed', Colors.blue),
+              const SizedBox(width: 8),
+              _buildAgentStatPill('Auto-resolvidas', '$autoResolved', Colors.green),
+              const SizedBox(width: 8),
+              _buildAgentStatPill(
+                'Precisão',
+                accuracy != null ? '${(accuracy * 100).toStringAsFixed(0)}%' : 'N/A',
+                Colors.amber,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          if (pendingCount == 0)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.green, size: 18),
+                  SizedBox(width: 8),
+                  Text(
+                    'Nenhuma análise pendente de revisão',
+                    style: TextStyle(color: Colors.green, fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+
+          // Pending analyses list
+          if (pendingCount > 0) ...[
+            Text(
+              '$pendingCount análise${pendingCount > 1 ? 's' : ''} aguardando revisão:',
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+            const SizedBox(height: 8),
+            ...(_agentAnalyses.map((analysis) => _buildAgentAnalysisCard(analysis))),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAgentStatPill(String label, String value, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Column(
+          children: [
+            Text(
+              value,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(color: color.withOpacity(0.7), fontSize: 10),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAgentAnalysisCard(Map<String, dynamic> analysis) {
+    final disputeId = analysis['disputeId'] ?? '';
+    final confidence = (analysis['confidence'] ?? 0.0) as num;
+    final recommendation = analysis['recommendation'] ?? 'unknown';
+    final tier = analysis['tier'] ?? 0;
+    final reason = analysis['reason'] ?? '';
+    final timestamp = analysis['analyzedAt'] ?? '';
+
+    Color confidenceColor;
+    if (confidence >= 0.9) {
+      confidenceColor = Colors.green;
+    } else if (confidence >= 0.6) {
+      confidenceColor = Colors.amber;
+    } else {
+      confidenceColor = Colors.red;
+    }
+
+    String tierLabel;
+    IconData tierIcon;
+    switch (tier) {
+      case 1:
+        tierLabel = 'Auto-resolve';
+        tierIcon = Icons.auto_fix_high;
+        break;
+      case 2:
+        tierLabel = 'Sugestão';
+        tierIcon = Icons.lightbulb_outline;
+        break;
+      default:
+        tierLabel = 'Escalado';
+        tierIcon = Icons.escalator_warning;
+    }
+
+    String recLabel;
+    Color recColor;
+    switch (recommendation) {
+      case 'refund_buyer':
+        recLabel = 'Reembolsar Comprador';
+        recColor = Colors.blue;
+        break;
+      case 'release_to_seller':
+        recLabel = 'Liberar ao Vendedor';
+        recColor = Colors.green;
+        break;
+      case 'split':
+        recLabel = 'Dividir';
+        recColor = Colors.amber;
+        break;
+      default:
+        recLabel = recommendation;
+        recColor = Colors.white54;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF252525),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: confidenceColor.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Top row: dispute ID + tier badge
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Disputa: ${disputeId.length > 12 ? '${disputeId.substring(0, 12)}...' : disputeId}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: confidenceColor.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(tierIcon, size: 14, color: confidenceColor),
+                    const SizedBox(width: 4),
+                    Text(
+                      tierLabel,
+                      style: TextStyle(color: confidenceColor, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          // Confidence bar
+          Row(
+            children: [
+              const Text('Confiança: ', style: TextStyle(color: Colors.white54, fontSize: 12)),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: confidence.toDouble(),
+                    backgroundColor: Colors.white12,
+                    valueColor: AlwaysStoppedAnimation<Color>(confidenceColor),
+                    minHeight: 6,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${(confidence * 100).toStringAsFixed(0)}%',
+                style: TextStyle(
+                  color: confidenceColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          // Recommendation
+          Row(
+            children: [
+              const Text('Recomendação: ', style: TextStyle(color: Colors.white54, fontSize: 12)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: recColor.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(recLabel, style: TextStyle(color: recColor, fontSize: 12, fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ),
+          if (reason.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              reason,
+              style: const TextStyle(color: Colors.white38, fontSize: 11),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+          const SizedBox(height: 10),
+
+          // Action buttons
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _agentLoading ? null : () => _approveAnalysis(disputeId),
+                  icon: const Icon(Icons.check, size: 16, color: Colors.white),
+                  label: const Text('Aprovar', style: TextStyle(fontSize: 12, color: Colors.white)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green.shade700,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _agentLoading ? null : () => _rejectAnalysis(disputeId),
+                  icon: const Icon(Icons.close, size: 16, color: Colors.red),
+                  label: const Text('Rejeitar', style: TextStyle(fontSize: 12, color: Colors.red)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.red),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _approveAnalysis(String disputeId) async {
+    setState(() => _agentLoading = true);
+    try {
+      final success = await ApiService().approveAgentAnalysis(disputeId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(success
+                ? '✅ Resolução aprovada e executada'
+                : '❌ Falha ao aprovar'),
+            backgroundColor: success ? Colors.green : Colors.red,
+          ),
+        );
+        if (success) await _loadData();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _agentLoading = false);
+    }
+  }
+
+  Future<void> _rejectAnalysis(String disputeId) async {
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        final controller = TextEditingController();
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          title: const Text('Rejeitar Análise', style: TextStyle(color: Colors.white)),
+          content: TextField(
+            controller: controller,
+            style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(
+              hintText: 'Motivo (opcional)',
+              hintStyle: TextStyle(color: Colors.white38),
+              enabledBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.white24),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, controller.text),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('Rejeitar', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (reason == null) return;
+
+    setState(() => _agentLoading = true);
+    try {
+      final success = await ApiService().rejectAgentAnalysis(
+        disputeId,
+        reason: reason.isNotEmpty ? reason : null,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(success ? 'Análise rejeitada' : '❌ Falha ao rejeitar'),
+            backgroundColor: success ? Colors.orange : Colors.red,
+          ),
+        );
+        if (success) await _loadData();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _agentLoading = false);
+    }
   }
 
   // ========== SEÇÃO DE DISPUTAS ==========

@@ -695,7 +695,68 @@ class ApiService {
       return null;
     }
   }
+  // ===== AI DISPUTE AGENT ENDPOINTS (Phase 4) =====
 
+  /// GET /agent/pending - Lista análises pendentes do agente IA
+  Future<List<Map<String, dynamic>>> getAgentPendingAnalyses() async {
+    try {
+      final response = await _dio.get('/agent/pending');
+      final data = response.data;
+      if (data['success'] == true && data['analyses'] != null) {
+        return List<Map<String, dynamic>>.from(data['analyses']);
+      }
+      return [];
+    } catch (e) {
+      debugPrint('❌ Erro ao buscar análises do agente: $e');
+      return [];
+    }
+  }
+
+  /// GET /agent/:disputeId - Detalhes da análise de uma disputa
+  Future<Map<String, dynamic>?> getAgentAnalysis(String disputeId) async {
+    try {
+      final response = await _dio.get('/agent/$disputeId');
+      return response.data as Map<String, dynamic>?;
+    } catch (e) {
+      debugPrint('❌ Erro ao buscar análise do agente: $e');
+      return null;
+    }
+  }
+
+  /// POST /agent/:disputeId/approve - Aprovar sugestão do agente
+  Future<bool> approveAgentAnalysis(String disputeId) async {
+    try {
+      final response = await _dio.post('/agent/$disputeId/approve');
+      return response.data?['success'] == true;
+    } catch (e) {
+      debugPrint('❌ Erro ao aprovar análise: $e');
+      return false;
+    }
+  }
+
+  /// POST /agent/:disputeId/reject - Rejeitar sugestão do agente
+  Future<bool> rejectAgentAnalysis(String disputeId, {String? reason}) async {
+    try {
+      final response = await _dio.post('/agent/$disputeId/reject', data: {
+        if (reason != null) 'reason': reason,
+      });
+      return response.data?['success'] == true;
+    } catch (e) {
+      debugPrint('❌ Erro ao rejeitar análise: $e');
+      return false;
+    }
+  }
+
+  /// GET /agent/stats - Estatísticas do agente IA
+  Future<Map<String, dynamic>?> getAgentStats() async {
+    try {
+      final response = await _dio.get('/agent/stats');
+      return response.data as Map<String, dynamic>?;
+    } catch (e) {
+      debugPrint('❌ Erro ao buscar stats do agente: $e');
+      return null;
+    }
+  }
   /// Mock responses para test mode
   Future<Map<String, dynamic>> _getMockResponse(String path, {Map<String, dynamic>? data}) async {
     debugPrint('ðŸ§ª TEST MODE: Mock response para $path');

@@ -1,13 +1,9 @@
-import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import '../config.dart';
 import 'api_service.dart';
 
 class EscrowService {
-  static String get baseUrl => AppConfig.defaultBackendUrl;
-  
   /// Taxa do provedor Bro (3%) - usa o valor centralizado do AppConfig
   static double get providerFeePercent => AppConfig.providerFeePercent * 100;
 
@@ -25,7 +21,7 @@ class EscrowService {
     }
     
     try {
-      final response = await _dio.post('/collateral/deposit', data: {'tier_id': tierId, 'amount_sats': amountSats});
+      final response = await _dio.post('/collateral/deposit', data: {'tierId': tierId, 'amountSats': amountSats, 'amountBrl': 0});
       return {'invoice': response.data['invoice'], 'deposit_id': response.data['deposit_id']};
     } catch (e) {
       debugPrint('⚠️ Erro ao depositar garantia: $e');
@@ -43,7 +39,7 @@ class EscrowService {
     try {
       final response = await _dio.post(
         '/collateral/lock', 
-        data: {'order_id': orderId, 'locked_sats': lockedSats},
+        data: {'orderId': orderId, 'lockedSats': lockedSats},
       ).timeout(const Duration(seconds: 10));
       
       debugPrint('🔒 lockCollateral response: ${response.statusCode}');
@@ -64,7 +60,7 @@ class EscrowService {
     try {
       await _dio.post(
         '/collateral/unlock', 
-        data: {'order_id': orderId},
+        data: {'orderId': orderId},
       ).timeout(const Duration(seconds: 10));
     } catch (e) {
       debugPrint('⚠️ Erro ao chamar unlockCollateral no backend: $e');
@@ -83,7 +79,7 @@ class EscrowService {
     }
     
     try {
-      final response = await _dio.post('/escrow/create', data: {'order_id': orderId, 'amount_sats': amountSats});
+      final response = await _dio.post('/escrow/create', data: {'orderId': orderId, 'btcAmount': amountSats / 100000000});
       return response.data as Map<String, dynamic>;
     } catch (e) {
       debugPrint('⚠️ Erro ao criar escrow: $e');
@@ -98,7 +94,7 @@ class EscrowService {
       return;
     }
     try {
-      await _dio.post('/escrow/release', data: {'order_id': orderId}).timeout(const Duration(seconds: 15));
+      await _dio.post('/escrow/release', data: {'orderId': orderId}).timeout(const Duration(seconds: 15));
     } catch (e) {
       debugPrint('⚠️ Erro ao liberar escrow no backend: $e');
       debugPrint('   Sats já foram pagos via Lightning - escrow release é apenas bookkeeping');
@@ -117,7 +113,7 @@ class EscrowService {
     }
     
     try {
-      final response = await _dio.get('/collateral/provider/$providerId');
+      final response = await _dio.get('/collateral/$providerId');
       if (response.statusCode == 200) {
         return response.data as Map<String, dynamic>;
       }

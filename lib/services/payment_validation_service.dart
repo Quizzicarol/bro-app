@@ -119,6 +119,12 @@ class PaymentValidationService {
         providerId: providerId,
       );
 
+      // Desbloquear garantia do provedor
+      await _escrowService.unlockCollateral(
+        providerId: providerId,
+        orderId: orderId,
+      );
+
       debugPrint('✅ Fundos liberados com sucesso!');
       
       // Atualizar status da ordem

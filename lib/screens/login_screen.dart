@@ -878,7 +878,7 @@ class _LoginScreenState extends State<LoginScreen> {
           // SEMPRE tentar inicializar COM a seed que temos
           // Se mnemonic é null, o BreezProvider vai buscar a seed do storage
           if (mnemonic != null) {
-            debugPrint('⚡ Inicializando Breez COM SEED EXISTENTE: ${mnemonic.split(' ').take(2).join(' ')}...');
+            debugPrint('⚡ Inicializando Breez COM SEED EXISTENTE');
             final success = await breezProvider.initialize(mnemonic: mnemonic)
                 .timeout(const Duration(seconds: 15), onTimeout: () {
               debugPrint('⏰ Timeout na inicialização do Breez');

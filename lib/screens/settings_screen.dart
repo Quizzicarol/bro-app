@@ -24,8 +24,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _adminTapCount = 0;
   String _appVersion = '1.0.0';
   
-  // SHA-256 hash da senha de admin
-  static const String _adminPasswordHash = '9ca268d4f101447772eaf5887e7e1d0598e502d722eea231a0e391f1bc9d9213';
+  // Admin password hash loaded from env (not in source code)
+  static const String _adminPasswordHash = String.fromEnvironment('ADMIN_PASSWORD_HASH', defaultValue: '');
 
   @override
   void initState() {

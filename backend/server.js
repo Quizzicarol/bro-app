@@ -12,9 +12,11 @@ const { requireAuth, optionalAuth } = require('./middleware/verifyNip98Auth');
 const ordersRoutes = require('./routes/orders');
 const collateralRoutes = require('./routes/collateral');
 const escrowRoutes = require('./routes/escrow');
+const agentRoutes = require('./routes/agent');
 
 // Serviços
 const { checkExpiredOrders } = require('./services/orderExpirationService');
+const disputeAgent = require('./services/disputeAgentService');
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -104,6 +106,7 @@ app.use('/escrow/create', createLimiter);
 app.use('/orders', requireAuth, ordersRoutes);
 app.use('/collateral', requireAuth, collateralRoutes);
 app.use('/escrow', requireAuth, escrowRoutes);
+app.use('/agent', requireAuth, agentRoutes);
 
 // Job para verificar ordens expiradas (roda a cada 5 minutos)
 cron.schedule('*/5 * * * *', async () => {
@@ -134,5 +137,9 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`\n🚀 Servidor rodando na porta ${PORT}`);
   console.log(`📡 Health check: http://localhost:${PORT}/health`);
-  console.log(`⏰ Job de expiração de ordens ativo (a cada 5 minutos)\n`);
+  console.log(`⏰ Job de expiração de ordens ativo (a cada 5 minutos)`);
+  
+  // Iniciar agente de disputas (Nostr listener + análise AI)
+  disputeAgent.init();
+  console.log(`🤖 Agente de disputas ativo (Nostr listener + análise)\n`);
 });

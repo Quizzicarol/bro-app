@@ -729,4 +729,47 @@ class StorageService {
       debugPrint('❌ Erro ao limpar dados sensíveis: $e');
     }
   }
+
+  // ===== DISPUTE RESOLUTION TRACKING =====
+  // Persiste resoluções de disputas localmente para não depender do relay
+  
+  static const String _resolvedDisputesKey = 'resolved_dispute_orderIds';
+  
+  /// Marca um orderId como disputa resolvida localmente
+  Future<void> markDisputeResolved(String orderId, String resolution) async {
+    if (_prefs == null) await init();
+    final existing = _prefs?.getStringList(_resolvedDisputesKey) ?? [];
+    final entry = '$orderId|$resolution';
+    if (!existing.any((e) => e.startsWith('$orderId|'))) {
+      existing.add(entry);
+      await _prefs?.setStringList(_resolvedDisputesKey, existing);
+      debugPrint('⚖️ Disputa $orderId marcada como resolvida localmente');
+    }
+  }
+  
+  /// Verifica se um orderId já foi resolvido localmente
+  Future<bool> isDisputeResolved(String orderId) async {
+    if (_prefs == null) await init();
+    final existing = _prefs?.getStringList(_resolvedDisputesKey) ?? [];
+    return existing.any((e) => e.startsWith('$orderId|'));
+  }
+  
+  /// Retorna a resolução local de um orderId (ou null)
+  Future<String?> getLocalDisputeResolution(String orderId) async {
+    if (_prefs == null) await init();
+    final existing = _prefs?.getStringList(_resolvedDisputesKey) ?? [];
+    for (final e in existing) {
+      if (e.startsWith('$orderId|')) {
+        return e.split('|').last;
+      }
+    }
+    return null;
+  }
+  
+  /// Retorna todos os orderIds resolvidos localmente
+  Future<Set<String>> getResolvedDisputeOrderIds() async {
+    if (_prefs == null) await init();
+    final existing = _prefs?.getStringList(_resolvedDisputesKey) ?? [];
+    return existing.map((e) => e.split('|').first).toSet();
+  }
 }

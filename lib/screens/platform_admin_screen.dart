@@ -5,6 +5,7 @@ import 'dart:convert';
 import '../services/platform_fee_service.dart';
 import '../services/dispute_service.dart';
 import '../services/nostr_order_service.dart';
+import '../services/storage_service.dart';
 import '../providers/order_provider.dart';
 import '../config.dart';
 import 'dispute_detail_screen.dart';
@@ -163,11 +164,16 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
           }
         }
         
+        // 2.5 NOVO: Carregar resoluções locais (independente do relay)
+        final locallyResolvedIds = await StorageService().getResolvedDisputeOrderIds();
+        
         // 3. Classificar disputas do fetch em abertas/resolvidas
         for (final dispute in nostrDisputes) {
           final dOrderId = dispute['orderId'] as String? ?? '';
           final resolution = resolutionsByOrderId[dOrderId];
-          if (resolution != null) {
+          final isLocallyResolved = locallyResolvedIds.contains(dOrderId);
+          
+          if (resolution != null || isLocallyResolved) {
             dispute['resolution'] = resolution;
             dispute['resolved'] = true;
             resolvedNostr.add(dispute);
@@ -1669,7 +1675,9 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
   /// Resolve uma disputa vinda do Nostr:
   /// 1. Publica resolução no Nostr (kind 1, tag bro-resolucao)
   /// 2. Atualiza status da ordem local para 'completed'
-  /// 3. Recarrega dados
+  /// 3. Persiste resolução localmente (para não depender do relay)
+  /// 4. Atualiza disputa local se existir
+  /// 5. Recarrega dados
   Future<void> _resolveNostrDispute(Map<String, dynamic> dispute, String resolution, String notes) async {
     try {
       final orderId = dispute['orderId'] as String? ?? '';
@@ -1701,8 +1709,6 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
       );
       
       // 2. Atualizar status da ordem local
-      // Se favor do usuário: marcar como 'completed' (usuário tem razão, recebe de volta)
-      // Se favor do provedor: marcar como 'completed' (provedor completou o serviço)
       final newOrderStatus = resolution == 'resolved_user' ? 'cancelled' : 'completed';
       try {
         await orderProvider.updateOrderStatus(
@@ -1710,7 +1716,6 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
           status: newOrderStatus,
         );
         
-        // Publicar o novo status no Nostr
         await nostrOrderService.updateOrderStatus(
           privateKey: privateKey,
           orderId: orderId,
@@ -1719,6 +1724,24 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
         );
       } catch (e) {
         debugPrint('⚠️ Erro ao atualizar status da ordem: $e');
+      }
+      
+      // 3. NOVO: Persistir resolução localmente (independente do relay)
+      await StorageService().markDisputeResolved(orderId, resolution);
+      
+      // 4. NOVO: Atualizar disputa local se existir
+      final existsLocally = dispute['existsLocally'] as bool? ?? false;
+      if (existsLocally) {
+        final localDispute = _disputeService.getDisputeByOrderId(orderId);
+        if (localDispute != null) {
+          await _disputeService.updateDisputeStatus(
+            localDispute.id,
+            resolution,
+            resolution: 'Resolvida via Nostr',
+            mediatorNotes: notes,
+          );
+          debugPrint('⚖️ Disputa local ${localDispute.id} sincronizada: $resolution');
+        }
       }
       
       // 3. Recarregar dados
@@ -1753,18 +1776,22 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
         mediatorNotes: notes,
       );
       
-      // Se resolver, atualizar status da ordem via Nostr
-      if (newStatus.startsWith('resolved')) {
-        try {
-          final orderProvider = context.read<OrderProvider>();
-          // Marcar ordem como completada ou cancelada baseado no resultado
-          final orderStatus = newStatus == 'resolved_user' ? 'cancelled' : 'completed';
-          await orderProvider.updateOrderStatus(
-            orderId: dispute.orderId,
-            status: orderStatus,
-          );
-        } catch (e) {
-          debugPrint('⚠️ Erro ao atualizar status da ordem: $e');
+      // Se resolver, atualizar status da ordem via Nostr e persistir localmente
+      if (newStatus.startsWith('resolved') || newStatus == 'cancelled') {
+        // Persistir resolução localmente
+        await StorageService().markDisputeResolved(dispute.orderId, newStatus);
+        
+        if (newStatus.startsWith('resolved')) {
+          try {
+            final orderProvider = context.read<OrderProvider>();
+            final orderStatus = newStatus == 'resolved_user' ? 'cancelled' : 'completed';
+            await orderProvider.updateOrderStatus(
+              orderId: dispute.orderId,
+              status: orderStatus,
+            );
+          } catch (e) {
+            debugPrint('⚠️ Erro ao atualizar status da ordem: $e');
+          }
         }
       }
       

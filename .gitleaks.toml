@@ -1,0 +1,54 @@
+# Gitleaks configuration for Bro App
+# Install: https://github.com/gitleaks/gitleaks#installing
+# Usage: gitleaks detect --source . --config .gitleaks.toml
+
+title = "Bro App Secret Scanner"
+
+# Extend the default rules
+[extend]
+useDefault = true
+
+# Allow list for known false positives
+[allowlist]
+  description = "Global allowlist"
+  paths = [
+    '''env\.example\.json''',
+    '''\.gitleaks\.toml''',
+    '''pubspec\.lock''',
+    '''\.dart_tool/''',
+    '''build/''',
+    '''backup/''',
+    '''node_modules/''',
+    '''\.gradle/''',
+  ]
+
+# Custom rules for Bro-specific secrets
+[[rules]]
+  id = "breez-api-key"
+  description = "Breez SDK API Key (X.509 certificate)"
+  regex = '''-----BEGIN CERTIFICATE-----'''
+  tags = ["breez", "api-key"]
+
+[[rules]]
+  id = "nostr-privkey"
+  description = "Nostr private key (nsec or hex)"
+  regex = '''nsec1[a-z0-9]{58}'''
+  tags = ["nostr", "private-key"]
+
+[[rules]]
+  id = "nostr-privkey-hex"
+  description = "Nostr private key (64 char hex in key context)"
+  regex = '''(?i)(priv|secret|nsec|sk).*['\"][0-9a-f]{64}['\"]'''
+  tags = ["nostr", "private-key"]
+
+[[rules]]
+  id = "mnemonic-seed"
+  description = "BIP39 mnemonic seed words"
+  regex = '''(?i)(mnemonic|seed).*=.*['"](\w+\s){11}\w+['"]'''
+  tags = ["crypto", "seed"]
+
+[[rules]]
+  id = "admin-hash"
+  description = "Admin password hash"
+  regex = '''(?i)admin.*hash.*['\"][0-9a-f]{64}['\"]'''
+  tags = ["admin", "password"]

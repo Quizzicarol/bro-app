@@ -36,8 +36,8 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
     
     if (url.isEmpty) return;
     
-    if (!url.startsWith('wss://') && !url.startsWith('ws://')) {
-      _showError('URL deve começar com wss:// ou ws://');
+    if (!url.startsWith('wss://')) {
+      _showError('URL deve começar com wss:// (conexão segura)');
       return;
     }
     

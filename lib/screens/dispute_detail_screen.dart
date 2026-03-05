@@ -1928,7 +1928,54 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
           );
         }
       } else {
-        // 3. Marcar pagamento no metadata local da ordem
+        // 3. Gerar invoice de reembolso para o admin receber do usuário
+        String? adminReimbursementInvoice;
+        final satsAmount = int.tryParse(amountSats?.toString() ?? '') ?? 0;
+        
+        if (satsAmount > 0) {
+          broLog('🧾 [AdminPay] Gerando invoice de reembolso ($satsAmount sats)...');
+          try {
+            Map<String, dynamic>? invoiceResult;
+            if (breezProvider.isInitialized) {
+              invoiceResult = await breezProvider.createInvoice(
+                amountSats: satsAmount,
+                description: 'Bro reembolso admin - ordem ${orderId.substring(0, 8)}',
+              );
+            } else if (liquidProvider.isInitialized) {
+              invoiceResult = await liquidProvider.createInvoice(
+                amountSats: satsAmount,
+                description: 'Bro reembolso admin - ordem ${orderId.substring(0, 8)}',
+              );
+            }
+            
+            if (invoiceResult != null && invoiceResult['success'] == true) {
+              adminReimbursementInvoice = (invoiceResult['bolt11'] ?? invoiceResult['invoice']) as String?;
+              if (adminReimbursementInvoice != null) {
+                broLog('✅ [AdminPay] Invoice de reembolso gerado: ${adminReimbursementInvoice.substring(0, 30)}...');
+                
+                // Publicar no Nostr para o usuário encontrar
+                final orderProvider = context.read<OrderProvider>();
+                final privateKey = orderProvider.nostrPrivateKey;
+                if (privateKey != null) {
+                  final published = await nostrService.publishAdminReimbursementInvoice(
+                    privateKey: privateKey,
+                    orderId: orderId,
+                    adminInvoice: adminReimbursementInvoice,
+                    amountSats: satsAmount,
+                    userPubkey: userPubkey,
+                  );
+                  broLog(published
+                    ? '✅ [AdminPay] Invoice de reembolso publicado no Nostr'
+                    : '⚠️ [AdminPay] Falha ao publicar invoice de reembolso');
+                }
+              }
+            }
+          } catch (e) {
+            broLog('⚠️ [AdminPay] Erro ao gerar invoice de reembolso: $e');
+          }
+        }
+
+        // 4. Marcar pagamento no metadata local da ordem
         final orderProvider = context.read<OrderProvider>();
         final order = orderProvider.getOrderById(orderId);
         if (order != null) {
@@ -1937,6 +1984,8 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
             'disputeProviderPaid': true,
             'disputeProviderPaidAt': DateTime.now().toIso8601String(),
             'disputeProviderPaidBy': 'admin',
+            if (adminReimbursementInvoice != null)
+              'adminReimbursementInvoice': adminReimbursementInvoice,
           });
         }
 
@@ -1944,10 +1993,12 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('✅ Provedor pago com sucesso!'),
+            SnackBar(
+              content: Text(adminReimbursementInvoice != null
+                ? '✅ Provedor pago! Invoice de reembolso publicado — o usuário pagará automaticamente.'
+                : '✅ Provedor pago com sucesso!'),
               backgroundColor: Colors.green,
-              duration: Duration(seconds: 4),
+              duration: const Duration(seconds: 5),
             ),
           );
         }

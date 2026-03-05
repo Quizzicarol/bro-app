@@ -4201,34 +4201,52 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       final order = orderProvider.getOrderById(widget.orderId);
       final orderDetails = order?.toJson() ?? _orderDetails;
 
-      // ========== BUSCAR PROVIDER INVOICE ==========
-      String? providerInvoice;
-      if (orderDetails != null) {
-        providerInvoice = orderDetails['metadata']?['providerInvoice'] as String?;
-        providerInvoice ??= orderDetails['providerInvoice'] as String?;
-      }
-      if (providerInvoice == null && order != null) {
-        providerInvoice = order.metadata?['providerInvoice'] as String?;
+      // ========== VERIFICAR SE ADMIN JÁ PAGOU (reembolso) ==========
+      String? invoiceToPay;
+      String paymentTarget = 'provedor';
+      
+      final nostrService = NostrOrderService();
+      
+      // Primeiro: verificar se existe invoice de reembolso do admin
+      try {
+        final adminInvoice = await nostrService.fetchAdminReimbursementInvoice(widget.orderId);
+        if (adminInvoice != null && adminInvoice.isNotEmpty) {
+          broLog('🧾 [DisputePay] Admin já pagou o provedor — pagando reembolso ao admin');
+          invoiceToPay = adminInvoice;
+          paymentTarget = 'admin (reembolso)';
+        }
+      } catch (e) {
+        broLog('⚠️ [DisputePay] Erro ao verificar reembolso admin: $e');
       }
 
-      // Fallback: buscar do evento COMPLETE no Nostr
-      if (providerInvoice == null || providerInvoice.isEmpty) {
-        broLog('🔍 [DisputePay] providerInvoice não encontrado no cache, buscando evento COMPLETE no Nostr...');
-        try {
-          final nostrService = NostrOrderService();
-          final completeData = await nostrService.fetchOrderCompleteEvent(widget.orderId);
-          if (completeData != null) {
-            providerInvoice = completeData['providerInvoice'] as String?;
-            if (providerInvoice != null && providerInvoice.isNotEmpty) {
-              broLog('✅ [DisputePay] Invoice encontrado no evento COMPLETE');
+      // Se não há reembolso do admin, buscar invoice do provedor normalmente
+      if (invoiceToPay == null) {
+        if (orderDetails != null) {
+          invoiceToPay = orderDetails['metadata']?['providerInvoice'] as String?;
+          invoiceToPay ??= orderDetails['providerInvoice'] as String?;
+        }
+        if (invoiceToPay == null && order != null) {
+          invoiceToPay = order.metadata?['providerInvoice'] as String?;
+        }
+
+        // Fallback: buscar do evento COMPLETE no Nostr
+        if (invoiceToPay == null || invoiceToPay.isEmpty) {
+          broLog('🔍 [DisputePay] providerInvoice não encontrado no cache, buscando evento COMPLETE no Nostr...');
+          try {
+            final completeData = await nostrService.fetchOrderCompleteEvent(widget.orderId);
+            if (completeData != null) {
+              invoiceToPay = completeData['providerInvoice'] as String?;
+              if (invoiceToPay != null && invoiceToPay.isNotEmpty) {
+                broLog('✅ [DisputePay] Invoice encontrado no evento COMPLETE');
+              }
             }
+          } catch (e) {
+            broLog('⚠️ [DisputePay] Erro ao buscar invoice do Nostr: $e');
           }
-        } catch (e) {
-          broLog('⚠️ [DisputePay] Erro ao buscar invoice do Nostr: $e');
         }
       }
 
-      if (providerInvoice == null || providerInvoice.isEmpty) {
+      if (invoiceToPay == null || invoiceToPay.isEmpty) {
         broLog('🚨 [DisputePay] BLOQUEANDO: Nenhum providerInvoice encontrado!');
         if (mounted) {
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -4244,8 +4262,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return;
       }
 
-      // ========== PAGAR O PROVEDOR ==========
-      broLog('⚡ [DisputePay] Pagando invoice do provedor: ${providerInvoice.substring(0, 30)}...');
+      // ========== PAGAR O INVOICE ==========
+      broLog('⚡ [DisputePay] Pagando invoice ($paymentTarget): ${invoiceToPay.substring(0, 30)}...');
       bool paymentSuccess = false;
       String paymentError = '';
 
@@ -4262,14 +4280,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
             if (breezProvider.isInitialized) {
               broLog('⚡ [DisputePay] Tentativa $attempt/3: Pagando via Breez Spark...');
-              payResult = await breezProvider.payInvoice(providerInvoice).timeout(
+              payResult = await breezProvider.payInvoice(invoiceToPay).timeout(
                 const Duration(seconds: 30),
                 onTimeout: () => {'success': false, 'error': 'timeout'},
               );
               usedBackend = 'Spark';
             } else if (liquidProvider.isInitialized) {
               broLog('⚡ [DisputePay] Tentativa $attempt/3: Pagando via Liquid...');
-              payResult = await liquidProvider.payInvoice(providerInvoice).timeout(
+              payResult = await liquidProvider.payInvoice(invoiceToPay).timeout(
                 const Duration(seconds: 30),
                 onTimeout: () => {'success': false, 'error': 'timeout'},
               );

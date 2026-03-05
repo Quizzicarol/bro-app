@@ -3168,6 +3168,88 @@ class NostrOrderService {
     return allResolutions;
   }
 
+  /// Publica invoice de reembolso do admin no Nostr
+  /// Quando o admin paga o provedor da própria carteira, publica um invoice
+  /// para que o usuário pague o admin de volta automaticamente.
+  Future<bool> publishAdminReimbursementInvoice({
+    required String privateKey,
+    required String orderId,
+    required String adminInvoice,
+    required int amountSats,
+    String? userPubkey,
+  }) async {
+    try {
+      final keychain = Keychain(privateKey);
+      
+      final content = jsonEncode({
+        'type': 'bro_admin_reimbursement',
+        'orderId': orderId,
+        'adminInvoice': adminInvoice,
+        'adminPubkey': keychain.public,
+        'amountSats': amountSats,
+        'createdAt': DateTime.now().toIso8601String(),
+      });
+      
+      final tags = [
+        ['d', '${orderId}_admin_reimbursement'],
+        ['t', broTag],
+        ['t', 'bro-admin-reimbursement'],
+        ['r', orderId],
+        ['orderId', orderId],
+      ];
+      if (userPubkey != null && userPubkey.isNotEmpty) {
+        tags.add(['p', userPubkey]);
+      }
+      
+      final event = Event.from(
+        kind: kindBroPaymentProof, // kind 30080
+        tags: tags,
+        content: content,
+        privkey: keychain.private,
+      );
+      
+      final results = await Future.wait(
+        _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
+      );
+      final successCount = results.where((r) => r).length;
+      broLog('📤 publishAdminReimbursementInvoice: publicado em $successCount/${_relays.length} relays');
+      return successCount > 0;
+    } catch (e) {
+      broLog('❌ publishAdminReimbursementInvoice EXCEPTION: $e');
+      return false;
+    }
+  }
+
+  /// Busca invoice de reembolso do admin para uma ordem
+  /// Retorna o adminInvoice se o admin já pagou o provedor
+  Future<String?> fetchAdminReimbursementInvoice(String orderId) async {
+    final results = await Future.wait(
+      _relays.take(3).map((relay) async {
+        try {
+          final events = await _fetchFromRelay(
+            relay,
+            kinds: [kindBroPaymentProof],
+            tags: {'#d': ['${orderId}_admin_reimbursement']},
+            limit: 5,
+          );
+          for (final event in events) {
+            try {
+              final content = event['parsedContent'] ?? jsonDecode(event['content']);
+              if (content['type'] == 'bro_admin_reimbursement' && content['orderId'] == orderId) {
+                return content['adminInvoice'] as String?;
+              }
+            } catch (_) {}
+          }
+        } catch (_) {}
+        return null;
+      }),
+    );
+    for (final result in results) {
+      if (result != null) return result;
+    }
+    return null;
+  }
+
   /// Publica resolução de disputa no Nostr (kind 1 com tag bro-resolucao)
   /// Chamado pelo admin ao resolver uma disputa a favor de uma das partes
   Future<bool> publishDisputeResolution({

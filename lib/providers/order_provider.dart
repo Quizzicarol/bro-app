@@ -1482,6 +1482,17 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
+  /// v337: Atualizar apenas metadata local (sem publicar no Nostr)
+  void updateOrderMetadataLocal(String orderId, Map<String, dynamic> metadata) {
+    final index = _orders.indexWhere((o) => o.id == orderId);
+    if (index != -1) {
+      _orders[index] = _orders[index].copyWith(metadata: metadata);
+      _debouncedSave();
+      _throttledNotify();
+      broLog('v337: updateOrderMetadataLocal: $orderId metadata atualizado');
+    }
+  }
+
   // Atualizar status local E publicar no Nostr
   Future<void> updateOrderStatusLocal(String orderId, String status) async {
     final index = _orders.indexWhere((o) => o.id == orderId);

@@ -65,6 +65,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   // Dados de resolução de disputa (vindo do mediador)
   Map<String, dynamic>? _disputeResolution;
   
+  // v337: Pagamento pendente pós-resolução de disputa a favor do provedor
+  bool _disputePaymentPending = false;
+  bool _isPayingDisputeResolution = false;
+  
   // v237: Mensagens do mediador para o usuário
   List<Map<String, dynamic>> _mediatorMessages = [];
   bool _loadingMediatorMessages = false;
@@ -156,7 +160,21 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       final nostrService = NostrOrderService();
       final resolution = await nostrService.fetchDisputeResolution(widget.orderId);
       if (resolution != null && mounted) {
-        setState(() => _disputeResolution = resolution);
+        // v337: Verificar se pagamento ao provedor ainda é necessário
+        bool paymentNeeded = false;
+        if (resolution['resolution'] == 'resolved_provider') {
+          final orderProvider = context.read<OrderProvider>();
+          final order = orderProvider.getOrderById(widget.orderId);
+          final alreadyPaid = order?.metadata?['disputeProviderPaid'] == true;
+          if (!alreadyPaid) {
+            paymentNeeded = true;
+            broLog('⚠️ Disputa resolvida a favor do provedor - pagamento pendente!');
+          }
+        }
+        setState(() {
+          _disputeResolution = resolution;
+          _disputePaymentPending = paymentNeeded;
+        });
         broLog('✅ Resolução de disputa encontrada para ${widget.orderId.substring(0, 8)}');
       }
     } catch (e) {
@@ -1318,6 +1336,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               if (_disputeResolution != null) ...[
                 const SizedBox(height: 16),
                 _buildDisputeResolutionCard(),
+              ],
+              // v337: Botão de pagamento pós-resolução de disputa a favor do provedor
+              if (_disputePaymentPending) ...[
+                const SizedBox(height: 10),
+                _buildDisputePaymentButton(),
               ],
               // Botão de saque para ordens canceladas
               if (_currentStatus == 'cancelled') ...[
@@ -4087,6 +4110,258 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     }
   }
 
+  /// v337: Botão para pagar o provedor após resolução de disputa a seu favor
+  Widget _buildDisputePaymentButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: _isPayingDisputeResolution ? null : _handleDisputePayment,
+        icon: _isPayingDisputeResolution
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              )
+            : const Icon(Icons.bolt),
+        label: Text(_isPayingDisputeResolution
+            ? 'Enviando pagamento...'
+            : '⚡ Pagar Provedor (Decisão do Mediador)'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: _isPayingDisputeResolution ? Colors.grey : const Color(0xFFFF6B6B),
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+        ),
+      ),
+    );
+  }
+
+  /// v337: Paga o provedor após resolução de disputa a favor dele
+  /// Reutiliza a mesma lógica de pagamento de _handleConfirmPayment
+  Future<void> _handleDisputePayment() async {
+    if (_isPayingDisputeResolution) return;
+
+    // Confirmar com o usuário antes de pagar
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('⚖️ Pagamento por Mediação'),
+        content: Text(
+          'O mediador decidiu a favor do provedor.\n\n'
+          'Valor: ${widget.amountSats} sats\n\n'
+          'Ao confirmar, o pagamento será enviado ao provedor via Lightning.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF6B6B)),
+            child: const Text('Confirmar Pagamento'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    setState(() => _isPayingDisputeResolution = true);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+            SizedBox(width: 12),
+            Text('Processando pagamento ao provedor...'),
+          ],
+        ),
+        backgroundColor: Color(0xFFFF6B6B),
+        duration: Duration(seconds: 15),
+      ),
+    );
+
+    try {
+      final orderProvider = context.read<OrderProvider>();
+      final order = orderProvider.getOrderById(widget.orderId);
+      final orderDetails = order?.toJson() ?? _orderDetails;
+
+      // ========== BUSCAR PROVIDER INVOICE ==========
+      String? providerInvoice;
+      if (orderDetails != null) {
+        providerInvoice = orderDetails['metadata']?['providerInvoice'] as String?;
+        providerInvoice ??= orderDetails['providerInvoice'] as String?;
+      }
+      if (providerInvoice == null && order != null) {
+        providerInvoice = order.metadata?['providerInvoice'] as String?;
+      }
+
+      // Fallback: buscar do evento COMPLETE no Nostr
+      if (providerInvoice == null || providerInvoice.isEmpty) {
+        broLog('🔍 [DisputePay] providerInvoice não encontrado no cache, buscando evento COMPLETE no Nostr...');
+        try {
+          final nostrService = NostrOrderService();
+          final completeData = await nostrService.fetchOrderCompleteEvent(widget.orderId);
+          if (completeData != null) {
+            providerInvoice = completeData['providerInvoice'] as String?;
+            if (providerInvoice != null && providerInvoice.isNotEmpty) {
+              broLog('✅ [DisputePay] Invoice encontrado no evento COMPLETE');
+            }
+          }
+        } catch (e) {
+          broLog('⚠️ [DisputePay] Erro ao buscar invoice do Nostr: $e');
+        }
+      }
+
+      if (providerInvoice == null || providerInvoice.isEmpty) {
+        broLog('🚨 [DisputePay] BLOQUEANDO: Nenhum providerInvoice encontrado!');
+        if (mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('❌ Invoice do provedor não encontrado. O provedor precisa gerar um novo invoice.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 5),
+            ),
+          );
+          setState(() => _isPayingDisputeResolution = false);
+        }
+        return;
+      }
+
+      // ========== PAGAR O PROVEDOR ==========
+      broLog('⚡ [DisputePay] Pagando invoice do provedor: ${providerInvoice.substring(0, 30)}...');
+      bool paymentSuccess = false;
+      String paymentError = '';
+
+      final breezProvider = context.read<BreezProvider>();
+      final liquidProvider = context.read<BreezLiquidProvider>();
+
+      if (!breezProvider.isInitialized && !liquidProvider.isInitialized) {
+        paymentError = 'Carteira não inicializada. Abra sua carteira e tente novamente.';
+      } else {
+        for (int attempt = 1; attempt <= 3; attempt++) {
+          try {
+            Map<String, dynamic>? payResult;
+            String usedBackend = 'none';
+
+            if (breezProvider.isInitialized) {
+              broLog('⚡ [DisputePay] Tentativa $attempt/3: Pagando via Breez Spark...');
+              payResult = await breezProvider.payInvoice(providerInvoice).timeout(
+                const Duration(seconds: 30),
+                onTimeout: () => {'success': false, 'error': 'timeout'},
+              );
+              usedBackend = 'Spark';
+            } else if (liquidProvider.isInitialized) {
+              broLog('⚡ [DisputePay] Tentativa $attempt/3: Pagando via Liquid...');
+              payResult = await liquidProvider.payInvoice(providerInvoice).timeout(
+                const Duration(seconds: 30),
+                onTimeout: () => {'success': false, 'error': 'timeout'},
+              );
+              usedBackend = 'Liquid';
+            }
+
+            if (payResult != null && payResult['success'] == true) {
+              broLog('✅ [DisputePay] Invoice pago com sucesso via $usedBackend na tentativa $attempt!');
+              paymentSuccess = true;
+              break;
+            } else {
+              paymentError = payResult?['error']?.toString() ?? 'Falha desconhecida';
+              broLog('⚠️ [DisputePay] Tentativa $attempt falhou: $paymentError');
+            }
+          } catch (e) {
+            paymentError = e.toString();
+            broLog('⚠️ [DisputePay] Tentativa $attempt erro: $paymentError');
+          }
+
+          if (attempt < 3) {
+            await Future.delayed(const Duration(seconds: 2));
+          }
+        }
+      }
+
+      if (!paymentSuccess) {
+        broLog('❌ [DisputePay] Pagamento FALHOU após 3 tentativas: $paymentError');
+        if (mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('❌ Pagamento falhou: $paymentError\nTente novamente.'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 8),
+            ),
+          );
+          setState(() => _isPayingDisputeResolution = false);
+        }
+        return;
+      }
+
+      broLog('✅ [DisputePay] Pagamento ao provedor confirmado!');
+
+      // ========== MARCAR COMO PAGO NO METADATA ==========
+      if (order != null) {
+        final updatedMetadata = {
+          ...?order.metadata,
+          'disputeProviderPaid': true,
+          'disputeProviderPaidAt': DateTime.now().toIso8601String(),
+        };
+        orderProvider.updateOrderMetadataLocal(widget.orderId, updatedMetadata);
+      }
+
+      // ========== TAXA DA PLATAFORMA ==========
+      final platformBalanceProvider = context.read<PlatformBalanceProvider>();
+      final totalSats = widget.amountSats.toDouble();
+      final platformFeeRaw = totalSats * AppConfig.platformFeePercent;
+      final platformFeeSats = platformFeeRaw.round() < 1 ? 1 : platformFeeRaw.round();
+      final orderDescription = 'Ordem ${widget.orderId.substring(0, 8)} - R\$ ${widget.amountBrl.toStringAsFixed(2)}';
+
+      if (AppConfig.platformLightningAddress.isNotEmpty && platformFeeSats > 0) {
+        broLog('💼 [DisputePay] Enviando taxa da plataforma...');
+        final feeSuccess = await PlatformFeeService.sendPlatformFee(
+          orderId: widget.orderId,
+          totalSats: widget.amountSats,
+        );
+        if (!feeSuccess) {
+          broLog('⚠️ [DisputePay] Falha ao enviar taxa da plataforma');
+        }
+      }
+
+      await platformBalanceProvider.addPlatformFee(
+        orderId: widget.orderId,
+        amountSats: platformFeeSats.toDouble(),
+        orderDescription: orderDescription,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Pagamento enviado ao provedor com sucesso!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 4),
+          ),
+        );
+        setState(() {
+          _isPayingDisputeResolution = false;
+          _disputePaymentPending = false;
+        });
+      }
+    } catch (e) {
+      broLog('❌ [DisputePay] ERRO: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao pagar provedor: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        setState(() => _isPayingDisputeResolution = false);
+      }
+    }
+  }
+
   /// Card mostrando resultado da resolução do mediador
   Widget _buildDisputeResolutionCard() {
     final resolution = _disputeResolution!;
@@ -4137,7 +4412,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        isUserFavor ? 'Resolvida a seu favor' : 'Resolvida a favor do provedor',
+                        isUserFavor
+                            ? 'Resolvida a seu favor'
+                            : _disputePaymentPending
+                                ? 'Resolvida a favor do provedor — pagamento pendente'
+                                : 'Resolvida a favor do provedor — pago',
                         style: const TextStyle(color: Colors.white70, fontSize: 12),
                       ),
                     ],

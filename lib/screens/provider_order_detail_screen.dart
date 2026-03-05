@@ -1475,7 +1475,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                     const SizedBox(height: 2),
                     Text(
                       isProviderFavor
-                          ? 'Resolvida a seu favor — pagamento mantido'
+                          ? 'Resolvida a seu favor — aguardando pagamento do usuário'
                           : 'Resolvida a favor do usuário — ordem cancelada',
                       style: const TextStyle(color: Colors.white70, fontSize: 12),
                     ),

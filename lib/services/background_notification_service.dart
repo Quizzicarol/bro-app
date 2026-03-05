@@ -5,6 +5,7 @@ import 'package:flutter/material.dart' show Color;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:nostr/nostr.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:workmanager/workmanager.dart';
 
@@ -41,6 +42,7 @@ void broBackgroundCallbackDispatcher() {
       
       if (taskName == _taskName || taskName == Workmanager.iOSBackgroundTask) {
         await _checkNostrForNewEvents();
+        await _checkAutoLiquidationBackground();
       }
       
       debugPrint('[BRO-BG] Task concluida com sucesso');
@@ -408,4 +410,264 @@ String? _getTagValue(Map<String, dynamic> event, String tagName) {
     }
   }
   return null;
+}
+
+// ============================================================
+// AUTO-LIQUIDACAO EM BACKGROUND
+// v274: Verifica ordens awaiting_confirmation com 36h expirado
+// e publica status 'liquidated' no Nostr automaticamente
+// ============================================================
+
+const String _bgAutoLiqKey = 'bro_bg_auto_liq_done';
+
+/// Verifica ordens locais e executa auto-liquidacao para expiradas
+Future<void> _checkAutoLiquidationBackground() async {
+  try {
+    // 1. Recuperar chaves do storage seguro
+    const secureStorage = FlutterSecureStorage(
+      aOptions: AndroidOptions(encryptedSharedPreferences: true),
+      iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
+    );
+    
+    final userPubkey = await secureStorage.read(key: 'nostr_public_key');
+    final privateKey = await secureStorage.read(key: 'nostr_private_key');
+    
+    if (userPubkey == null || userPubkey.isEmpty || privateKey == null || privateKey.isEmpty) {
+      debugPrint('[BRO-BG-LIQ] Sem chaves — abortando auto-liquidacao');
+      return;
+    }
+    
+    // 2. Verificar se é provedor
+    final shortKey = userPubkey.length > 16 ? userPubkey.substring(0, 16) : userPubkey;
+    final providerModeKey = 'is_provider_mode_$shortKey';
+    final providerModeValue = await secureStorage.read(key: providerModeKey);
+    final legacyProviderMode = await secureStorage.read(key: 'is_provider_mode');
+    final isProvider = providerModeValue == 'true' || legacyProviderMode == 'true';
+    
+    if (!isProvider) {
+      debugPrint('[BRO-BG-LIQ] Nao e provedor — pulando auto-liquidacao');
+      return;
+    }
+    
+    // 3. Ler ordens do SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    final ordersKey = 'orders_$userPubkey';
+    final ordersJson = prefs.getString(ordersKey);
+    if (ordersJson == null || ordersJson.isEmpty) {
+      debugPrint('[BRO-BG-LIQ] Sem ordens locais');
+      return;
+    }
+    
+    // 4. Carregar IDs ja auto-liquidados em bg (evitar duplicatas)
+    final doneIdsJson = prefs.getString(_bgAutoLiqKey) ?? '[]';
+    final doneIds = Set<String>.from(jsonDecode(doneIdsJson) as List);
+    
+    // 5. Parsear ordens e filtrar expiradas
+    final ordersList = jsonDecode(ordersJson) as List;
+    final now = DateTime.now();
+    const deadline = Duration(hours: 36);
+    
+    final expiredOrders = <Map<String, dynamic>>[];
+    
+    for (final orderJson in ordersList) {
+      final order = orderJson as Map<String, dynamic>;
+      final status = order['status'] as String? ?? '';
+      final orderId = order['id'] as String? ?? '';
+      
+      if (status != 'awaiting_confirmation') continue;
+      if (orderId.isEmpty) continue;
+      if (doneIds.contains(orderId)) continue;
+      
+      // Verificar se é provedor desta ordem
+      final providerId = order['providerId'] as String? ?? '';
+      final metadata = order['metadata'] as Map<String, dynamic>? ?? {};
+      final metaProviderId = metadata['providerId'] as String? ?? metadata['provider_id'] as String? ?? '';
+      final isOrderProvider = providerId == userPubkey || metaProviderId == userPubkey;
+      final isOrderCreator = (order['userPubkey'] as String? ?? '') == userPubkey;
+      if (!isOrderProvider && !isOrderCreator) continue;
+      
+      // Ja auto-liquidada?
+      if (metadata['autoLiquidated'] == true) continue;
+      
+      // Verificar timestamp do comprovante
+      final proofTimestamp = metadata['receipt_submitted_at'] as String?
+          ?? metadata['proofReceivedAt'] as String?
+          ?? metadata['proofSentAt'] as String?
+          ?? metadata['completedAt'] as String?
+          ?? order['completedAt'] as String?;
+      
+      if (proofTimestamp == null) continue;
+      
+      try {
+        final proofTime = DateTime.parse(proofTimestamp);
+        if (now.difference(proofTime) > deadline) {
+          expiredOrders.add(order);
+        }
+      } catch (_) {}
+    }
+    
+    if (expiredOrders.isEmpty) {
+      debugPrint('[BRO-BG-LIQ] Nenhuma ordem expirada para auto-liquidar');
+      return;
+    }
+    
+    debugPrint('[BRO-BG-LIQ] ${expiredOrders.length} ordens expiradas encontradas');
+    
+    // 6. Publicar status 'liquidated' no Nostr para cada ordem
+    int successCount = 0;
+    
+    for (final order in expiredOrders) {
+      final orderId = order['id'] as String;
+      final orderUserPubkey = order['userPubkey'] as String? ?? '';
+      
+      try {
+        final success = await _publishAutoLiquidation(
+          privateKey: privateKey,
+          providerPubkey: userPubkey,
+          orderId: orderId,
+          orderUserPubkey: orderUserPubkey,
+        );
+        
+        if (success) {
+          doneIds.add(orderId);
+          successCount++;
+          debugPrint('[BRO-BG-LIQ] ✅ Auto-liquidada: ${orderId.substring(0, 8)}');
+          
+          // 7. Atualizar ordem localmente
+          order['status'] = 'liquidated';
+          final metadata = Map<String, dynamic>.from(order['metadata'] as Map<String, dynamic>? ?? {});
+          metadata['autoLiquidated'] = true;
+          metadata['liquidatedAt'] = now.toIso8601String();
+          metadata['reason'] = 'Auto-liquidacao background (36h)';
+          order['metadata'] = metadata;
+        }
+      } catch (e) {
+        debugPrint('[BRO-BG-LIQ] ❌ Erro ao liquidar ${orderId.substring(0, 8)}: $e');
+      }
+    }
+    
+    // 8. Salvar ordens atualizadas e IDs processados
+    if (successCount > 0) {
+      await prefs.setString(ordersKey, jsonEncode(ordersList));
+      
+      // Manter apenas ultimos 200 IDs
+      final recentDone = doneIds.toList();
+      if (recentDone.length > 200) {
+        recentDone.removeRange(0, recentDone.length - 200);
+      }
+      await prefs.setString(_bgAutoLiqKey, jsonEncode(recentDone));
+      
+      // 9. Notificacao local
+      await _initNotifications();
+      await _bgNotifications?.show(
+        'auto_liq'.hashCode % 2147483647,
+        '⚡ Auto-liquidação concluída',
+        '$successCount ordem(ns) liquidada(s) automaticamente. Seus ganhos foram liberados.',
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'bro_app_channel',
+            'Bro App',
+            channelDescription: 'Notificacoes do Bro App',
+            importance: Importance.high,
+            priority: Priority.high,
+            icon: '@mipmap/ic_launcher',
+          ),
+          iOS: DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
+          ),
+        ),
+      );
+      
+      debugPrint('[BRO-BG-LIQ] $successCount ordens auto-liquidadas com sucesso');
+    }
+  } catch (e) {
+    debugPrint('[BRO-BG-LIQ] Erro geral: $e');
+  }
+}
+
+/// Publica evento Nostr kind 30080 com status 'liquidated'
+/// Versao standalone para background isolate (sem depender de NostrOrderService)
+Future<bool> _publishAutoLiquidation({
+  required String privateKey,
+  required String providerPubkey,
+  required String orderId,
+  required String orderUserPubkey,
+}) async {
+  try {
+    final keychain = Keychain(privateKey);
+    
+    final content = jsonEncode({
+      'type': 'bro_order_update',
+      'orderId': orderId,
+      'status': 'liquidated',
+      'providerId': providerPubkey,
+      'userPubkey': orderUserPubkey.isNotEmpty ? orderUserPubkey : providerPubkey,
+      'publishedBy': providerPubkey,
+      'updatedAt': DateTime.now().toIso8601String(),
+      'autoLiquidated': true,
+    });
+    
+    final tags = [
+      ['d', '${orderId}_${providerPubkey.substring(0, 8)}_update'],
+      ['t', 'bro-order'],
+      ['t', 'bro-update'],
+      ['t', 'status-liquidated'],
+      ['r', orderId],
+      ['orderId', orderId],
+    ];
+    
+    // Tags #p para ambas as partes
+    final pTags = <String>{providerPubkey};
+    if (orderUserPubkey.isNotEmpty) pTags.add(orderUserPubkey);
+    for (final pk in pTags) {
+      tags.add(['p', pk]);
+    }
+    
+    final event = Event.from(
+      kind: _kindBroPaymentProof, // 30080
+      tags: tags,
+      content: content,
+      privkey: keychain.private,
+    );
+    
+    // Publicar em pelo menos 1 relay
+    for (final relay in _relays.take(3)) {
+      try {
+        final channel = WebSocketChannel.connect(Uri.parse(relay));
+        try {
+          await channel.ready.timeout(const Duration(seconds: 5));
+        } catch (_) {
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
+        
+        channel.sink.add(jsonEncode(['EVENT', event.toJson()]));
+        
+        // Esperar OK do relay
+        bool accepted = false;
+        await for (final msg in channel.stream.timeout(
+          const Duration(seconds: 5),
+          onTimeout: (sink) => sink.close(),
+        )) {
+          final response = jsonDecode(msg.toString());
+          if (response is List && response[0] == 'OK') {
+            accepted = response[2] == true;
+            break;
+          }
+        }
+        
+        try { channel.sink.close(); } catch (_) {}
+        
+        if (accepted) return true;
+      } catch (e) {
+        debugPrint('[BRO-BG-LIQ] Relay $relay erro: $e');
+      }
+    }
+    
+    return false;
+  } catch (e) {
+    debugPrint('[BRO-BG-LIQ] Erro ao publicar evento: $e');
+    return false;
+  }
 }

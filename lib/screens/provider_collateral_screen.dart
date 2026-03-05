@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
 import '../providers/breez_provider_export.dart';
 import '../providers/order_provider.dart';
@@ -67,9 +68,9 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
       final orderProvider = context.read<OrderProvider>();
       _committedSats = orderProvider.committedSats;
       
-      debugPrint('💰 Saldo total: $_walletBalance sats');
-      debugPrint('🔒 Sats comprometidos: $_committedSats sats');
-      debugPrint('💰 Saldo disponível para garantia: $_availableBalance sats');
+      broLog('💰 Saldo total: $_walletBalance sats');
+      broLog('🔒 Sats comprometidos: $_committedSats sats');
+      broLog('💰 Saldo disponível para garantia: $_availableBalance sats');
 
       // Carregar collateral atual
       final collateralService = LocalCollateralService();
@@ -315,7 +316,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
               final minRequiredWithTolerance = (requiredSatsNow * 0.90).round(); // 10% tolerância
               final showWarning = _walletBalance < minRequiredWithTolerance;
               
-              debugPrint('📊 Tier ${_currentCollateral!.tierName}: salvo=${_currentCollateral!.lockedSats}, atualizado=$requiredSatsNow, mínimo=$minRequiredWithTolerance, saldo=$_walletBalance');
+              broLog('📊 Tier ${_currentCollateral!.tierName}: salvo=${_currentCollateral!.lockedSats}, atualizado=$requiredSatsNow, mínimo=$minRequiredWithTolerance, saldo=$_walletBalance');
               
               if (!showWarning) return const SizedBox.shrink();
               

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:breez_sdk_spark_flutter/breez_sdk_spark.dart' as spark;
+import 'package:bro_app/services/log_utils.dart';
 import 'package:intl/intl.dart';
 import '../providers/order_provider.dart';
 import '../providers/breez_provider_export.dart';
@@ -57,12 +58,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
     super.initState();
     // Listener para detecção automática de código colado
     _codeController.addListener(_onCodeChanged);
-    debugPrint('💳 PaymentScreen inicializado - _isProcessing: $_isProcessing');
+    broLog('💳 PaymentScreen inicializado - _isProcessing: $_isProcessing');
   }
 
   // Método para forçar reset do estado de processamento
   void _forceResetProcessing() {
-    debugPrint('🔄 Forçando reset de _isProcessing');
+    broLog('🔄 Forçando reset de _isProcessing');
     if (mounted) {
       setState(() {
         _isProcessing = false;
@@ -103,14 +104,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   Future<void> _processBill(String code) async {
-    debugPrint('📝 _processBill iniciado - _isProcessing antes: $_isProcessing');
+    broLog('📝 _processBill iniciado - _isProcessing antes: $_isProcessing');
     if (!mounted) return;
     setState(() {
       _isProcessing = true;
       _billData = null;
       _conversionData = null;
     });
-    debugPrint('🔒 _isProcessing setado para TRUE');
+    broLog('🔒 _isProcessing setado para TRUE');
 
     final orderProvider = context.read<OrderProvider>();
 
@@ -122,8 +123,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final cleanCode = code.replaceAll(RegExp(r'[^\d]'), '');
       final isPix = code.contains('00020126') || code.contains('pix.') || code.contains('br.gov.bcb');
       
-      debugPrint('🔍 Processando código: ${code.substring(0, min(50, code.length))}');
-      debugPrint('📊 Tipo detectado: ${isPix ? "PIX" : "Boleto"}');
+      broLog('🔍 Processando código: ${code.substring(0, min(50, code.length))}');
+      broLog('📊 Tipo detectado: ${isPix ? "PIX" : "Boleto"}');
 
       if (isPix) {
         result = await orderProvider.decodePix(code);
@@ -137,12 +138,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
         return;
       }
 
-      debugPrint('📨 Resposta da API: $result');
+      broLog('📨 Resposta da API: $result');
 
       if (!mounted) return;
       
       if (result != null && result['success'] == true) {
-        debugPrint('✅ Decodificação bem-sucedida: $result');
+        broLog('✅ Decodificação bem-sucedida: $result');
         
         final Map<String, dynamic> billDataMap = {};
         result.forEach((key, value) {
@@ -179,9 +180,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
           return;
         }
         
-        debugPrint('💰 Chamando convertPrice com amount: $amount');
+        broLog('💰 Chamando convertPrice com amount: $amount');
         final conversion = await orderProvider.convertPrice(amount);
-        debugPrint('📊 Resposta do convertPrice: $conversion');
+        broLog('📊 Resposta do convertPrice: $conversion');
 
         if (!mounted) return;
         
@@ -189,27 +190,27 @@ class _PaymentScreenState extends State<PaymentScreen> {
           setState(() {
             _conversionData = conversion;
           });
-          debugPrint('✅ Conversão calculada - Breakdown de taxas e botão "Criar Ordem" serão exibidos');
-          debugPrint('💎 Conversion data: $conversion');
+          broLog('✅ Conversão calculada - Breakdown de taxas e botão "Criar Ordem" serão exibidos');
+          broLog('💎 Conversion data: $conversion');
         } else {
-          debugPrint('❌ Falha na conversão: ${conversion?['error']}');
+          broLog('❌ Falha na conversão: ${conversion?['error']}');
           _showError('Erro ao calcular conversão: ${conversion?['error'] ?? 'Desconhecido'}');
         }
       } else {
-        debugPrint('❌ Resultado inválido: $result');
+        broLog('❌ Resultado inválido: $result');
         _showError('Código inválido ou não reconhecido');
       }
     } catch (e) {
       if (!mounted) return;
       _showError('Erro ao processar: $e');
     } finally {
-      debugPrint('🔓 _processBill finally - resetando _isProcessing');
+      broLog('🔓 _processBill finally - resetando _isProcessing');
       if (mounted) {
         setState(() {
           _isProcessing = false;
         });
       }
-      debugPrint('✅ _isProcessing setado para FALSE');
+      broLog('✅ _isProcessing setado para FALSE');
     }
   }
 
@@ -230,13 +231,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
       StreamSubscription<spark.SdkEvent>? eventSub;
       
       // Listen to SDK events for payment confirmation
-      debugPrint('💡 Escutando eventos do Breez SDK para pagamento $paymentHash');
+      broLog('💡 Escutando eventos do Breez SDK para pagamento $paymentHash');
       eventSub = breezProvider.sdk?.addEventListener().listen((event) {
-        debugPrint('📡 Evento recebido: ${event.runtimeType}');
+        broLog('📡 Evento recebido: ${event.runtimeType}');
         
         // IMPORTANTE: Não processar se dialog já foi fechado ou já processando
         if (dialogClosed || isProcessingPayment) {
-          debugPrint('⚠️ Dialog fechado ou já processando, ignorando evento');
+          broLog('⚠️ Dialog fechado ou já processando, ignorando evento');
           return;
         }
         
@@ -245,7 +246,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           isProcessingPayment = true;
           
           final payment = event.payment;
-          debugPrint('✅ PaymentSucceeded recebido! Payment ID: ${payment.id}');
+          broLog('✅ PaymentSucceeded recebido! Payment ID: ${payment.id}');
           
           // Verificar se é o pagamento correto através do payment hash E valor
           if (payment.details is spark.PaymentDetails_Lightning) {
@@ -258,7 +259,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             
             if (isCorrectHash && isCorrectAmount) {
               isPaid = true;
-              debugPrint('🎉 É o nosso pagamento! Hash: ✅ Valor: $receivedAmount sats ✅');
+              broLog('🎉 É o nosso pagamento! Hash: ✅ Valor: $receivedAmount sats ✅');
               
               orderProvider.updateOrderStatus(orderId: orderId, status: 'confirmed');
               
@@ -266,7 +267,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               try {
                 // Tentar fechar o dialog de QR code
                 Navigator.of(context, rootNavigator: true).pop();
-                debugPrint('✅ Dialog de QR code fechado');
+                broLog('✅ Dialog de QR code fechado');
                 // Aguardar um frame para garantir que o dialog anterior foi fechado
                 Future.delayed(const Duration(milliseconds: 100), () {
                   showDialog(
@@ -329,9 +330,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       actions: [
                         TextButton(
                           onPressed: () {
-                            debugPrint('📋 Botão "Ver Detalhes" clicado');
+                            broLog('📋 Botão "Ver Detalhes" clicado');
                             eventSub?.cancel();
-                            debugPrint('🔌 EventSub cancelado');
+                            broLog('🔌 EventSub cancelado');
                             // Navegar para Detalhes da Ordem
                             Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(
                               '/order-status',
@@ -342,7 +343,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                                 'amountSats': amountSats,
                               },
                             );
-                            debugPrint('✅ Navegou para Detalhes da Ordem');
+                            broLog('✅ Navegou para Detalhes da Ordem');
                           },
                           style: TextButton.styleFrom(
                             backgroundColor: Colors.green,
@@ -358,7 +359,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   );
                 });
               } catch (e) {
-                debugPrint('❌ Erro ao mostrar dialog de confirmação: $e');
+                broLog('❌ Erro ao mostrar dialog de confirmação: $e');
               }
             }
           }
@@ -369,11 +370,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
         context: context,
         barrierDismissible: true,
         builder: (ctx) {
-          debugPrint('🎨 DIALOG BUILDER CHAMADO - invoice length: ${invoice.length}');
+          broLog('🎨 DIALOG BUILDER CHAMADO - invoice length: ${invoice.length}');
           return WillPopScope(
             onWillPop: () async {
               // Cancelar listener ao fechar o dialog
-              debugPrint('⚠️ Dialog fechado pelo usuário');
+              broLog('⚠️ Dialog fechado pelo usuário');
               dialogClosed = true; // Marcar como fechado ANTES de cancelar
               eventSub?.cancel();
               return true;
@@ -441,11 +442,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
               actions: [
               TextButton(
                 onPressed: () {
-                  debugPrint('🔴 Botão Fechar clicado');
+                  broLog('🔴 Botão Fechar clicado');
                   eventSub?.cancel();
-                  debugPrint('🔌 EventSub cancelado');
+                  broLog('🔌 EventSub cancelado');
                   Navigator.of(ctx).pop();
-                  debugPrint('✅ Dialog fechado');
+                  broLog('✅ Dialog fechado');
                 },
                 child: const Text('Fechar'),
               ),
@@ -455,16 +456,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
       },
       ).whenComplete(() {
         // Cleanup: cancelar subscription de eventos
-        debugPrint('🧹 whenComplete executado');
+        broLog('🧹 whenComplete executado');
         dialogClosed = true; // Marcar como fechado
         eventSub?.cancel();
-        debugPrint('🔌 Event subscription cancelada no whenComplete');
+        broLog('🔌 Event subscription cancelada no whenComplete');
       });
       
       // Se o result for null, significa que o usuário fechou o dialog
-      debugPrint('📍 Após showDialog - result: $result');
+      broLog('📍 Após showDialog - result: $result');
       if (result == null && mounted) {
-        debugPrint('⚠️ Dialog fechado sem resultado - garantindo cleanup');
+        broLog('⚠️ Dialog fechado sem resultado - garantindo cleanup');
         dialogClosed = true;
         eventSub?.cancel();
       }
@@ -472,7 +473,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
  
 
   void _showBitcoinPaymentOptions(double totalBrl, String sats) {
-    debugPrint('🔵 _showBitcoinPaymentOptions chamado: totalBrl=$totalBrl, sats=$sats');
+    broLog('🔵 _showBitcoinPaymentOptions chamado: totalBrl=$totalBrl, sats=$sats');
     final btcAmount = int.parse(sats) / 100000000;
     final amountSats = int.parse(sats);
 
@@ -678,7 +679,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final paymentHash = 'wallet_$walletPayId';
       final invoice = 'wallet_balance_payment_$walletPayId';
 
-      debugPrint('💰 Pagamento com saldo da carteira: $amountSats sats (hash: $paymentHash)');
+      broLog('💰 Pagamento com saldo da carteira: $amountSats sats (hash: $paymentHash)');
 
       // Criar ordem diretamente (sem auto-pagamento Lightning)
       final order = await orderProvider.createOrder(
@@ -697,7 +698,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         return;
       }
 
-      debugPrint('✅ Ordem criada: ${order.id}');
+      broLog('✅ Ordem criada: ${order.id}');
 
       // Fechar loading e navegar IMEDIATAMENTE
       if (mounted) Navigator.of(context).pop();
@@ -733,7 +734,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         userPubkey: userPubkey,
       );
     } catch (e) {
-      debugPrint('❌ Erro em _payWithWalletBalance: $e');
+      broLog('❌ Erro em _payWithWalletBalance: $e');
       if (mounted) Navigator.of(context).pop();
       _showError('Erro ao pagar com saldo: $e');
     } finally {
@@ -758,7 +759,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       if (paymentHash.isNotEmpty) {
         await orderProvider.setOrderPaymentHash(orderId, paymentHash, invoice)
             .timeout(const Duration(seconds: 15), onTimeout: () {
-          debugPrint('⚠️ Timeout ao salvar paymentHash (15s) - continuando...');
+          broLog('⚠️ Timeout ao salvar paymentHash (15s) - continuando...');
         });
       }
 
@@ -781,12 +782,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
           clientPubkey: userPubkey,
         );
       } catch (e) {
-        debugPrint('Erro ao registrar taxa: $e');
+        broLog('Erro ao registrar taxa: $e');
       }
 
-      debugPrint('✅ Operações background do wallet payment concluídas para ordem $orderId');
+      broLog('✅ Operações background do wallet payment concluídas para ordem $orderId');
     } catch (e) {
-      debugPrint('⚠️ Erro em operações background do wallet payment: $e');
+      broLog('⚠️ Erro em operações background do wallet payment: $e');
     }
   }
 
@@ -872,13 +873,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
     required String sats,
     required double btcAmount,
   }) async {
-    debugPrint('🚀 _createPayment iniciado: $paymentType');
+    broLog('🚀 _createPayment iniciado: $paymentType');
     
     // Fechar teclado
     FocusScope.of(context).unfocus();
     
     if (_billData == null || _conversionData == null) {
-      debugPrint('❌ Dados da conta ausentes');
+      broLog('❌ Dados da conta ausentes');
       _showError('Dados da conta não encontrados');
       return;
     }
@@ -886,7 +887,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final orderProvider = context.read<OrderProvider>();
     final breezProvider = context.read<BreezProvider>();
 
-    debugPrint('💳 _createPayment iniciado - _isProcessing antes: $_isProcessing');
+    broLog('💳 _createPayment iniciado - _isProcessing antes: $_isProcessing');
     
     // Mostrar popup de loading "Criando invoice"
     showDialog(
@@ -925,7 +926,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     setState(() {
       _isProcessing = true;
     });
-    debugPrint('🔒 _isProcessing setado para TRUE em _createPayment');
+    broLog('🔒 _isProcessing setado para TRUE em _createPayment');
 
     try {
       final dynamic valueData = _billData!['value'];
@@ -935,10 +936,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final double btcPrice = (priceData is num) ? priceData.toDouble() : 0.0;
       final amountSats = int.parse(sats);
 
-      debugPrint('💰 Preparando pagamento: R\$ $billAmount @ R\$ $btcPrice/BTC');
+      broLog('💰 Preparando pagamento: R\$ $billAmount @ R\$ $btcPrice/BTC');
 
       if (paymentType == 'lightning') {
-        debugPrint('⚡ Criando invoice Lightning PRIMEIRO...');
+        broLog('⚡ Criando invoice Lightning PRIMEIRO...');
         
         // 🔥 NOVO FLUXO: Criar invoice ANTES da ordem!
         // Isso evita criar ordem "fantasma" se usuário sair da tela
@@ -950,22 +951,22 @@ class _PaymentScreenState extends State<PaymentScreen> {
         ).timeout(
           const Duration(seconds: 45), // Timeout maior para fallback
           onTimeout: () {
-            debugPrint('⏰ Timeout ao criar invoice Lightning');
+            broLog('⏰ Timeout ao criar invoice Lightning');
             return {'success': false, 'error': 'Timeout ao criar invoice'};
           },
         );
 
-        debugPrint('📨 Invoice data: $invoiceData');
+        broLog('📨 Invoice data: $invoiceData');
         
         // Log se usou Liquid
         if (invoiceData?['isLiquid'] == true) {
-          debugPrint('💧 Invoice criada via LIQUID (fallback)');
+          broLog('💧 Invoice criada via LIQUID (fallback)');
         }
 
         if (invoiceData == null || invoiceData['success'] != true) {
           // Fechar popup de loading
           if (mounted) Navigator.of(context).pop();
-          debugPrint('❌ Erro ao criar invoice');
+          broLog('❌ Erro ao criar invoice');
           _showError('Erro ao criar Lightning invoice: ${invoiceData?['error'] ?? 'desconhecido'}');
           return;
         }
@@ -973,13 +974,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
         final inv = (invoiceData['invoice'] ?? '') as String;
         if (inv.isEmpty || !(inv.startsWith('lnbc') || inv.startsWith('lntb') || inv.startsWith('lnbcrt'))) {
           if (mounted) Navigator.of(context).pop();
-          debugPrint('❌ Invoice inválida: $inv');
+          broLog('❌ Invoice inválida: $inv');
           _showError('Invoice inválida recebida');
           return;
         }
         
         final paymentHash = (invoiceData['paymentHash'] ?? '') as String;
-        debugPrint('✅ Invoice criada! NÃO criando ordem ainda - só após pagamento!');
+        broLog('✅ Invoice criada! NÃO criando ordem ainda - só após pagamento!');
         
         // Fechar popup de loading
         if (mounted) Navigator.of(context).pop();
@@ -1014,16 +1015,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
           ),
         );
       } else {
-        debugPrint('🔗 Criando endereço onchain PRIMEIRO...');
+        broLog('🔗 Criando endereço onchain PRIMEIRO...');
         
         // 🔥 NOVO FLUXO: Criar endereço ANTES da ordem!
         final addressData = await breezProvider.createOnchainAddress();
 
-        debugPrint('📨 Address data: $addressData');
+        broLog('📨 Address data: $addressData');
 
         if (addressData == null || addressData['success'] != true) {
           if (mounted) Navigator.of(context).pop();
-          debugPrint('❌ Erro ao criar endereço onchain');
+          broLog('❌ Erro ao criar endereço onchain');
           _showError('Erro ao criar endereço Bitcoin: ${addressData?['error'] ?? 'desconhecido'}');
           return;
         }
@@ -1032,12 +1033,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
         
         if (address.isEmpty) {
           if (mounted) Navigator.of(context).pop();
-          debugPrint('❌ Endereço vazio');
+          broLog('❌ Endereço vazio');
           _showError('Erro ao criar endereço Bitcoin');
           return;
         }
         
-        debugPrint('✅ Endereço criado! NÃO criando ordem ainda - só após pagamento!');
+        broLog('✅ Endereço criado! NÃO criando ordem ainda - só após pagamento!');
         
         // Fechar popup de loading
         if (mounted) Navigator.of(context).pop();
@@ -1065,19 +1066,19 @@ class _PaymentScreenState extends State<PaymentScreen> {
         );
       }
     } catch (e) {
-      debugPrint('❌ Exception em _createPayment: $e');
+      broLog('❌ Exception em _createPayment: $e');
       // Fechar popup de loading em caso de erro
       if (mounted) Navigator.of(context).pop();
       _showError('Erro ao criar pagamento: $e');
     } finally {
-      debugPrint('🔓 _createPayment finally - mounted: $mounted');
+      broLog('🔓 _createPayment finally - mounted: $mounted');
       if (mounted) {
         setState(() {
           _isProcessing = false;
         });
-        debugPrint('✅ _isProcessing setado para FALSE em _createPayment');
+        broLog('✅ _isProcessing setado para FALSE em _createPayment');
       } else {
-        debugPrint('⚠️ Widget não montado, não pode resetar _isProcessing');
+        broLog('⚠️ Widget não montado, não pode resetar _isProcessing');
       }
     }
   }

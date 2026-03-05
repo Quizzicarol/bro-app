@@ -1,8 +1,9 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Serviço de verificação de versão do app
@@ -46,7 +47,7 @@ class VersionCheckService {
       final currentBuild = int.tryParse(packageInfo.buildNumber) ?? 0;
       final currentVersion = packageInfo.version;
       
-      debugPrint('🔄 Verificando atualização... versão atual: $currentVersion+$currentBuild');
+      broLog('🔄 Verificando atualização... versão atual: $currentVersion+$currentBuild');
       
       final response = await http.get(
         Uri.parse(_githubApiUrl),
@@ -54,7 +55,7 @@ class VersionCheckService {
       ).timeout(const Duration(seconds: 10));
       
       if (response.statusCode != 200) {
-        debugPrint('⚠️ GitHub API retornou ${response.statusCode}');
+        broLog('⚠️ GitHub API retornou ${response.statusCode}');
         _alreadyChecked = true;
         return false;
       }
@@ -89,7 +90,7 @@ class VersionCheckService {
       _updateAvailable = remoteBuild > currentBuild;
       _isCritical = currentBuild < _minimumRequiredBuild;
       
-      debugPrint('📦 Versão remota: $_latestVersion (build $remoteBuild) | '
+      broLog('📦 Versão remota: $_latestVersion (build $remoteBuild) | '
           'Local: $currentVersion (build $currentBuild) | '
           'Atualização: $_updateAvailable | Crítica: $_isCritical');
       
@@ -97,7 +98,7 @@ class VersionCheckService {
       return _updateAvailable;
       
     } catch (e) {
-      debugPrint('⚠️ Erro ao verificar atualização: $e');
+      broLog('⚠️ Erro ao verificar atualização: $e');
       _alreadyChecked = true;
       return false;
     }
@@ -220,12 +221,12 @@ class VersionCheckService {
       if (Platform.isIOS) {
         // iOS: Redirecionar para TestFlight
         url = _testFlightUrl;
-        debugPrint('🍎 iOS detectado: abrindo TestFlight');
+        broLog('🍎 iOS detectado: abrindo TestFlight');
       } else {
         // Android: Baixar APK do GitHub
         if (_downloadUrl == null) return;
         url = _downloadUrl!;
-        debugPrint('🤖 Android detectado: abrindo APK download');
+        broLog('🤖 Android detectado: abrindo APK download');
       }
       
       final uri = Uri.parse(url);
@@ -233,7 +234,7 @@ class VersionCheckService {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       }
     } catch (e) {
-      debugPrint('❌ Erro ao abrir URL de download: $e');
+      broLog('❌ Erro ao abrir URL de download: $e');
     }
   }
 

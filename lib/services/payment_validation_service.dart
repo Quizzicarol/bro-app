@@ -1,3 +1,4 @@
+﻿import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter/foundation.dart';
 import '../services/escrow_service.dart';
 import '../services/api_service.dart';
@@ -20,7 +21,7 @@ class PaymentValidationService {
     bool autoApprove = false, // Para desenvolvimento/testes
   }) async {
     try {
-      debugPrint('🔍 Validando comprovante para ordem $orderId');
+      broLog('🔍 Validando comprovante para ordem $orderId');
 
       // Buscar detalhes da ordem
       final orderResponse = await _apiService.get('/api/orders/$orderId');
@@ -51,7 +52,7 @@ class PaymentValidationService {
           'submitted_at': DateTime.now().toIso8601String(),
         });
 
-        debugPrint('📋 Comprovante enviado para revisão manual');
+        broLog('📋 Comprovante enviado para revisão manual');
         
         return {
           'success': true,
@@ -62,7 +63,7 @@ class PaymentValidationService {
 
       // Se auto-aprovado (ou após validação manual)
       if (isValid) {
-        debugPrint('✅ Comprovante aprovado! Liberando fundos...');
+        broLog('✅ Comprovante aprovado! Liberando fundos...');
         
         // Marcar como aprovado
         await _apiService.post('/api/orders/$orderId/approve', {
@@ -76,7 +77,7 @@ class PaymentValidationService {
           'message': 'Comprovante aprovado! Fundos serão liberados.',
         };
       } else {
-        debugPrint('❌ Comprovante rejeitado');
+        broLog('❌ Comprovante rejeitado');
         
         await _apiService.post('/api/orders/$orderId/reject', {
           'rejected_at': DateTime.now().toIso8601String(),
@@ -90,7 +91,7 @@ class PaymentValidationService {
         };
       }
     } catch (e) {
-      debugPrint('❌ Erro ao validar comprovante: $e');
+      broLog('❌ Erro ao validar comprovante: $e');
       return {
         'success': false,
         'error': e.toString(),
@@ -110,7 +111,7 @@ class PaymentValidationService {
     required String providerId,
   }) async {
     try {
-      debugPrint('💸 Liberando fundos para ordem $orderId');
+      broLog('💸 Liberando fundos para ordem $orderId');
 
       // Liberar escrow via API
       await _escrowService.releaseEscrow(
@@ -125,7 +126,7 @@ class PaymentValidationService {
         orderId: orderId,
       );
 
-      debugPrint('✅ Fundos liberados com sucesso!');
+      broLog('✅ Fundos liberados com sucesso!');
       
       // Atualizar status da ordem
       await _apiService.post('/api/orders/$orderId/complete', {
@@ -135,7 +136,7 @@ class PaymentValidationService {
 
       return true;
     } catch (e) {
-      debugPrint('❌ Erro ao liberar fundos: $e');
+      broLog('❌ Erro ao liberar fundos: $e');
       return false;
     }
   }
@@ -164,7 +165,7 @@ class PaymentValidationService {
         providerId: providerId,
       );
     } catch (e) {
-      debugPrint('❌ Erro ao processar ordem: $e');
+      broLog('❌ Erro ao processar ordem: $e');
       return false;
     }
   }
@@ -176,7 +177,7 @@ class PaymentValidationService {
     required String orderId,
     required Duration timeout,
   }) async {
-    debugPrint('⏰ Agendando auto-aprovação para ordem $orderId em ${timeout.inMinutes}min');
+    broLog('⏰ Agendando auto-aprovação para ordem $orderId em ${timeout.inMinutes}min');
     
     // Aguardar timeout
     await Future.delayed(timeout);
@@ -189,7 +190,7 @@ class PaymentValidationService {
     final status = order['status'] as String;
 
     if (status == 'payment_submitted') {
-      debugPrint('⏰ Timeout atingido! Auto-aprovando ordem $orderId');
+      broLog('⏰ Timeout atingido! Auto-aprovando ordem $orderId');
       
       await validateReceipt(
         orderId: orderId,
@@ -206,7 +207,7 @@ class PaymentValidationService {
     required String rejectedBy, // 'admin' ou 'user'
   }) async {
     try {
-      debugPrint('⚠️ Rejeitando comprovante e abrindo disputa');
+      broLog('⚠️ Rejeitando comprovante e abrindo disputa');
 
       // Rejeitar comprovante via API
       await _apiService.post('/api/orders/$orderId/reject', {
@@ -216,10 +217,10 @@ class PaymentValidationService {
         'status': 'disputed',
       });
 
-      debugPrint('✅ Disputa aberta');
+      broLog('✅ Disputa aberta');
       return true;
     } catch (e) {
-      debugPrint('❌ Erro ao rejeitar e abrir disputa: $e');
+      broLog('❌ Erro ao rejeitar e abrir disputa: $e');
       return false;
     }
   }
@@ -235,7 +236,7 @@ class PaymentValidationService {
       
       return null;
     } catch (e) {
-      debugPrint('❌ Erro ao consultar status de validação: $e');
+      broLog('❌ Erro ao consultar status de validação: $e');
       return null;
     }
   }

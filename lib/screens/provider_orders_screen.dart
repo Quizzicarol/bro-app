@@ -1,6 +1,7 @@
 ﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
 import '../providers/collateral_provider.dart';
 import '../providers/order_provider.dart';
@@ -98,16 +99,16 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       
       try {
         final orderProvider = context.read<OrderProvider>();
-        debugPrint('⏱️ Timer: chamando fetchOrders(forProvider: true)');
+        broLog('⏱️ Timer: chamando fetchOrders(forProvider: true)');
         await orderProvider.fetchOrders(forProvider: true);
-        debugPrint('⏱️ Timer: fetchOrders completou, available=${orderProvider.availableOrdersForProvider.length}');
+        broLog('⏱️ Timer: fetchOrders completou, available=${orderProvider.availableOrdersForProvider.length}');
         
         // Verificar mounted novamente após operação async
         if (mounted) {
           _loadOrdersFromProvider();
         }
       } catch (e) {
-        debugPrint('⏱️ Timer: erro - $e');
+        broLog('⏱️ Timer: erro - $e');
         // Não travar a UI - apenas logar o erro
       }
     });
@@ -126,7 +127,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       return o.status == 'pending' || o.status == 'payment_received';
     }).toList();
     
-    debugPrint('📋 _loadOrdersFromProvider: ${allAvailable.length} total, ${filteredAvailable.length} filtradas, ${accepted.length} aceitas');
+    broLog('📋 _loadOrdersFromProvider: ${allAvailable.length} total, ${filteredAvailable.length} filtradas, ${accepted.length} aceitas');
     
     setState(() {
       _availableOrders = filteredAvailable

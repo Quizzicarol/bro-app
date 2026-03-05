@@ -1,3 +1,4 @@
+﻿import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter/material.dart';
 import '../config.dart';
 import '../services/secure_storage_service.dart';
@@ -548,7 +549,7 @@ class ProviderEducationScreen extends StatelessWidget {
               final pubkey = nostrService.publicKey;
               // Salvar que está iniciando modo provedor COM PUBKEY
               await SecureStorageService.setProviderMode(true, userPubkey: pubkey);
-              debugPrint('✅ Modo provedor salvo (via Começar Agora) para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
+              broLog('✅ Modo provedor salvo (via Começar Agora) para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
               Navigator.pushNamed(context, '/provider-collateral');
             },
             icon: const Icon(Icons.rocket_launch),
@@ -568,24 +569,24 @@ class ProviderEducationScreen extends StatelessWidget {
             width: double.infinity,
             child: OutlinedButton.icon(
               onPressed: () async {
-                debugPrint('🧪 Clicou no botão Modo Teste');
+                broLog('🧪 Clicou no botão Modo Teste');
                 try {
                   // Obter pubkey do usuário atual
                   final nostrService = NostrService();
                   final pubkey = nostrService.publicKey;
                   // Salvar que o usuário está em modo provedor COM PUBKEY
                   await SecureStorageService.setProviderMode(true, userPubkey: pubkey);
-                  debugPrint('✅ Modo provedor salvo como ativo para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
+                  broLog('✅ Modo provedor salvo como ativo para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
                   
                   // Usar pubkey real do NostrService
                   final providerId = pubkey ?? 'unknown';
-                  debugPrint('🧪 Navegando para /provider-orders com providerId: $providerId');
+                  broLog('🧪 Navegando para /provider-orders com providerId: $providerId');
                   Navigator.pushNamed(context, '/provider-orders', arguments: {
                     'providerId': providerId,
                   });
-                  debugPrint('🧪 pushNamed executado');
+                  broLog('🧪 pushNamed executado');
                 } catch (e) {
-                  debugPrint('❌ Erro ao navegar: $e');
+                  broLog('❌ Erro ao navegar: $e');
                 }
               },
               icon: const Icon(Icons.science, color: Colors.cyan),

@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
 import '../services/nostr_service.dart';
 import '../services/nostr_profile_service.dart';
@@ -98,8 +99,8 @@ class _LoginScreenNip06State extends State<LoginScreenNip06> {
       final privateKey = keys['privateKey']!;
       final publicKey = keys['publicKey']!;
 
-      debugPrint('🔑 Chaves derivadas via NIP-06');
-      debugPrint('   Pubkey: ${publicKey.substring(0, 16)}...');
+      broLog('🔑 Chaves derivadas via NIP-06');
+      broLog('   Pubkey: ${publicKey.substring(0, 16)}...');
 
       // 2. Salvar chaves Nostr
       await _storage.saveNostrKeys(
@@ -119,7 +120,7 @@ class _LoginScreenNip06State extends State<LoginScreenNip06> {
         final profile = await _profileService.fetchProfile(publicKey)
             .timeout(const Duration(seconds: 5), onTimeout: () => null);
         if (profile != null) {
-          debugPrint('✅ Perfil encontrado: ${profile.preferredName}');
+          broLog('✅ Perfil encontrado: ${profile.preferredName}');
           await _storage.saveNostrProfile(
             name: profile.name,
             displayName: profile.displayName,
@@ -128,7 +129,7 @@ class _LoginScreenNip06State extends State<LoginScreenNip06> {
           );
         }
       } catch (e) {
-        debugPrint('⚠️ Perfil não encontrado (novo usuário)');
+        broLog('⚠️ Perfil não encontrado (novo usuário)');
       }
 
       // 5. Inicializar carteira Lightning com a MESMA seed
@@ -143,17 +144,17 @@ class _LoginScreenNip06State extends State<LoginScreenNip06> {
           // Inicializar com a seed (a mesma do Nostr!)
           final success = await breezProvider.initialize(mnemonic: seed)
               .timeout(const Duration(seconds: 20), onTimeout: () {
-            debugPrint('⏰ Timeout na inicialização - continuando');
+            broLog('⏰ Timeout na inicialização - continuando');
             return false;
           });
           
           if (success) {
-            debugPrint('✅ Carteira Lightning inicializada com a seed NIP-06');
+            broLog('✅ Carteira Lightning inicializada com a seed NIP-06');
           } else {
-            debugPrint('⚠️ Carteira inicializará em background');
+            broLog('⚠️ Carteira inicializará em background');
           }
         } catch (e) {
-          debugPrint('❌ Erro no Breez: $e');
+          broLog('❌ Erro no Breez: $e');
         }
       }
 
@@ -171,7 +172,7 @@ class _LoginScreenNip06State extends State<LoginScreenNip06> {
         );
       }
     } catch (e) {
-      debugPrint('❌ Erro no login: $e');
+      broLog('❌ Erro no login: $e');
       setState(() => _error = 'Erro: ${e.toString()}');
     } finally {
       if (mounted) {

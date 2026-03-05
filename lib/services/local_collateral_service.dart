@@ -1,5 +1,6 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// Modelo de garantia local
@@ -110,7 +111,7 @@ class LocalCollateralService {
   /// Define o usuário atual e limpa cache se necessário
   void setCurrentUser(String? pubkey) {
     if (_cachedUserPubkey != pubkey) {
-      debugPrint('🔄 LocalCollateralService: Usuário mudou de ${_cachedUserPubkey?.substring(0, 8) ?? "null"} para ${pubkey?.substring(0, 8) ?? "null"}');
+      broLog('🔄 LocalCollateralService: Usuário mudou de ${_cachedUserPubkey?.substring(0, 8) ?? "null"} para ${pubkey?.substring(0, 8) ?? "null"}');
       _cachedCollateral = null;
       _cacheInitialized = false;
       _cachedUserPubkey = pubkey;
@@ -138,21 +139,21 @@ class LocalCollateralService {
     
     final key = _getKeyForUser(userPubkey ?? _cachedUserPubkey);
     final jsonStr = json.encode(collateral.toJson());
-    debugPrint('💾 setCollateral: Salvando tier $tierName ($requiredSats sats) para key=$key');
-    debugPrint('💾 setCollateral: JSON=$jsonStr');
+    broLog('💾 setCollateral: Salvando tier $tierName ($requiredSats sats) para key=$key');
+    broLog('💾 setCollateral: JSON=$jsonStr');
     
     await _storage.write(key: key, value: jsonStr);
-    debugPrint('💾 setCollateral: Salvo no FlutterSecureStorage');
+    broLog('💾 setCollateral: Salvo no FlutterSecureStorage');
     
     // IMPORTANTE: Atualizar cache em memória
     _cachedCollateral = collateral;
     _cacheInitialized = true;
     _cachedUserPubkey = userPubkey ?? _cachedUserPubkey;
-    debugPrint('💾 setCollateral: Cache atualizado para user ${_cachedUserPubkey?.substring(0, 8) ?? "null"}');
+    broLog('💾 setCollateral: Cache atualizado para user ${_cachedUserPubkey?.substring(0, 8) ?? "null"}');
     
     // Verificar se realmente salvou
     final verify = await _storage.read(key: key);
-    debugPrint('💾 setCollateral: Verificação pós-save: ${verify != null ? "OK" : "FALHOU"}');
+    broLog('💾 setCollateral: Verificação pós-save: ${verify != null ? "OK" : "FALHOU"}');
     
     return collateral;
   }
@@ -164,7 +165,7 @@ class LocalCollateralService {
       
       // Se cache é para este usuário e já foi inicializado
       if (_cacheInitialized && _cachedUserPubkey == effectivePubkey && _cachedCollateral != null) {
-        debugPrint('🔍 getCollateral: Usando cache - ${_cachedCollateral!.tierName}');
+        broLog('🔍 getCollateral: Usando cache - ${_cachedCollateral!.tierName}');
         return _cachedCollateral;
       }
       
@@ -172,26 +173,26 @@ class LocalCollateralService {
       final key = _getKeyForUser(effectivePubkey);
       var dataStr = await _storage.read(key: key);
       
-      debugPrint('🔍 getCollateral: key=$key');
-      debugPrint('🔍 getCollateral: dataStr=${dataStr?.substring(0, (dataStr?.length ?? 0).clamp(0, 100)) ?? "null"}...');
+      broLog('🔍 getCollateral: key=$key');
+      broLog('🔍 getCollateral: dataStr=${dataStr?.substring(0, (dataStr?.length ?? 0).clamp(0, 100)) ?? "null"}...');
       
       // 🔄 MIGRAÇÃO: Se não encontrou na key nova, tentar key legada e migrar
       if (dataStr == null && effectivePubkey != null && effectivePubkey.isNotEmpty) {
-        debugPrint('🔄 getCollateral: Tentando migrar da key legada...');
+        broLog('🔄 getCollateral: Tentando migrar da key legada...');
         final legacyData = await _storage.read(key: _legacyCollateralKey);
         if (legacyData != null) {
-          debugPrint('🔄 getCollateral: Dados encontrados na key legada! Migrando...');
+          broLog('🔄 getCollateral: Dados encontrados na key legada! Migrando...');
           // Salvar na key nova
           await _storage.write(key: key, value: legacyData);
           // Deletar key antiga para evitar confusão
           await _storage.delete(key: _legacyCollateralKey);
           dataStr = legacyData;
-          debugPrint('✅ getCollateral: Migração concluída para key=$key');
+          broLog('✅ getCollateral: Migração concluída para key=$key');
         }
       }
       
       if (dataStr == null) {
-        debugPrint('📭 getCollateral: Nenhuma garantia salva para usuário ${effectivePubkey?.substring(0, 8) ?? "null"}');
+        broLog('📭 getCollateral: Nenhuma garantia salva para usuário ${effectivePubkey?.substring(0, 8) ?? "null"}');
         _cacheInitialized = true;
         _cachedCollateral = null;
         _cachedUserPubkey = effectivePubkey;
@@ -203,10 +204,10 @@ class LocalCollateralService {
       _cachedCollateral = collateral;
       _cacheInitialized = true;
       _cachedUserPubkey = effectivePubkey;
-      debugPrint('✅ getCollateral: Tier ${collateral.tierName} (${collateral.requiredSats} sats) - Cache atualizado');
+      broLog('✅ getCollateral: Tier ${collateral.tierName} (${collateral.requiredSats} sats) - Cache atualizado');
       return collateral;
     } catch (e) {
-      debugPrint('❌ Erro ao carregar garantia local: $e');
+      broLog('❌ Erro ao carregar garantia local: $e');
       return null;
     }
   }
@@ -227,18 +228,18 @@ class LocalCollateralService {
     _cachedCollateral = null;
     _cacheInitialized = false;
     _cachedUserPubkey = null;
-    debugPrint('🗑️ Cache de collateral limpo');
+    broLog('🗑️ Cache de collateral limpo');
   }
   
   /// 🧹 Limpar dados de colateral do usuário atual (para logout)
   Future<void> clearUserCollateral({String? userPubkey}) async {
     final key = _getKeyForUser(userPubkey ?? _cachedUserPubkey);
     await _storage.delete(key: key);
-    debugPrint('🗑️ Collateral removido para key=$key');
+    broLog('🗑️ Collateral removido para key=$key');
     
     // Também limpar chave legada se existir
     await _storage.delete(key: _legacyCollateralKey);
-    debugPrint('🗑️ Collateral legado removido');
+    broLog('🗑️ Collateral legado removido');
     
     clearCache();
   }
@@ -248,7 +249,7 @@ class LocalCollateralService {
   (bool, String?) canAcceptOrderWithReason(LocalCollateral collateral, double orderValueBrl, int walletBalanceSats) {
     // Primeiro verificar se valor da ordem está dentro do limite do tier
     if (orderValueBrl > collateral.maxOrderBrl) {
-      debugPrint('❌ canAcceptOrder: Ordem R\$ $orderValueBrl > limite R\$ ${collateral.maxOrderBrl}');
+      broLog('❌ canAcceptOrder: Ordem R\$ $orderValueBrl > limite R\$ ${collateral.maxOrderBrl}');
       return (false, 'Ordem acima do limite do tier (máx R\$ ${collateral.maxOrderBrl.toStringAsFixed(0)})');
     }
     
@@ -259,11 +260,11 @@ class LocalCollateralService {
     // Verificar se carteira tem saldo suficiente (com tolerância)
     if (walletBalanceSats < minRequired) {
       final deficit = collateral.lockedSats - walletBalanceSats;
-      debugPrint('❌ canAcceptOrder: Saldo insuficiente ($walletBalanceSats < $minRequired com tolerância 10%)');
+      broLog('❌ canAcceptOrder: Saldo insuficiente ($walletBalanceSats < $minRequired com tolerância 10%)');
       return (false, 'Saldo insuficiente: faltam $deficit sats para manter o tier ${collateral.tierName}');
     }
     
-    debugPrint('✅ canAcceptOrder: OK - ordem R\$ $orderValueBrl (limite R\$ ${collateral.maxOrderBrl})');
+    broLog('✅ canAcceptOrder: OK - ordem R\$ $orderValueBrl (limite R\$ ${collateral.maxOrderBrl})');
     return (true, null);
   }
 
@@ -283,7 +284,7 @@ class LocalCollateralService {
     await _storage.write(key: key, value: json.encode(updated.toJson()));
     _cachedCollateral = updated;
     
-    debugPrint('🔒 Ordem $orderId travada. Total ordens: ${updated.activeOrders}');
+    broLog('🔒 Ordem $orderId travada. Total ordens: ${updated.activeOrders}');
     return updated;
   }
 
@@ -299,7 +300,7 @@ class LocalCollateralService {
     await _storage.write(key: key, value: json.encode(updated.toJson()));
     _cachedCollateral = updated;
     
-    debugPrint('🔓 Ordem $orderId liberada. Total ordens: ${updated.activeOrders}');
+    broLog('🔓 Ordem $orderId liberada. Total ordens: ${updated.activeOrders}');
     return updated;
   }
 
@@ -320,6 +321,6 @@ class LocalCollateralService {
     await _storage.delete(key: key);
     _cachedCollateral = null;
     _cacheInitialized = false;
-    debugPrint('✅ Garantia local removida para key=$key');
+    broLog('✅ Garantia local removida para key=$key');
   }
 }

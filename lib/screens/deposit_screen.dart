@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'dart:async';
 import '../config.dart';
@@ -111,7 +112,7 @@ class _DepositScreenState extends State<DepositScreen> {
 
       // Log se usou Liquid
       if (response['isLiquid'] == true) {
-        debugPrint('💧 Invoice de depósito criada via LIQUID (fallback)');
+        broLog('💧 Invoice de depósito criada via LIQUID (fallback)');
       }
 
       if (response['invoice'] is String) {
@@ -153,7 +154,7 @@ class _DepositScreenState extends State<DepositScreen> {
           }
         } catch (e) {
           // Continue polling on error
-          debugPrint('Polling error: $e');
+          broLog('Polling error: $e');
         }
       },
     );

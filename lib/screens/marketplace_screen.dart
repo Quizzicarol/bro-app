@@ -1,7 +1,8 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/marketplace_offer.dart';
 import '../services/nostr_service.dart';
@@ -78,11 +79,11 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
   Future<void> _loadOffers() async {
     try {
       final myPubkey = _nostrService.publicKey;
-      debugPrint('🔍 Carregando ofertas do marketplace...');
+      broLog('🔍 Carregando ofertas do marketplace...');
       
       await _moderationService.loadFromCache();
       final nostrOffers = await _nostrOrderService.fetchMarketplaceOffers();
-      debugPrint('📦 ${nostrOffers.length} ofertas do Nostr');
+      broLog('📦 ${nostrOffers.length} ofertas do Nostr');
       
       final allOffers = nostrOffers.map((data) {
         List<String> photos = [];
@@ -154,7 +155,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
         });
       }
     } catch (e) {
-      debugPrint('❌ Erro ao carregar ofertas: $e');
+      broLog('❌ Erro ao carregar ofertas: $e');
     }
   }
 

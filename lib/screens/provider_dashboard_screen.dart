@@ -1,5 +1,6 @@
-import 'dart:math';
+﻿import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter/services.dart';
 import '../services/provider_service.dart';
 import '../services/storage_service.dart';
@@ -52,7 +53,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
       _stats = await _providerService.getStats(_providerId!);
 
     } catch (e) {
-      debugPrint('❌ Erro ao carregar dados do provedor: $e');
+      broLog('❌ Erro ao carregar dados do provedor: $e');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -595,8 +596,8 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
 
   void _showOrderDetails(Map<String, dynamic> order) {
     // Debug: mostrar todos os campos da ordem
-    debugPrint('📦 Order data: $order');
-    debugPrint('📦 Order keys: ${order.keys.toList()}');
+    broLog('📦 Order data: $order');
+    broLog('📦 Order keys: ${order.keys.toList()}');
     
     // Tentar pegar billCode de várias fontes possíveis
     String billCode = order['billCode'] ?? 
@@ -620,8 +621,8 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                         (order['metadata']?['pubkey']) ?? 
                         '';
     
-    debugPrint('📋 billCode encontrado: ${billCode.isNotEmpty ? billCode.substring(0, min(20, billCode.length)) + "..." : "VAZIO"}');
-    debugPrint('👤 userPubkey encontrado: ${userPubkey.isNotEmpty ? userPubkey.substring(0, min(16, userPubkey.length)) + "..." : "VAZIO"}');
+    broLog('📋 billCode encontrado: ${billCode.isNotEmpty ? billCode.substring(0, min(20, billCode.length)) + "..." : "VAZIO"}');
+    broLog('👤 userPubkey encontrado: ${userPubkey.isNotEmpty ? userPubkey.substring(0, min(16, userPubkey.length)) + "..." : "VAZIO"}');
     
     showDialog(
       context: context,

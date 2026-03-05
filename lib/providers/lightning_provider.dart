@@ -1,4 +1,5 @@
-import 'dart:async';
+﻿import 'dart:async';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter/material.dart';
 import '../config.dart';
 import '../services/platform_fee_service.dart';
@@ -123,7 +124,7 @@ class LightningProvider with ChangeNotifier {
     _setLoading(true);
     _setError(null);
     
-    debugPrint('⚡ LightningProvider: Inicializando backends...');
+    broLog('⚡ LightningProvider: Inicializando backends...');
     
     // Sempre inicializar Spark primeiro
     bool sparkOk = false;
@@ -131,10 +132,10 @@ class LightningProvider with ChangeNotifier {
       sparkOk = await _sparkProvider.initialize(mnemonic: mnemonic);
       if (sparkOk) {
         _currentBackend = LightningBackend.spark;
-        debugPrint('✅ Spark inicializado - usando como primário');
+        broLog('✅ Spark inicializado - usando como primário');
       }
     } catch (e) {
-      debugPrint('❌ Erro ao inicializar Spark: $e');
+      broLog('❌ Erro ao inicializar Spark: $e');
     }
     
     // Se Spark falhou e Liquid fallback está habilitado, inicializar Liquid
@@ -143,10 +144,10 @@ class LightningProvider with ChangeNotifier {
         final liquidOk = await _liquidProvider.initialize(mnemonic: mnemonic);
         if (liquidOk) {
           _currentBackend = LightningBackend.liquid;
-          debugPrint('✅ Liquid inicializado como fallback (Spark falhou)');
+          broLog('✅ Liquid inicializado como fallback (Spark falhou)');
         }
       } catch (e) {
-        debugPrint('❌ Erro ao inicializar Liquid fallback: $e');
+        broLog('❌ Erro ao inicializar Liquid fallback: $e');
       }
     }
     
@@ -171,7 +172,7 @@ class LightningProvider with ChangeNotifier {
       (String invoice) => payInvoice(invoice),
       backend,
     );
-    debugPrint('💼 PlatformFeeService configurado para usar $backend');
+    broLog('💼 PlatformFeeService configurado para usar $backend');
   }
 
   /// Obter saldo total (Spark + Liquid)
@@ -228,7 +229,7 @@ class LightningProvider with ChangeNotifier {
     // 1. Tentar Spark primeiro (se não estiver em cooldown)
     if (_sparkProvider.isInitialized && _shouldTrySpark) {
       _sparkAttempts++;
-      debugPrint('⚡ Tentando criar invoice via Spark...');
+      broLog('⚡ Tentando criar invoice via Spark...');
       
       try {
         final result = await _sparkProvider.createInvoice(
@@ -240,7 +241,7 @@ class LightningProvider with ChangeNotifier {
           _currentBackend = LightningBackend.spark;
           _setLoading(false);
           
-          debugPrint('✅ Invoice criado via Spark');
+          broLog('✅ Invoice criado via Spark');
           return {
             ...result,
             'isLiquid': false,
@@ -249,29 +250,29 @@ class LightningProvider with ChangeNotifier {
         } else {
           _sparkFailures++;
           _lastSparkFailure = DateTime.now();
-          debugPrint('❌ Spark falhou: ${result?['error']}');
+          broLog('❌ Spark falhou: ${result?['error']}');
         }
       } catch (e) {
         _sparkFailures++;
         _lastSparkFailure = DateTime.now();
-        debugPrint('❌ Erro ao criar invoice Spark: $e');
+        broLog('❌ Erro ao criar invoice Spark: $e');
       }
     } else if (!_shouldTrySpark) {
-      debugPrint('⏳ Spark em cooldown, pulando...');
+      broLog('⏳ Spark em cooldown, pulando...');
     }
     
     // 2. Fallback para Liquid se habilitado
     if (AppConfig.enableLiquidFallback) {
       // Inicializar Liquid se ainda não foi
       if (!_liquidProvider.isInitialized) {
-        debugPrint('💧 Inicializando Liquid para fallback...');
+        broLog('💧 Inicializando Liquid para fallback...');
         final mnemonic = _sparkProvider.mnemonic;
         await _liquidProvider.initialize(mnemonic: mnemonic);
       }
       
       if (_liquidProvider.isInitialized) {
         _liquidAttempts++;
-        debugPrint('💧 Tentando criar invoice via Liquid (fallback)...');
+        broLog('💧 Tentando criar invoice via Liquid (fallback)...');
         
         try {
           final result = await _liquidProvider.createInvoice(
@@ -284,8 +285,8 @@ class LightningProvider with ChangeNotifier {
             _setLoading(false);
             
             final fees = calculateLiquidFees(amountSats);
-            debugPrint('✅ Invoice criado via Liquid (fallback)');
-            debugPrint('💰 Taxas estimadas: $fees sats');
+            broLog('✅ Invoice criado via Liquid (fallback)');
+            broLog('💰 Taxas estimadas: $fees sats');
             
             return {
               ...result,
@@ -296,11 +297,11 @@ class LightningProvider with ChangeNotifier {
             };
           } else {
             _liquidFailures++;
-            debugPrint('❌ Liquid também falhou: ${result?['error']}');
+            broLog('❌ Liquid também falhou: ${result?['error']}');
           }
         } catch (e) {
           _liquidFailures++;
-          debugPrint('❌ Erro ao criar invoice Liquid: $e');
+          broLog('❌ Erro ao criar invoice Liquid: $e');
         }
       }
     }
@@ -326,7 +327,7 @@ class LightningProvider with ChangeNotifier {
       final sparkResult = await _sparkProvider.getBalance();
       final sparkBalance = int.tryParse(sparkResult['balance']?.toString() ?? '0') ?? 0;
       if (sparkBalance > 0) {
-        debugPrint('⚡ Tentando pagar via Spark (saldo: $sparkBalance sats)...');
+        broLog('⚡ Tentando pagar via Spark (saldo: $sparkBalance sats)...');
         
         try {
           final result = await _sparkProvider.payInvoice(bolt11);
@@ -338,7 +339,7 @@ class LightningProvider with ChangeNotifier {
             };
           }
         } catch (e) {
-          debugPrint('❌ Pagamento Spark falhou: $e');
+          broLog('❌ Pagamento Spark falhou: $e');
         }
       }
     }
@@ -347,7 +348,7 @@ class LightningProvider with ChangeNotifier {
     if (_liquidProvider.isInitialized) {
       final liquidBalance = await _liquidProvider.getBalance();
       if (liquidBalance > 0) {
-        debugPrint('💧 Tentando pagar via Liquid (saldo: $liquidBalance sats)...');
+        broLog('💧 Tentando pagar via Liquid (saldo: $liquidBalance sats)...');
         
         try {
           final result = await _liquidProvider.payInvoice(bolt11);
@@ -359,7 +360,7 @@ class LightningProvider with ChangeNotifier {
             };
           }
         } catch (e) {
-          debugPrint('❌ Pagamento Liquid falhou: $e');
+          broLog('❌ Pagamento Liquid falhou: $e');
         }
       }
     }
@@ -376,13 +377,13 @@ class LightningProvider with ChangeNotifier {
   void forceBackend(LightningBackend backend) {
     _currentBackend = backend;
     notifyListeners();
-    debugPrint('🔧 Backend forçado para: $backend');
+    broLog('🔧 Backend forçado para: $backend');
   }
   
   /// Resetar cooldown do Spark (forçar nova tentativa)
   void resetSparkCooldown() {
     _lastSparkFailure = null;
-    debugPrint('🔄 Cooldown do Spark resetado');
+    broLog('🔄 Cooldown do Spark resetado');
   }
   
   /// Debug: obter estatísticas

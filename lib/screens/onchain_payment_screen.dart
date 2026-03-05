@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
 import '../providers/breez_provider_export.dart';
@@ -70,7 +71,7 @@ class _OnchainPaymentScreenState extends State<OnchainPaymentScreen> {
           String orderId = widget.orderId;
           
           if (orderId.isEmpty && widget.billType != null) {
-            debugPrint('🚀 Pagamento on-chain confirmado! CRIANDO ORDEM AGORA...');
+            broLog('🚀 Pagamento on-chain confirmado! CRIANDO ORDEM AGORA...');
             
             final order = await orderProvider.createOrder(
               billType: widget.billType!,
@@ -83,9 +84,9 @@ class _OnchainPaymentScreenState extends State<OnchainPaymentScreen> {
             if (order != null) {
               orderId = order.id;
               _createdOrderId = orderId;
-              debugPrint('✅ Ordem CRIADA após pagamento on-chain: $orderId');
+              broLog('✅ Ordem CRIADA após pagamento on-chain: $orderId');
             } else {
-              debugPrint('❌ Falha ao criar ordem após pagamento on-chain!');
+              broLog('❌ Falha ao criar ordem após pagamento on-chain!');
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -99,12 +100,12 @@ class _OnchainPaymentScreenState extends State<OnchainPaymentScreen> {
             }
           } else {
             // Ordem já existe (fluxo antigo) - apenas publicar
-            debugPrint('🚀 Pagamento on-chain confirmado! Publicando ordem existente...');
+            broLog('🚀 Pagamento on-chain confirmado! Publicando ordem existente...');
             final published = await orderProvider.publishOrderAfterPayment(orderId);
             if (published) {
-              debugPrint('✅ Ordem publicada no Nostr - Bros agora podem vê-la!');
+              broLog('✅ Ordem publicada no Nostr - Bros agora podem vê-la!');
             } else {
-              debugPrint('⚠️ Falha ao publicar ordem no Nostr');
+              broLog('⚠️ Falha ao publicar ordem no Nostr');
             }
           }
           

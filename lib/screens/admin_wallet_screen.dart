@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../providers/breez_provider_export.dart';
 import '../services/storage_service.dart';
@@ -65,7 +66,7 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
         _mnemonic = mnemonic;
       });
     } catch (e) {
-      debugPrint('Erro ao carregar info da carteira: $e');
+      broLog('Erro ao carregar info da carteira: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),
@@ -91,7 +92,7 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
         throw Exception(result?['error'] ?? 'Erro desconhecido');
       }
     } catch (e) {
-      debugPrint('Erro ao gerar endereço Bitcoin: $e');
+      broLog('Erro ao gerar endereço Bitcoin: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),
@@ -120,7 +121,7 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
         throw Exception(result?['error'] ?? 'Erro desconhecido');
       }
     } catch (e) {
-      debugPrint('Erro ao gerar invoice Lightning: $e');
+      broLog('Erro ao gerar invoice Lightning: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),
@@ -960,11 +961,11 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
     setState(() => _isLoading = true);
     
     try {
-      debugPrint('');
-      debugPrint('🧪 ════════════════════════════════════════════════');
-      debugPrint('🧪 TESTE DE ENVIO DE TAXA DA PLATAFORMA');
-      debugPrint('🧪 ════════════════════════════════════════════════');
-      debugPrint('');
+      broLog('');
+      broLog('🧪 ════════════════════════════════════════════════');
+      broLog('🧪 TESTE DE ENVIO DE TAXA DA PLATAFORMA');
+      broLog('🧪 ════════════════════════════════════════════════');
+      broLog('');
       
       // Testar envio de 1 sat (mínimo)
       final result = await PlatformFeeService.sendPlatformFee(
@@ -984,7 +985,7 @@ class _AdminWalletScreenState extends State<AdminWalletScreen> {
         setState(() {});
       }
     } catch (e) {
-      debugPrint('❌ Erro no teste: $e');
+      broLog('❌ Erro no teste: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('❌ Erro: $e'), backgroundColor: Colors.red),

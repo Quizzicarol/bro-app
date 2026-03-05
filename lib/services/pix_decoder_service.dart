@@ -1,4 +1,5 @@
-﻿import 'package:flutter/foundation.dart';
+﻿import 'package:bro_app/services/log_utils.dart';
+import 'package:flutter/foundation.dart';
 
 /// ServiÃ§o para decodificar cÃ³digos PIX localmente (sem backend)
 class PixDecoderService {
@@ -38,7 +39,7 @@ class PixDecoderService {
         'rawData': data,
       };
     } catch (e) {
-      debugPrint('âŒ Erro ao decodificar PIX: $e');
+      broLog('âŒ Erro ao decodificar PIX: $e');
       return null;
     }
   }

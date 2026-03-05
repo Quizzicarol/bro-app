@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Provider para gerenciar tema Dark/Light
@@ -28,7 +29,7 @@ class ThemeProvider extends ChangeNotifier {
         );
       }
     } catch (e) {
-      debugPrint('Error loading theme: $e');
+      broLog('Error loading theme: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -44,9 +45,9 @@ class ThemeProvider extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_keyThemeMode, mode.name);
-      debugPrint('🎨 Theme changed to: ${mode.name}');
+      broLog('🎨 Theme changed to: ${mode.name}');
     } catch (e) {
-      debugPrint('Error saving theme: $e');
+      broLog('Error saving theme: $e');
     }
   }
   

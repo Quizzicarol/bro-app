@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show Color;
@@ -7,6 +7,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nostr/nostr.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:workmanager/workmanager.dart';
 
 /// v262: Servico de notificacoes em background
@@ -38,17 +39,17 @@ const List<String> _relays = [
 void broBackgroundCallbackDispatcher() {
   Workmanager().executeTask((taskName, inputData) async {
     try {
-      debugPrint('[BRO-BG] Task iniciada: $taskName');
+      broLog('[BRO-BG] Task iniciada: $taskName');
       
       if (taskName == _taskName || taskName == Workmanager.iOSBackgroundTask) {
         await _checkNostrForNewEvents();
         await _checkAutoLiquidationBackground();
       }
       
-      debugPrint('[BRO-BG] Task concluida com sucesso');
+      broLog('[BRO-BG] Task concluida com sucesso');
       return true;
     } catch (e) {
-      debugPrint('[BRO-BG] Erro na task: $e');
+      broLog('[BRO-BG] Erro na task: $e');
       return true; // Retorna true para nao cancelar a task periodica
     }
   });
@@ -77,9 +78,9 @@ Future<void> initBackgroundNotifications() async {
       backoffPolicyDelay: const Duration(minutes: 5),
     );
     
-    debugPrint('[BRO-BG] Background notifications inicializado (polling 15min)');
+    broLog('[BRO-BG] Background notifications inicializado (polling 15min)');
   } catch (e) {
-    debugPrint('[BRO-BG] Erro ao inicializar background: $e');
+    broLog('[BRO-BG] Erro ao inicializar background: $e');
   }
 }
 
@@ -87,9 +88,9 @@ Future<void> initBackgroundNotifications() async {
 Future<void> cancelBackgroundNotifications() async {
   try {
     await Workmanager().cancelByTag(_taskTag);
-    debugPrint('[BRO-BG] Background notifications cancelado');
+    broLog('[BRO-BG] Background notifications cancelado');
   } catch (e) {
-    debugPrint('[BRO-BG] Erro ao cancelar: $e');
+    broLog('[BRO-BG] Erro ao cancelar: $e');
   }
 }
 
@@ -107,7 +108,7 @@ Future<void> _checkNostrForNewEvents() async {
   
   final userPubkey = await secureStorage.read(key: 'nostr_public_key');
   if (userPubkey == null || userPubkey.isEmpty) {
-    debugPrint('[BRO-BG] Sem pubkey — usuario nao logado, abortando');
+    broLog('[BRO-BG] Sem pubkey — usuario nao logado, abortando');
     return;
   }
   
@@ -131,7 +132,7 @@ Future<void> _checkNostrForNewEvents() async {
   final seenIdsJson = prefs.getString(_seenEventsKey) ?? '[]';
   final seenIds = Set<String>.from(jsonDecode(seenIdsJson) as List);
   
-  debugPrint('[BRO-BG] Verificando eventos desde ${DateTime.fromMillisecondsSinceEpoch(sinceTimestamp * 1000)} para ${userPubkey.substring(0, 16)}... (provider=$isProvider)');
+  broLog('[BRO-BG] Verificando eventos desde ${DateTime.fromMillisecondsSinceEpoch(sinceTimestamp * 1000)} para ${userPubkey.substring(0, 16)}... (provider=$isProvider)');
   
   // 5. Consultar relays
   final newEvents = <Map<String, dynamic>>[];
@@ -175,7 +176,7 @@ Future<void> _checkNostrForNewEvents() async {
     }
   }
   
-  debugPrint('[BRO-BG] ${newEvents.length} eventos encontrados, ${unseenEvents.length} novos');
+  broLog('[BRO-BG] ${newEvents.length} eventos encontrados, ${unseenEvents.length} novos');
   
   // 7. Disparar notificacoes para eventos novos
   if (unseenEvents.isNotEmpty) {
@@ -208,11 +209,11 @@ Future<List<Map<String, dynamic>>> _queryRelaysForEvents({
     try {
       final events = await _fetchFromRelay(relay, kinds: kinds, tags: tags, since: since);
       if (events.isNotEmpty) {
-        debugPrint('[BRO-BG] $relay retornou ${events.length} eventos');
+        broLog('[BRO-BG] $relay retornou ${events.length} eventos');
         return events;
       }
     } catch (e) {
-      debugPrint('[BRO-BG] Falha em $relay: $e');
+      broLog('[BRO-BG] Falha em $relay: $e');
     }
   }
   return [];
@@ -258,7 +259,7 @@ Future<List<Map<String, dynamic>>> _fetchFromRelay(
             try {
               Event.fromJson(eventData, verify: true);
             } catch (e) {
-              debugPrint('[BRO-BG] REJEITADO evento com assinatura invalida: ${eventData['id']?.toString().substring(0, 8) ?? '?'}');
+              broLog('[BRO-BG] REJEITADO evento com assinatura invalida: ${eventData['id']?.toString().substring(0, 8) ?? '?'}');
               return; // Ignorar evento com assinatura invalida
             }
             // Parsear content
@@ -298,7 +299,7 @@ Future<List<Map<String, dynamic>>> _fetchFromRelay(
     timer.cancel();
     return result;
   } catch (e) {
-    debugPrint('[BRO-BG] WebSocket error em $relayUrl: $e');
+    broLog('[BRO-BG] WebSocket error em $relayUrl: $e');
     return events;
   } finally {
     try { channel?.sink.close(); } catch (_) {}
@@ -378,7 +379,7 @@ Future<void> _showNotificationForEvent(Map<String, dynamic> event, String userPu
       break;
       
     default:
-      debugPrint('[BRO-BG] Kind desconhecido: $kind — ignorando');
+      broLog('[BRO-BG] Kind desconhecido: $kind — ignorando');
       return;
   }
   
@@ -404,7 +405,7 @@ Future<void> _showNotificationForEvent(Map<String, dynamic> event, String userPu
   final notificationId = (orderId.hashCode + kind) % 2147483647; // Max int32
   
   await _bgNotifications!.show(notificationId, title, body, details, payload: payload);
-  debugPrint('[BRO-BG] Notificacao enviada: $title — $body');
+  broLog('[BRO-BG] Notificacao enviada: $title — $body');
 }
 
 /// Extrai valor de uma tag Nostr (ex: ['d', 'abc123'] -> 'abc123')
@@ -437,7 +438,7 @@ Future<void> _checkAutoLiquidationBackground() async {
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     // Se lock foi adquirido ha menos de 2 minutos, outra instancia esta rodando
     if (nowMs - lockTimestamp < 120000) {
-      debugPrint('[BRO-BG-LIQ] Lock ativo — outra instancia rodando, abortando');
+      broLog('[BRO-BG-LIQ] Lock ativo — outra instancia rodando, abortando');
       return;
     }
     // Adquirir lock
@@ -453,7 +454,7 @@ Future<void> _checkAutoLiquidationBackground() async {
     final privateKey = await secureStorage.read(key: 'nostr_private_key');
     
     if (userPubkey == null || userPubkey.isEmpty || privateKey == null || privateKey.isEmpty) {
-      debugPrint('[BRO-BG-LIQ] Sem chaves — abortando auto-liquidacao');
+      broLog('[BRO-BG-LIQ] Sem chaves — abortando auto-liquidacao');
       return;
     }
     
@@ -465,7 +466,7 @@ Future<void> _checkAutoLiquidationBackground() async {
     final isProvider = providerModeValue == 'true' || legacyProviderMode == 'true';
     
     if (!isProvider) {
-      debugPrint('[BRO-BG-LIQ] Nao e provedor — pulando auto-liquidacao');
+      broLog('[BRO-BG-LIQ] Nao e provedor — pulando auto-liquidacao');
       return;
     }
     
@@ -474,7 +475,7 @@ Future<void> _checkAutoLiquidationBackground() async {
     final ordersKey = 'orders_$userPubkey';
     final ordersJson = prefs.getString(ordersKey);
     if (ordersJson == null || ordersJson.isEmpty) {
-      debugPrint('[BRO-BG-LIQ] Sem ordens locais');
+      broLog('[BRO-BG-LIQ] Sem ordens locais');
       return;
     }
     
@@ -527,11 +528,11 @@ Future<void> _checkAutoLiquidationBackground() async {
     }
     
     if (expiredOrders.isEmpty) {
-      debugPrint('[BRO-BG-LIQ] Nenhuma ordem expirada para auto-liquidar');
+      broLog('[BRO-BG-LIQ] Nenhuma ordem expirada para auto-liquidar');
       return;
     }
     
-    debugPrint('[BRO-BG-LIQ] ${expiredOrders.length} ordens expiradas encontradas');
+    broLog('[BRO-BG-LIQ] ${expiredOrders.length} ordens expiradas encontradas');
     
     // 6. Publicar status 'liquidated' no Nostr para cada ordem
     int successCount = 0;
@@ -551,7 +552,7 @@ Future<void> _checkAutoLiquidationBackground() async {
         if (success) {
           doneIds.add(orderId);
           successCount++;
-          debugPrint('[BRO-BG-LIQ] ✅ Auto-liquidada: ${orderId.substring(0, 8)}');
+          broLog('[BRO-BG-LIQ] ✅ Auto-liquidada: ${orderId.substring(0, 8)}');
           
           // 7. Atualizar ordem localmente
           order['status'] = 'liquidated';
@@ -562,7 +563,7 @@ Future<void> _checkAutoLiquidationBackground() async {
           order['metadata'] = metadata;
         }
       } catch (e) {
-        debugPrint('[BRO-BG-LIQ] ❌ Erro ao liquidar ${orderId.substring(0, 8)}: $e');
+        broLog('[BRO-BG-LIQ] ❌ Erro ao liquidar ${orderId.substring(0, 8)}: $e');
       }
     }
     
@@ -600,10 +601,10 @@ Future<void> _checkAutoLiquidationBackground() async {
         ),
       );
       
-      debugPrint('[BRO-BG-LIQ] $successCount ordens auto-liquidadas com sucesso');
+      broLog('[BRO-BG-LIQ] $successCount ordens auto-liquidadas com sucesso');
     }
   } catch (e) {
-    debugPrint('[BRO-BG-LIQ] Erro geral: $e');
+    broLog('[BRO-BG-LIQ] Erro geral: $e');
   } finally {
     // Liberar lock
     try {
@@ -687,13 +688,13 @@ Future<bool> _publishAutoLiquidation({
         
         if (accepted) return true;
       } catch (e) {
-        debugPrint('[BRO-BG-LIQ] Relay $relay erro: $e');
+        broLog('[BRO-BG-LIQ] Relay $relay erro: $e');
       }
     }
     
     return false;
   } catch (e) {
-    debugPrint('[BRO-BG-LIQ] Erro ao publicar evento: $e');
+    broLog('[BRO-BG-LIQ] Erro ao publicar evento: $e');
     return false;
   }
 }

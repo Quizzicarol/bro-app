@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
 import 'screens/login_screen.dart'; // Login original com chave privada
 import 'screens/home_screen.dart';
@@ -66,11 +67,11 @@ void main() async {
   if (isLoggedIn) {
     await _restoreNostrKeys(storage);
     userPubkey = await storage.getNostrPublicKey();
-    debugPrint('📦 Pubkey para OrderProvider: ${userPubkey?.substring(0, 16) ?? "null"}...');
+    broLog('📦 Pubkey para OrderProvider: ${userPubkey?.substring(0, 16) ?? "null"}...');
     
     // v262: Iniciar background notifications (polling Nostr a cada 15min)
     await initBackgroundNotifications();
-    debugPrint('🔔 Background notifications ativado');
+    broLog('🔔 Background notifications ativado');
   }
 
   // Breez SDK sera inicializado no provider (lazy initialization)
@@ -86,12 +87,12 @@ Future<void> _restoreNostrKeys(StorageService storage) async {
       final nostrService = NostrService();
       final publicKey = nostrService.getPublicKey(privateKey);
       nostrService.setKeys(privateKey, publicKey);
-      debugPrint('🔑 Chaves Nostr restauradas na inicialização: ${publicKey.substring(0, 16)}...');
+      broLog('🔑 Chaves Nostr restauradas na inicialização: ${publicKey.substring(0, 16)}...');
     } else {
-      debugPrint('⚠️ Nenhuma chave Nostr salva para restaurar');
+      broLog('⚠️ Nenhuma chave Nostr salva para restaurar');
     }
   } catch (e) {
-    debugPrint('❌ Erro ao restaurar chaves Nostr: $e');
+    broLog('❌ Erro ao restaurar chaves Nostr: $e');
   }
 }
 
@@ -113,22 +114,22 @@ void _scheduleReconciliationOnStartup(BreezProvider breezProvider, OrderProvider
 /// Tentar reconciliacao completa com pagamentos do Breez
 Future<void> _tryReconciliation(BreezProvider breezProvider, OrderProvider orderProvider) async {
   if (!breezProvider.isInitialized) {
-    debugPrint('SDK ainda nao inicializado, reconciliacao adiada');
+    broLog('SDK ainda nao inicializado, reconciliacao adiada');
     return;
   }
 
   try {
-    debugPrint('🔄 Iniciando reconciliação automática na inicialização...');
+    broLog('🔄 Iniciando reconciliação automática na inicialização...');
     
     // Buscar TODOS os pagamentos (recebidos e enviados)
     final payments = await breezProvider.getAllPayments();
     
     if (payments.isEmpty) {
-      debugPrint('📭 Nenhum pagamento na carteira para reconciliar');
+      broLog('📭 Nenhum pagamento na carteira para reconciliar');
       return;
     }
     
-    debugPrint('💰 ${payments.length} pagamentos encontrados, reconciliando...');
+    broLog('💰 ${payments.length} pagamentos encontrados, reconciliando...');
     
     // Usar o novo método completo de reconciliação
     final result = await orderProvider.autoReconcileWithBreezPayments(payments);
@@ -137,12 +138,12 @@ Future<void> _tryReconciliation(BreezProvider breezProvider, OrderProvider order
     final completedReconciled = result['completedReconciled'] ?? 0;
     
     if (pendingReconciled > 0 || completedReconciled > 0) {
-      debugPrint('🎉 Reconciliação na inicialização: $pendingReconciled pending→paid, $completedReconciled awaiting→completed');
+      broLog('🎉 Reconciliação na inicialização: $pendingReconciled pending→paid, $completedReconciled awaiting→completed');
     } else {
-      debugPrint('✅ Nenhuma ordem precisou ser reconciliada na inicialização');
+      broLog('✅ Nenhuma ordem precisou ser reconciliada na inicialização');
     }
   } catch (e) {
-    debugPrint('Erro na reconciliacao: $e');
+    broLog('Erro na reconciliacao: $e');
   }
 }
 
@@ -198,7 +199,7 @@ class BroApp extends StatelessWidget {
           
           // Callback para pagamentos RECEBIDOS (menos comum no fluxo atual)
           breezProvider.onPaymentReceived = (String paymentId, int amountSats, String? paymentHash) {
-            debugPrint('🔔 CALLBACK MAIN: Pagamento recebido! Reconciliando automaticamente...');
+            broLog('🔔 CALLBACK MAIN: Pagamento recebido! Reconciliando automaticamente...');
             orderProvider.onPaymentReceived(
               paymentId: paymentId,
               amountSats: amountSats,
@@ -208,7 +209,7 @@ class BroApp extends StatelessWidget {
           
           // Callback para pagamentos ENVIADOS (quando usuário libera BTC para o Bro)
           breezProvider.onPaymentSent = (String paymentId, int amountSats, String? paymentHash) {
-            debugPrint('🔔 CALLBACK MAIN: Pagamento ENVIADO! Marcando ordem como completed...');
+            broLog('🔔 CALLBACK MAIN: Pagamento ENVIADO! Marcando ordem como completed...');
             orderProvider.onPaymentSent(
               paymentId: paymentId,
               amountSats: amountSats,
@@ -241,7 +242,7 @@ class BroApp extends StatelessWidget {
               // Rotas com parametros
               if (settings.name == '/order-status') {
                 final args = settings.arguments as Map<String, dynamic>?;
-                debugPrint('Navegando para /order-status com args: $args');
+                broLog('Navegando para /order-status com args: $args');
 
                 final amountSatsValue = args?['amountSats'];
                 final int sats = amountSatsValue is int ? amountSatsValue : (amountSatsValue ?? 0).toInt();

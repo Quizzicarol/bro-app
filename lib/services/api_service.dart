@@ -2,6 +2,7 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:dio/dio.dart';
 import 'storage_service.dart';
 import 'nostr_service.dart';
@@ -95,11 +96,11 @@ class ApiService {
   /// Inicializa Breez SDK no backend
   Future<Map<String, dynamic>?> breezInitialize() async {
     try {
-      debugPrint('ðŸ”§ Inicializando Breez SDK via backend...');
+      broLog('ðŸ”§ Inicializando Breez SDK via backend...');
       final response = await _dio.post('/api/breez/initialize');
       return response.data;
     } catch (e) {
-      debugPrint('âŒ Erro ao inicializar Breez: $e');
+      broLog('âŒ Erro ao inicializar Breez: $e');
       return null;
     }
   }
@@ -111,7 +112,7 @@ class ApiService {
       final response = await _dio.get('/api/breez/balance');
       return response.data;
     } catch (e) {
-      debugPrint('âŒ Erro ao buscar saldo Breez: $e');
+      broLog('âŒ Erro ao buscar saldo Breez: $e');
       return null;
     }
   }
@@ -124,7 +125,7 @@ class ApiService {
     String? orderId,
   }) async {
     try {
-      debugPrint('âš¡ Criando invoice de $amountSats sats...');
+      broLog('âš¡ Criando invoice de $amountSats sats...');
       final response = await _dio.post('/api/breez/create-invoice', data: {
         'amountSats': amountSats,
         'description': description,
@@ -132,7 +133,7 @@ class ApiService {
       });
       return response.data;
     } catch (e) {
-      debugPrint('âŒ Erro ao criar invoice: $e');
+      broLog('âŒ Erro ao criar invoice: $e');
       return null;
     }
   }
@@ -144,14 +145,14 @@ class ApiService {
     int? amountSats,
   }) async {
     try {
-      debugPrint('âš¡ Pagando invoice...');
+      broLog('âš¡ Pagando invoice...');
       final response = await _dio.post('/api/breez/pay-invoice', data: {
         'bolt11': bolt11,
         if (amountSats != null) 'amountSats': amountSats,
       });
       return response.data;
     } catch (e) {
-      debugPrint('âŒ Erro ao pagar invoice: $e');
+      broLog('âŒ Erro ao pagar invoice: $e');
       return null;
     }
   }
@@ -163,7 +164,7 @@ class ApiService {
       final response = await _dio.get('/api/breez/check-payment/$paymentHash');
       return response.data;
     } catch (e) {
-      debugPrint('âŒ Erro ao verificar status: $e');
+      broLog('âŒ Erro ao verificar status: $e');
       return null;
     }
   }
@@ -175,7 +176,7 @@ class ApiService {
       final response = await _dio.post('/api/breez/mark-paid/$paymentHash');
       return response.data;
     } catch (e) {
-      debugPrint('âŒ Erro ao marcar como pago: $e');
+      broLog('âŒ Erro ao marcar como pago: $e');
       return null;
     }
   }
@@ -187,7 +188,7 @@ class ApiService {
       final response = await _dio.get('/api/breez/check-payment/$paymentHash');
       return response.data;
     } catch (e) {
-      debugPrint('âŒ Erro ao verificar pagamento: $e');
+      broLog('âŒ Erro ao verificar pagamento: $e');
       return null;
     }
   }
@@ -196,13 +197,13 @@ class ApiService {
   /// Simula pagamento (apenas para testes/debug)
   Future<Map<String, dynamic>?> breezSimulatePay(String paymentHash) async {
     try {
-      debugPrint('ðŸ§ª Simulando pagamento: $paymentHash');
+      broLog('ðŸ§ª Simulando pagamento: $paymentHash');
       final response = await _dio.post('/api/breez/simulate-pay', data: {
         'paymentHash': paymentHash,
       });
       return response.data;
     } catch (e) {
-      debugPrint('âŒ Erro ao simular pagamento: $e');
+      broLog('âŒ Erro ao simular pagamento: $e');
       return null;
     }
   }
@@ -214,7 +215,7 @@ class ApiService {
       final response = await _dio.get('/api/breez/payments');
       return response.data['payments'] ?? [];
     } catch (e) {
-      debugPrint('âŒ Erro ao listar pagamentos: $e');
+      broLog('âŒ Erro ao listar pagamentos: $e');
       return [];
     }
   }
@@ -223,11 +224,11 @@ class ApiService {
   /// Cria endereÃ§o Bitcoin on-chain para swap
   Future<Map<String, dynamic>?> breezCreateOnchainAddress() async {
     try {
-      debugPrint('ðŸ”— Criando endereÃ§o Bitcoin on-chain...');
+      broLog('ðŸ”— Criando endereÃ§o Bitcoin on-chain...');
       final response = await _dio.post('/api/breez/create-onchain-address');
       return response.data;
     } catch (e) {
-      debugPrint('âŒ Erro ao criar endereÃ§o on-chain: $e');
+      broLog('âŒ Erro ao criar endereÃ§o on-chain: $e');
       return null;
     }
   }
@@ -236,32 +237,32 @@ class ApiService {
 
   Future<Map<String, dynamic>?> validateBoleto(String code) async {
     try {
-      debugPrint('ðŸ” validateBoleto chamado com cÃ³digo: ${code.length} dÃ­gitos');
-      debugPrint('ðŸ” CÃ³digo (primeiros 20 chars): ${code.substring(0, code.length > 20 ? 20 : code.length)}...');
+      broLog('ðŸ” validateBoleto chamado com cÃ³digo: ${code.length} dÃ­gitos');
+      broLog('ðŸ” CÃ³digo (primeiros 20 chars): ${code.substring(0, code.length > 20 ? 20 : code.length)}...');
       
       // Usar decodificador local sempre (funciona com ou sem backend)
       final result = BoletoDecoderService.decodeBoleto(code);
       
       if (result != null) {
-        debugPrint('âœ… Boleto decodificado localmente: ${result['merchantName']}, R\$ ${result['value']}');
+        broLog('âœ… Boleto decodificado localmente: ${result['merchantName']}, R\$ ${result['value']}');
         return result;
       }
       
-      debugPrint('âš ï¸ Decodificador local retornou null');
+      broLog('âš ï¸ Decodificador local retornou null');
       
       // Se decodificaÃ§Ã£o local falhar e nÃ£o estiver em test mode, tenta backend
       if (!AppConfig.testMode) {
-        debugPrint('ðŸ“¡ Tentando backend...');
+        broLog('ðŸ“¡ Tentando backend...');
         return await post('/api/validate-boleto', {'code': code});
       }
       
-      debugPrint('âŒ NÃ£o foi possÃ­vel decodificar o boleto (test mode, sem backend)');
+      broLog('âŒ NÃ£o foi possÃ­vel decodificar o boleto (test mode, sem backend)');
       return {
         'success': false,
         'error': 'CÃ³digo de boleto invÃ¡lido. Deve ter 44, 47 ou 48 dÃ­gitos.',
       };
     } catch (e) {
-      debugPrint('âŒ Erro ao validar boleto: $e');
+      broLog('âŒ Erro ao validar boleto: $e');
       return {
         'success': false,
         'error': 'Erro ao processar boleto: $e',
@@ -276,7 +277,7 @@ class ApiService {
       // Usar decodificador local sempre (funciona com ou sem backend)
       final result = PixDecoderService.decodePix(code);
       if (result != null) {
-        debugPrint('âœ… PIX decodificado localmente: ${result['merchantName']}, R\$ ${result['value']}');
+        broLog('âœ… PIX decodificado localmente: ${result['merchantName']}, R\$ ${result['value']}');
         return result;
       }
       
@@ -285,10 +286,10 @@ class ApiService {
         return await post('/api/decode-pix', {'code': code});
       }
       
-      debugPrint('âŒ NÃ£o foi possÃ­vel decodificar o cÃ³digo PIX');
+      broLog('âŒ NÃ£o foi possÃ­vel decodificar o cÃ³digo PIX');
       return null;
     } catch (e) {
-      debugPrint('âŒ Erro ao decodificar PIX: $e');
+      broLog('âŒ Erro ao decodificar PIX: $e');
       return null;
     }
   }
@@ -297,13 +298,13 @@ class ApiService {
 
   Future<double?> getBitcoinPrice() async {
     try {
-      debugPrint('ðŸ“¡ Buscando preÃ§o real do Bitcoin...');
+      broLog('ðŸ“¡ Buscando preÃ§o real do Bitcoin...');
       
       // Buscar preÃ§o real de APIs pÃºblicas
       final realPrice = await BitcoinPriceService.getBitcoinPriceWithCache();
       
       if (realPrice != null) {
-        debugPrint('âœ… PreÃ§o real do Bitcoin: R\$ ${realPrice.toStringAsFixed(2)}');
+        broLog('âœ… PreÃ§o real do Bitcoin: R\$ ${realPrice.toStringAsFixed(2)}');
         return realPrice;
       }
       
@@ -313,15 +314,15 @@ class ApiService {
         final price = result?['price'];
         if (price != null) {
           final priceDouble = (price is num) ? price.toDouble() : double.tryParse(price.toString());
-          debugPrint('âœ… PreÃ§o do backend: $priceDouble');
+          broLog('âœ… PreÃ§o do backend: $priceDouble');
           return priceDouble;
         }
       }
       
-      debugPrint('âš ï¸ Usando preÃ§o fallback: R\$ 480.558,00');
+      broLog('âš ï¸ Usando preÃ§o fallback: R\$ 480.558,00');
       return 480558.0; // Fallback
     } catch (e) {
-      debugPrint('âŒ Erro ao buscar preÃ§o Bitcoin: $e');
+      broLog('âŒ Erro ao buscar preÃ§o Bitcoin: $e');
       return 480558.0; // Fallback
     }
   }
@@ -334,7 +335,7 @@ class ApiService {
       // Sempre calcular localmente usando preÃ§o real do Bitcoin
       final btcPrice = await getBitcoinPrice();
       if (btcPrice == null || btcPrice <= 0) {
-        debugPrint('âŒ PreÃ§o do Bitcoin invÃ¡lido: $btcPrice');
+        broLog('âŒ PreÃ§o do Bitcoin invÃ¡lido: $btcPrice');
         return null;
       }
       
@@ -356,7 +357,7 @@ class ApiService {
       final platformFeeSats = (platformFeeBrl / btcPrice * 100000000).round();
       final providerFeeSats = (providerFeeBrl / btcPrice * 100000000).round();
       
-      debugPrint('ðŸ’± ConversÃ£o local: R\$ $amount â†’ $satsAmount sats @ R\$ ${btcPrice.toStringAsFixed(2)}/BTC');
+      broLog('ðŸ’± ConversÃ£o local: R\$ $amount â†’ $satsAmount sats @ R\$ ${btcPrice.toStringAsFixed(2)}/BTC');
       
       return {
         'success': true,
@@ -374,7 +375,7 @@ class ApiService {
         'totalFee': totalFeeBrl,
       };
     } catch (e) {
-      debugPrint('âŒ Erro ao converter preÃ§o: $e');
+      broLog('âŒ Erro ao converter preÃ§o: $e');
       return null;
     }
   }
@@ -398,7 +399,7 @@ class ApiService {
       });
       return response.data;
     } catch (e) {
-      debugPrint('âŒ Erro ao criar ordem: $e');
+      broLog('âŒ Erro ao criar ordem: $e');
       return null;
     }
   }
@@ -411,7 +412,7 @@ class ApiService {
       });
       return response.data['orders'] ?? [];
     } catch (e) {
-      debugPrint('âŒ Erro ao listar ordens: $e');
+      broLog('âŒ Erro ao listar ordens: $e');
       return [];
     }
   }
@@ -421,7 +422,7 @@ class ApiService {
       final response = await _dio.get('/api/orders/$orderId');
       return response.data['order'];
     } catch (e) {
-      debugPrint('âŒ Erro ao buscar ordem: $e');
+      broLog('âŒ Erro ao buscar ordem: $e');
       return null;
     }
   }
@@ -433,7 +434,7 @@ class ApiService {
       });
       return response.data['success'] ?? false;
     } catch (e) {
-      debugPrint('âŒ Erro ao aceitar ordem: $e');
+      broLog('âŒ Erro ao aceitar ordem: $e');
       return false;
     }
   }
@@ -454,7 +455,7 @@ class ApiService {
       });
       return response.data['success'] ?? false;
     } catch (e) {
-      debugPrint('âŒ Erro ao atualizar status: $e');
+      broLog('âŒ Erro ao atualizar status: $e');
       return false;
     }
   }
@@ -474,7 +475,7 @@ class ApiService {
       });
       return response.data;
     } catch (e) {
-      debugPrint('âŒ Erro ao criar escrow: $e');
+      broLog('âŒ Erro ao criar escrow: $e');
       return null;
     }
   }
@@ -484,7 +485,7 @@ class ApiService {
       final response = await _dio.get('/api/escrow/$escrowId');
       return response.data['escrow'];
     } catch (e) {
-      debugPrint('âŒ Erro ao buscar escrow: $e');
+      broLog('âŒ Erro ao buscar escrow: $e');
       return null;
     }
   }
@@ -494,7 +495,7 @@ class ApiService {
       final response = await _dio.get('/api/escrow/order/$orderId');
       return response.data['escrow'];
     } catch (e) {
-      debugPrint('âŒ Erro ao buscar escrow da ordem: $e');
+      broLog('âŒ Erro ao buscar escrow da ordem: $e');
       return null;
     }
   }
@@ -504,7 +505,7 @@ class ApiService {
       final response = await _dio.post('/api/escrow/fund/$escrowId');
       return response.data['success'] ?? false;
     } catch (e) {
-      debugPrint('âŒ Erro ao financiar escrow: $e');
+      broLog('âŒ Erro ao financiar escrow: $e');
       return false;
     }
   }
@@ -514,7 +515,7 @@ class ApiService {
       final response = await _dio.post('/api/escrow/release/$escrowId');
       return response.data['success'] ?? false;
     } catch (e) {
-      debugPrint('âŒ Erro ao liberar escrow: $e');
+      broLog('âŒ Erro ao liberar escrow: $e');
       return false;
     }
   }
@@ -538,7 +539,7 @@ class ApiService {
       });
       return response.data;
     } catch (e) {
-      debugPrint('âŒ Erro ao enviar mensagem: $e');
+      broLog('âŒ Erro ao enviar mensagem: $e');
       return null;
     }
   }
@@ -548,7 +549,7 @@ class ApiService {
       final response = await _dio.get('/api/messages/$orderId');
       return response.data['messages'] ?? [];
     } catch (e) {
-      debugPrint('âŒ Erro ao buscar mensagens: $e');
+      broLog('âŒ Erro ao buscar mensagens: $e');
       return [];
     }
   }
@@ -562,7 +563,7 @@ class ApiService {
       });
       return response.data['stats'];
     } catch (e) {
-      debugPrint('âŒ Erro ao buscar stats: $e');
+      broLog('âŒ Erro ao buscar stats: $e');
       return null;
     }
   }
@@ -579,7 +580,7 @@ class ApiService {
       );
       return response.data;
     } catch (e) {
-      debugPrint('âŒ Erro no health check: $e');
+      broLog('âŒ Erro no health check: $e');
       if (e is TimeoutException) {
         throw Exception('O servidor nÃ£o estÃ¡ respondendo. Verifique se o backend estÃ¡ rodando em $baseUrl');
       }
@@ -592,16 +593,16 @@ class ApiService {
   /// Decodifica cÃ³digo PIX
   Future<Map<String, dynamic>?> decodePixCode(String pixCode) async {
     try {
-      debugPrint('ðŸ“¡ Decodificando cÃ³digo PIX...');
+      broLog('ðŸ“¡ Decodificando cÃ³digo PIX...');
       final response = await _dio.post('/api/pix/decode', data: {
         'pixCode': pixCode,
       });
-      debugPrint('ðŸ“¨ Resposta da API: ${response.data}');
+      broLog('ðŸ“¨ Resposta da API: ${response.data}');
       return response.data;
     } catch (e) {
-      debugPrint('âŒ Erro ao decodificar PIX: $e');
-      debugPrint('ðŸ“¨ Resposta da API: null');
-      debugPrint('âŒ Resultado invÃ¡lido: null');
+      broLog('âŒ Erro ao decodificar PIX: $e');
+      broLog('ðŸ“¨ Resposta da API: null');
+      broLog('âŒ Resultado invÃ¡lido: null');
       return null;
     }
   }
@@ -613,7 +614,7 @@ class ApiService {
     double amount,
   ) async {
     try {
-      debugPrint('ðŸ“¡ Processando pagamento PIX...');
+      broLog('ðŸ“¡ Processando pagamento PIX...');
       final response = await _dio.post('/api/pix/pay', data: {
         'orderId': orderId,
         'pixCode': pixCode,
@@ -621,7 +622,7 @@ class ApiService {
       });
       return response.data;
     } catch (e) {
-      debugPrint('âŒ Erro ao processar pagamento PIX: $e');
+      broLog('âŒ Erro ao processar pagamento PIX: $e');
       return {'success': false, 'error': e.toString()};
     }
   }
@@ -635,7 +636,7 @@ class ApiService {
       });
       return response.data['success'] ?? false;
     } catch (e) {
-      debugPrint('âŒ Erro ao sincronizar ordens: $e');
+      broLog('âŒ Erro ao sincronizar ordens: $e');
       return false;
     }
   }
@@ -675,7 +676,7 @@ class ApiService {
       final response = await _dio.get(path);
       return response.data as Map<String, dynamic>?;
     } catch (e) {
-      debugPrint('âŒ Erro no GET $path: $e');
+      broLog('âŒ Erro no GET $path: $e');
       return null;
     }
   }
@@ -691,7 +692,7 @@ class ApiService {
       final response = await _dio.post(path, data: data);
       return response.data as Map<String, dynamic>?;
     } catch (e) {
-      debugPrint('âŒ Erro no POST $path: $e');
+      broLog('âŒ Erro no POST $path: $e');
       return null;
     }
   }
@@ -707,7 +708,7 @@ class ApiService {
       }
       return [];
     } catch (e) {
-      debugPrint('❌ Erro ao buscar análises do agente: $e');
+      broLog('❌ Erro ao buscar análises do agente: $e');
       return [];
     }
   }
@@ -718,7 +719,7 @@ class ApiService {
       final response = await _dio.get('/agent/analysis/$orderId');
       return response.data as Map<String, dynamic>?;
     } catch (e) {
-      debugPrint('❌ Erro ao buscar análise do agente: $e');
+      broLog('❌ Erro ao buscar análise do agente: $e');
       return null;
     }
   }
@@ -731,7 +732,7 @@ class ApiService {
       });
       return response.data?['success'] == true;
     } catch (e) {
-      debugPrint('❌ Erro ao aprovar análise: $e');
+      broLog('❌ Erro ao aprovar análise: $e');
       return false;
     }
   }
@@ -745,7 +746,7 @@ class ApiService {
       });
       return response.data?['success'] == true;
     } catch (e) {
-      debugPrint('❌ Erro ao rejeitar análise: $e');
+      broLog('❌ Erro ao rejeitar análise: $e');
       return false;
     }
   }
@@ -756,19 +757,19 @@ class ApiService {
       final response = await _dio.get('/agent/status');
       return response.data as Map<String, dynamic>?;
     } catch (e) {
-      debugPrint('❌ Erro ao buscar stats do agente: $e');
+      broLog('❌ Erro ao buscar stats do agente: $e');
       return null;
     }
   }
   /// Mock responses para test mode
   Future<Map<String, dynamic>> _getMockResponse(String path, {Map<String, dynamic>? data}) async {
-    debugPrint('ðŸ§ª TEST MODE: Mock response para $path');
+    broLog('ðŸ§ª TEST MODE: Mock response para $path');
 
     // PIX decode
     if (path.contains('/api/decode-pix')) {
       final pixCode = data?['code'] ?? '';
       final codeLength = pixCode.toString().length;
-      debugPrint('ðŸ” Mock: Decodificando PIX: ${pixCode.toString().substring(0, min<int>(50, codeLength))}');
+      broLog('ðŸ” Mock: Decodificando PIX: ${pixCode.toString().substring(0, min<int>(50, codeLength))}');
       return {
         'success': true,
         'billType': 'pix',
@@ -783,7 +784,7 @@ class ApiService {
     // Boleto validate - NÃƒO usar mock, sempre decodificar localmente
     if (path.contains('/api/validate-boleto')) {
       final boletoCode = data?['code'] ?? '';
-      debugPrint('âš ï¸ Mock de boleto chamado - decodificaÃ§Ã£o local falhou para: $boletoCode');
+      broLog('âš ï¸ Mock de boleto chamado - decodificaÃ§Ã£o local falhou para: $boletoCode');
       // Retornar erro para forÃ§ar uso do decodificador local
       return {
         'success': false,

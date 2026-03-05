@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
 import '../providers/provider_balance_provider.dart';
 import '../providers/breez_provider_export.dart';
@@ -45,7 +46,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
         setState(() => _loadingBreez = false);
       }
     } catch (e) {
-      debugPrint('❌ Erro ao carregar saldo Breez: $e');
+      broLog('❌ Erro ao carregar saldo Breez: $e');
       if (mounted) setState(() => _loadingBreez = false);
     }
   }

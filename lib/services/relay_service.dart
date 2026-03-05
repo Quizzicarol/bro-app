@@ -1,6 +1,7 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'storage_service.dart';
 
@@ -53,7 +54,7 @@ class RelayService {
     }
 
     try {
-      debugPrint('🔌 Conectando ao relay: $url');
+      broLog('🔌 Conectando ao relay: $url');
       final channel = WebSocketChannel.connect(Uri.parse(url));
       
       _connections[url] = channel;
@@ -65,20 +66,20 @@ class RelayService {
           _handleMessage(url, message);
         },
         onError: (error) {
-          debugPrint('❌ Erro no relay $url: $error');
+          broLog('❌ Erro no relay $url: $error');
           _relayStatus[url] = false;
         },
         onDone: () {
-          debugPrint('🔌 Desconectado do relay: $url');
+          broLog('🔌 Desconectado do relay: $url');
           _relayStatus[url] = false;
           _connections.remove(url);
         },
       );
 
-      debugPrint('✅ Conectado ao relay: $url');
+      broLog('✅ Conectado ao relay: $url');
       return true;
     } catch (e) {
-      debugPrint('❌ Falha ao conectar ao relay $url: $e');
+      broLog('❌ Falha ao conectar ao relay $url: $e');
       _relayStatus[url] = false;
       return false;
     }
@@ -97,7 +98,7 @@ class RelayService {
   /// Adicionar relay à lista ativa (apenas wss://)
   Future<void> addRelay(String url) async {
     if (!url.startsWith('wss://')) {
-      debugPrint('❌ Relay rejeitado: apenas wss:// é permitido ($url)');
+      broLog('❌ Relay rejeitado: apenas wss:// é permitido ($url)');
       return;
     }
     if (!_activeRelays.contains(url)) {
@@ -122,9 +123,9 @@ class RelayService {
       if (_relayStatus[entry.key] == true) {
         try {
           entry.value.sink.add(message);
-          debugPrint('📤 Evento enviado para ${entry.key}');
+          broLog('📤 Evento enviado para ${entry.key}');
         } catch (e) {
-          debugPrint('❌ Erro ao enviar para ${entry.key}: $e');
+          broLog('❌ Erro ao enviar para ${entry.key}: $e');
         }
       }
     }
@@ -175,25 +176,25 @@ class RelayService {
             _handleEvent(relayUrl, data);
             break;
           case 'EOSE':
-            debugPrint('📭 Fim de eventos do relay $relayUrl');
+            broLog('📭 Fim de eventos do relay $relayUrl');
             break;
           case 'OK':
-            debugPrint('✅ Evento aceito pelo relay $relayUrl');
+            broLog('✅ Evento aceito pelo relay $relayUrl');
             break;
           case 'NOTICE':
-            debugPrint('📢 Aviso do relay $relayUrl: ${data[1]}');
+            broLog('📢 Aviso do relay $relayUrl: ${data[1]}');
             break;
         }
       }
     } catch (e) {
-      debugPrint('❌ Erro ao processar mensagem: $e');
+      broLog('❌ Erro ao processar mensagem: $e');
     }
   }
 
   void _handleEvent(String relayUrl, List<dynamic> data) {
     if (data.length >= 3) {
       final event = data[2];
-      debugPrint('📨 Evento recebido de $relayUrl: ${event['kind']}');
+      broLog('📨 Evento recebido de $relayUrl: ${event['kind']}');
       // TODO: Processar diferentes tipos de eventos
     }
   }

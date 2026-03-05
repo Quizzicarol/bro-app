@@ -1,3 +1,4 @@
+﻿import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter/material.dart';
 
 /// Stub para web/Windows/Linux - Breez SDK não funciona nessas plataformas
@@ -21,11 +22,11 @@ class BreezProvider with ChangeNotifier {
   
   /// Reset para novo usuário (stub)
   Future<void> resetForNewUser() async {
-    debugPrint('⚠️ resetForNewUser não disponível nesta plataforma');
+    broLog('⚠️ resetForNewUser não disponível nesta plataforma');
   }
 
   Future<bool> initialize({String? mnemonic}) async {
-    debugPrint('⚠️ Breez SDK não disponível nesta plataforma');
+    broLog('⚠️ Breez SDK não disponível nesta plataforma');
     return false;
   }
 
@@ -90,7 +91,7 @@ class BreezProvider with ChangeNotifier {
 
   /// Reinicializar SDK com nova seed (stub - não faz nada em plataformas não-suportadas)
   Future<bool> reinitializeWithNewSeed(String mnemonic) async {
-    debugPrint('⚠️ Breez SDK não disponível nesta plataforma');
+    broLog('⚠️ Breez SDK não disponível nesta plataforma');
     return false;
   }
 
@@ -98,7 +99,7 @@ class BreezProvider with ChangeNotifier {
   
   /// Force sync da carteira (stub)
   Future<void> forceSyncWallet() async {
-    debugPrint('⚠️ forceSyncWallet não disponível nesta plataforma');
+    broLog('⚠️ forceSyncWallet não disponível nesta plataforma');
   }
   
   /// Recuperar depósitos não reclamados (stub)

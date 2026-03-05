@@ -1,3 +1,4 @@
+﻿import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter/foundation.dart';
 
 /// Serviço de Rate Limiting para prevenir abuso
@@ -40,7 +41,7 @@ class RateLimitService {
       final unlockTime = oldestAttempt.add(Duration(minutes: windowMinutes));
       final remainingSeconds = unlockTime.difference(now).inSeconds;
       
-      debugPrint('🚫 Rate limit atingido para $key. Desbloqueio em ${remainingSeconds}s');
+      broLog('🚫 Rate limit atingido para $key. Desbloqueio em ${remainingSeconds}s');
       
       return RateLimitResult(
         allowed: false,
@@ -64,7 +65,7 @@ class RateLimitService {
     final key = '${operation}_$identifier';
     _attemptLog[key] = _attemptLog[key] ?? [];
     _attemptLog[key]!.add(DateTime.now());
-    debugPrint('📝 Tentativa registrada: $key (${_attemptLog[key]!.length} total)');
+    broLog('📝 Tentativa registrada: $key (${_attemptLog[key]!.length} total)');
   }
   
   /// Limpa tentativas após sucesso (ex: login bem sucedido)
@@ -74,7 +75,7 @@ class RateLimitService {
   }) {
     final key = '${operation}_$identifier';
     _attemptLog.remove(key);
-    debugPrint('✅ Tentativas limpas para $key');
+    broLog('✅ Tentativas limpas para $key');
   }
   
   /// Verifica rate limit para login

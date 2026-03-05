@@ -1,7 +1,8 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:breez_sdk_spark_flutter/breez_sdk_spark.dart' as spark;
 import 'package:path_provider/path_provider.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:bip39/bip39.dart' as bip39;
 import '../config/breez_config.dart';
 import '../extensions/breez_extensions.dart';
@@ -46,7 +47,7 @@ class PlatformWalletService {
     _isLoading = true;
     _error = null;
     
-    debugPrint('🏦 Inicializando Carteira Master da Plataforma...');
+    broLog('🏦 Inicializando Carteira Master da Plataforma...');
     
     try {
       if (!_rustLibInitialized) {
@@ -56,10 +57,10 @@ class PlatformWalletService {
       
       if (mnemonic != null && mnemonic.isNotEmpty) {
         _mnemonic = mnemonic;
-        debugPrint('🔑 Usando mnemonic existente');
+        broLog('🔑 Usando mnemonic existente');
       } else {
         _mnemonic = bip39.generateMnemonic();
-        debugPrint('🆕 Nova carteira master gerada');
+        broLog('🆕 Nova carteira master gerada');
         // SEGURANÇA: NUNCA imprimir mnemonic em logs!
         // O mnemonic deve ser mostrado apenas na UI para backup
       }
@@ -73,7 +74,7 @@ class PlatformWalletService {
         apiKey: BreezConfig.apiKey,
       );
       
-      debugPrint('🔗 Conectando carteira master ($network)...');
+      broLog('🔗 Conectando carteira master ($network)...');
       
       _sdk = await spark.connect(
         request: spark.ConnectRequest(
@@ -84,14 +85,14 @@ class PlatformWalletService {
       );
       
       _isInitialized = true;
-      debugPrint('✅ Carteira Master inicializada!');
+      broLog('✅ Carteira Master inicializada!');
       
       _syncInBackground();
       
       return true;
     } catch (e) {
       _error = 'Erro ao inicializar carteira master: $e';
-      debugPrint('❌ $_error');
+      broLog('❌ $_error');
       return false;
     } finally {
       _isLoading = false;
@@ -103,9 +104,9 @@ class PlatformWalletService {
     try {
       await _sdk!.syncWallet(request: spark.SyncWalletRequest());
       final info = await _sdk!.getInfo(request: spark.GetInfoRequest());
-      debugPrint('🏦 Saldo Master: ${info.balanceSats} sats');
+      broLog('🏦 Saldo Master: ${info.balanceSats} sats');
     } catch (e) {
-      debugPrint('⚠️ Erro sync: $e');
+      broLog('⚠️ Erro sync: $e');
     }
   }
 
@@ -120,7 +121,7 @@ class PlatformWalletService {
       return {'success': false, 'error': 'Carteira master não inicializada'};
     }
     
-    debugPrint('📥 Criando invoice escrow de $amountSats sats...');
+    broLog('📥 Criando invoice escrow de $amountSats sats...');
     
     try {
       final resp = await _sdk!.receivePayment(
@@ -142,7 +143,7 @@ class PlatformWalletService {
         }
       } catch (_) {}
       
-      debugPrint('✅ Invoice escrow criada');
+      broLog('✅ Invoice escrow criada');
       
       return {
         'success': true,
@@ -153,7 +154,7 @@ class PlatformWalletService {
         'providerAddress': providerLightningAddress,
       };
     } catch (e) {
-      debugPrint('❌ Erro criando invoice escrow: $e');
+      broLog('❌ Erro criando invoice escrow: $e');
       return {'success': false, 'error': e.toString()};
     }
   }
@@ -170,10 +171,10 @@ class PlatformWalletService {
     final platformFeeSats = (totalSats * platformFeePercent).round();
     final providerAmountSats = totalSats - platformFeeSats;
     
-    debugPrint('💰 Processando split:');
-    debugPrint('   Total recebido: $totalSats sats');
-    debugPrint('   Taxa plataforma (2%): $platformFeeSats sats');
-    debugPrint('   Para provedor: $providerAmountSats sats');
+    broLog('💰 Processando split:');
+    broLog('   Total recebido: $totalSats sats');
+    broLog('   Taxa plataforma (2%): $platformFeeSats sats');
+    broLog('   Para provedor: $providerAmountSats sats');
     
     try {
       // Preparar pagamento
@@ -193,7 +194,7 @@ class PlatformWalletService {
         ),
       );
       
-      debugPrint('✅ Pagamento enviado para provedor');
+      broLog('✅ Pagamento enviado para provedor');
       return {
         'success': true,
         'providerAmount': providerAmountSats,
@@ -205,7 +206,7 @@ class PlatformWalletService {
         },
       };
     } catch (e) {
-      debugPrint('❌ Erro no split: $e');
+      broLog('❌ Erro no split: $e');
       return {'success': false, 'error': e.toString()};
     }
   }
@@ -275,7 +276,7 @@ class PlatformWalletService {
         'type': p.paymentType.toString(),
       }).toList();
     } catch (e) {
-      debugPrint('Erro listando pagamentos: $e');
+      broLog('Erro listando pagamentos: $e');
       return [];
     }
   }
@@ -292,7 +293,7 @@ class PlatformWalletService {
       );
       return resp.paymentRequest;
     } catch (e) {
-      debugPrint('Erro gerando endereço: $e');
+      broLog('Erro gerando endereço: $e');
       return null;
     }
   }

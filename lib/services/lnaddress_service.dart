@@ -1,5 +1,6 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:http/http.dart' as http;
 
 /// Serviço para resolver Lightning Addresses e LNURL (LNURL-pay)
@@ -86,10 +87,10 @@ class LnAddressService {
       
       // Convert bytes to string (URL)
       final url = utf8.decode(bytes);
-      debugPrint('🔓 LNURL decodificado: $url');
+      broLog('🔓 LNURL decodificado: $url');
       return url;
     } catch (e) {
-      debugPrint('❌ Erro ao decodificar LNURL: $e');
+      broLog('❌ Erro ao decodificar LNURL: $e');
       return null;
     }
   }
@@ -102,8 +103,8 @@ class LnAddressService {
         return {'success': false, 'error': 'LNURL inválido'};
       }
 
-      debugPrint('🔍 Resolvendo LNURL...');
-      debugPrint('🌐 URL: $url');
+      broLog('🔍 Resolvendo LNURL...');
+      broLog('🌐 URL: $url');
 
       final response = await http.get(
         Uri.parse(url),
@@ -113,7 +114,7 @@ class LnAddressService {
       ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode != 200) {
-        debugPrint('❌ Erro HTTP ${response.statusCode}: ${response.body}');
+        broLog('❌ Erro HTTP ${response.statusCode}: ${response.body}');
         return {
           'success': false,
           'error': 'Não foi possível resolver LNURL (HTTP ${response.statusCode})'
@@ -137,10 +138,10 @@ class LnAddressService {
       final metadata = data['metadata'] as String?;
       final commentAllowed = data['commentAllowed'] as int? ?? 0;
 
-      debugPrint('✅ LNURL resolvido!');
-      debugPrint('   Min: ${minSendable ~/ 1000} sats');
-      debugPrint('   Max: ${maxSendable ~/ 1000} sats');
-      debugPrint('   Callback: $callback');
+      broLog('✅ LNURL resolvido!');
+      broLog('   Min: ${minSendable ~/ 1000} sats');
+      broLog('   Max: ${maxSendable ~/ 1000} sats');
+      broLog('   Callback: $callback');
 
       return {
         'success': true,
@@ -152,7 +153,7 @@ class LnAddressService {
         'isLnurl': true,
       };
     } catch (e) {
-      debugPrint('❌ Erro ao resolver LNURL: $e');
+      broLog('❌ Erro ao resolver LNURL: $e');
       return {
         'success': false,
         'error': 'Erro ao resolver LNURL: $e'
@@ -177,8 +178,8 @@ class LnAddressService {
       // LNURL-pay endpoint: https://domain.com/.well-known/lnurlp/username
       final url = 'https://$domain/.well-known/lnurlp/$username';
       
-      debugPrint('🔍 Resolvendo LN Address: $lnAddress');
-      debugPrint('🌐 URL: $url');
+      broLog('🔍 Resolvendo LN Address: $lnAddress');
+      broLog('🌐 URL: $url');
 
       final response = await http.get(
         Uri.parse(url),
@@ -188,7 +189,7 @@ class LnAddressService {
       ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode != 200) {
-        debugPrint('❌ Erro HTTP ${response.statusCode}: ${response.body}');
+        broLog('❌ Erro HTTP ${response.statusCode}: ${response.body}');
         return {
           'success': false, 
           'error': 'Não foi possível resolver o Lightning Address (HTTP ${response.statusCode})'
@@ -212,10 +213,10 @@ class LnAddressService {
       final metadata = data['metadata'] as String?;
       final commentAllowed = data['commentAllowed'] as int? ?? 0;
 
-      debugPrint('✅ LN Address resolvido!');
-      debugPrint('   Min: ${minSendable ~/ 1000} sats');
-      debugPrint('   Max: ${maxSendable ~/ 1000} sats');
-      debugPrint('   Callback: $callback');
+      broLog('✅ LN Address resolvido!');
+      broLog('   Min: ${minSendable ~/ 1000} sats');
+      broLog('   Max: ${maxSendable ~/ 1000} sats');
+      broLog('   Callback: $callback');
 
       return {
         'success': true,
@@ -227,7 +228,7 @@ class LnAddressService {
         'lnAddress': cleaned,
       };
     } catch (e) {
-      debugPrint('❌ Erro ao resolver LN Address: $e');
+      broLog('❌ Erro ao resolver LN Address: $e');
       return {
         'success': false,
         'error': 'Erro ao resolver Lightning Address: $e'
@@ -294,8 +295,8 @@ class LnAddressService {
         invoiceUrl += '&comment=${Uri.encodeComponent(truncatedComment)}';
       }
 
-      debugPrint('💸 Obtendo invoice para $amountSats sats...');
-      debugPrint('🌐 URL: $invoiceUrl');
+      broLog('💸 Obtendo invoice para $amountSats sats...');
+      broLog('🌐 URL: $invoiceUrl');
 
       final response = await http.get(
         Uri.parse(invoiceUrl),
@@ -305,7 +306,7 @@ class LnAddressService {
       ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode != 200) {
-        debugPrint('❌ Erro HTTP ${response.statusCode}: ${response.body}');
+        broLog('❌ Erro HTTP ${response.statusCode}: ${response.body}');
         return {
           'success': false,
           'error': 'Erro ao obter invoice (HTTP ${response.statusCode})'
@@ -326,7 +327,7 @@ class LnAddressService {
         return {'success': false, 'error': 'Invoice não recebida'};
       }
 
-      debugPrint('✅ Invoice obtida: ${pr.substring(0, 50)}...');
+      broLog('✅ Invoice obtida: ${pr.substring(0, 50)}...');
 
       return {
         'success': true,
@@ -335,7 +336,7 @@ class LnAddressService {
         'lnAddress': lnAddress,
       };
     } catch (e) {
-      debugPrint('❌ Erro ao obter invoice: $e');
+      broLog('❌ Erro ao obter invoice: $e');
       return {
         'success': false,
         'error': 'Erro ao obter invoice: $e'

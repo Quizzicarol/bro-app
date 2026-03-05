@@ -2,6 +2,7 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:nostr/nostr.dart';
 import '../services/nostr_service.dart';
 import '../services/nostr_profile_service.dart';
@@ -59,7 +60,7 @@ class _LoginScreenState extends State<LoginScreen> {
         _isSeedPhrase = true;
         _detectedMnemonic = trimmed;
       });
-      debugPrint('🌱 Detectado: Seed de ${words.length} palavras');
+      broLog('🌱 Detectado: Seed de ${words.length} palavras');
     } else {
       setState(() {
         _isSeedPhrase = false;
@@ -89,7 +90,7 @@ class _LoginScreenState extends State<LoginScreen> {
       _detectedMnemonic = unifiedSeed;
     });
 
-    debugPrint('🌱 Nova conta NIP-06 criada!');
+    broLog('🌱 Nova conta NIP-06 criada!');
 
     if (mounted) {
       // Mostrar diálogo com APENAS a seed (uma coisa só para guardar!)
@@ -481,7 +482,7 @@ class _LoginScreenState extends State<LoginScreen> {
     
     _detectInputType(mnemonic);
 
-    debugPrint('🌱 Nova seed gerada');
+    broLog('🌱 Nova seed gerada');
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -658,7 +659,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   // Derivar chave pública Nostr
                   final publicKey = _nostrService.getPublicKey(nostrKey);
                   
-                  debugPrint('🔧 LOGIN AVANÇADO: chaves configuradas');
+                  broLog('🔧 LOGIN AVANÇADO: chaves configuradas');
 
                   // Salvar chaves Nostr
                   await _storage.saveNostrKeys(
@@ -669,7 +670,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   // LOGIN AVANÇADO: FORÇA a troca de seed (o usuário escolheu explicitamente)
                   await _storage.forceUpdateBreezMnemonic(seed, ownerPubkey: publicKey);
-                  debugPrint('💾 Seed vinculada ao usuário');
+                  broLog('💾 Seed vinculada ao usuário');
 
                   // Salvar URL do backend
                   await _storage.saveBackendUrl(AppConfig.defaultBackendUrl);
@@ -682,16 +683,16 @@ class _LoginScreenState extends State<LoginScreen> {
                     await breezProv.resetForNewUser();
                   }
 
-                  debugPrint('✅ Login Avançado completo!');
+                  broLog('✅ Login Avançado completo!');
 
                   // Inicializar Breez em BACKGROUND (não bloqueia)
                   if (breezProv != null) {
                     Future.microtask(() async {
                       try {
                         await breezProv.initialize(mnemonic: seedToUse);
-                        debugPrint('✅ Breez inicializado com seed vinculada!');
+                        broLog('✅ Breez inicializado com seed vinculada!');
                       } catch (e) {
-                        debugPrint('⚠️ Erro inicializando Breez: $e');
+                        broLog('⚠️ Erro inicializando Breez: $e');
                       }
                     });
                   }
@@ -752,8 +753,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       // DIAGNÓSTICO: Mostrar todos os dados de seed antes do login
-      debugPrint('');
-      debugPrint('🔍 DIAGNÓSTICO PRÉ-LOGIN:');
+      broLog('');
+      broLog('🔍 DIAGNÓSTICO PRÉ-LOGIN:');
       await _storage.debugShowAllSeeds();
       
       String privateKey;
@@ -766,7 +767,7 @@ class _LoginScreenState extends State<LoginScreen> {
       
       if (isSeed) {
         // LOGIN VIA NIP-06 (SEED)
-        debugPrint('🌱 Login via NIP-06 (seed de ${words.length} palavras)');
+        broLog('🌱 Login via NIP-06 (seed de ${words.length} palavras)');
         setState(() => _statusMessage = 'Derivando chaves da seed...');
         
         mnemonic = input.toLowerCase();
@@ -774,7 +775,7 @@ class _LoginScreenState extends State<LoginScreen> {
         privateKey = keys['privateKey']!;
         publicKey = keys['publicKey']!;
         
-        debugPrint('🔑 NIP-06: chaves derivadas com sucesso');
+        broLog('🔑 NIP-06: chaves derivadas com sucesso');
         
         // IMPORTANTE: NÃO salvar a seed aqui ainda!
         // Primeiro salvamos as chaves Nostr, depois a seed COM o pubkey
@@ -782,7 +783,7 @@ class _LoginScreenState extends State<LoginScreen> {
         
       } else {
         // LOGIN VIA CHAVE PRIVADA NOSTR (hex ou nsec)
-        debugPrint('🔐 Login via chave privada Nostr');
+        broLog('🔐 Login via chave privada Nostr');
         
         if (!_nostrService.isValidPrivateKey(input)) {
           throw Exception('Input inválido. Use:\n- Seed de 12 palavras (NIP-06)\n- Chave privada hex (64 chars)\n- nsec...');
@@ -794,33 +795,33 @@ class _LoginScreenState extends State<LoginScreen> {
         privateKey = keychain.private;
         publicKey = keychain.public;
         
-        debugPrint('🔑 Chave normalizada para hex');
+        broLog('🔑 Chave normalizada para hex');
         
         // PRIORIDADE: Seed salva > Seed derivada
         // Isso permite que Login Avançado vincule uma seed específica
-        debugPrint('🔍 Buscando seed para pubkey...');
+        broLog('🔍 Buscando seed para pubkey...');
         
         // PRIMEIRO: Verificar se existe seed salva (vinculada via Login Avançado)
         String? existingSeed = await _storage.getBreezMnemonic(forPubkey: publicKey);
         
         if (existingSeed != null) {
           mnemonic = existingSeed;
-          debugPrint('✅ Seed SALVA encontrada (Login Avançado ou anterior)');
+          broLog('✅ Seed SALVA encontrada (Login Avançado ou anterior)');
         } else {
           // SEGUNDO: Derivar deterministicamente da chave Nostr
-          debugPrint('📭 Nenhuma seed salva. Derivando da chave Nostr...');
+          broLog('📭 Nenhuma seed salva. Derivando da chave Nostr...');
           try {
             mnemonic = _nip06Service.deriveSeedFromNostrKey(privateKey);
-            debugPrint('✅ Seed DERIVADA com sucesso!');
+            broLog('✅ Seed DERIVADA com sucesso!');
           } catch (e) {
-            debugPrint('❌ Erro ao derivar seed: $e');
+            broLog('❌ Erro ao derivar seed: $e');
           }
         }
-        debugPrint('═══════════════════════════════════════════════════════════');
-        debugPrint('');
+        broLog('═══════════════════════════════════════════════════════════');
+        broLog('');
       }
 
-      debugPrint('✅ Login com Nostr. Pubkey: ${publicKey.substring(0, 16)}...');
+      broLog('✅ Login com Nostr. Pubkey: ${publicKey.substring(0, 16)}...');
 
       // Salvar chaves Nostr PRIMEIRO
       await _storage.saveNostrKeys(
@@ -834,10 +835,10 @@ class _LoginScreenState extends State<LoginScreen> {
       // Isso garante que NIP-06 mantenha identidade Nostr + carteira Bitcoin vinculadas
       if (mnemonic != null) {
         await _storage.saveBreezMnemonic(mnemonic, ownerPubkey: publicKey);
-        debugPrint('💾 Seed salva VINCULADA ao usuário: ${publicKey.substring(0, 16)}...');
+        broLog('💾 Seed salva VINCULADA ao usuário: ${publicKey.substring(0, 16)}...');
       } else if (_generatedWalletSeed != null) {
         await _storage.saveBreezMnemonic(_generatedWalletSeed!, ownerPubkey: publicKey);
-        debugPrint('💾 Seed gerada salva para usuário: ${publicKey.substring(0, 16)}...');
+        broLog('💾 Seed gerada salva para usuário: ${publicKey.substring(0, 16)}...');
         _generatedWalletSeed = null; // Limpar após salvar
       }
 
@@ -849,12 +850,12 @@ class _LoginScreenState extends State<LoginScreen> {
       try {
         final profile = await _profileService.fetchProfile(publicKey)
             .timeout(const Duration(seconds: 5), onTimeout: () {
-          debugPrint('⏰ Timeout ao buscar perfil - continuando');
+          broLog('⏰ Timeout ao buscar perfil - continuando');
           return null;
         });
         if (profile != null) {
-          debugPrint('Perfil encontrado: ${profile.preferredName}');
-          debugPrint('Avatar: ${profile.picture ?? "nenhum"}');
+          broLog('Perfil encontrado: ${profile.preferredName}');
+          broLog('Avatar: ${profile.picture ?? "nenhum"}');
           
           // Salvar dados do perfil localmente
           await _storage.saveNostrProfile(
@@ -875,7 +876,7 @@ class _LoginScreenState extends State<LoginScreen> {
           }
         }
       } catch (e) {
-        debugPrint('Erro ao buscar perfil (continuando login): $e');
+        broLog('Erro ao buscar perfil (continuando login): $e');
       }
 
       // Salvar URL do backend
@@ -892,29 +893,29 @@ class _LoginScreenState extends State<LoginScreen> {
           // SEMPRE tentar inicializar COM a seed que temos
           // Se mnemonic é null, o BreezProvider vai buscar a seed do storage
           if (mnemonic != null) {
-            debugPrint('⚡ Inicializando Breez COM SEED EXISTENTE');
+            broLog('⚡ Inicializando Breez COM SEED EXISTENTE');
             final success = await breezProvider.initialize(mnemonic: mnemonic)
                 .timeout(const Duration(seconds: 15), onTimeout: () {
-              debugPrint('⏰ Timeout na inicialização do Breez');
+              broLog('⏰ Timeout na inicialização do Breez');
               return false;
             });
             
             if (success) {
-              debugPrint('✅ Breez inicializado com seed existente!');
+              broLog('✅ Breez inicializado com seed existente!');
               // CRÍTICO: Configurar callback do PlatformFeeService
               PlatformFeeService.setPaymentCallback(
                 (String invoice) => breezProvider.payInvoice(invoice),
                 'Spark',
               );
-              debugPrint('💼 PlatformFeeService callback configurado');
+              broLog('💼 PlatformFeeService callback configurado');
             }
           } else {
             // ATENÇÃO: Não temos seed - o BreezProvider vai criar uma nova!
-            debugPrint('⚠️ SEM SEED RECUPERADA - Breez vai gerar nova!');
-            debugPrint('⚠️ Se você tinha saldo, use Login Avançado para vincular seed!');
+            broLog('⚠️ SEM SEED RECUPERADA - Breez vai gerar nova!');
+            broLog('⚠️ Se você tinha saldo, use Login Avançado para vincular seed!');
             final success = await breezProvider.initialize()
                 .timeout(const Duration(seconds: 15), onTimeout: () {
-              debugPrint('⏰ Timeout na inicialização do Breez');
+              broLog('⏰ Timeout na inicialização do Breez');
               return false;
             });
             
@@ -924,7 +925,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 (String invoice) => breezProvider.payInvoice(invoice),
                 'Spark',
               );
-              debugPrint('💼 PlatformFeeService callback configurado');
+              broLog('💼 PlatformFeeService callback configurado');
             }
             
             if (!success && mounted) {
@@ -938,7 +939,7 @@ class _LoginScreenState extends State<LoginScreen> {
             }
           }
         } catch (e) {
-          debugPrint('❌ Erro no Breez (ignorando): $e');
+          broLog('❌ Erro no Breez (ignorando): $e');
         }
       }
 
@@ -947,7 +948,7 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() => _statusMessage = 'Carregando histórico...');
         final orderProvider = context.read<OrderProvider>();
         await orderProvider.loadOrdersForUser(publicKey);
-        debugPrint('✅ Ordens carregadas para ${publicKey.substring(0, 8)}...');
+        broLog('✅ Ordens carregadas para ${publicKey.substring(0, 8)}...');
       }
 
       if (mounted) {
@@ -956,7 +957,7 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }
     } catch (e) {
-      debugPrint('Erro no login: $e');
+      broLog('Erro no login: $e');
       setState(() => _error = 'Erro no login: ${e.toString()}');
     } finally {
       if (mounted) {

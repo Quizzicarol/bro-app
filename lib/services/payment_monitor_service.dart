@@ -1,4 +1,5 @@
-import 'dart:async';
+﻿import 'dart:async';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter/foundation.dart';
 import '../providers/breez_provider_export.dart';
 
@@ -17,7 +18,7 @@ class PaymentMonitorService {
     required PaymentMonitorCallback onStatusChange,
     Duration checkInterval = const Duration(seconds: 3),
   }) {
-    debugPrint('🔍 Iniciando monitoramento do pagamento: $paymentId');
+    broLog('🔍 Iniciando monitoramento do pagamento: $paymentId');
     
     _callbacks[paymentId] = onStatusChange;
     
@@ -32,7 +33,7 @@ class PaymentMonitorService {
 
   /// Para o monitoramento de um pagamento
   void stopMonitoring(String paymentId) {
-    debugPrint('🛑 Parando monitoramento do pagamento: $paymentId');
+    broLog('🛑 Parando monitoramento do pagamento: $paymentId');
     _callbacks.remove(paymentId);
     
     // Se não há mais callbacks, cancela o timer
@@ -44,7 +45,7 @@ class PaymentMonitorService {
 
   /// Para todos os monitoramentos
   void stopAll() {
-    debugPrint('🛑 Parando todos os monitoramentos');
+    broLog('🛑 Parando todos os monitoramentos');
     _callbacks.clear();
     _monitorTimer?.cancel();
     _monitorTimer = null;
@@ -59,18 +60,18 @@ class PaymentMonitorService {
       final status = await _breezProvider.checkPaymentStatus(paymentHash);
       
       if (status['paid'] == true) {
-        debugPrint('✅ Pagamento $paymentId confirmado!');
+        broLog('✅ Pagamento $paymentId confirmado!');
         callback(PaymentStatus.confirmed, status);
         stopMonitoring(paymentId); // Para de monitorar após confirmação
       } else if (status['error'] != null) {
-        debugPrint('❌ Erro no pagamento $paymentId: ${status['error']}');
+        broLog('❌ Erro no pagamento $paymentId: ${status['error']}');
         callback(PaymentStatus.failed, status);
       } else {
-        debugPrint('⏳ Pagamento $paymentId ainda pendente...');
+        broLog('⏳ Pagamento $paymentId ainda pendente...');
         callback(PaymentStatus.pending, status);
       }
     } catch (e) {
-      debugPrint('⚠️ Erro ao verificar status: $e');
+      broLog('⚠️ Erro ao verificar status: $e');
       callback(PaymentStatus.error, {'error': e.toString()});
     }
   }
@@ -83,7 +84,7 @@ class PaymentMonitorService {
     required PaymentMonitorCallback onStatusChange,
     Duration checkInterval = const Duration(seconds: 5), // Reduzido para 5s para detecção mais rápida
   }) {
-    debugPrint('🔍 Iniciando monitoramento onchain: $address');
+    broLog('🔍 Iniciando monitoramento onchain: $address');
     
     _callbacks[paymentId] = onStatusChange;
     
@@ -126,17 +127,17 @@ class PaymentMonitorService {
             payment['amountSats'] != null &&
             (payment['amountSats'] as int) >= expectedSats * 0.95) { // 5% margem
           
-          debugPrint('✅ Pagamento onchain $paymentId detectado!');
+          broLog('✅ Pagamento onchain $paymentId detectado!');
           callback(PaymentStatus.confirmed, payment);
           stopMonitoring(paymentId);
           return;
         }
       }
       
-      debugPrint('⏳ Aguardando pagamento onchain $paymentId...');
+      broLog('⏳ Aguardando pagamento onchain $paymentId...');
       callback(PaymentStatus.pending, {'address': address});
     } catch (e) {
-      debugPrint('⚠️ Erro ao verificar onchain: $e');
+      broLog('⚠️ Erro ao verificar onchain: $e');
       callback(PaymentStatus.error, {'error': e.toString()});
     }
   }

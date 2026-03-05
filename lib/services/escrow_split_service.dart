@@ -1,6 +1,7 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dart:convert';
 import 'platform_wallet_service.dart';
@@ -36,7 +37,7 @@ class EscrowSplitService {
   /// Inicia o serviço de escrow
   /// Deve ser chamado ao iniciar o app (no main.dart)
   Future<void> startService() async {
-    debugPrint('🔄 Iniciando serviço de Escrow Split...');
+    broLog('🔄 Iniciando serviço de Escrow Split...');
     
     // Iniciar verificação periódica de pagamentos pendentes
     _checkTimer?.cancel();
@@ -65,9 +66,9 @@ class EscrowSplitService {
     required String providerPubkey,
     required String clientPubkey,
   }) async {
-    debugPrint('📦 Criando escrow para ordem $orderId');
-    debugPrint('   Total: $totalSats sats (R\$ $totalBrl)');
-    debugPrint('   Provedor: $providerLightningAddress');
+    broLog('📦 Criando escrow para ordem $orderId');
+    broLog('   Total: $totalSats sats (R\$ $totalBrl)');
+    broLog('   Provedor: $providerLightningAddress');
     
     // Garantir que a carteira master está inicializada
     final wallet = PlatformWalletService.instance;
@@ -118,7 +119,7 @@ class EscrowSplitService {
     
     await _savePendingEscrow(escrow);
     
-    debugPrint('✅ Escrow criado com sucesso');
+    broLog('✅ Escrow criado com sucesso');
     
     return {
       'success': true,
@@ -148,7 +149,7 @@ class EscrowSplitService {
         }
       }
     } catch (e) {
-      debugPrint('❌ Erro processando escrows: $e');
+      broLog('❌ Erro processando escrows: $e');
     } finally {
       _isProcessing = false;
     }
@@ -165,7 +166,7 @@ class EscrowSplitService {
     final result = await wallet.checkPaymentReceived(paymentHash);
     
     if (result['received'] == true) {
-      debugPrint('💰 Pagamento recebido para escrow ${escrow['orderId']}');
+      broLog('💰 Pagamento recebido para escrow ${escrow['orderId']}');
       
       // Atualizar status
       escrow['status'] = 'paid';
@@ -181,7 +182,7 @@ class EscrowSplitService {
 
   /// Executa o split automático
   Future<void> _executeSplit(Map<String, dynamic> escrow) async {
-    debugPrint('🔀 Executando split para ${escrow['orderId']}...');
+    broLog('🔀 Executando split para ${escrow['orderId']}...');
     
     final wallet = PlatformWalletService.instance;
     if (!wallet.isInitialized) return;
@@ -190,7 +191,7 @@ class EscrowSplitService {
     final providerAddress = escrow['providerAddress'] as String?;
     
     if (providerAddress == null || providerAddress.isEmpty) {
-      debugPrint('❌ Endereço do provedor não encontrado');
+      broLog('❌ Endereço do provedor não encontrado');
       return;
     }
     
@@ -201,9 +202,9 @@ class EscrowSplitService {
     );
     
     if (result['success'] == true) {
-      debugPrint('✅ Split executado com sucesso!');
-      debugPrint('   Taxa plataforma: ${result['platformFee']} sats');
-      debugPrint('   Enviado ao provedor: ${result['providerAmount']} sats');
+      broLog('✅ Split executado com sucesso!');
+      broLog('   Taxa plataforma: ${result['platformFee']} sats');
+      broLog('   Enviado ao provedor: ${result['providerAmount']} sats');
       
       // Atualizar escrow
       escrow['status'] = 'split_completed';
@@ -227,7 +228,7 @@ class EscrowSplitService {
       await PlatformFeeService.markAsCollected([escrow['orderId'] ?? '']);
       
     } else {
-      debugPrint('❌ Falha no split: ${result['error']}');
+      broLog('❌ Falha no split: ${result['error']}');
       escrow['lastSplitError'] = result['error'];
       escrow['lastSplitAttempt'] = DateTime.now().toIso8601String();
       await _updatePendingEscrow(escrow);
@@ -328,7 +329,7 @@ class EscrowSplitService {
       // Migrar para armazenamento seguro
       await _secureStorage.write(key: _platformMnemonicKey, value: oldMnemonic);
       await prefs.remove(_platformMnemonicKey);
-      debugPrint('🔄 Mnemonic da plataforma migrado para armazenamento seguro');
+      broLog('🔄 Mnemonic da plataforma migrado para armazenamento seguro');
       return oldMnemonic;
     }
     return null;
@@ -336,7 +337,7 @@ class EscrowSplitService {
   
   Future<void> _savePlatformMnemonic(String mnemonic) async {
     await _secureStorage.write(key: _platformMnemonicKey, value: mnemonic);
-    debugPrint('🔐 Mnemonic da carteira master salvo com segurança');
+    broLog('🔐 Mnemonic da carteira master salvo com segurança');
   }
   
   /// Exporta o mnemonic da carteira master (para backup seguro)
@@ -353,7 +354,7 @@ class EscrowSplitService {
       await wallet.disconnect();
       return await wallet.initialize(mnemonic: mnemonic);
     } catch (e) {
-      debugPrint('❌ Erro importando mnemonic: $e');
+      broLog('❌ Erro importando mnemonic: $e');
       return false;
     }
   }

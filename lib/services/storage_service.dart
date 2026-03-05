@@ -1,6 +1,7 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../config.dart';
 import 'local_collateral_service.dart';
@@ -50,12 +51,12 @@ class StorageService {
       if (oldPrivKey != null && oldPrivKey.isNotEmpty) {
         await _secureStorage.write(key: 'nostr_private_key', value: oldPrivKey);
         await _prefs?.remove('nostr_private_key');
-        debugPrint('🔄 Chave privada Nostr migrada para armazenamento seguro');
+        broLog('🔄 Chave privada Nostr migrada para armazenamento seguro');
       }
       if (oldPubKey != null && oldPubKey.isNotEmpty) {
         await _secureStorage.write(key: 'nostr_public_key', value: oldPubKey);
         await _prefs?.remove('nostr_public_key');
-        debugPrint('🔄 Chave pública Nostr migrada para armazenamento seguro');
+        broLog('🔄 Chave pública Nostr migrada para armazenamento seguro');
       }
       
       // Migrar mnemonic Breez
@@ -63,14 +64,14 @@ class StorageService {
       if (oldMnemonic != null && oldMnemonic.isNotEmpty) {
         await _secureStorage.write(key: 'breez_mnemonic', value: oldMnemonic);
         await _prefs?.remove('breez_mnemonic');
-        debugPrint('🔄 Mnemonic Breez migrado para armazenamento seguro');
+        broLog('🔄 Mnemonic Breez migrado para armazenamento seguro');
       }
       
       // Marcar como migrado
       await _prefs?.setBool('_migrated_to_secure_v1', true);
-      debugPrint('✅ Migração para armazenamento seguro concluída');
+      broLog('✅ Migração para armazenamento seguro concluída');
     } catch (e) {
-      debugPrint('⚠️ Erro na migração: $e');
+      broLog('⚠️ Erro na migração: $e');
     }
   }
 
@@ -85,16 +86,16 @@ class StorageService {
     // Verificar se há chaves antigas
     final oldPubKey = await _secureStorage.read(key: 'nostr_public_key');
     if (oldPubKey != null && oldPubKey != publicKey) {
-      debugPrint('⚠️ SOBRESCREVENDO chave Nostr antiga!');
-      debugPrint('   Antiga: ${oldPubKey.substring(0, 16)}...');
-      debugPrint('   Nova: ${publicKey.substring(0, 16)}...');
+      broLog('⚠️ SOBRESCREVENDO chave Nostr antiga!');
+      broLog('   Antiga: ${oldPubKey.substring(0, 16)}...');
+      broLog('   Nova: ${publicKey.substring(0, 16)}...');
     }
     
     // Salvar em armazenamento seguro (sobrescreve qualquer valor anterior)
     await _secureStorage.write(key: 'nostr_private_key', value: privateKey);
     await _secureStorage.write(key: 'nostr_public_key', value: publicKey);
     await _prefs?.setBool('is_logged_in', true);
-    debugPrint('🔐 Chaves Nostr salvas com segurança: ${publicKey.substring(0, 16)}...');
+    broLog('🔐 Chaves Nostr salvas com segurança: ${publicKey.substring(0, 16)}...');
   }
 
   Future<String?> getNostrPrivateKey() async {
@@ -152,7 +153,7 @@ class StorageService {
     final pubkey = ownerPubkey ?? await getNostrPublicKey();
     
     if (pubkey == null || pubkey.isEmpty) {
-      debugPrint('❌ ERRO: Tentando salvar seed sem usuário logado!');
+      broLog('❌ ERRO: Tentando salvar seed sem usuário logado!');
       return;
     }
     
@@ -177,12 +178,12 @@ class StorageService {
         final newWords = mnemonic.split(' ').take(2).join(' ');
         
         if (existingWords != newWords) {
-          debugPrint('🛡️ PROTEÇÃO: Seed existente NÃO será sobrescrita!');
-          debugPrint('   Seeds são diferentes (detalhes omitidos por segurança)');
-          debugPrint('   Use forceOverwrite=true nas configs para mudar.');
+          broLog('🛡️ PROTEÇÃO: Seed existente NÃO será sobrescrita!');
+          broLog('   Seeds são diferentes (detalhes omitidos por segurança)');
+          broLog('   Use forceOverwrite=true nas configs para mudar.');
           return; // NÃO SOBRESCREVER!
         } else {
-          debugPrint('✅ Seed idêntica, atualizando backup');
+          broLog('✅ Seed idêntica, atualizando backup');
         }
       }
     }
@@ -194,12 +195,12 @@ class StorageService {
     // Limpar backup inseguro se existir (migração)
     await _prefs?.remove(backupKey);
     
-    debugPrint('🔐 Seed salva para usuário com sucesso');
+    broLog('🔐 Seed salva para usuário com sucesso');
   }
   
   /// Força a troca de seed (usado nas configurações avançadas)
   Future<void> forceUpdateBreezMnemonic(String mnemonic, {String? ownerPubkey}) async {
-    debugPrint('⚠️ FORÇANDO atualização de seed...');
+    broLog('⚠️ FORÇANDO atualização de seed...');
     await saveBreezMnemonic(mnemonic, ownerPubkey: ownerPubkey, forceOverwrite: true);
   }
   
@@ -208,8 +209,8 @@ class StorageService {
   Future<void> debugShowAllSeeds() async {
     if (_prefs == null) await init();
     
-    debugPrint('');
-    debugPrint('🔍 debugShowAllSeeds() - DESATIVADO em produção (dados sensíveis)');
+    broLog('');
+    broLog('🔍 debugShowAllSeeds() - DESATIVADO em produção (dados sensíveis)');
     // Diagnóstico de seeds desativado para segurança.
     // Em debug, use o breakpoint ou flutter inspect.
   }
@@ -238,8 +239,8 @@ class StorageService {
     // Usar pubkey fornecido ou do usuário atual
     final pubkey = forPubkey ?? await getNostrPublicKey();
     
-    debugPrint('');
-    debugPrint('🔍 Buscando seed...');
+    broLog('');
+    broLog('🔍 Buscando seed...');
     
     String? mnemonic;
     
@@ -248,7 +249,7 @@ class StorageService {
       final seedKey = _getSeedKeyForUser(pubkey);
       mnemonic = await _secureStorage.read(key: seedKey);
       if (mnemonic != null && mnemonic.split(' ').length == 12) {
-        debugPrint('✅ Seed encontrada (Fonte 1)');
+        broLog('✅ Seed encontrada (Fonte 1)');
         return mnemonic;
       }
     }
@@ -260,7 +261,7 @@ class StorageService {
       if (backupObfuscated != null && backupObfuscated.isNotEmpty) {
         mnemonic = _deobfuscateSeed(backupObfuscated);
         if (mnemonic.isNotEmpty && mnemonic.split(' ').length == 12) {
-          debugPrint('✅ Seed encontrada (Fonte 2 - backup), migrando para SecureStorage');
+          broLog('✅ Seed encontrada (Fonte 2 - backup), migrando para SecureStorage');
           // Migrar para SecureStorage e APAGAR backup inseguro
           if (pubkey != null) {
             await _secureStorage.write(key: _getSeedKeyForUser(pubkey), value: mnemonic);
@@ -275,12 +276,12 @@ class StorageService {
     // AINDA ASSIM buscar no MASTER_SEED como fallback!
     // Isso é necessário para usuários que já tinham saldo antes da migração.
     if (forPubkey != null) {
-      debugPrint('📭 Nenhuma seed específica encontrada, buscando no MASTER_SEED...');
+      broLog('📭 Nenhuma seed específica encontrada, buscando no MASTER_SEED...');
       
       // Tentar MASTER SEED BACKUP
       mnemonic = await _secureStorage.read(key: _masterSeedKey);
       if (mnemonic != null && mnemonic.split(' ').length == 12) {
-        debugPrint('✅ FALLBACK: Seed encontrada no MASTER_SEED_BACKUP!');
+        broLog('✅ FALLBACK: Seed encontrada no MASTER_SEED_BACKUP!');
         // Salvar para o usuário atual
         await _secureStorage.write(key: _getSeedKeyForUser(forPubkey), value: mnemonic);
         return mnemonic;
@@ -289,13 +290,13 @@ class StorageService {
       // Tentar breez_mnemonic legado
       mnemonic = await _secureStorage.read(key: 'breez_mnemonic');
       if (mnemonic != null && mnemonic.split(' ').length == 12) {
-        debugPrint('✅ FALLBACK: Seed encontrada em breez_mnemonic legado!');
+        broLog('✅ FALLBACK: Seed encontrada em breez_mnemonic legado!');
         await _secureStorage.write(key: _getSeedKeyForUser(forPubkey), value: mnemonic);
         return mnemonic;
       }
       
-      debugPrint('❌ Nenhuma seed encontrada nem no fallback.');
-      debugPrint('═══════════════════════════════════════════════════════════');
+      broLog('❌ Nenhuma seed encontrada nem no fallback.');
+      broLog('═══════════════════════════════════════════════════════════');
       return null;
     }
     
@@ -304,7 +305,7 @@ class StorageService {
     // FONTE 3: MASTER SEED BACKUP (nunca é apagado)
     mnemonic = await _secureStorage.read(key: _masterSeedKey);
     if (mnemonic != null && mnemonic.split(' ').length == 12) {
-      debugPrint('✅ Seed encontrada (Fonte 3 - master backup)');
+      broLog('✅ Seed encontrada (Fonte 3 - master backup)');
       // Salvar para o usuário atual
       if (pubkey != null) {
         await _secureStorage.write(key: _getSeedKeyForUser(pubkey), value: mnemonic);
@@ -317,7 +318,7 @@ class StorageService {
     if (masterPrefs != null && masterPrefs.isNotEmpty) {
       mnemonic = _deobfuscateSeed(masterPrefs);
       if (mnemonic.isNotEmpty && mnemonic.split(' ').length == 12) {
-        debugPrint('✅ FONTE 4: Seed migrada do MASTER PREFS para SecureStorage');
+        broLog('✅ FONTE 4: Seed migrada do MASTER PREFS para SecureStorage');
         if (pubkey != null) {
           await _secureStorage.write(key: _getSeedKeyForUser(pubkey), value: mnemonic);
         }
@@ -328,11 +329,11 @@ class StorageService {
     
     // FONTE 4.5: Emergency backup (migrar e apagar)
     final emergencyBackup = _prefs?.getString('SEED_BACKUP_EMERGENCY');
-    debugPrint('   [4.5] SEED_BACKUP_EMERGENCY: ${emergencyBackup != null ? "EXISTE" : "NULL"}');
+    broLog('   [4.5] SEED_BACKUP_EMERGENCY: ${emergencyBackup != null ? "EXISTE" : "NULL"}');
     if (emergencyBackup != null && emergencyBackup.isNotEmpty) {
       mnemonic = _deobfuscateSeed(emergencyBackup);
       if (mnemonic.isNotEmpty && mnemonic.split(' ').length == 12) {
-        debugPrint('✅ FONTE 4.5: Seed migrada do EMERGENCY BACKUP para SecureStorage');
+        broLog('✅ FONTE 4.5: Seed migrada do EMERGENCY BACKUP para SecureStorage');
         if (pubkey != null) {
           await _secureStorage.write(key: _getSeedKeyForUser(pubkey), value: mnemonic);
         }
@@ -343,22 +344,22 @@ class StorageService {
     
     // FONTE 5: Seed legada global
     mnemonic = await _secureStorage.read(key: 'breez_mnemonic');
-    debugPrint('   [5] breez_mnemonic (legado): ${mnemonic != null ? "presente (${mnemonic.split(' ').length} palavras)" : "NULL"}');
+    broLog('   [5] breez_mnemonic (legado): ${mnemonic != null ? "presente (${mnemonic.split(' ').length} palavras)" : "NULL"}');
     if (mnemonic != null && mnemonic.split(' ').length == 12) {
-      debugPrint('✅ FONTE 5: Seed encontrada no formato legado!');
+      broLog('✅ FONTE 5: Seed encontrada no formato legado!');
       return mnemonic;
     }
     
     // FONTE 6: Qualquer backup bm_backup_* (migrar e apagar)
     final allKeys = _prefs?.getKeys() ?? {};
-    debugPrint('   [6] Buscando em ${allKeys.length} chaves do SharedPrefs...');
+    broLog('   [6] Buscando em ${allKeys.length} chaves do SharedPrefs...');
     for (final key in allKeys) {
       if (key.startsWith('bm_backup_')) {
         final obfuscated = _prefs?.getString(key);
         if (obfuscated != null) {
           mnemonic = _deobfuscateSeed(obfuscated);
           if (mnemonic.isNotEmpty && mnemonic.split(' ').length == 12) {
-            debugPrint('✅ FONTE 6: Seed migrada de $key para SecureStorage');
+            broLog('✅ FONTE 6: Seed migrada de $key para SecureStorage');
             if (pubkey != null) {
               await _secureStorage.write(key: _getSeedKeyForUser(pubkey), value: mnemonic);
             }
@@ -369,9 +370,9 @@ class StorageService {
       }
     }
     
-    debugPrint('❌ NENHUMA SEED encontrada em NENHUM local!');
-    debugPrint('═══════════════════════════════════════════════════════════');
-    debugPrint('');
+    broLog('❌ NENHUMA SEED encontrada em NENHUM local!');
+    broLog('═══════════════════════════════════════════════════════════');
+    broLog('');
     return null;
   }
   
@@ -483,41 +484,41 @@ class StorageService {
   Future<void> logout() async {
     if (_prefs == null) await init();
     
-    debugPrint('');
-    debugPrint('═══════════════════════════════════════════════════════════');
-    debugPrint('🚪 LOGOUT - Preservando TODAS as seeds...');
-    debugPrint('═══════════════════════════════════════════════════════════');
+    broLog('');
+    broLog('═══════════════════════════════════════════════════════════');
+    broLog('🚪 LOGOUT - Preservando TODAS as seeds...');
+    broLog('═══════════════════════════════════════════════════════════');
     
     // Obter pubkey ANTES de limpar (para limpar dados por usuário)
     final currentPubkey = await getNostrPublicKey();
-    debugPrint('   👤 Pubkey atual: ${currentPubkey?.substring(0, 16) ?? "null"}');
+    broLog('   👤 Pubkey atual: ${currentPubkey?.substring(0, 16) ?? "null"}');
     
     // 🧹 LIMPAR DADOS POR USUÁRIO - Collateral e Provider Mode
     try {
       // Limpar collateral local do usuário
       final collateralService = LocalCollateralService();
       await collateralService.clearUserCollateral(userPubkey: currentPubkey);
-      debugPrint('   🗑️ Collateral do usuário limpo');
+      broLog('   🗑️ Collateral do usuário limpo');
       
       // Limpar flag de modo provedor do usuário
       await SecureStorageService.clearProviderMode(userPubkey: currentPubkey);
-      debugPrint('   🗑️ Modo provedor do usuário limpo');
+      broLog('   🗑️ Modo provedor do usuário limpo');
       
       // Limpar cache de chat do usuário
       await ChatService().clearCache();
-      debugPrint('   🗑️ Cache de chat limpo');
+      broLog('   🗑️ Cache de chat limpo');
       
       // Limpar cache de moderação (following, mutados, reports)
       await ContentModerationService().clearCache();
-      debugPrint('   🗑️ Cache de moderação limpo');
+      broLog('   🗑️ Cache de moderação limpo');
     } catch (e) {
-      debugPrint('   ⚠️ Erro ao limpar dados por usuário: $e');
+      broLog('   ⚠️ Erro ao limpar dados por usuário: $e');
     }
     
     // PRIMEIRO: Garantir que a seed atual está salva no SecureStorage
     final currentSeed = await getBreezMnemonic();
     if (currentSeed != null && currentSeed.split(' ').length == 12) {
-      debugPrint('   🔐 Fazendo backup da seed em SecureStorage antes do logout...');
+      broLog('   🔐 Fazendo backup da seed em SecureStorage antes do logout...');
       
       // Salvar APENAS em SecureStorage (seguro)
       await _secureStorage.write(key: _masterSeedKey, value: currentSeed);
@@ -547,10 +548,10 @@ class StorageService {
           final value = rawValue is String ? rawValue : null;
           if (value != null) {
             dataToPreserve[key] = value;
-            debugPrint('   💾 Preservando: $key');
+            broLog('   💾 Preservando: $key');
           }
         } catch (e) {
-          debugPrint('   ⚠️ Ignorando chave $key (não é String)');
+          broLog('   ⚠️ Ignorando chave $key (não é String)');
         }
       }
     }
@@ -574,9 +575,9 @@ class StorageService {
     // 🧹 Limpar cache de LocalCollateralService
     LocalCollateralService.clearCache();
     
-    debugPrint('✅ Logout concluído - ${dataToPreserve.length} seeds preservadas, is_logged_in=false');
-    debugPrint('═══════════════════════════════════════════════════════════');
-    debugPrint('');
+    broLog('✅ Logout concluído - ${dataToPreserve.length} seeds preservadas, is_logged_in=false');
+    broLog('═══════════════════════════════════════════════════════════');
+    broLog('');
   }
 
   Future<void> clearAll() async {
@@ -721,9 +722,9 @@ class StorageService {
       // Limpar perfil
       await clearNostrProfile();
       
-      debugPrint('🗑️ Todos os dados sensíveis foram removidos com segurança');
+      broLog('🗑️ Todos os dados sensíveis foram removidos com segurança');
     } catch (e) {
-      debugPrint('❌ Erro ao limpar dados sensíveis: $e');
+      broLog('❌ Erro ao limpar dados sensíveis: $e');
     }
   }
 
@@ -740,7 +741,7 @@ class StorageService {
     if (!existing.any((e) => e.startsWith('$orderId|'))) {
       existing.add(entry);
       await _prefs?.setStringList(_resolvedDisputesKey, existing);
-      debugPrint('⚖️ Disputa $orderId marcada como resolvida localmente');
+      broLog('⚖️ Disputa $orderId marcada como resolvida localmente');
     }
   }
   

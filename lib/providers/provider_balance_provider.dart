@@ -1,5 +1,6 @@
-import 'package:flutter/foundation.dart';
+﻿import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:convert';
 import '../models/provider_balance.dart';
@@ -43,15 +44,15 @@ class ProviderBalanceProvider with ChangeNotifier {
           updatedAt: DateTime.now(),
         );
         await _saveBalance();
-        debugPrint('💰 Novo saldo criado para provedor $providerId');
+        broLog('💰 Novo saldo criado para provedor $providerId');
       } else {
-        debugPrint('💰 Saldo carregado: ${_balance!.availableBalanceSats} sats');
+        broLog('💰 Saldo carregado: ${_balance!.availableBalanceSats} sats');
       }
 
       _isLoading = false;
       notifyListeners();
     } catch (e) {
-      debugPrint('❌ Erro ao inicializar saldo: $e');
+      broLog('❌ Erro ao inicializar saldo: $e');
       _error = e.toString();
       _isLoading = false;
       notifyListeners();
@@ -67,10 +68,10 @@ class ProviderBalanceProvider with ChangeNotifier {
       if (balanceJson != null) {
         final data = json.decode(balanceJson) as Map<String, dynamic>;
         _balance = ProviderBalance.fromJson(data);
-        debugPrint('💰 Saldo carregado do storage');
+        broLog('💰 Saldo carregado do storage');
       }
     } catch (e) {
-      debugPrint('❌ Erro ao carregar saldo: $e');
+      broLog('❌ Erro ao carregar saldo: $e');
     }
   }
 
@@ -82,9 +83,9 @@ class ProviderBalanceProvider with ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final balanceJson = json.encode(_balance!.toJson());
       await prefs.setString(_balanceKey, balanceJson);
-      debugPrint('💾 Saldo salvo: ${_balance!.availableBalanceSats} sats');
+      broLog('💾 Saldo salvo: ${_balance!.availableBalanceSats} sats');
     } catch (e) {
-      debugPrint('❌ Erro ao salvar saldo: $e');
+      broLog('❌ Erro ao salvar saldo: $e');
     }
   }
 
@@ -97,13 +98,13 @@ class ProviderBalanceProvider with ChangeNotifier {
   }) async {
     // Auto-inicializar se necessário
     if (_balance == null) {
-      debugPrint('⚠️ ProviderBalanceProvider não inicializado, usando providerId passado ou padrão...');
+      broLog('⚠️ ProviderBalanceProvider não inicializado, usando providerId passado ou padrão...');
       // Será inicializado pelo chamador com providerId correto
       return false;
     }
     
     if (_balance == null) {
-      debugPrint('❌ Falha ao inicializar ProviderBalanceProvider');
+      broLog('❌ Falha ao inicializar ProviderBalanceProvider');
       return false;
     }
     
@@ -113,7 +114,7 @@ class ProviderBalanceProvider with ChangeNotifier {
     ).toList();
     
     if (existingTransaction.isNotEmpty) {
-      debugPrint('ℹ️ Ganho já registrado para ordem $orderId - ignorando');
+      broLog('ℹ️ Ganho já registrado para ordem $orderId - ignorando');
       return false;
     }
 
@@ -139,10 +140,10 @@ class ProviderBalanceProvider with ChangeNotifier {
       await _saveBalance();
       notifyListeners();
 
-      debugPrint('✅ Ganho adicionado: +$amountSats sats ($orderDescription)');
+      broLog('✅ Ganho adicionado: +$amountSats sats ($orderDescription)');
       return true;
     } catch (e) {
-      debugPrint('❌ Erro ao adicionar ganho: $e');
+      broLog('❌ Erro ao adicionar ganho: $e');
       _error = e.toString();
       return false;
     }
@@ -171,7 +172,7 @@ class ProviderBalanceProvider with ChangeNotifier {
       
       // Em produção: usar Breez SDK para pagar a invoice
       if (!AppConfig.testMode && _breezProvider != null) {
-        debugPrint('⚡ Tentando saque Lightning via Breez SDK...');
+        broLog('⚡ Tentando saque Lightning via Breez SDK...');
         
         final result = await _breezProvider!.payInvoice(invoice);
         
@@ -180,10 +181,10 @@ class ProviderBalanceProvider with ChangeNotifier {
         }
         
         paymentHash = result['payment']?['paymentHash'];
-        debugPrint('✅ Invoice paga! Hash: $paymentHash');
+        broLog('✅ Invoice paga! Hash: $paymentHash');
       } else {
         // Modo teste: simular pagamento
-        debugPrint('🧪 Saque Lightning simulado (modo teste)');
+        broLog('🧪 Saque Lightning simulado (modo teste)');
         await Future.delayed(const Duration(seconds: 1));
         paymentHash = 'test_${DateTime.now().millisecondsSinceEpoch}';
       }
@@ -211,10 +212,10 @@ class ProviderBalanceProvider with ChangeNotifier {
       _isLoading = false;
       notifyListeners();
 
-      debugPrint('✅ Saque Lightning registrado: -$amountSats sats');
+      broLog('✅ Saque Lightning registrado: -$amountSats sats');
       return true;
     } catch (e) {
-      debugPrint('❌ Erro ao sacar Lightning: $e');
+      broLog('❌ Erro ao sacar Lightning: $e');
       _error = e.toString();
       _isLoading = false;
       notifyListeners();
@@ -248,7 +249,7 @@ class ProviderBalanceProvider with ChangeNotifier {
       
       // Modo teste: simular transação onchain
       if (AppConfig.testMode) {
-        debugPrint('🧪 Saque Onchain simulado (modo teste)');
+        broLog('🧪 Saque Onchain simulado (modo teste)');
         await Future.delayed(const Duration(seconds: 2));
         txHash = 'onchain_test_${DateTime.now().millisecondsSinceEpoch}';
       } else {
@@ -279,10 +280,10 @@ class ProviderBalanceProvider with ChangeNotifier {
       _isLoading = false;
       notifyListeners();
 
-      debugPrint('✅ Saque Onchain registrado: -$amountSats sats');
+      broLog('✅ Saque Onchain registrado: -$amountSats sats');
       return true;
     } catch (e) {
-      debugPrint('❌ Erro ao sacar Onchain: $e');
+      broLog('❌ Erro ao sacar Onchain: $e');
       _error = e.toString();
       _isLoading = false;
       notifyListeners();

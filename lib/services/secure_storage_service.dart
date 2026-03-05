@@ -1,4 +1,5 @@
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+﻿import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter/foundation.dart';
 
 /// Serviço de armazenamento seguro para dados sensíveis
@@ -39,9 +40,9 @@ class SecureStorageService {
     try {
       await _storage.write(key: _nostrPrivateKey, value: privateKey);
       await _storage.write(key: _nostrPublicKey, value: publicKey);
-      debugPrint('🔐 Chaves Nostr salvas com segurança');
+      broLog('🔐 Chaves Nostr salvas com segurança');
     } catch (e) {
-      debugPrint('❌ Erro ao salvar chaves Nostr: $e');
+      broLog('❌ Erro ao salvar chaves Nostr: $e');
       rethrow;
     }
   }
@@ -51,7 +52,7 @@ class SecureStorageService {
     try {
       return await _storage.read(key: _nostrPrivateKey);
     } catch (e) {
-      debugPrint('❌ Erro ao ler chave privada Nostr: $e');
+      broLog('❌ Erro ao ler chave privada Nostr: $e');
       return null;
     }
   }
@@ -61,7 +62,7 @@ class SecureStorageService {
     try {
       return await _storage.read(key: _nostrPublicKey);
     } catch (e) {
-      debugPrint('❌ Erro ao ler chave pública Nostr: $e');
+      broLog('❌ Erro ao ler chave pública Nostr: $e');
       return null;
     }
   }
@@ -79,9 +80,9 @@ class SecureStorageService {
   static Future<void> saveBreezMnemonic(String mnemonic) async {
     try {
       await _storage.write(key: _breezMnemonic, value: mnemonic);
-      debugPrint('🔐 Mnemonic Breez salvo com segurança');
+      broLog('🔐 Mnemonic Breez salvo com segurança');
     } catch (e) {
-      debugPrint('❌ Erro ao salvar mnemonic Breez: $e');
+      broLog('❌ Erro ao salvar mnemonic Breez: $e');
       rethrow;
     }
   }
@@ -91,7 +92,7 @@ class SecureStorageService {
     try {
       return await _storage.read(key: _breezMnemonic);
     } catch (e) {
-      debugPrint('❌ Erro ao ler mnemonic Breez: $e');
+      broLog('❌ Erro ao ler mnemonic Breez: $e');
       return null;
     }
   }
@@ -120,9 +121,9 @@ class SecureStorageService {
     try {
       final key = _getProviderModeKey(userPubkey);
       await _storage.write(key: key, value: isProvider.toString());
-      debugPrint('🔐 setProviderMode($isProvider) para key=$key');
+      broLog('🔐 setProviderMode($isProvider) para key=$key');
     } catch (e) {
-      debugPrint('❌ Erro ao salvar modo provedor: $e');
+      broLog('❌ Erro ao salvar modo provedor: $e');
     }
   }
 
@@ -132,7 +133,7 @@ class SecureStorageService {
       final key = _getProviderModeKey(userPubkey);
       final value = await _storage.read(key: key);
       final result = value == 'true';
-      debugPrint('🔍 isProviderMode: key=$key, value=$result');
+      broLog('🔍 isProviderMode: key=$key, value=$result');
       return result;
     } catch (e) {
       return false;
@@ -146,9 +147,9 @@ class SecureStorageService {
       await _storage.delete(key: key);
       // Também limpar chave legada
       await _storage.delete(key: _legacyProviderModeKey);
-      debugPrint('🗑️ Provider mode removido para key=$key');
+      broLog('🗑️ Provider mode removido para key=$key');
     } catch (e) {
-      debugPrint('❌ Erro ao limpar modo provedor: $e');
+      broLog('❌ Erro ao limpar modo provedor: $e');
     }
   }
 
@@ -159,9 +160,9 @@ class SecureStorageService {
     try {
       await _storage.delete(key: _nostrPrivateKey);
       await _storage.delete(key: _nostrPublicKey);
-      debugPrint('🗑️ Chaves Nostr removidas');
+      broLog('🗑️ Chaves Nostr removidas');
     } catch (e) {
-      debugPrint('❌ Erro ao limpar chaves Nostr: $e');
+      broLog('❌ Erro ao limpar chaves Nostr: $e');
     }
   }
 
@@ -169,9 +170,9 @@ class SecureStorageService {
   static Future<void> clearBreezMnemonic() async {
     try {
       await _storage.delete(key: _breezMnemonic);
-      debugPrint('🗑️ Mnemonic Breez removido');
+      broLog('🗑️ Mnemonic Breez removido');
     } catch (e) {
-      debugPrint('❌ Erro ao limpar mnemonic Breez: $e');
+      broLog('❌ Erro ao limpar mnemonic Breez: $e');
     }
   }
 
@@ -179,9 +180,9 @@ class SecureStorageService {
   static Future<void> clearAll() async {
     try {
       await _storage.deleteAll();
-      debugPrint('🗑️ Todos os dados sensíveis removidos');
+      broLog('🗑️ Todos os dados sensíveis removidos');
     } catch (e) {
-      debugPrint('❌ Erro ao limpar dados: $e');
+      broLog('❌ Erro ao limpar dados: $e');
     }
   }
 
@@ -193,9 +194,9 @@ class SecureStorageService {
     try {
       // A migração será feita pelos providers individualmente
       // quando detectarem dados no SharedPreferences
-      debugPrint('🔄 Verificando migração de dados sensíveis...');
+      broLog('🔄 Verificando migração de dados sensíveis...');
     } catch (e) {
-      debugPrint('❌ Erro na migração: $e');
+      broLog('❌ Erro na migração: $e');
     }
   }
 }

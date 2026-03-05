@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
 import '../providers/collateral_provider.dart';
 import '../providers/breez_provider_export.dart';
@@ -38,13 +39,13 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
     int walletBalance = 0;
     try {
       final balanceInfo = await breezProvider.getBalance();
-      debugPrint('📊 Balance info: $balanceInfo');
+      broLog('📊 Balance info: $balanceInfo');
       // A chave pode ser 'balance' ou 'balanceSat'
       final balanceStr = balanceInfo['balance']?.toString() ?? balanceInfo['balanceSat']?.toString() ?? '0';
       walletBalance = int.tryParse(balanceStr) ?? 0;
-      debugPrint('💳 Saldo da carteira obtido: $walletBalance sats');
+      broLog('💳 Saldo da carteira obtido: $walletBalance sats');
     } catch (e) {
-      debugPrint('⚠️ Erro ao obter saldo: $e');
+      broLog('⚠️ Erro ao obter saldo: $e');
     }
     
     await collateralProvider.initialize(
@@ -872,9 +873,9 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                 final balanceInfo = await breezProvider.getBalance();
                 final balanceStr = balanceInfo['balance']?.toString() ?? balanceInfo['balanceSat']?.toString() ?? '0';
                 walletBalance = int.tryParse(balanceStr) ?? 0;
-                debugPrint('💳 Saldo para depósito: $walletBalance sats');
+                broLog('💳 Saldo para depósito: $walletBalance sats');
               } catch (e) {
-                debugPrint('⚠️ Erro ao obter saldo: $e');
+                broLog('⚠️ Erro ao obter saldo: $e');
               }
               
               if (walletBalance == 0) {

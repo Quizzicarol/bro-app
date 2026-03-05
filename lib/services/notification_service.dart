@@ -1,5 +1,6 @@
 ﻿import 'package:flutter/material.dart' show Color;
 import 'package:flutter/foundation.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 /// Servico de notificacoes locais para alertar o usuario sobre eventos importantes
@@ -33,11 +34,11 @@ class NotificationService {
     );
     
     _isInitialized = true;
-    debugPrint('? NotificationService inicializado');
+    broLog('? NotificationService inicializado');
   }
 
   void _onNotificationTapped(NotificationResponse response) {
-    debugPrint('?? Notificacao clicada: ${response.payload}');
+    broLog('?? Notificacao clicada: ${response.payload}');
     // Aqui pode navegar para tela especifica baseado no payload
   }
 
@@ -349,7 +350,7 @@ class NotificationService {
     );
 
     await _notifications.show(id, title, body, details, payload: payload);
-    debugPrint('?? Notificacao enviada: $title');
+    broLog('?? Notificacao enviada: $title');
   }
 
   /// Cancela uma notificacao especifica

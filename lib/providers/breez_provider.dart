@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Directory, Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:breez_sdk_spark_flutter/breez_sdk_spark.dart' as spark;
 import 'package:path_provider/path_provider.dart';
 import 'package:bip39/bip39.dart' as bip39;
+import 'package:bro_app/services/log_utils.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/breez_config.dart';
 import '../extensions/breez_extensions.dart';
@@ -64,7 +65,7 @@ class BreezProvider with ChangeNotifier {
   Future<bool> initialize({String? mnemonic}) async {
     // Skip Breez SDK on Windows/Web (not supported)
     if (kIsWeb || (!Platform.isAndroid && !Platform.isIOS)) {
-      debugPrint('🚫 Breez SDK não suportado nesta plataforma (Windows/Web/Linux)');
+      broLog('🚫 Breez SDK não suportado nesta plataforma (Windows/Web/Linux)');
       _isInitialized = false;
       _setLoading(false);
       return false;
@@ -77,24 +78,24 @@ class BreezProvider with ChangeNotifier {
       final newWords = mnemonic.split(' ').take(2).join(' ');
       
       if (currentWords != newWords) {
-        debugPrint('⚠️ SDK inicializado com seed DIFERENTE!');
-        debugPrint('🔄 Reinicializando com seed correta...');
+        broLog('⚠️ SDK inicializado com seed DIFERENTE!');
+        broLog('🔄 Reinicializando com seed correta...');
         
         // Forçar reinicialização com a nova seed
         return await reinitializeWithNewSeed(mnemonic);
       } else {
-        debugPrint('✅ SDK já inicializado com a seed correta');
+        broLog('✅ SDK já inicializado com a seed correta');
         return true;
       }
     }
     
     if (_isInitialized) {
-      debugPrint('✅ SDK já inicializado');
+      broLog('✅ SDK já inicializado');
       return true;
     }
     
     if (_isLoading) {
-      debugPrint('⏳ SDK já está sendo inicializado, aguardando...');
+      broLog('⏳ SDK já está sendo inicializado, aguardando...');
       // Aguardar inicialização em andamento COM TIMEOUT
       int waitCount = 0;
       const maxWait = 300; // 30 segundos máximo (300 x 100ms)
@@ -102,7 +103,7 @@ class BreezProvider with ChangeNotifier {
         await Future.delayed(const Duration(milliseconds: 100));
         waitCount++;
         if (waitCount >= maxWait) {
-          debugPrint('⏰ TIMEOUT esperando inicialização! Forçando reset...');
+          broLog('⏰ TIMEOUT esperando inicialização! Forçando reset...');
           _isLoading = false; // Forçar reset do estado
           return false; // Sair do loop
         }
@@ -113,21 +114,21 @@ class BreezProvider with ChangeNotifier {
         return true;
       }
       // Se deu timeout, continuar com nova inicialização
-      debugPrint('🔄 Continuando com nova inicialização após timeout...');
+      broLog('🔄 Continuando com nova inicialização após timeout...');
     }
     
     _setLoading(true);
     _setError(null);
     
-    debugPrint('⚡ Iniciando Breez SDK Spark...');
+    broLog('⚡ Iniciando Breez SDK Spark...');
 
     try {
       // Initialize RustLib (flutter_rust_bridge) if not already initialized
       if (!_rustLibInitialized) {
-        debugPrint('🔧 Inicializando flutter_rust_bridge...');
+        broLog('🔧 Inicializando flutter_rust_bridge...');
         await spark.BreezSdkSparkLib.init();
         _rustLibInitialized = true;
-        debugPrint('✅ flutter_rust_bridge inicializado');
+        broLog('✅ flutter_rust_bridge inicializado');
       }
 
       // CRÍTICO: A seed do Breez DEVE ser vinculada ao usuário Nostr!
@@ -143,51 +144,51 @@ class BreezProvider with ChangeNotifier {
         // Salvar a seed (se já existir igual, não faz nada)
         await StorageService().saveBreezMnemonic(_mnemonic!);
         
-        debugPrint('🔑 Usando seed FORNECIDA (${_mnemonic!.split(' ').length} palavras)');
+        broLog('🔑 Usando seed FORNECIDA (${_mnemonic!.split(' ').length} palavras)');
       } else {
         // Buscar seed salva para este usuário
-        debugPrint('');
-        debugPrint('═══════════════════════════════════════════════════════════');
-        debugPrint('🔍 BREEZ: Buscando seed do usuário atual...');
-        debugPrint('═══════════════════════════════════════════════════════════');
+        broLog('');
+        broLog('═══════════════════════════════════════════════════════════');
+        broLog('🔍 BREEZ: Buscando seed do usuário atual...');
+        broLog('═══════════════════════════════════════════════════════════');
         
         // BUSCA: Sempre com pubkey do usuário atual para evitar pegar seed de outro usuário
         final pubkey = await StorageService().getNostrPublicKey();
         String? savedMnemonic;
         
         if (pubkey != null) {
-          debugPrint('   Pubkey: ${pubkey.substring(0, 16)}...');
+          broLog('   Pubkey: ${pubkey.substring(0, 16)}...');
           savedMnemonic = await StorageService().getBreezMnemonic(forPubkey: pubkey);
         } else {
-          debugPrint('⚠️ Nenhum pubkey encontrado! Seed não será carregada.');
+          broLog('⚠️ Nenhum pubkey encontrado! Seed não será carregada.');
         }
         
         if (savedMnemonic != null && savedMnemonic.isNotEmpty && savedMnemonic.split(' ').length == 12) {
           _mnemonic = savedMnemonic;
           _isNewWallet = false;
-          debugPrint('✅ Seed EXISTENTE encontrada!');
-          debugPrint('   Seed carregada (${savedMnemonic.split(' ').length} palavras)');
+          broLog('✅ Seed EXISTENTE encontrada!');
+          broLog('   Seed carregada (${savedMnemonic.split(' ').length} palavras)');
         } else {
           // ÚLTIMA TENTATIVA: O getBreezMnemonic agora busca em 6 fontes diferentes
           // Se chegou aqui, realmente não existe seed
-          debugPrint('');
-          debugPrint('⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️');
-          debugPrint('🆕 NENHUMA SEED encontrada em NENHUM local!');
-          debugPrint('   Gerando NOVA seed...');
-          debugPrint('   Se você tinha saldo, precisa IMPORTAR a seed!');
-          debugPrint('⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️');
-          debugPrint('');
+          broLog('');
+          broLog('⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️');
+          broLog('🆕 NENHUMA SEED encontrada em NENHUM local!');
+          broLog('   Gerando NOVA seed...');
+          broLog('   Se você tinha saldo, precisa IMPORTAR a seed!');
+          broLog('⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️');
+          broLog('');
           _mnemonic = bip39.generateMnemonic();
           await StorageService().saveBreezMnemonic(_mnemonic!);
           _isNewWallet = true;
           _seedRecoveryNeeded = true;
-          debugPrint('🆕 Nova seed gerada (${_mnemonic!.split(' ').length} palavras)');
+          broLog('🆕 Nova seed gerada (${_mnemonic!.split(' ').length} palavras)');
         }
-        debugPrint('═══════════════════════════════════════════════════════════');
+        broLog('═══════════════════════════════════════════════════════════');
       }
 
       final seedWords = _mnemonic!.split(' ');
-      debugPrint('🔐 SEED: ${seedWords.length} palavras carregadas');
+      broLog('🔐 SEED: ${seedWords.length} palavras carregadas');
 
       // Create seed from mnemonic
       final seed = spark.Seed.mnemonic(mnemonic: _mnemonic!);
@@ -198,7 +199,7 @@ class BreezProvider with ChangeNotifier {
       final userDirSuffix = pubkey != null ? '_${pubkey.substring(0, 8)}' : '';
       final storageDir = '${appDir.path}/breez_spark$userDirSuffix';
       
-      debugPrint('📁 Storage dir: $storageDir');
+      broLog('📁 Storage dir: $storageDir');
 
       // Create config
       final network = BreezConfig.useMainnet ? spark.Network.mainnet : spark.Network.regtest;
@@ -206,7 +207,7 @@ class BreezProvider with ChangeNotifier {
         apiKey: BreezConfig.apiKey,
       );
 
-      debugPrint('⚡ Conectando ao Breez SDK ($network)...');
+      broLog('⚡ Conectando ao Breez SDK ($network)...');
       
       // Connect to SDK
       _sdk = await spark.connect(
@@ -218,7 +219,7 @@ class BreezProvider with ChangeNotifier {
       );
 
       _isInitialized = true;
-      debugPrint('✅ Breez SDK Spark inicializado com sucesso!');
+      broLog('✅ Breez SDK Spark inicializado com sucesso!');
       
       // Listen to events
       _eventsSub = _sdk!.addEventListener().listen(_handleSdkEvent);
@@ -229,7 +230,7 @@ class BreezProvider with ChangeNotifier {
       return true;
     } catch (e) {
       _setError('Erro ao inicializar Breez SDK: $e');
-      debugPrint('? Erro inicializando Breez SDK: $e');
+      broLog('? Erro inicializando Breez SDK: $e');
       return false;
     } finally {
       _setLoading(false);
@@ -240,22 +241,22 @@ class BreezProvider with ChangeNotifier {
   /// CRÍTICO: Chamado quando o usuário faz login com outra conta Nostr
   /// Isso DESCONECTA o SDK e PERMITE nova inicialização com a seed do novo usuário
   Future<void> resetForNewUser() async {
-    debugPrint('🔄 RESETANDO SDK para novo usuário Nostr...');
+    broLog('🔄 RESETANDO SDK para novo usuário Nostr...');
     
     // 1. Cancelar subscription de eventos
     if (_eventsSub != null) {
       await _eventsSub!.cancel();
       _eventsSub = null;
-      debugPrint('✅ Event subscription cancelada');
+      broLog('✅ Event subscription cancelada');
     }
     
     // 2. Desconectar SDK atual
     if (_sdk != null) {
       try {
         await _sdk!.disconnect();
-        debugPrint('✅ SDK desconectado');
+        broLog('✅ SDK desconectado');
       } catch (e) {
-        debugPrint('⚠️ Erro ao desconectar SDK (ignorando): $e');
+        broLog('⚠️ Erro ao desconectar SDK (ignorando): $e');
       }
       _sdk = null;
     }
@@ -270,14 +271,14 @@ class BreezProvider with ChangeNotifier {
     _isNewWallet = false;
     _seedRecoveryNeeded = false;
     
-    debugPrint('✅ SDK resetado - pronto para novo usuário');
+    broLog('✅ SDK resetado - pronto para novo usuário');
     notifyListeners();
   }
   
   /// REINICIALIZAR SDK com nova seed (forçado)
   /// Usado quando o usuário restaura uma carteira diferente
   Future<bool> reinitializeWithNewSeed(String newMnemonic) async {
-    debugPrint('🔄 REINICIALIZANDO SDK com nova seed...');
+    broLog('🔄 REINICIALIZANDO SDK com nova seed...');
     
     // 1. Resetar SDK primeiro
     await resetForNewUser();
@@ -288,55 +289,55 @@ class BreezProvider with ChangeNotifier {
       final storageDir = Directory('${appDir.path}/breez_spark');
       if (await storageDir.exists()) {
         await storageDir.delete(recursive: true);
-        debugPrint('🗑️ Storage directory limpo');
+        broLog('🗑️ Storage directory limpo');
       }
     } catch (e) {
-      debugPrint('⚠️ Erro ao limpar storage (ignorando): $e');
+      broLog('⚠️ Erro ao limpar storage (ignorando): $e');
     }
     
     // 3. Salvar nova seed COM FORÇA (reinitialize é chamado intencionalmente)
     await StorageService().forceUpdateBreezMnemonic(newMnemonic);
     
     // 4. Reinicializar com a nova seed
-    debugPrint('🔄 Reinicializando SDK com nova seed...');
+    broLog('🔄 Reinicializando SDK com nova seed...');
     return await initialize(mnemonic: newMnemonic);
   }
   
   /// Force sync da carteira atual
   Future<void> forceSyncWallet() async {
     if (_sdk == null) {
-      debugPrint('⚠️ SDK não inicializado');
+      broLog('⚠️ SDK não inicializado');
       return;
     }
     
     try {
-      debugPrint('🔄 Forçando sincronização da carteira...');
+      broLog('🔄 Forçando sincronização da carteira...');
       await _sdk!.syncWallet(request: spark.SyncWalletRequest());
       
       final info = await _sdk!.getInfo(request: spark.GetInfoRequest());
-      debugPrint('✅ Sincronização forçada concluída');
-      debugPrint('💰 Saldo após sync: ${info.balanceSats} sats');
+      broLog('✅ Sincronização forçada concluída');
+      broLog('💰 Saldo após sync: ${info.balanceSats} sats');
       
       notifyListeners();
     } catch (e) {
-      debugPrint('❌ Erro ao forçar sync: $e');
+      broLog('❌ Erro ao forçar sync: $e');
       _setError('Erro ao sincronizar: $e');
     }
   }
 
   /// Handle SDK events
   void _handleSdkEvent(spark.SdkEvent event) {
-    debugPrint('🔔 Evento do SDK recebido: ${event.runtimeType}');
+    broLog('🔔 Evento do SDK recebido: ${event.runtimeType}');
     
     if (event is spark.SdkEvent_PaymentSucceeded) {
       final payment = event.payment;
-      debugPrint('💰 PAGAMENTO RECEBIDO! Payment: ${payment.id}, Amount: ${payment.amount} sats');
+      broLog('💰 PAGAMENTO RECEBIDO! Payment: ${payment.id}, Amount: ${payment.amount} sats');
       
       // Extrair paymentHash do pagamento para identificação precisa
       String? paymentHash;
       if (payment.details is spark.PaymentDetails_Lightning) {
         paymentHash = (payment.details as spark.PaymentDetails_Lightning).paymentHash;
-        debugPrint('🔑 PaymentHash: $paymentHash');
+        broLog('🔑 PaymentHash: $paymentHash');
       }
       
       // Salvar último pagamento
@@ -350,25 +351,25 @@ class BreezProvider with ChangeNotifier {
       // CRÍTICO: Chamar o callback se estiver registrado!
       // Isso permite que a tela de ordem atualize o status para "payment_received"
       if (onPaymentReceived != null) {
-        debugPrint('🎉 Chamando callback onPaymentReceived com paymentHash!');
+        broLog('🎉 Chamando callback onPaymentReceived com paymentHash!');
         onPaymentReceived!(payment.id, payment.amount.toInt(), paymentHash);
       } else {
-        debugPrint('⚠️ Pagamento recebido mas callback não registrado - a tela de ordem precisa estar aberta');
+        broLog('⚠️ Pagamento recebido mas callback não registrado - a tela de ordem precisa estar aberta');
       }
       
       // Notificar listeners para atualizar UI
       notifyListeners();
     } else if (event is spark.SdkEvent_PaymentFailed) {
-      debugPrint('❌ PAGAMENTO FALHOU! Payment: ${event.payment.id}');
+      broLog('❌ PAGAMENTO FALHOU! Payment: ${event.payment.id}');
     } else if (event is spark.SdkEvent_Synced) {
-      debugPrint('🔄 Wallet sincronizada');
+      broLog('🔄 Wallet sincronizada');
       // Verificar saldo após sincronização
       _checkBalanceAfterSync();
     } else if (event is spark.SdkEvent_UnclaimedDeposits) {
       // CRÍTICO: Há depósitos on-chain não reivindicados!
       // Isso acontece quando alguém envia BTC on-chain para o endereço de swap
       final deposits = event.unclaimedDeposits;
-      debugPrint('💎 DEPÓSITOS ON-CHAIN NÃO REIVINDICADOS: ${deposits.length}');
+      broLog('💎 DEPÓSITOS ON-CHAIN NÃO REIVINDICADOS: ${deposits.length}');
       _processUnclaimedDepositsFromEvent(deposits);
     }
     
@@ -380,35 +381,35 @@ class BreezProvider with ChangeNotifier {
     if (_sdk == null || deposits.isEmpty) return;
     
     try {
-      debugPrint('💰 Processando ${deposits.length} depósitos pendentes!');
+      broLog('💰 Processando ${deposits.length} depósitos pendentes!');
       
       for (final deposit in deposits) {
         // DepositInfo tem: txid, vout, amountSats, refundTx?, refundTxId?, claimError?
-        debugPrint('   📦 Depósito: txid=${deposit.txid}, vout=${deposit.vout}, amount=${deposit.amountSats} sats');
+        broLog('   📦 Depósito: txid=${deposit.txid}, vout=${deposit.vout}, amount=${deposit.amountSats} sats');
         
         // Verificar se já teve erro ao tentar claim
         // IMPORTANTE: Se o erro foi "feeExceeded", podemos tentar com fee maior!
         if (deposit.claimError != null) {
           final errorStr = deposit.claimError.toString();
-          debugPrint('   ⚠️ Depósito com erro anterior: $errorStr');
+          broLog('   ⚠️ Depósito com erro anterior: $errorStr');
           
           // Se NÃO for erro de fee, pular
           if (!errorStr.contains('FeeExceed')) {
-            debugPrint('   ❌ Erro não recuperável, pulando...');
+            broLog('   ❌ Erro não recuperável, pulando...');
             continue;
           }
-          debugPrint('   🔄 Erro de fee - tentando com fee maior...');
+          broLog('   🔄 Erro de fee - tentando com fee maior...');
         }
         
         // Processar/claim o depósito
         // O SDK só emite SdkEvent_UnclaimedDeposits quando há confirmações suficientes
         try {
-          debugPrint('   ⚡ Reivindicando depósito de ${deposit.amountSats} sats...');
+          broLog('   ⚡ Reivindicando depósito de ${deposit.amountSats} sats...');
           
           // Permitir até 25% do valor como taxa máxima (mínimo 500 sats)
           final maxFeeSats = deposit.amountSats ~/ BigInt.from(4);
           final feeLimit = maxFeeSats < BigInt.from(500) ? BigInt.from(500) : maxFeeSats;
-          debugPrint('   💰 Fee máximo permitido: $feeLimit sats');
+          broLog('   💰 Fee máximo permitido: $feeLimit sats');
           
           final response = await _sdk!.claimDeposit(
             request: spark.ClaimDepositRequest(
@@ -418,13 +419,13 @@ class BreezProvider with ChangeNotifier {
             ),
           );
           
-          debugPrint('   ✅ Depósito reivindicado! Payment ID: ${response.payment.id}');
+          broLog('   ✅ Depósito reivindicado! Payment ID: ${response.payment.id}');
           
           // Persistir como pagamento recebido
           _persistPayment(response.payment.id, response.payment.amount.toInt());
           
         } catch (e) {
-          debugPrint('   ⚠️ Erro ao reivindicar depósito: $e');
+          broLog('   ⚠️ Erro ao reivindicar depósito: $e');
         }
       }
       
@@ -432,7 +433,7 @@ class BreezProvider with ChangeNotifier {
       await forceSyncWallet();
       
     } catch (e) {
-      debugPrint('❌ Erro ao processar depósitos: $e');
+      broLog('❌ Erro ao processar depósitos: $e');
     }
   }
   
@@ -447,7 +448,7 @@ class BreezProvider with ChangeNotifier {
       
       // Verificar se já existe
       if (payments.any((p) => p['id'] == paymentId)) {
-        debugPrint('💾 Pagamento $paymentId já registrado');
+        broLog('💾 Pagamento $paymentId já registrado');
         return;
       }
       
@@ -461,9 +462,9 @@ class BreezProvider with ChangeNotifier {
       });
       
       await prefs.setString('lightning_payments', json.encode(payments));
-      debugPrint('💾 PAGAMENTO PERSISTIDO: $paymentId ($amountSats sats, hash: ${paymentHash?.substring(0, 8) ?? "N/A"}...)');
+      broLog('💾 PAGAMENTO PERSISTIDO: $paymentId ($amountSats sats, hash: ${paymentHash?.substring(0, 8) ?? "N/A"}...)');
     } catch (e) {
-      debugPrint('❌ ERRO CRÍTICO ao persistir pagamento: $e');
+      broLog('❌ ERRO CRÍTICO ao persistir pagamento: $e');
     }
   }
   
@@ -479,7 +480,7 @@ class BreezProvider with ChangeNotifier {
           .map((p) => Map<String, dynamic>.from(p))
           .toList();
     } catch (e) {
-      debugPrint('❌ Erro ao recuperar pagamentos: $e');
+      broLog('❌ Erro ao recuperar pagamentos: $e');
       return [];
     }
   }
@@ -496,10 +497,10 @@ class BreezProvider with ChangeNotifier {
         payments[index]['reconciled'] = true;
         payments[index]['reconciledAt'] = DateTime.now().toIso8601String();
         await prefs.setString('lightning_payments', json.encode(payments));
-        debugPrint('✅ Pagamento $paymentId marcado como reconciliado');
+        broLog('✅ Pagamento $paymentId marcado como reconciliado');
       }
     } catch (e) {
-      debugPrint('❌ Erro ao marcar pagamento: $e');
+      broLog('❌ Erro ao marcar pagamento: $e');
     }
   }
   
@@ -508,9 +509,9 @@ class BreezProvider with ChangeNotifier {
     if (_sdk == null) return;
     try {
       final info = await _sdk!.getInfo(request: spark.GetInfoRequest());
-      debugPrint('?? Saldo atual: ${info.balanceSats} sats');
+      broLog('?? Saldo atual: ${info.balanceSats} sats');
     } catch (e) {
-      debugPrint('?? Erro ao verificar saldo: $e');
+      broLog('?? Erro ao verificar saldo: $e');
     }
   }
   
@@ -525,31 +526,31 @@ class BreezProvider with ChangeNotifier {
     if (_sdk == null) return;
     
     try {
-      debugPrint('🔄 Sincronizando carteira em background...');
+      broLog('🔄 Sincronizando carteira em background...');
       await _sdk!.syncWallet(request: spark.SyncWalletRequest());
-      debugPrint('✅ Carteira sincronizada');
+      broLog('✅ Carteira sincronizada');
       
       // Get initial balance - LOG DETALHADO
       final info = await _sdk!.getInfo(request: spark.GetInfoRequest());
-      debugPrint('═══════════════════════════════════════');
-      debugPrint('💰 INFO DO SDK BREEZ SPARK:');
-      debugPrint('   balanceSats: ${info.balanceSats}');
-      debugPrint('═══════════════════════════════════════');
+      broLog('═══════════════════════════════════════');
+      broLog('💰 INFO DO SDK BREEZ SPARK:');
+      broLog('   balanceSats: ${info.balanceSats}');
+      broLog('═══════════════════════════════════════');
       
       // PERFORMANCE: Apenas contar pagamentos (sem listar individualmente)
       final paymentsResp = await _sdk!.listPayments(
         request: spark.ListPaymentsRequest(limit: 100),
       );
-      debugPrint('📋 Pagamentos encontrados: ${paymentsResp.payments.length}');
+      broLog('📋 Pagamentos encontrados: ${paymentsResp.payments.length}');
       
       // Verificar pagamentos persistidos localmente (que deveriam ter sido recebidos)
       final prefs = await SharedPreferences.getInstance();
       final localPayments = prefs.getString('lightning_payments') ?? '[]';
-      debugPrint('💾 PAGAMENTOS PERSISTIDOS LOCALMENTE: $localPayments');
+      broLog('💾 PAGAMENTOS PERSISTIDOS LOCALMENTE: $localPayments');
       
       notifyListeners();
     } catch (e) {
-      debugPrint('❌ Erro ao sincronizar carteira: $e');
+      broLog('❌ Erro ao sincronizar carteira: $e');
     }
   }
 
@@ -560,7 +561,7 @@ class BreezProvider with ChangeNotifier {
   }) async {
     // Garantir que SDK está inicializado
     if (!_isInitialized) {
-      debugPrint('⚠️ SDK não inicializado, tentando inicializar...');
+      broLog('⚠️ SDK não inicializado, tentando inicializar...');
       final success = await initialize();
       if (!success) {
         _setError('Falha ao inicializar SDK');
@@ -576,8 +577,8 @@ class BreezProvider with ChangeNotifier {
     _setLoading(true);
     _setError(null);
     
-    debugPrint('⚡ Criando invoice de $amountSats sats...');
-    debugPrint('📝 Descrição: ${description ?? "Pagamento Bro"}');
+    broLog('⚡ Criando invoice de $amountSats sats...');
+    broLog('📝 Descrição: ${description ?? "Pagamento Bro"}');
 
     // Retry logic para erros transientes do SDK (como RangeError)
     int retries = 0;
@@ -601,7 +602,7 @@ class BreezProvider with ChangeNotifier {
         );
 
         final bolt11 = resp.paymentRequest;
-        debugPrint('✅ Invoice BOLT11 criado: ${bolt11.substring(0, 50)}...');
+        broLog('✅ Invoice BOLT11 criado: ${bolt11.substring(0, 50)}...');
 
         // Try to parse to extract payment hash for tracking
         String? paymentHash;
@@ -612,10 +613,10 @@ class BreezProvider with ChangeNotifier {
           );
           if (parsed is spark.InputType_Bolt11Invoice) {
             paymentHash = parsed.field0.paymentHash;
-            debugPrint('🔑 Payment Hash: $paymentHash');
+            broLog('🔑 Payment Hash: $paymentHash');
           }
         } catch (e) {
-          debugPrint('⚠️ Erro ao extrair payment hash: $e');
+          broLog('⚠️ Erro ao extrair payment hash: $e');
           // Continua mesmo sem payment hash - não é crítico
         }
 
@@ -631,11 +632,11 @@ class BreezProvider with ChangeNotifier {
         retries++;
         final isRangeError = e.toString().contains('RangeError');
         
-        debugPrint('⚠️ Tentativa $retries/$maxRetries falhou: $e');
+        broLog('⚠️ Tentativa $retries/$maxRetries falhou: $e');
         
         if (isRangeError && retries < maxRetries) {
           // RangeError é erro transiente do SDK - tentar novamente após delay
-          debugPrint('🔄 RangeError detectado - aguardando 500ms antes de retry...');
+          broLog('🔄 RangeError detectado - aguardando 500ms antes de retry...');
           await Future.delayed(const Duration(milliseconds: 500));
           continue;
         }
@@ -643,7 +644,7 @@ class BreezProvider with ChangeNotifier {
         if (retries >= maxRetries) {
           final errMsg = 'Erro ao criar invoice após $maxRetries tentativas: $e';
           _setError(errMsg);
-          debugPrint('❌ $errMsg');
+          broLog('❌ $errMsg');
           _setLoading(false);
           return {'success': false, 'error': errMsg};
         }
@@ -678,7 +679,7 @@ class BreezProvider with ChangeNotifier {
       );
 
       final isPaid = payment.status == spark.PaymentStatus.completed;
-      debugPrint('?? Payment $paymentHash status: ${payment.status}');
+      broLog('?? Payment $paymentHash status: ${payment.status}');
 
       return {
         'paid': isPaid,
@@ -686,7 +687,7 @@ class BreezProvider with ChangeNotifier {
         'amountSats': payment.amount.toString(),
       };
     } catch (e) {
-      debugPrint('?? Erro checking payment: $e');
+      broLog('?? Erro checking payment: $e');
       return {'paid': false, 'error': e.toString()};
     }
   }
@@ -694,7 +695,7 @@ class BreezProvider with ChangeNotifier {
   /// DIAGNÓSTICO: Lista todos os pagamentos da carteira para verificar quais ordens foram pagas
   Future<List<Map<String, dynamic>>> getAllPayments() async {
     if (!_isInitialized || _sdk == null) {
-      debugPrint('❌ SDK não inicializado para diagnóstico');
+      broLog('❌ SDK não inicializado para diagnóstico');
       return [];
     }
 
@@ -707,7 +708,7 @@ class BreezProvider with ChangeNotifier {
 
       final payments = <Map<String, dynamic>>[];
       
-      debugPrint('📋 getAllPayments: ${resp.payments.length} pagamentos encontrados');
+      broLog('📋 getAllPayments: ${resp.payments.length} pagamentos encontrados');
       
       for (var p in resp.payments) {
         String? paymentHash;
@@ -730,7 +731,7 @@ class BreezProvider with ChangeNotifier {
       
       return payments;
     } catch (e) {
-      debugPrint('❌ Erro no diagnóstico: $e');
+      broLog('❌ Erro no diagnóstico: $e');
       return [];
     }
   }
@@ -738,7 +739,7 @@ class BreezProvider with ChangeNotifier {
   /// DIAGNÓSTICO: Verifica uma lista de paymentHashes para ver quais foram pagos
   Future<Map<String, bool>> checkMultiplePayments(List<String> paymentHashes) async {
     if (!_isInitialized || _sdk == null) {
-      debugPrint('❌ SDK não inicializado');
+      broLog('❌ SDK não inicializado');
       return {};
     }
 
@@ -766,16 +767,16 @@ class BreezProvider with ChangeNotifier {
         results[hash] = walletHashes.contains(hash);
       }
       
-      debugPrint('');
-      debugPrint('🔍 VERIFICAÇÃO DE PAGAMENTOS:');
+      broLog('');
+      broLog('🔍 VERIFICAÇÃO DE PAGAMENTOS:');
       for (var entry in results.entries) {
         final icon = entry.value ? '✅ PAGO' : '❌ NÃO PAGO';
-        debugPrint('   ${entry.key.substring(0, 16)}... → $icon');
+        broLog('   ${entry.key.substring(0, 16)}... → $icon');
       }
       
       return results;
     } catch (e) {
-      debugPrint('❌ Erro verificando pagamentos: $e');
+      broLog('❌ Erro verificando pagamentos: $e');
       return {};
     }
   }
@@ -790,7 +791,7 @@ class BreezProvider with ChangeNotifier {
     }
 
     try {
-      debugPrint('? Aguardando pagamento $paymentHash...');
+      broLog('? Aguardando pagamento $paymentHash...');
       
       // Use WaitForPaymentIdentifier.paymentRequest with invoice/payment hash
       final resp = await _sdk!.waitForPayment(
@@ -800,7 +801,7 @@ class BreezProvider with ChangeNotifier {
       );
 
       final isPaid = resp.payment.status == spark.PaymentStatus.completed;
-      debugPrint('? Pagamento recebido! Status: ${resp.payment.status}');
+      broLog('? Pagamento recebido! Status: ${resp.payment.status}');
 
       return {
         'paid': isPaid,
@@ -809,7 +810,7 @@ class BreezProvider with ChangeNotifier {
         'payment': resp.payment,
       };
     } catch (e) {
-      debugPrint('? Erro aguardando pagamento: $e');
+      broLog('? Erro aguardando pagamento: $e');
       return {'paid': false, 'error': e.toString()};
     }
   }
@@ -874,11 +875,11 @@ class BreezProvider with ChangeNotifier {
     }
 
     try {
-      debugPrint('🔍 RECUPERAÇÃO: Buscando depósitos não reivindicados...');
+      broLog('🔍 RECUPERAÇÃO: Buscando depósitos não reivindicados...');
       
       // 1. Sincronizar carteira primeiro
       await _sdk!.syncWallet(request: spark.SyncWalletRequest());
-      debugPrint('✅ Carteira sincronizada');
+      broLog('✅ Carteira sincronizada');
       
       // 2. Listar depósitos não reivindicados
       final response = await _sdk!.listUnclaimedDeposits(
@@ -886,14 +887,14 @@ class BreezProvider with ChangeNotifier {
       );
       
       final deposits = response.deposits;
-      debugPrint('💎 Encontrados ${deposits.length} depósitos não reivindicados');
+      broLog('💎 Encontrados ${deposits.length} depósitos não reivindicados');
       
       if (deposits.isEmpty) {
         // Verificar histórico de pagamentos para diagnóstico
         final payments = await _sdk!.listPayments(request: spark.ListPaymentsRequest());
-        debugPrint('📋 Histórico: ${payments.payments.length} pagamentos no total');
+        broLog('📋 Histórico: ${payments.payments.length} pagamentos no total');
         for (final p in payments.payments.take(5)) {
-          debugPrint('   - ${p.id}: ${p.amount} sats, status=${p.status}');
+          broLog('   - ${p.id}: ${p.amount} sats, status=${p.status}');
         }
         
         return {
@@ -911,18 +912,18 @@ class BreezProvider with ChangeNotifier {
       List<Map<String, dynamic>> processedDeposits = [];
       
       for (final deposit in deposits) {
-        debugPrint('📦 Depósito: txid=${deposit.txid}, vout=${deposit.vout}, amount=${deposit.amountSats} sats');
+        broLog('📦 Depósito: txid=${deposit.txid}, vout=${deposit.vout}, amount=${deposit.amountSats} sats');
         
         // Verificar se já teve erro ao tentar claim
         // IMPORTANTE: Se o erro foi "feeExceeded", podemos tentar com fee maior!
         bool shouldTry = true;
         if (deposit.claimError != null) {
           final errorStr = deposit.claimError.toString();
-          debugPrint('   ⚠️ Depósito com erro anterior: $errorStr');
+          broLog('   ⚠️ Depósito com erro anterior: $errorStr');
           
           // Se NÃO for erro de fee, registrar e pular
           if (!errorStr.contains('FeeExceed')) {
-            debugPrint('   ❌ Erro não recuperável, pulando...');
+            broLog('   ❌ Erro não recuperável, pulando...');
             processedDeposits.add({
               'txid': deposit.txid,
               'vout': deposit.vout,
@@ -933,19 +934,19 @@ class BreezProvider with ChangeNotifier {
             failed++;
             shouldTry = false;
           } else {
-            debugPrint('   🔄 Erro de fee - tentando com fee maior...');
+            broLog('   🔄 Erro de fee - tentando com fee maior...');
           }
         }
         
         if (!shouldTry) continue;
         
         try {
-          debugPrint('   ⚡ Reivindicando depósito de ${deposit.amountSats} sats...');
+          broLog('   ⚡ Reivindicando depósito de ${deposit.amountSats} sats...');
           
           // Permitir até 25% do valor como taxa máxima (mínimo 500 sats)
           final maxFeeSats = deposit.amountSats ~/ BigInt.from(4);
           final feeLimit = maxFeeSats < BigInt.from(500) ? BigInt.from(500) : maxFeeSats;
-          debugPrint('   💰 Fee máximo permitido: $feeLimit sats');
+          broLog('   💰 Fee máximo permitido: $feeLimit sats');
           
           final claimResponse = await _sdk!.claimDeposit(
             request: spark.ClaimDepositRequest(
@@ -955,7 +956,7 @@ class BreezProvider with ChangeNotifier {
             ),
           );
           
-          debugPrint('   ✅ Depósito reivindicado! Payment ID: ${claimResponse.payment.id}');
+          broLog('   ✅ Depósito reivindicado! Payment ID: ${claimResponse.payment.id}');
           
           // Persistir como pagamento recebido
           _persistPayment(claimResponse.payment.id, claimResponse.payment.amount.toInt());
@@ -972,7 +973,7 @@ class BreezProvider with ChangeNotifier {
           totalAmount += deposit.amountSats;
           
         } catch (e) {
-          debugPrint('   ❌ Erro ao reivindicar: $e');
+          broLog('   ❌ Erro ao reivindicar: $e');
           processedDeposits.add({
             'txid': deposit.txid,
             'vout': deposit.vout,
@@ -988,7 +989,7 @@ class BreezProvider with ChangeNotifier {
       await _sdk!.syncWallet(request: spark.SyncWalletRequest());
       final info = await _sdk!.getInfo(request: spark.GetInfoRequest());
       
-      debugPrint('✅ RECUPERAÇÃO COMPLETA: $claimed reivindicados, $failed falhas, saldo atual: ${info.balanceSats} sats');
+      broLog('✅ RECUPERAÇÃO COMPLETA: $claimed reivindicados, $failed falhas, saldo atual: ${info.balanceSats} sats');
       
       notifyListeners();
       
@@ -1002,7 +1003,7 @@ class BreezProvider with ChangeNotifier {
       };
       
     } catch (e) {
-      debugPrint('❌ Erro na recuperação: $e');
+      broLog('❌ Erro na recuperação: $e');
       return {'success': false, 'error': e.toString(), 'deposits': []};
     }
   }
@@ -1016,10 +1017,10 @@ class BreezProvider with ChangeNotifier {
     _setLoading(true);
     _setError(null);
     
-    debugPrint('💸 Pagando invoice...');
-    debugPrint('   Input: ${bolt11.substring(0, bolt11.length > 50 ? 50 : bolt11.length)}...');
+    broLog('💸 Pagando invoice...');
+    broLog('   Input: ${bolt11.substring(0, bolt11.length > 50 ? 50 : bolt11.length)}...');
     if (amountSats != null) {
-      debugPrint('   Amount (manual): $amountSats sats');
+      broLog('   Amount (manual): $amountSats sats');
     }
 
     try {
@@ -1043,26 +1044,26 @@ class BreezProvider with ChangeNotifier {
           if (amountMsat != null) {
             invoiceAmount = (amountMsat ~/ BigInt.from(1000)).toInt();
           }
-          debugPrint('📋 Valor da invoice: $invoiceAmount sats');
+          broLog('📋 Valor da invoice: $invoiceAmount sats');
         } else {
           // Para outros tipos, usa amountSats se fornecido
-          debugPrint('📋 Tipo de input não é BOLT11, usando amountSats se fornecido');
+          broLog('📋 Tipo de input não é BOLT11, usando amountSats se fornecido');
           invoiceAmount = amountSats;
         }
       } catch (e) {
-        debugPrint('⚠️ Não foi possível decodificar invoice: $e');
+        broLog('⚠️ Não foi possível decodificar invoice: $e');
       }
 
       // Verificar saldo antes de enviar
       final balanceInfo = await getBalance();
       final currentBalance = int.tryParse(balanceInfo?['balance']?.toString() ?? '0') ?? 0;
-      debugPrint('💰 Saldo atual: $currentBalance sats');
+      broLog('💰 Saldo atual: $currentBalance sats');
 
       final requiredAmount = amountSats ?? invoiceAmount;
       if (requiredAmount != null && currentBalance < requiredAmount) {
         final errorMsg = 'Saldo insuficiente. Você tem $currentBalance sats mas precisa de $requiredAmount sats';
         _setError(errorMsg);
-        debugPrint('❌ $errorMsg');
+        broLog('❌ $errorMsg');
         return {
           'success': false, 
           'error': errorMsg,
@@ -1079,13 +1080,13 @@ class BreezProvider with ChangeNotifier {
         tokenIdentifier: null,
       );
 
-      debugPrint('📤 Preparando pagamento...');
+      broLog('📤 Preparando pagamento...');
       final prepareResp = await _sdk!.prepareSendPayment(request: prepareReq)
           .timeout(
             const Duration(seconds: 30),
             onTimeout: () => throw TimeoutException('Timeout ao preparar pagamento (30s)'),
           );
-      debugPrint('✅ Pagamento preparado');
+      broLog('✅ Pagamento preparado');
 
       // Step 2: Send payment (com timeout de 60s para dar tempo ao roteamento)
       final sendReq = spark.SendPaymentRequest(
@@ -1093,17 +1094,17 @@ class BreezProvider with ChangeNotifier {
         options: null,
       );
 
-      debugPrint('📤 Enviando pagamento... (aguarde até 60s para roteamento)');
+      broLog('📤 Enviando pagamento... (aguarde até 60s para roteamento)');
       final resp = await _sdk!.sendPayment(request: sendReq)
           .timeout(
             const Duration(seconds: 60),
             onTimeout: () => throw TimeoutException('Timeout ao enviar pagamento (60s). A transação pode ainda estar em processamento.'),
           );
 
-      debugPrint('✅ Pagamento enviado!');
-      debugPrint('   Payment ID: ${resp.payment.id}');
-      debugPrint('   Amount: ${resp.payment.amount} sats');
-      debugPrint('   Status: ${resp.payment.status}');
+      broLog('✅ Pagamento enviado!');
+      broLog('   Payment ID: ${resp.payment.id}');
+      broLog('   Amount: ${resp.payment.amount} sats');
+      broLog('   Status: ${resp.payment.status}');
 
       String? paymentHash;
       if (resp.payment.details is spark.PaymentDetails_Lightning) {
@@ -1112,7 +1113,7 @@ class BreezProvider with ChangeNotifier {
 
       // NOTIFICAR callback de pagamento enviado (para reconciliação automática)
       if (onPaymentSent != null) {
-        debugPrint('🎉 Chamando callback onPaymentSent para reconciliação automática');
+        broLog('🎉 Chamando callback onPaymentSent para reconciliação automática');
         onPaymentSent!(resp.payment.id, resp.payment.amount.toInt(), paymentHash);
       }
 
@@ -1152,8 +1153,8 @@ class BreezProvider with ChangeNotifier {
       }
       
       _setError(errMsg);
-      debugPrint('❌ Erro ao pagar: $errMsg');
-      debugPrint('   Erro original: ${e.toString()}');
+      broLog('❌ Erro ao pagar: $errMsg');
+      broLog('   Erro original: ${e.toString()}');
       return {'success': false, 'error': errMsg};
     } finally {
       _setLoading(false);
@@ -1195,24 +1196,24 @@ class BreezProvider with ChangeNotifier {
   /// List payment history with full details
   Future<List<Map<String, dynamic>>> listPayments() async {
     if (!_isInitialized || _sdk == null) {
-      debugPrint('⚠️ listPayments: SDK não inicializado');
+      broLog('⚠️ listPayments: SDK não inicializado');
       return [];
     }
 
     try {
-      debugPrint('📋 Buscando histórico de pagamentos...');
+      broLog('📋 Buscando histórico de pagamentos...');
       final resp = await _sdk!.listPayments(
         request: spark.ListPaymentsRequest(),
       );
 
-      debugPrint('📋 Total de pagamentos no SDK: ${resp.payments.length}');
+      broLog('📋 Total de pagamentos no SDK: ${resp.payments.length}');
       
       for (final p in resp.payments) {
-        debugPrint('   💳 Payment: ${p.id.substring(0, 16)}... amount=${p.amount} status=${p.status}');
+        broLog('   💳 Payment: ${p.id.substring(0, 16)}... amount=${p.amount} status=${p.status}');
         // Log dos detalhes para descobrir campos disponíveis
         if (p.details is spark.PaymentDetails_Lightning) {
           final details = p.details as spark.PaymentDetails_Lightning;
-          debugPrint('      ⚡ Lightning: hash=${details.paymentHash?.substring(0, 16) ?? "null"}... description=${details.description ?? "null"}');
+          broLog('      ⚡ Lightning: hash=${details.paymentHash?.substring(0, 16) ?? "null"}... description=${details.description ?? "null"}');
         }
       }
 
@@ -1230,7 +1231,7 @@ class BreezProvider with ChangeNotifier {
             timestamp = DateTime.fromMillisecondsSinceEpoch(timestampSecs * 1000);
           }
         } catch (e) {
-          debugPrint('⚠️ Erro ao converter timestamp: $e');
+          broLog('⚠️ Erro ao converter timestamp: $e');
         }
         
         // Extrair detalhes específicos do tipo Lightning
@@ -1262,7 +1263,7 @@ class BreezProvider with ChangeNotifier {
         };
       }).toList();
     } catch (e) {
-      debugPrint('❌ Erro ao listar pagamentos: $e');
+      broLog('❌ Erro ao listar pagamentos: $e');
       return [];
     }
   }
@@ -1279,7 +1280,7 @@ class BreezProvider with ChangeNotifier {
         'balanceSats': info.balanceSats.toString(),
       };
     } catch (e) {
-      debugPrint('? Erro ao obter info do n�: $e');
+      broLog('? Erro ao obter info do n�: $e');
       return null;
     }
   }
@@ -1365,8 +1366,8 @@ class BreezProvider with ChangeNotifier {
       diagnostics['error'] = e.toString();
     }
     
-    debugPrint('🔍 DIAGNÓSTICO COMPLETO:');
-    diagnostics.forEach((k, v) => debugPrint('   $k: $v'));
+    broLog('🔍 DIAGNÓSTICO COMPLETO:');
+    diagnostics.forEach((k, v) => broLog('   $k: $v'));
     
     return diagnostics;
   }
@@ -1381,7 +1382,7 @@ class BreezProvider with ChangeNotifier {
       _isInitialized = false;
       _mnemonic = null;
       notifyListeners();
-      debugPrint('🔌 Breez SDK desconectado');
+      broLog('🔌 Breez SDK desconectado');
     }
   }
 

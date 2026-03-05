@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
 import '../services/storage_service.dart';
 import '../services/nip06_service.dart';
@@ -61,20 +62,20 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
   }
 
   Future<void> _deriveKeys() async {
-    debugPrint('🔑 [NIP06] _deriveKeys() chamado');
+    broLog('🔑 [NIP06] _deriveKeys() chamado');
     final mnemonic = _mnemonicController.text.trim();
     final passphrase = _passphraseController.text;
     
-    debugPrint('🔑 [NIP06] Mnemonic: ${mnemonic.split(' ').length} palavras');
+    broLog('🔑 [NIP06] Mnemonic: ${mnemonic.split(' ').length} palavras');
     
     if (mnemonic.isEmpty) {
-      debugPrint('❌ [NIP06] Mnemonic vazio!');
+      broLog('❌ [NIP06] Mnemonic vazio!');
       setState(() => _error = 'Digite ou gere uma seed');
       return;
     }
     
     final isValid = _nip06.validateMnemonic(mnemonic);
-    debugPrint('🔑 [NIP06] Mnemonic válido: $isValid');
+    broLog('🔑 [NIP06] Mnemonic válido: $isValid');
     
     if (!isValid) {
       setState(() => _error = 'Seed inválida. Verifique as palavras.');
@@ -87,9 +88,9 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
     });
     
     try {
-      debugPrint('🔑 [NIP06] Derivando chaves...');
+      broLog('🔑 [NIP06] Derivando chaves...');
       final keys = _nip06.deriveNostrKeys(mnemonic, passphrase: passphrase);
-      debugPrint('✅ [NIP06] Chaves derivadas! PubKey: ${keys['publicKey']?.substring(0, 16)}...');
+      broLog('✅ [NIP06] Chaves derivadas! PubKey: ${keys['publicKey']?.substring(0, 16)}...');
       
       setState(() {
         _derivedPublicKey = keys['publicKey'];
@@ -97,7 +98,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      debugPrint('❌ [NIP06] Erro ao derivar: $e');
+      broLog('❌ [NIP06] Erro ao derivar: $e');
       setState(() {
         _error = 'Erro ao derivar chaves: $e';
         _isLoading = false;
@@ -148,9 +149,9 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
         try {
           final breezProvider = context.read<BreezProvider>();
           await breezProvider.reinitializeWithNewSeed(newMnemonic);
-          debugPrint('✅ Carteira Lightning reinicializada com nova seed');
+          broLog('✅ Carteira Lightning reinicializada com nova seed');
         } catch (e) {
-          debugPrint('⚠️ Erro ao reinicializar carteira: $e');
+          broLog('⚠️ Erro ao reinicializar carteira: $e');
         }
       }
       
@@ -666,7 +667,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
     });
     
     try {
-      debugPrint('🔄 [NIP06] Restaurando carteira Lightning...');
+      broLog('🔄 [NIP06] Restaurando carteira Lightning...');
       
       // FORÇAR atualização de seed (usuário escolheu explicitamente restaurar)
       // Igual ao login avançado - usa forceOverwrite para substituir a seed atual
@@ -678,7 +679,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
         final success = await breezProvider.reinitializeWithNewSeed(mnemonic);
         
         if (success) {
-          debugPrint('✅ [NIP06] Carteira restaurada com sucesso!');
+          broLog('✅ [NIP06] Carteira restaurada com sucesso!');
           
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -695,7 +696,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
       
       setState(() => _isLoading = false);
     } catch (e) {
-      debugPrint('❌ [NIP06] Erro ao restaurar: $e');
+      broLog('❌ [NIP06] Erro ao restaurar: $e');
       setState(() {
         _error = 'Erro ao restaurar carteira: $e';
         _isLoading = false;

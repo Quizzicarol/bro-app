@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
 import '../providers/order_provider.dart';
 import '../services/nostr_service.dart';
@@ -56,7 +57,7 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
       final isActiveStatus = order.status == 'accepted' || 
                             order.status == 'awaiting_confirmation';
       
-      debugPrint('🔍 Ordem ${_safeSubstring(order.id, 0, 8)}: providerId=${order.providerId}, myId=${widget.providerId}, nostrPubkey=${_safeSubstring(nostrPubkey, 0, 8)}, isMyOrder=$isMyOrder, isActive=$isActiveStatus');
+      broLog('🔍 Ordem ${_safeSubstring(order.id, 0, 8)}: providerId=${order.providerId}, myId=${widget.providerId}, nostrPubkey=${_safeSubstring(nostrPubkey, 0, 8)}, isMyOrder=$isMyOrder, isActive=$isActiveStatus');
       
       return isMyOrder && isActiveStatus;
     }).toList();
@@ -92,7 +93,7 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
         builder: (context, orderProvider, child) {
           final myOrders = _getMyOrders(orderProvider);
           
-          debugPrint('📦 Total de ordens aceitas: ${myOrders.length}');
+          broLog('📦 Total de ordens aceitas: ${myOrders.length}');
 
           if (myOrders.isEmpty) {
             return _buildEmptyView();

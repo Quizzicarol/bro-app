@@ -1,5 +1,6 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config.dart';
 import 'lnaddress_service.dart';
@@ -35,7 +36,7 @@ class PlatformFeeService {
     final hashes = prefs.getStringList(_feePaymentHashesKey) ?? [];
     _feePaymentHashes.clear();
     _feePaymentHashes.addAll(hashes);
-    debugPrint('💼 PlatformFeeService inicializado com ${_paidOrderIds.length} ordens já pagas, ${_feePaymentHashes.length} hashes');
+    broLog('💼 PlatformFeeService inicializado com ${_paidOrderIds.length} ordens já pagas, ${_feePaymentHashes.length} hashes');
   }
   
   /// Salva o registro de ordens pagas no storage
@@ -227,7 +228,7 @@ class PlatformFeeService {
   ) {
     _payInvoiceCallback = callback;
     _currentBackend = backend;
-    debugPrint('💼 PlatformFeeService configurado com backend: $backend');
+    broLog('💼 PlatformFeeService configurado com backend: $backend');
   }
   
   /// Verifica se a taxa já foi paga para uma ordem específica
@@ -249,7 +250,7 @@ class PlatformFeeService {
   static Future<void> clearPaidOrders() async {
     _paidOrderIds.clear();
     await _savePaidOrderIds();
-    debugPrint('💼 Registro de taxas pagas limpo');
+    broLog('💼 Registro de taxas pagas limpo');
   }
   
   /// Registra uma ordem como tendo taxa paga (e persiste no storage)
@@ -266,7 +267,7 @@ class PlatformFeeService {
   }) async {
     // VERIFICAÇÃO CRÍTICA: Evitar pagamento duplicado
     if (_paidOrderIds.contains(orderId)) {
-      debugPrint('💼 Taxa já foi paga para ordem ${orderId.length > 8 ? orderId.substring(0, 8) : orderId} - ignorando');
+      broLog('💼 Taxa já foi paga para ordem ${orderId.length > 8 ? orderId.substring(0, 8) : orderId} - ignorando');
       return true; // Retorna true pois já foi pago
     }
     
@@ -276,37 +277,37 @@ class PlatformFeeService {
     // passam o contains() check acima antes de qualquer uma completar o pagamento,
     // resultando em taxa duplicada.
     _paidOrderIds.add(orderId);
-    debugPrint('💼 Lock adquirido para ordem ${orderId.length > 8 ? orderId.substring(0, 8) : orderId}');
+    broLog('💼 Lock adquirido para ordem ${orderId.length > 8 ? orderId.substring(0, 8) : orderId}');
     
     // Calcular taxa da plataforma: 2% do valor total (mínimo 1 sat)
     final platformFeeRaw = (totalSats * AppConfig.platformFeePercent).round();
     final platformFeeSats = platformFeeRaw < 1 ? 1 : platformFeeRaw;
     
     if (platformFeeSats <= 0) {
-      debugPrint('💼 Taxa da plataforma = 0 sats, ignorando...');
+      broLog('💼 Taxa da plataforma = 0 sats, ignorando...');
       return true;
     }
 
     if (AppConfig.platformLightningAddress.isEmpty) {
-      debugPrint('⚠️ platformLightningAddress não configurado!');
+      broLog('⚠️ platformLightningAddress não configurado!');
       _paidOrderIds.remove(orderId); // Liberar lock para retry
       return false;
     }
 
-    debugPrint('');
-    debugPrint('💼 ════════════════════════════════════════════════');
-    debugPrint('💼 ENVIANDO TAXA DA PLATAFORMA');
-    debugPrint('💼 Ordem: ${orderId.length > 8 ? orderId.substring(0, 8) : orderId}...');
-    debugPrint('💼 Valor total: $totalSats sats');
-    debugPrint('💼 Taxa (${(AppConfig.platformFeePercent * 100).toStringAsFixed(0)}%): $platformFeeSats sats');
-    debugPrint('💼 Destino: ${AppConfig.platformLightningAddress}');
-    debugPrint('💼 Backend: $_currentBackend');
-    debugPrint('💼 ════════════════════════════════════════════════');
-    debugPrint('');
+    broLog('');
+    broLog('💼 ════════════════════════════════════════════════');
+    broLog('💼 ENVIANDO TAXA DA PLATAFORMA');
+    broLog('💼 Ordem: ${orderId.length > 8 ? orderId.substring(0, 8) : orderId}...');
+    broLog('💼 Valor total: $totalSats sats');
+    broLog('💼 Taxa (${(AppConfig.platformFeePercent * 100).toStringAsFixed(0)}%): $platformFeeSats sats');
+    broLog('💼 Destino: ${AppConfig.platformLightningAddress}');
+    broLog('💼 Backend: $_currentBackend');
+    broLog('💼 ════════════════════════════════════════════════');
+    broLog('');
 
     if (_payInvoiceCallback == null) {
-      debugPrint('❌ ERRO: Callback de pagamento não configurado!');
-      debugPrint('   Certifique-se de chamar PlatformFeeService.setPaymentCallback() na inicialização');
+      broLog('❌ ERRO: Callback de pagamento não configurado!');
+      broLog('   Certifique-se de chamar PlatformFeeService.setPaymentCallback() na inicialização');
       _paidOrderIds.remove(orderId); // Liberar lock para retry
       return false;
     }
@@ -317,7 +318,7 @@ class PlatformFeeService {
       // Detectar tipo de endereço Lightning
       if (platformAddress.contains('@')) {
         // Lightning Address (user@domain.com)
-        debugPrint('💼 Resolvendo Lightning Address: $platformAddress');
+        broLog('💼 Resolvendo Lightning Address: $platformAddress');
         
         final lnAddressService = LnAddressService();
         final result = await lnAddressService.getInvoice(
@@ -326,17 +327,17 @@ class PlatformFeeService {
           comment: 'Bro Platform Fee - ${orderId.length > 8 ? orderId.substring(0, 8) : orderId}',
         );
 
-        debugPrint('💼 Resultado LNURL: success=${result['success']}, hasInvoice=${result['invoice'] != null}');
+        broLog('💼 Resultado LNURL: success=${result['success']}, hasInvoice=${result['invoice'] != null}');
 
         if (result['success'] != true || result['invoice'] == null) {
-          debugPrint('❌ Falha ao obter invoice do LN Address: ${result['error'] ?? 'unknown'}');
+          broLog('❌ Falha ao obter invoice do LN Address: ${result['error'] ?? 'unknown'}');
           _paidOrderIds.remove(orderId); // Liberar lock para retry
           return false;
         }
 
         final invoice = result['invoice'] as String;
-        debugPrint('💼 Invoice obtido: ${invoice.substring(0, 50)}...');
-        debugPrint('💼 Pagando via $_currentBackend...');
+        broLog('💼 Invoice obtido: ${invoice.substring(0, 50)}...');
+        broLog('💼 Pagando via $_currentBackend...');
 
         final payResult = await _payInvoiceCallback!(invoice);
         
@@ -350,34 +351,34 @@ class PlatformFeeService {
             await _saveFeePaymentHash(payHash);
           }
           
-          debugPrint('');
-          debugPrint('✅ ════════════════════════════════════════════════');
-          debugPrint('✅ TAXA DA PLATAFORMA PAGA COM SUCESSO!');
-          debugPrint('✅ Valor: $platformFeeSats sats');
-          debugPrint('✅ Destino: $platformAddress');
-          debugPrint('✅ Backend: $_currentBackend');
-          debugPrint('✅ ════════════════════════════════════════════════');
-          debugPrint('');
+          broLog('');
+          broLog('✅ ════════════════════════════════════════════════');
+          broLog('✅ TAXA DA PLATAFORMA PAGA COM SUCESSO!');
+          broLog('✅ Valor: $platformFeeSats sats');
+          broLog('✅ Destino: $platformAddress');
+          broLog('✅ Backend: $_currentBackend');
+          broLog('✅ ════════════════════════════════════════════════');
+          broLog('');
           
           // Marcar como coletada no tracking
           await markAsCollected([orderId]);
           
           return true;
         } else {
-          debugPrint('❌ Falha no pagamento: $payResult');
+          broLog('❌ Falha no pagamento: $payResult');
           _paidOrderIds.remove(orderId); // Liberar lock para retry
           return false;
         }
 
       } else if (platformAddress.toLowerCase().startsWith('lno1')) {
         // BOLT12 Offer - ainda não suportado
-        debugPrint('⚠️ BOLT12 Offer detectado - não suportado ainda');
+        broLog('⚠️ BOLT12 Offer detectado - não suportado ainda');
         _paidOrderIds.remove(orderId); // Liberar lock para retry
         return false;
 
       } else if (platformAddress.toLowerCase().startsWith('ln')) {
         // Invoice BOLT11 direto
-        debugPrint('💼 Pagando invoice BOLT11 direto...');
+        broLog('💼 Pagando invoice BOLT11 direto...');
         
         final payResult = await _payInvoiceCallback!(platformAddress);
         
@@ -391,23 +392,23 @@ class PlatformFeeService {
             await _saveFeePaymentHash(payHash);
           }
           
-          debugPrint('✅ TAXA DA PLATAFORMA PAGA COM SUCESSO via $_currentBackend!');
+          broLog('✅ TAXA DA PLATAFORMA PAGA COM SUCESSO via $_currentBackend!');
           await markAsCollected([orderId]);
           return true;
         } else {
-          debugPrint('❌ Falha no pagamento: $payResult');
+          broLog('❌ Falha no pagamento: $payResult');
           _paidOrderIds.remove(orderId); // Liberar lock para retry
           return false;
         }
       }
 
-      debugPrint('⚠️ Tipo de endereço não reconhecido: $platformAddress');
+      broLog('⚠️ Tipo de endereço não reconhecido: $platformAddress');
       _paidOrderIds.remove(orderId); // Liberar lock para retry
       return false;
 
     } catch (e, stack) {
-      debugPrint('❌ ERRO ao pagar taxa da plataforma: $e');
-      debugPrint('   Stack: $stack');
+      broLog('❌ ERRO ao pagar taxa da plataforma: $e');
+      broLog('   Stack: $stack');
       _paidOrderIds.remove(orderId); // Liberar lock para retry
       return false;
     }

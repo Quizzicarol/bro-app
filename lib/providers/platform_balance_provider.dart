@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart';
+﻿import 'package:flutter/foundation.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
@@ -30,9 +31,9 @@ class PlatformBalanceProvider with ChangeNotifier {
       }
       
       notifyListeners();
-      debugPrint('💼 Saldo da plataforma carregado: $_balanceSats sats');
+      broLog('💼 Saldo da plataforma carregado: $_balanceSats sats');
     } catch (e) {
-      debugPrint('❌ Erro ao carregar saldo da plataforma: $e');
+      broLog('❌ Erro ao carregar saldo da plataforma: $e');
     }
   }
 
@@ -44,9 +45,9 @@ class PlatformBalanceProvider with ChangeNotifier {
       await prefs.setDouble('platform_total_earnings', _totalEarnings);
       await prefs.setString('platform_transactions', json.encode(_transactions));
       
-      debugPrint('💾 Saldo da plataforma salvo: $_balanceSats sats');
+      broLog('💾 Saldo da plataforma salvo: $_balanceSats sats');
     } catch (e) {
-      debugPrint('❌ Erro ao salvar saldo da plataforma: $e');
+      broLog('❌ Erro ao salvar saldo da plataforma: $e');
     }
   }
 
@@ -72,7 +73,7 @@ class PlatformBalanceProvider with ChangeNotifier {
     await _saveBalance();
     notifyListeners();
 
-    debugPrint('💰 Taxa da plataforma adicionada: $amountSats sats (Ordem: ${orderId.substring(0, 8)})');
+    broLog('💰 Taxa da plataforma adicionada: $amountSats sats (Ordem: ${orderId.substring(0, 8)})');
   }
 
   /// Simular saque da plataforma (apenas para teste/gestão)
@@ -100,7 +101,7 @@ class PlatformBalanceProvider with ChangeNotifier {
     await _saveBalance();
     notifyListeners();
 
-    debugPrint('💸 Saque da plataforma: $amountSats sats via $type');
+    broLog('💸 Saque da plataforma: $amountSats sats via $type');
   }
 
   /// Limpar histórico (apenas para testes)

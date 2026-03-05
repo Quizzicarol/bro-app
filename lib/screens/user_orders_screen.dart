@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../services/order_service.dart';
 import '../services/lnaddress_service.dart';
@@ -52,13 +53,13 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
   /// 2. Pagamentos ENVIADOS → ordens awaiting_confirmation → completed
   Future<void> _autoReconcileOrders(OrderProvider orderProvider, BreezProvider breezProvider) async {
     try {
-      debugPrint('🔄 Iniciando reconciliação automática de ordens...');
+      broLog('🔄 Iniciando reconciliação automática de ordens...');
       
       // Buscar todos os pagamentos da carteira (recebidos E enviados)
       final payments = await breezProvider.getAllPayments();
       
       if (payments.isEmpty) {
-        debugPrint('📭 Nenhum pagamento na carteira para reconciliar');
+        broLog('📭 Nenhum pagamento na carteira para reconciliar');
         return;
       }
       
@@ -69,15 +70,15 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
       final completedReconciled = result['completedReconciled'] ?? 0;
       
       if (pendingReconciled > 0 || completedReconciled > 0) {
-        debugPrint('🎉 Reconciliação concluída: $pendingReconciled pending→paid, $completedReconciled awaiting→completed');
+        broLog('🎉 Reconciliação concluída: $pendingReconciled pending→paid, $completedReconciled awaiting→completed');
         // Recarregar ordens para refletir mudanças
         await orderProvider.fetchOrders();
       } else {
-        debugPrint('✅ Nenhuma ordem precisou ser reconciliada');
+        broLog('✅ Nenhuma ordem precisou ser reconciliada');
       }
       
     } catch (e) {
-      debugPrint('⚠️ Erro na reconciliação automática: $e');
+      broLog('⚠️ Erro na reconciliação automática: $e');
     }
   }
 
@@ -98,7 +99,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
       // SEGURANÇA CRÍTICA: Garantir que NÃO estamos em modo provedor
       // Isso previne vazamento de dados se o exitProviderMode falhou
       if (orderProvider.isProviderMode) {
-        debugPrint('⚠️ [MINHAS TROCAS] Detectado modo provedor ativo! Forçando reset...');
+        broLog('⚠️ [MINHAS TROCAS] Detectado modo provedor ativo! Forçando reset...');
         orderProvider.exitProviderMode();
       }
       
@@ -116,12 +117,12 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
         await _autoReconcileOrders(orderProvider, breezProvider);
       }
       
-      debugPrint('📱 OrderProvider tem ${orderProvider.orders.length} ordens no total');
+      broLog('📱 OrderProvider tem ${orderProvider.orders.length} ordens no total');
       
       // SEGURANÇA: Usar getter específico para ordens que EU CRIEI
       // Isso evita vazamento de ordens aceitas como provedor
       final currentUserPubkey = widget.userId;
-      debugPrint('🔐 Carregando ordens CRIADAS pelo usuário: ${_safeSubstring(currentUserPubkey, 8)}...');
+      broLog('🔐 Carregando ordens CRIADAS pelo usuário: ${_safeSubstring(currentUserPubkey, 8)}...');
       
       // CORREÇÃO VAZAMENTO: Usar myCreatedOrders em vez de orders
       // orders inclui ordens aceitas como provedor, myCreatedOrders não!
@@ -145,9 +146,9 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
           _isLoading = false;
         });
       }
-      debugPrint('📱 ${_orders.length} ordens carregadas');
+      broLog('📱 ${_orders.length} ordens carregadas');
     } catch (e) {
-      debugPrint('❌ Erro ao carregar ordens: $e');
+      broLog('❌ Erro ao carregar ordens: $e');
       if (mounted) {
         setState(() {
           _error = e.toString();
@@ -483,10 +484,10 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
         );
         
         if (success) {
-          debugPrint('✅ Ordem $orderId cancelada e publicada no Nostr');
+          broLog('✅ Ordem $orderId cancelada e publicada no Nostr');
         }
       } catch (e) {
-        debugPrint('❌ Erro ao cancelar ordem: $e');
+        broLog('❌ Erro ao cancelar ordem: $e');
       }
 
       if (success) {
@@ -1238,11 +1239,11 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
               child: MobileScanner(
                 onDetect: (capture) {
                   final List<Barcode> barcodes = capture.barcodes;
-                  debugPrint('📷 QR Scanner detectou ${barcodes.length} códigos');
+                  broLog('📷 QR Scanner detectou ${barcodes.length} códigos');
                   
                   for (final barcode in barcodes) {
                     final code = barcode.rawValue;
-                    debugPrint('📷 Código raw: $code');
+                    broLog('📷 Código raw: $code');
                     
                     if (code != null && code.isNotEmpty) {
                       String cleaned = code.trim();
@@ -1262,14 +1263,14 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                         cleaned = cleaned.split('?')[0];
                       }
                       
-                      debugPrint('📷 Código após limpeza: $cleaned');
+                      broLog('📷 Código após limpeza: $cleaned');
                       
                       // BOLT11 Invoice
                       if (cleaned.toLowerCase().startsWith('lnbc') || 
                           cleaned.toLowerCase().startsWith('lntb') ||
                           cleaned.toLowerCase().startsWith('lnurl')) {
                         scannedCode = cleaned;
-                        debugPrint('✅ Invoice detectada: $scannedCode');
+                        broLog('✅ Invoice detectada: $scannedCode');
                         Navigator.pop(context);
                         return;
                       }
@@ -1279,7 +1280,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                         final cleanedAddress = LnAddressService.cleanAddress(cleaned);
                         if (LnAddressService.isLightningAddress(cleanedAddress)) {
                           scannedCode = cleanedAddress;
-                          debugPrint('✅ LN Address detectado: $scannedCode');
+                          broLog('✅ LN Address detectado: $scannedCode');
                           Navigator.pop(context);
                           return;
                         }
@@ -1288,7 +1289,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                       // Se não reconheceu mas tem conteúdo, aceitar mesmo assim
                       if (cleaned.length > 10) {
                         scannedCode = cleaned;
-                        debugPrint('⚠️ Código não reconhecido, aceitando: $scannedCode');
+                        broLog('⚠️ Código não reconhecido, aceitando: $scannedCode');
                         Navigator.pop(context);
                         return;
                       }

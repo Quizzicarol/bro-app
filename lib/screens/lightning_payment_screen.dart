@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:confetti/confetti.dart';
 import 'dart:async';
 import '../providers/breez_provider_export.dart';
@@ -56,9 +57,9 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
     _confettiController = ConfettiController(duration: const Duration(seconds: 3));
     _startPaymentCheck();
     _startEventListener();
-    debugPrint('Configurando deteccao automatica de pagamento...');
-    debugPrint('PaymentHash: ${widget.paymentHash}');
-    debugPrint('Amount: ${widget.amountSats} sats');
+    broLog('Configurando deteccao automatica de pagamento...');
+    broLog('PaymentHash: ${widget.paymentHash}');
+    broLog('Amount: ${widget.amountSats} sats');
   }
 
   @override
@@ -75,25 +76,25 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
     _eventSubscription = breezProvider.sdk?.addEventListener().listen((event) {
       if (_isPaid) return;
       
-      debugPrint('📡 Evento SDK: ${event.runtimeType}');
+      broLog('📡 Evento SDK: ${event.runtimeType}');
       
       // Detectar pagamento recebido instantaneamente
       if (event.toString().contains('PaymentSucceeded') || 
           event.toString().contains('InvoicePaid')) {
-        debugPrint('⚡ Evento de pagamento detectado!');
+        broLog('⚡ Evento de pagamento detectado!');
         _checkPayment(); // Verificar imediatamente
       }
     });
-    debugPrint('🎧 Escutando eventos do SDK em tempo real');
+    broLog('🎧 Escutando eventos do SDK em tempo real');
   }
 
   void _startPaymentCheck() {
-    debugPrint('Iniciando polling a cada 3 segundos (backup)...');
+    broLog('Iniciando polling a cada 3 segundos (backup)...');
     _checkPaymentTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
       if (_isPaid) return;
       await _checkPayment();
     });
-    debugPrint('Polling configurado - verificando a cada 3s');
+    broLog('Polling configurado - verificando a cada 3s');
   }
 
   Future<void> _checkPayment() async {
@@ -108,7 +109,7 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
         await _handlePaymentSuccess();
       }
     } catch (e) {
-      debugPrint('Erro ao verificar pagamento: $e');
+      broLog('Erro ao verificar pagamento: $e');
     } finally {
       if (mounted) {
         setState(() => _isChecking = false);
@@ -130,7 +131,7 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
       String orderId = widget.orderId;
       
       if (orderId.isEmpty && widget.billType != null) {
-        debugPrint('🚀 Pagamento confirmado! CRIANDO ORDEM AGORA...');
+        broLog('🚀 Pagamento confirmado! CRIANDO ORDEM AGORA...');
         
         final order = await orderProvider.createOrder(
           billType: widget.billType!,
@@ -143,15 +144,15 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
         if (order != null) {
           orderId = order.id;
           _createdOrderId = orderId;
-          debugPrint('✅ Ordem CRIADA após pagamento: $orderId');
+          broLog('✅ Ordem CRIADA após pagamento: $orderId');
           
           // Salvar paymentHash na ordem
           if (widget.paymentHash.isNotEmpty) {
             await orderProvider.setOrderPaymentHash(orderId, widget.paymentHash, widget.invoice);
-            debugPrint('✅ PaymentHash salvo na ordem: ${widget.paymentHash}');
+            broLog('✅ PaymentHash salvo na ordem: ${widget.paymentHash}');
           }
         } else {
-          debugPrint('❌ Falha ao criar ordem após pagamento!');
+          broLog('❌ Falha ao criar ordem após pagamento!');
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Erro ao criar ordem. Pagamento recebido mas ordem não foi criada.'),
@@ -163,12 +164,12 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
         }
       } else {
         // Ordem já existe (fluxo antigo) - apenas publicar
-        debugPrint('🚀 Pagamento confirmado! Publicando ordem existente...');
+        broLog('🚀 Pagamento confirmado! Publicando ordem existente...');
         final published = await orderProvider.publishOrderAfterPayment(orderId);
         if (published) {
-          debugPrint('✅ Ordem publicada no Nostr - Bros agora podem vê-la!');
+          broLog('✅ Ordem publicada no Nostr - Bros agora podem vê-la!');
         } else {
-          debugPrint('⚠️ Falha ao publicar ordem no Nostr');
+          broLog('⚠️ Falha ao publicar ordem no Nostr');
         }
       }
       
@@ -177,7 +178,7 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
         orderId: orderId,
         status: 'payment_received',
       );
-      debugPrint('✅ Ordem $orderId atualizada para payment_received');
+      broLog('✅ Ordem $orderId atualizada para payment_received');
 
       // Registrar taxa da plataforma (2%)
       try {
@@ -188,9 +189,9 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
           providerPubkey: widget.receiver ?? 'unknown',
           clientPubkey: 'client',
         );
-        debugPrint('Taxa da plataforma registrada');
+        broLog('Taxa da plataforma registrada');
       } catch (e) {
-        debugPrint('Erro ao registrar taxa: $e');
+        broLog('Erro ao registrar taxa: $e');
       }
 
       // Mostrar mensagem e navegar para Minhas Ordens após 2 segundos
@@ -202,12 +203,12 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
         ),
       );
 
-      debugPrint('🔄 Aguardando 2 segundos para navegar... orderId=$orderId');
+      broLog('🔄 Aguardando 2 segundos para navegar... orderId=$orderId');
       
       // Aguardar 2 segundos e navegar para Detalhes da Ordem
       await Future.delayed(const Duration(seconds: 2));
       if (mounted && orderId.isNotEmpty) {
-        debugPrint('🚀 Navegando para /order-status com orderId=$orderId');
+        broLog('🚀 Navegando para /order-status com orderId=$orderId');
         Navigator.of(context).pushNamedAndRemoveUntil(
           '/order-status',
           (route) => route.isFirst,
@@ -219,7 +220,7 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
         );
       } else if (mounted) {
         // Fallback: voltar para o dashboard
-        debugPrint('⚠️ orderId vazio, voltando para dashboard');
+        broLog('⚠️ orderId vazio, voltando para dashboard');
         Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
       }
     }

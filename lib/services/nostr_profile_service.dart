@@ -1,6 +1,7 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 /// Modelo de perfil Nostr
@@ -75,7 +76,7 @@ class NostrProfileService {
   Future<NostrProfile?> fetchProfile(String pubkey, {List<String>? relays}) async {
     // Verificar cache primeiro
     if (_profileCache.containsKey(pubkey)) {
-      debugPrint('Perfil Nostr encontrado no cache: ${_profileCache[pubkey]?.preferredName}');
+      broLog('Perfil Nostr encontrado no cache: ${_profileCache[pubkey]?.preferredName}');
       return _profileCache[pubkey];
     }
 
@@ -86,11 +87,11 @@ class NostrProfileService {
         final profile = await _fetchFromRelay(pubkey, relay);
         if (profile != null) {
           _profileCache[pubkey] = profile;
-          debugPrint('Perfil Nostr encontrado: ${profile.preferredName}');
+          broLog('Perfil Nostr encontrado: ${profile.preferredName}');
           return profile;
         }
       } catch (e) {
-        debugPrint('Erro ao buscar perfil do relay $relay: $e');
+        broLog('Erro ao buscar perfil do relay $relay: $e');
       }
     }
 
@@ -119,7 +120,7 @@ class NostrProfileService {
       final reqMessage = jsonEncode(['REQ', subId, filter]);
       channel.sink.add(reqMessage);
       
-      debugPrint('Buscando perfil Nostr no relay $relayUrl...');
+      broLog('Buscando perfil Nostr no relay $relayUrl...');
       
       // Aguardar resposta com timeout
       final completer = Completer<NostrProfile?>();
@@ -159,11 +160,11 @@ class NostrProfileService {
               }
             }
           } catch (e) {
-            debugPrint('Erro ao processar mensagem do relay: $e');
+            broLog('Erro ao processar mensagem do relay: $e');
           }
         },
         onError: (error) {
-          debugPrint('Erro no WebSocket: $error');
+          broLog('Erro no WebSocket: $error');
           timeoutTimer?.cancel();
           if (!completer.isCompleted) {
             completer.complete(null);
@@ -185,7 +186,7 @@ class NostrProfileService {
       
       return result;
     } catch (e) {
-      debugPrint('Erro ao conectar ao relay $relayUrl: $e');
+      broLog('Erro ao conectar ao relay $relayUrl: $e');
       return null;
     } finally {
       await channel?.sink.close();

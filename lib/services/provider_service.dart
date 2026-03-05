@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart';
+﻿import 'package:flutter/foundation.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:dio/dio.dart';
 import 'api_service.dart';
 import 'nostr_order_service.dart';
@@ -18,7 +19,7 @@ class ProviderService {
   Future<List<Map<String, dynamic>>> fetchAvailableOrders() async {
     try {
       // CORREÇÃO: SEMPRE buscar do Nostr - API REST não funciona para P2P
-      debugPrint('🔍 Buscando ordens disponíveis do Nostr...');
+      broLog('🔍 Buscando ordens disponíveis do Nostr...');
       final orders = await _nostrOrderService.fetchPendingOrders();
       
       // SEGURANÇA: Filtrar apenas ordens pendentes (sem providerId ainda)
@@ -30,10 +31,10 @@ class ProviderService {
         return true;
       }).toList();
       
-      debugPrint('📋 ${availableOrders.length} ordens disponíveis para aceitar');
+      broLog('📋 ${availableOrders.length} ordens disponíveis para aceitar');
       return availableOrders.map((order) => order.toJson()).toList();
     } catch (e) {
-      debugPrint('❌ Erro ao buscar ordens disponíveis: $e');
+      broLog('❌ Erro ao buscar ordens disponíveis: $e');
       return [];
     }
   }
@@ -41,11 +42,11 @@ class ProviderService {
   /// Busca ordens do provedor específico (usando Nostr)
   Future<List<Map<String, dynamic>>> fetchMyOrders(String providerId) async {
     try {
-      debugPrint('🔍 Buscando ordens do provedor via Nostr...');
+      broLog('🔍 Buscando ordens do provedor via Nostr...');
       
       // Buscar do Nostr - precisa do pubkey do provedor
       final orders = await _nostrOrderService.fetchProviderOrders(providerId);
-      debugPrint('📋 Encontradas ${orders.length} ordens do provedor no Nostr');
+      broLog('📋 Encontradas ${orders.length} ordens do provedor no Nostr');
       
       // Filtrar apenas ordens ativas (não completed, não cancelled, não liquidated)
       final activeOrders = orders.where((order) {
@@ -53,11 +54,11 @@ class ProviderService {
         return status != 'completed' && status != 'cancelled' && status != 'liquidated';
       }).toList();
       
-      debugPrint('📋 ${activeOrders.length} ordens ativas após filtro');
+      broLog('📋 ${activeOrders.length} ordens ativas após filtro');
       
       return activeOrders.map((order) => order.toJson()).toList();
     } catch (e) {
-      debugPrint('❌ Erro ao buscar minhas ordens: $e');
+      broLog('❌ Erro ao buscar minhas ordens: $e');
       return [];
     }
   }
@@ -67,7 +68,7 @@ class ProviderService {
     try {
       return await _apiService.acceptOrder(orderId, providerId);
     } catch (e) {
-      debugPrint('❌ Erro ao aceitar ordem: $e');
+      broLog('❌ Erro ao aceitar ordem: $e');
       return false;
     }
   }
@@ -81,7 +82,7 @@ class ProviderService {
         metadata: {'rejectionReason': reason},
       );
     } catch (e) {
-      debugPrint('❌ Erro ao rejeitar ordem: $e');
+      broLog('❌ Erro ao rejeitar ordem: $e');
       return false;
     }
   }
@@ -91,7 +92,7 @@ class ProviderService {
     try {
       return await _apiService.getProviderStats(providerId);
     } catch (e) {
-      debugPrint('❌ Erro ao buscar estatísticas: $e');
+      broLog('❌ Erro ao buscar estatísticas: $e');
       return null;
     }
   }
@@ -119,7 +120,7 @@ class ProviderService {
 
       return response.data['success'] ?? false;
     } catch (e) {
-      debugPrint('❌ Erro ao fazer upload do comprovante: $e');
+      broLog('❌ Erro ao fazer upload do comprovante: $e');
       return false;
     }
   }
@@ -132,7 +133,7 @@ class ProviderService {
         status: 'paid',
       );
     } catch (e) {
-      debugPrint('❌ Erro ao marcar como paga: $e');
+      broLog('❌ Erro ao marcar como paga: $e');
       return false;
     }
   }
@@ -140,7 +141,7 @@ class ProviderService {
   /// Busca histórico de ordens completadas (usando Nostr)
   Future<List<Map<String, dynamic>>> fetchHistory(String providerId) async {
     try {
-      debugPrint('🔍 Buscando histórico do provedor via Nostr...');
+      broLog('🔍 Buscando histórico do provedor via Nostr...');
       
       // Buscar do Nostr
       final orders = await _nostrOrderService.fetchProviderOrders(providerId);
@@ -151,11 +152,11 @@ class ProviderService {
         return status == 'completed' || status == 'liquidated' || status == 'cancelled';
       }).toList();
       
-      debugPrint('📋 ${completedOrders.length} ordens completadas no histórico');
+      broLog('📋 ${completedOrders.length} ordens completadas no histórico');
       
       return completedOrders.map((order) => order.toJson()).toList();
     } catch (e) {
-      debugPrint('❌ Erro ao buscar histórico: $e');
+      broLog('❌ Erro ao buscar histórico: $e');
       return [];
     }
   }

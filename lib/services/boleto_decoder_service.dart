@@ -1,4 +1,5 @@
-﻿import 'package:flutter/foundation.dart';
+﻿import 'package:bro_app/services/log_utils.dart';
+import 'package:flutter/foundation.dart';
 
 /// Decodificador local de boletos bancÃ¡rios brasileiros
 /// Suporta boletos tradicionais (47 dÃ­gitos) e boletos de concessionÃ¡rias (48 dÃ­gitos)
@@ -10,34 +11,34 @@ class BoletoDecoderService {
     // Limpar cÃ³digo - remover espaÃ§os, pontos e hÃ­fens
     final cleanCode = code.replaceAll(RegExp(r'[^\d]'), '');
     
-    debugPrint('ðŸ” BoletoDecoderService.decodeBoleto()');
-    debugPrint('ðŸ” CÃ³digo original: ${code.length} chars');
-    debugPrint('ðŸ” CÃ³digo limpo: ${cleanCode.length} dÃ­gitos');
+    broLog('ðŸ” BoletoDecoderService.decodeBoleto()');
+    broLog('ðŸ” CÃ³digo original: ${code.length} chars');
+    broLog('ðŸ” CÃ³digo limpo: ${cleanCode.length} dÃ­gitos');
     
     if (cleanCode.isEmpty) {
-      debugPrint('âŒ CÃ³digo vazio apÃ³s limpeza');
+      broLog('âŒ CÃ³digo vazio apÃ³s limpeza');
       return null;
     }
     
     // Boleto bancÃ¡rio tradicional: 47 dÃ­gitos
     if (cleanCode.length == 47) {
-      debugPrint('âœ… Detectado boleto bancÃ¡rio (47 dÃ­gitos)');
+      broLog('âœ… Detectado boleto bancÃ¡rio (47 dÃ­gitos)');
       return _decodeBoletoTradicional(cleanCode);
     }
     
     // Boleto de concessionÃ¡ria/convÃªnio: 48 dÃ­gitos
     if (cleanCode.length == 48) {
-      debugPrint('âœ… Detectado boleto convÃªnio (48 dÃ­gitos)');
+      broLog('âœ… Detectado boleto convÃªnio (48 dÃ­gitos)');
       return _decodeBoletoConvenio(cleanCode);
     }
     
     // CÃ³digo de barras direto: 44 dÃ­gitos
     if (cleanCode.length == 44) {
-      debugPrint('âœ… Detectado cÃ³digo de barras (44 dÃ­gitos)');
+      broLog('âœ… Detectado cÃ³digo de barras (44 dÃ­gitos)');
       return _decodeCodigoBarras(cleanCode);
     }
     
-    debugPrint('âŒ Tamanho invÃ¡lido: ${cleanCode.length} dÃ­gitos (esperado: 44, 47 ou 48)');
+    broLog('âŒ Tamanho invÃ¡lido: ${cleanCode.length} dÃ­gitos (esperado: 44, 47 ou 48)');
     return null;
   }
   
@@ -46,8 +47,8 @@ class BoletoDecoderService {
   /// Onde o valor estÃ¡ nos Ãºltimos 10 dÃ­gitos (VVVVVVVVVV)
   static Map<String, dynamic>? _decodeBoletoTradicional(String code) {
     try {
-      debugPrint('ðŸ” Decodificando boleto tradicional (47 dÃ­gitos)');
-      debugPrint('ðŸ” CÃ³digo: $code');
+      broLog('ðŸ” Decodificando boleto tradicional (47 dÃ­gitos)');
+      broLog('ðŸ” CÃ³digo: $code');
       
       // Extrair campos da linha digitÃ¡vel
       final campo1 = code.substring(0, 10);   // PosiÃ§Ãµes 1-10
@@ -56,20 +57,20 @@ class BoletoDecoderService {
       final campo4 = code.substring(32, 33);  // PosiÃ§Ã£o 33 (dÃ­gito verificador geral)
       final campo5 = code.substring(33, 47);  // PosiÃ§Ãµes 34-47 (vencimento + valor)
       
-      debugPrint('ðŸ“Š Campo1: $campo1');
-      debugPrint('ðŸ“Š Campo2: $campo2');
-      debugPrint('ðŸ“Š Campo3: $campo3');
-      debugPrint('ðŸ“Š Campo4: $campo4');
-      debugPrint('ðŸ“Š Campo5: $campo5');
+      broLog('ðŸ“Š Campo1: $campo1');
+      broLog('ðŸ“Š Campo2: $campo2');
+      broLog('ðŸ“Š Campo3: $campo3');
+      broLog('ðŸ“Š Campo4: $campo4');
+      broLog('ðŸ“Š Campo5: $campo5');
       
       // Extrair valor do campo 5 (Ãºltimos 10 dÃ­gitos representam o valor)
       final valorStr = campo5.substring(4, 14); // Pular fator vencimento (4 dÃ­gitos)
       final valorCentavos = int.tryParse(valorStr) ?? 0;
       final valor = valorCentavos / 100.0;
       
-      debugPrint('ðŸ’° Valor String: $valorStr');
-      debugPrint('ðŸ’° Valor Centavos: $valorCentavos');
-      debugPrint('ðŸ’° Valor Final: R\$ $valor');
+      broLog('ðŸ’° Valor String: $valorStr');
+      broLog('ðŸ’° Valor Centavos: $valorCentavos');
+      broLog('ðŸ’° Valor Final: R\$ $valor');
       
       // Extrair fator de vencimento para calcular data
       final fatorVencimento = int.tryParse(campo5.substring(0, 4)) ?? 0;
@@ -84,8 +85,8 @@ class BoletoDecoderService {
       final codigoBanco = code.substring(0, 3);
       final nomeBanco = _getNomeBanco(codigoBanco);
       
-      debugPrint('ðŸ¦ Banco: $nomeBanco ($codigoBanco)');
-      debugPrint('ðŸ“… Vencimento: $dataVencimento');
+      broLog('ðŸ¦ Banco: $nomeBanco ($codigoBanco)');
+      broLog('ðŸ“… Vencimento: $dataVencimento');
       
       return {
         'success': true,
@@ -99,7 +100,7 @@ class BoletoDecoderService {
         'message': 'Boleto decodificado localmente',
       };
     } catch (e) {
-      debugPrint('âŒ Erro ao decodificar boleto tradicional: $e');
+      broLog('âŒ Erro ao decodificar boleto tradicional: $e');
       return null;
     }
   }
@@ -109,8 +110,8 @@ class BoletoDecoderService {
   /// Estrutura: ABCD.EEEEEEEEEE-F GGGG.GGGGGGG-H IIII.IIIIIII-J KKKK.KKKKKKK-L
   static Map<String, dynamic>? _decodeBoletoConvenio(String code) {
     try {
-      debugPrint('ðŸ” Decodificando boleto convÃªnio (48 dÃ­gitos)');
-      debugPrint('ðŸ” CÃ³digo: $code');
+      broLog('ðŸ” Decodificando boleto convÃªnio (48 dÃ­gitos)');
+      broLog('ðŸ” CÃ³digo: $code');
       
       // Estrutura do cÃ³digo de barras de convÃªnio (48 dÃ­gitos na linha digitÃ¡vel):
       // A linha digitÃ¡vel tem 4 campos de 12 dÃ­gitos cada (48 total)
@@ -128,11 +129,11 @@ class BoletoDecoderService {
       
       final codigoBarras = campo1 + campo2 + campo3 + campo4; // 44 dÃ­gitos
       
-      debugPrint('ðŸ“Š Campo1: $campo1');
-      debugPrint('ðŸ“Š Campo2: $campo2');
-      debugPrint('ðŸ“Š Campo3: $campo3');
-      debugPrint('ðŸ“Š Campo4: $campo4');
-      debugPrint('ðŸ“Š CÃ³digo de barras: $codigoBarras');
+      broLog('ðŸ“Š Campo1: $campo1');
+      broLog('ðŸ“Š Campo2: $campo2');
+      broLog('ðŸ“Š Campo3: $campo3');
+      broLog('ðŸ“Š Campo4: $campo4');
+      broLog('ðŸ“Š CÃ³digo de barras: $codigoBarras');
       
       // No cÃ³digo de barras de convÃªnio (44 dÃ­gitos):
       // PosiÃ§Ã£o 1: Identificador do produto (8 = arrecadaÃ§Ã£o)
@@ -151,12 +152,12 @@ class BoletoDecoderService {
       final valorCentavos = int.tryParse(valorStr) ?? 0;
       final valor = valorCentavos / 100.0;
       
-      debugPrint('ðŸ’° Identificador: $identificador');
-      debugPrint('ðŸ’° Segmento: $segmentoCode');
-      debugPrint('ðŸ’° Tipo Valor: $tipoValor');
-      debugPrint('ðŸ’° Valor String: $valorStr');
-      debugPrint('ðŸ’° Valor Centavos: $valorCentavos');
-      debugPrint('ðŸ’° Valor Final: R\$ $valor');
+      broLog('ðŸ’° Identificador: $identificador');
+      broLog('ðŸ’° Segmento: $segmentoCode');
+      broLog('ðŸ’° Tipo Valor: $tipoValor');
+      broLog('ðŸ’° Valor String: $valorStr');
+      broLog('ðŸ’° Valor Centavos: $valorCentavos');
+      broLog('ðŸ’° Valor Final: R\$ $valor');
       
       // Identificar o tipo de convÃªnio pelo segmento
       String tipoConvenio = 'ConvÃªnio';
@@ -190,7 +191,7 @@ class BoletoDecoderService {
           break;
       }
       
-      debugPrint('ðŸ¢ Tipo: $tipoConvenio');
+      broLog('ðŸ¢ Tipo: $tipoConvenio');
       
       return {
         'success': true,
@@ -203,7 +204,7 @@ class BoletoDecoderService {
         'message': 'Boleto de convÃªnio decodificado localmente',
       };
     } catch (e) {
-      debugPrint('âŒ Erro ao decodificar boleto convÃªnio: $e');
+      broLog('âŒ Erro ao decodificar boleto convÃªnio: $e');
       return null;
     }
   }
@@ -245,7 +246,7 @@ class BoletoDecoderService {
         'message': 'CÃ³digo de barras decodificado localmente',
       };
     } catch (e) {
-      debugPrint('âŒ Erro ao decodificar cÃ³digo de barras: $e');
+      broLog('âŒ Erro ao decodificar cÃ³digo de barras: $e');
       return null;
     }
   }

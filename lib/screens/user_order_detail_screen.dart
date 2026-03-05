@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
 import 'dart:convert';
 import '../providers/order_provider.dart';
@@ -43,7 +44,7 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
       try {
         await orderProvider.syncOrdersFromNostr();
       } catch (e) {
-        debugPrint('⚠️ Erro ao sincronizar Nostr: $e');
+        broLog('⚠️ Erro ao sincronizar Nostr: $e');
       }
       
       // Buscar ordem do provider
@@ -56,7 +57,7 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
         });
       }
     } catch (e) {
-      debugPrint('❌ Erro ao carregar ordem: $e');
+      broLog('❌ Erro ao carregar ordem: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -108,13 +109,13 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
 
   Widget _buildContent() {
     // Debug: verificar se metadata está presente
-    debugPrint('📋 UserOrderDetailScreen: ordem ${_order!.id.substring(0, 8)}');
-    debugPrint('   status: ${_order!.status}');
-    debugPrint('   metadata: ${_order!.metadata}');
+    broLog('📋 UserOrderDetailScreen: ordem ${_order!.id.substring(0, 8)}');
+    broLog('   status: ${_order!.status}');
+    broLog('   metadata: ${_order!.metadata}');
     if (_order!.metadata != null) {
-      debugPrint('   metadata keys: ${_order!.metadata!.keys}');
-      debugPrint('   proofImage: ${_order!.metadata!['proofImage'] != null ? "existe (${(_order!.metadata!['proofImage'] as String).length} chars)" : "null"}');
-      debugPrint('   receipt_url: ${_order!.metadata!['receipt_url'] ?? "null"}');
+      broLog('   metadata keys: ${_order!.metadata!.keys}');
+      broLog('   proofImage: ${_order!.metadata!['proofImage'] != null ? "existe (${(_order!.metadata!['proofImage'] as String).length} chars)" : "null"}');
+      broLog('   receipt_url: ${_order!.metadata!['receipt_url'] ?? "null"}');
     }
     
     return SingleChildScrollView(
@@ -496,7 +497,7 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
           bytes,
           fit: BoxFit.contain,
           errorBuilder: (context, error, stackTrace) {
-            debugPrint('❌ Erro ao exibir imagem: $error');
+            broLog('❌ Erro ao exibir imagem: $error');
             return Container(
               padding: const EdgeInsets.all(16),
               color: Colors.red.withOpacity(0.2),
@@ -515,7 +516,7 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
         ),
       );
     } catch (e) {
-      debugPrint('❌ Erro ao decodificar base64: $e');
+      broLog('❌ Erro ao decodificar base64: $e');
       return Container(
         padding: const EdgeInsets.all(16),
         color: Colors.orange.withOpacity(0.2),
@@ -574,7 +575,7 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
         ),
       );
     } catch (e) {
-      debugPrint('❌ Erro ao mostrar imagem fullscreen: $e');
+      broLog('❌ Erro ao mostrar imagem fullscreen: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Erro ao abrir imagem'),

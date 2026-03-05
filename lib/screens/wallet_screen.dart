@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../providers/breez_provider_export.dart';
 import '../providers/lightning_provider.dart';
@@ -46,7 +47,7 @@ class _WalletScreenState extends State<WalletScreen> {
       final breezProvider = context.read<BreezProvider>();
       
       if (!breezProvider.isInitialized) {
-        debugPrint('🔄 Inicializando Breez SDK...');
+        broLog('🔄 Inicializando Breez SDK...');
         final success = await breezProvider.initialize();
         if (!success) {
           throw Exception('Falha ao inicializar SDK');
@@ -72,35 +73,35 @@ class _WalletScreenState extends State<WalletScreen> {
         // 1. Filtrar por payment hash (mais confiável)
         final paymentHash = p['paymentHash']?.toString() ?? '';
         if (paymentHash.isNotEmpty && PlatformFeeService.feePaymentHashes.contains(paymentHash)) {
-          debugPrint('🔇 Ocultando taxa da plataforma (hash): $paymentHash ($amount sats)');
+          broLog('🔇 Ocultando taxa da plataforma (hash): $paymentHash ($amount sats)');
           return false;
         }
         // 2. Fallback: filtrar por descrição
         final descLower = description.toLowerCase();
         if (descLower.contains('platform fee') || 
             descLower.contains('bro platform fee')) {
-          debugPrint('🔇 Ocultando taxa da plataforma (desc): $description ($amount sats)');
+          broLog('🔇 Ocultando taxa da plataforma (desc): $description ($amount sats)');
           return false;
         }
         
         // OCULTAR: Lado RECEBIDO do auto-pagamento com saldo da carteira
         // É uma transação interna — só queremos mostrar o lado "enviado" como depósito
         if (isReceived && description == 'Bro Wallet Payment') {
-          debugPrint('🔇 Ocultando lado recebido do wallet payment: $amount sats');
+          broLog('🔇 Ocultando lado recebido do wallet payment: $amount sats');
           return false;
         }
         
         // OCULTAR: Pagamentos enviados muito pequenos (≤ 10 sats) são provavelmente taxas internas
         // Transações de 1-10 sats que são envio provavelmente são taxas de plataforma (~2%)
         if (!isReceived && amount > 0 && amount <= 10) {
-          debugPrint('🔇 Ocultando pagamento pequeno (provável taxa): $amount sats');
+          broLog('🔇 Ocultando pagamento pequeno (provável taxa): $amount sats');
           return false;
         }
         
         // OCULTAR: Pagamentos enviados sem descrição (taxas de plataforma via LNURL)
         // Pagamentos legítimos do usuário sempre têm descrição (Bro - Ordem X, Garantia, etc)
         if (!isReceived && (description.isEmpty || description == 'null')) {
-          debugPrint('🔇 Ocultando pagamento sem descrição (provável taxa interna): $amount sats');
+          broLog('🔇 Ocultando pagamento sem descrição (provável taxa interna): $amount sats');
           return false;
         }
         
@@ -147,10 +148,10 @@ class _WalletScreenState extends State<WalletScreen> {
             'createdAt': order.createdAt,
             'isWalletPayment': true,
           });
-          debugPrint('💰 Adicionado wallet payment ao histórico: ${order.id.substring(0, 8)} $satsAmount sats');
+          broLog('💰 Adicionado wallet payment ao histórico: ${order.id.substring(0, 8)} $satsAmount sats');
         }
       } catch (e) {
-        debugPrint('⚠️ Erro ao adicionar wallet payments: $e');
+        broLog('⚠️ Erro ao adicionar wallet payments: $e');
       }
       
       // Ordenar por data (mais recente primeiro)
@@ -166,8 +167,8 @@ class _WalletScreenState extends State<WalletScreen> {
         return 0;
       });
       
-      debugPrint('💰 Saldo: ${balance?['balance']} sats');
-      debugPrint('📜 Pagamentos: ${allPayments.length} (incluindo ganhos Bro)');
+      broLog('💰 Saldo: ${balance?['balance']} sats');
+      broLog('📜 Pagamentos: ${allPayments.length} (incluindo ganhos Bro)');
 
       if (mounted) {
         setState(() {
@@ -176,7 +177,7 @@ class _WalletScreenState extends State<WalletScreen> {
         });
       }
     } catch (e) {
-      debugPrint('❌ Erro ao carregar carteira: $e');
+      broLog('❌ Erro ao carregar carteira: $e');
       if (mounted) {
         setState(() => _error = e.toString());
       }
@@ -964,7 +965,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           errorMessage = null;
                         });
                         
-                        debugPrint('💸 Enviando $amountSats sats para $destination...');
+                        broLog('💸 Enviando $amountSats sats para $destination...');
                         
                         try {
                           final breezProvider = context.read<BreezProvider>();
@@ -985,7 +986,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           }
                           
                           final invoice = invoiceResult['invoice'] as String;
-                          debugPrint('📝 Invoice obtida: ${invoice.substring(0, 50)}...');
+                          broLog('📝 Invoice obtida: ${invoice.substring(0, 50)}...');
                           
                           // Pagar a invoice
                           final result = await breezProvider.payInvoice(invoice);
@@ -1008,7 +1009,7 @@ class _WalletScreenState extends State<WalletScreen> {
                             });
                           }
                         } catch (e) {
-                          debugPrint('❌ Erro ao enviar: $e');
+                          broLog('❌ Erro ao enviar: $e');
                           setModalState(() {
                             isSending = false;
                             errorMessage = 'Erro: $e';
@@ -1030,13 +1031,13 @@ class _WalletScreenState extends State<WalletScreen> {
                         isSending = true;
                         errorMessage = null;
                       });
-                      debugPrint('💸 Enviando pagamento...');
+                      broLog('💸 Enviando pagamento...');
                       
                       try {
                         final breezProvider = context.read<BreezProvider>();
                         final result = await breezProvider.payInvoice(destination);
                         
-                        debugPrint('📦 Resultado pagamento: $result');
+                        broLog('📦 Resultado pagamento: $result');
                         
                         if (result != null && result['success'] == true) {
                           if (context.mounted) {
@@ -1122,7 +1123,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           }
                         }
                       } catch (e) {
-                        debugPrint('❌ Erro ao enviar: $e');
+                        broLog('❌ Erro ao enviar: $e');
                         setModalState(() => isSending = false);
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -1412,7 +1413,7 @@ class _WalletScreenState extends State<WalletScreen> {
 
   // ==================== ENVIAR COM INVOICE PRÉ-PREENCHIDA ====================
   void _showSendDialogWithInvoice(String invoice) {
-    debugPrint('📤 Abrindo dialog de envio com invoice: ${invoice.substring(0, 50)}...');
+    broLog('📤 Abrindo dialog de envio com invoice: ${invoice.substring(0, 50)}...');
     
     // Verificar se é endereço Bitcoin (não suportado)
     if (_isBitcoinAddress(invoice)) {
@@ -1468,10 +1469,10 @@ class _WalletScreenState extends State<WalletScreen> {
             default: // sem unidade = BTC
               invoiceAmountSats = amount * 100000000;
           }
-          debugPrint('💰 Valor da invoice decodificado: $invoiceAmountSats sats');
+          broLog('💰 Valor da invoice decodificado: $invoiceAmountSats sats');
         }
       } catch (e) {
-        debugPrint('⚠️ Não foi possível decodificar valor da invoice: $e');
+        broLog('⚠️ Não foi possível decodificar valor da invoice: $e');
       }
     }
     
@@ -1697,7 +1698,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: isSending ? null : () async {
-                      debugPrint('🔘 Botão de envio pressionado!');
+                      broLog('🔘 Botão de envio pressionado!');
                       
                       // Validar valor se necessário
                       if (needsAmountInput) {
@@ -1728,10 +1729,10 @@ class _WalletScreenState extends State<WalletScreen> {
                         errorMessage = null;
                       });
                       
-                      debugPrint('💸 Enviando pagamento...');
-                      debugPrint('   Input original: ${invoice.length > 50 ? invoice.substring(0, 50) : invoice}...');
+                      broLog('💸 Enviando pagamento...');
+                      broLog('   Input original: ${invoice.length > 50 ? invoice.substring(0, 50) : invoice}...');
                       if (needsAmountInput) {
-                        debugPrint('   Valor: ${amountController.text} sats');
+                        broLog('   Valor: ${amountController.text} sats');
                       }
                       
                       try {
@@ -1740,7 +1741,7 @@ class _WalletScreenState extends State<WalletScreen> {
                         
                         // Para Lightning Address ou LNURL, resolver para BOLT11 primeiro
                         if (isLnAddress || isLnurl) {
-                          debugPrint('🔄 Resolvendo Lightning Address/LNURL...');
+                          broLog('🔄 Resolvendo Lightning Address/LNURL...');
                           setModalState(() => errorMessage = null);
                           
                           final amountSats = int.parse(amountController.text.trim());
@@ -1761,16 +1762,16 @@ class _WalletScreenState extends State<WalletScreen> {
                           }
                           
                           finalInvoice = resolveResult['invoice'] as String;
-                          debugPrint('✅ Resolvido para invoice BOLT11: ${finalInvoice.substring(0, 50)}...');
+                          broLog('✅ Resolvido para invoice BOLT11: ${finalInvoice.substring(0, 50)}...');
                         }
                         
                         // Agora pagar a invoice BOLT11
                         final result = await breezProvider.payInvoice(finalInvoice);
                         
-                        debugPrint('📨 Resultado do pagamento: $result');
+                        broLog('📨 Resultado do pagamento: $result');
                         
                         if (result != null && result['success'] == true) {
-                          debugPrint('✅ Pagamento bem sucedido!');
+                          broLog('✅ Pagamento bem sucedido!');
                           if (context.mounted) {
                             Navigator.pop(context);
                             _loadWalletInfo();
@@ -1789,15 +1790,15 @@ class _WalletScreenState extends State<WalletScreen> {
                             );
                           }
                         } else {
-                          debugPrint('❌ Pagamento falhou: ${result?['error']}');
+                          broLog('❌ Pagamento falhou: ${result?['error']}');
                           setModalState(() {
                             isSending = false;
                             errorMessage = result?['error'] ?? 'Falha ao enviar pagamento';
                           });
                         }
                       } catch (e, stack) {
-                        debugPrint('❌ Exceção ao enviar: $e');
-                        debugPrint('   Stack: $stack');
+                        broLog('❌ Exceção ao enviar: $e');
+                        broLog('   Stack: $stack');
                         setModalState(() {
                           isSending = false;
                           errorMessage = 'Erro: $e';
@@ -1981,7 +1982,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           errorMsg = null;
                         });
                         
-                        debugPrint('🎯 Gerando invoice de $amount sats...');
+                        broLog('🎯 Gerando invoice de $amount sats...');
                         
                         try {
                           // Usar LightningProvider com fallback Spark -> Liquid
@@ -1991,16 +1992,16 @@ class _WalletScreenState extends State<WalletScreen> {
                             description: 'Receber $amount sats - Bro App',
                           );
                           
-                          debugPrint('📦 Resultado createInvoice: $result');
+                          broLog('📦 Resultado createInvoice: $result');
                           
                           // Log se usou Liquid
                           if (result?['isLiquid'] == true) {
-                            debugPrint('💧 Invoice criada via LIQUID (fallback)');
+                            broLog('💧 Invoice criada via LIQUID (fallback)');
                           }
                           
                           if (result != null && result['bolt11'] != null) {
                             final bolt11 = result['bolt11'] as String;
-                            debugPrint('✅ Invoice: ${bolt11.substring(0, 50)}...');
+                            broLog('✅ Invoice: ${bolt11.substring(0, 50)}...');
                             setModalState(() {
                               generatedInvoice = bolt11;
                               isGenerating = false;
@@ -2009,7 +2010,7 @@ class _WalletScreenState extends State<WalletScreen> {
                             throw Exception(result?['error'] ?? 'Falha ao gerar invoice');
                           }
                         } catch (e) {
-                          debugPrint('❌ Erro ao gerar invoice: $e');
+                          broLog('❌ Erro ao gerar invoice: $e');
                           setModalState(() {
                             isGenerating = false;
                             errorMsg = e.toString();

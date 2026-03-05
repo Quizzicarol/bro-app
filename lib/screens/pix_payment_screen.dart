@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
 import '../providers/order_provider.dart';
 import '../services/api_service.dart';
@@ -53,8 +54,8 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
       _pixCode = code;
     });
 
-    debugPrint('🔍 Processando código: ${code.substring(0, 50)}');
-    debugPrint('📊 Tipo detectado: PIX');
+    broLog('🔍 Processando código: ${code.substring(0, 50)}');
+    broLog('📊 Tipo detectado: PIX');
 
     try {
       // Decodifica PIX via backend
@@ -84,7 +85,7 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
       await _processPayment(code, pixInfo);
 
     } catch (e) {
-      debugPrint('❌ Erro ao processar PIX: $e');
+      broLog('❌ Erro ao processar PIX: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -178,7 +179,7 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
         throw Exception(result['error'] ?? 'Pagamento não autorizado');
       }
     } catch (e) {
-      debugPrint('❌ Erro ao processar pagamento: $e');
+      broLog('❌ Erro ao processar pagamento: $e');
       rethrow;
     }
   }

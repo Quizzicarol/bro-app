@@ -1,5 +1,6 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/order.dart';
 
@@ -43,7 +44,7 @@ class CacheService {
     final p = await prefs;
     await p.setDouble(_keyBtcPrice, price);
     await p.setInt(_keyBtcPriceTime, DateTime.now().millisecondsSinceEpoch);
-    debugPrint('💾 BTC price cached: R\$ ${price.toStringAsFixed(2)}');
+    broLog('💾 BTC price cached: R\$ ${price.toStringAsFixed(2)}');
   }
   
   /// Obtém preço do Bitcoin do cache (se não expirado)
@@ -57,12 +58,12 @@ class CacheService {
     final isExpired = DateTime.now().difference(cacheDate).inMinutes > _btcPriceExpiry;
     
     if (isExpired) {
-      debugPrint('⏰ BTC price cache expired');
+      broLog('⏰ BTC price cache expired');
       return null;
     }
     
     final price = p.getDouble(_keyBtcPrice);
-    debugPrint('📦 BTC price from cache: R\$ ${price?.toStringAsFixed(2)}');
+    broLog('📦 BTC price from cache: R\$ ${price?.toStringAsFixed(2)}');
     return price;
   }
 
@@ -76,7 +77,7 @@ class CacheService {
     final ordersJson = orders.map((o) => o.toJson()).toList();
     await p.setString(_keyOrders, jsonEncode(ordersJson));
     await p.setInt(_keyOrdersTime, DateTime.now().millisecondsSinceEpoch);
-    debugPrint('💾 ${orders.length} orders cached');
+    broLog('💾 ${orders.length} orders cached');
   }
   
   /// Obtém ordens do cache
@@ -91,7 +92,7 @@ class CacheService {
       final isExpired = DateTime.now().difference(cacheDate).inMinutes > _ordersExpiry;
       
       if (isExpired) {
-        debugPrint('⏰ Orders cache expired');
+        broLog('⏰ Orders cache expired');
         return null;
       }
     }
@@ -102,10 +103,10 @@ class CacheService {
     try {
       final ordersJson = jsonDecode(ordersString) as List;
       final orders = ordersJson.map((json) => Order.fromJson(json)).toList();
-      debugPrint('📦 ${orders.length} orders from cache');
+      broLog('📦 ${orders.length} orders from cache');
       return orders;
     } catch (e) {
-      debugPrint('❌ Error parsing cached orders: $e');
+      broLog('❌ Error parsing cached orders: $e');
       return null;
     }
   }
@@ -151,7 +152,7 @@ class CacheService {
     
     cachedOrders[index] = updatedOrder;
     await cacheOrders(cachedOrders);
-    debugPrint('📝 Order $orderId updated in cache to $newStatus');
+    broLog('📝 Order $orderId updated in cache to $newStatus');
   }
 
   // ============================================
@@ -167,7 +168,7 @@ class CacheService {
       'cachedAt': DateTime.now().millisecondsSinceEpoch,
     };
     await p.setString(_keyNostrProfiles, jsonEncode(profiles));
-    debugPrint('💾 Nostr profile cached: ${pubkey.substring(0, 8)}...');
+    broLog('💾 Nostr profile cached: ${pubkey.substring(0, 8)}...');
   }
   
   /// Obtém perfil Nostr do cache
@@ -182,7 +183,7 @@ class CacheService {
     final isExpired = DateTime.now().difference(cacheDate).inMinutes > _profileExpiry;
     
     if (isExpired) {
-      debugPrint('⏰ Nostr profile cache expired: ${pubkey.substring(0, 8)}...');
+      broLog('⏰ Nostr profile cache expired: ${pubkey.substring(0, 8)}...');
       return null;
     }
     
@@ -214,7 +215,7 @@ class CacheService {
     await p.remove(_keyOrdersTime);
     await p.remove(_keyUserProfile);
     await p.remove(_keyNostrProfiles);
-    debugPrint('🗑️ All cache cleared');
+    broLog('🗑️ All cache cleared');
   }
   
   /// Obtém tamanho estimado do cache

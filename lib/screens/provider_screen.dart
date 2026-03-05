@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'dart:io';
@@ -14,6 +14,7 @@ import '../providers/order_provider.dart';
 import '../models/collateral_tier.dart';
 import '../widgets/order_card.dart';
 import '../config.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:intl/intl.dart';
 
 class ProviderScreen extends StatefulWidget {
@@ -69,12 +70,12 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
     
     if (pubkey != null) {
       _providerId = pubkey;
-      debugPrint('👤 Provider ID (Nostr pubkey): ${_providerId.length >= 16 ? _providerId.substring(0, 16) : _providerId}...');
+      broLog('👤 Provider ID (Nostr pubkey): ${_providerId.length >= 16 ? _providerId.substring(0, 16) : _providerId}...');
     } else {
       // Fallback: gera um ID local se não tiver Nostr configurado
       _providerId = await _storageService.getProviderId() ?? _generateProviderId();
       await _storageService.saveProviderId(_providerId);
-      debugPrint('⚠️ Usando provider ID local: $_providerId');
+      broLog('⚠️ Usando provider ID local: $_providerId');
     }
     
     await _loadAll();
@@ -102,9 +103,9 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
         final breezProvider = context.read<BreezProvider>();
         final balanceInfo = await breezProvider.getBalance();
         walletBalance = int.tryParse(balanceInfo['balance']?.toString() ?? '0') ?? 0;
-        debugPrint('🏷️ Saldo da carteira: $walletBalance sats');
+        broLog('🏷️ Saldo da carteira: $walletBalance sats');
       } catch (e) {
-        debugPrint('⚠️ Erro ao buscar saldo: $e');
+        broLog('⚠️ Erro ao buscar saldo: $e');
       }
       
       // Carregar preço atual do Bitcoin
@@ -127,7 +128,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
       final requiredSats = currentTierDef.requiredCollateralSats;
       // 🔥 Tolerância de 10% para oscilação do Bitcoin
       final minRequiredWithTolerance = (requiredSats * 0.90).round();
-      debugPrint('🏷️ Tier ${currentTierDef.id}: requer $requiredSats sats (mínimo c/ tolerância: $minRequiredWithTolerance), carteira tem $walletBalance sats');
+      broLog('🏷️ Tier ${currentTierDef.id}: requer $requiredSats sats (mínimo c/ tolerância: $minRequiredWithTolerance), carteira tem $walletBalance sats');
       
       // O tier está em risco se o SALDO DA CARTEIRA for menor que o mínimo com tolerância
       if (walletBalance < minRequiredWithTolerance) {
@@ -136,7 +137,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
           _tierWarning = true;
           _tierWarningMessage = 'Deposite mais $deficit sats para manter o ${_currentTier!.tierName}';
         });
-        debugPrint('⚠️ Tier em risco! Faltam $deficit sats');
+        broLog('⚠️ Tier em risco! Faltam $deficit sats');
         
         // Enviar notificação
         await _notificationService.notifyTierAtRisk(
@@ -148,10 +149,10 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
           _tierWarning = false;
           _tierWarningMessage = null;
         });
-        debugPrint('✅ Tier ativo! Saldo suficiente');
+        broLog('✅ Tier ativo! Saldo suficiente');
       }
     } catch (e) {
-      debugPrint('Erro ao verificar tier: $e');
+      broLog('Erro ao verificar tier: $e');
       _tierWarning = false;
       _tierWarningMessage = null;
     }
@@ -490,11 +491,11 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
 
   /// Badge compacto do tier - TEXTO CLARO: Ativo ou Inativo
   Widget _buildTierBadge() {
-    debugPrint('🏷️ _buildTierBadge chamado: _currentTier=${_currentTier?.tierName ?? "null"}, warning=$_tierWarning');
+    broLog('🏷️ _buildTierBadge chamado: _currentTier=${_currentTier?.tierName ?? "null"}, warning=$_tierWarning');
     
     // Se não tem tier, mostra "Sem Tier"
     if (_currentTier == null) {
-      debugPrint('🏷️ Mostrando badge "Sem Tier"');
+      broLog('🏷️ Mostrando badge "Sem Tier"');
       return GestureDetector(
         onTap: _showTierDetailsDialog,
         child: Container(
@@ -530,7 +531,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
     final statusText = isActive ? 'Tier Ativo' : 'Tier Inativo';
     final statusColor = isActive ? Colors.green : Colors.orange;
     
-    debugPrint('🏷️ Mostrando badge: $statusText (deficit=$deficit)');
+    broLog('🏷️ Mostrando badge: $statusText (deficit=$deficit)');
     
     return GestureDetector(
       onTap: () => _showTierStatusExplanation(isActive, deficit),

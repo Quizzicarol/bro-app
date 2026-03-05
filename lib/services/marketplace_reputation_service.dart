@@ -1,6 +1,7 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:nostr/nostr.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:uuid/uuid.dart';
 import '../models/marketplace_offer.dart';
 import 'nostr_order_service.dart';
@@ -81,7 +82,7 @@ class MarketplaceReputationService {
       );
       final successCount = results.where((s) => s).length;
 
-      debugPrint(
+      broLog(
           '⭐ Review publicada em $successCount/${_relays.length} relays (seller: ${sellerPubkey.substring(0, 8)})');
 
       // Limpar cache para forçar recarga
@@ -90,7 +91,7 @@ class MarketplaceReputationService {
 
       return successCount > 0;
     } catch (e) {
-      debugPrint('❌ Erro ao publicar review: $e');
+      broLog('❌ Erro ao publicar review: $e');
       return false;
     }
   }
@@ -126,7 +127,7 @@ class MarketplaceReputationService {
             try {
               reviews.add(MarketplaceReview.fromNostrEvent(event));
             } catch (e) {
-              debugPrint('⚠️ Erro ao parsear review: $e');
+              broLog('⚠️ Erro ao parsear review: $e');
             }
           }
         }
@@ -138,10 +139,10 @@ class MarketplaceReputationService {
       // Cachear
       _reviewCache[sellerPubkey] = reviews;
 
-      debugPrint(
+      broLog(
           '⭐ ${reviews.length} reviews carregadas para seller ${sellerPubkey.substring(0, 8)}');
     } catch (e) {
-      debugPrint('❌ Erro ao buscar reviews: $e');
+      broLog('❌ Erro ao buscar reviews: $e');
     }
 
     return reviews;

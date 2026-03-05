@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
 import 'dart:convert';
 import '../services/platform_fee_service.dart';
@@ -216,7 +217,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
         
         nostrDisputes = openNostr;
         
-        debugPrint('📋 Admin: ${openNostr.length} abertas, ${resolvedNostr.length} resolvidas (Nostr), ${allDisputes.length} locais');
+        broLog('📋 Admin: ${openNostr.length} abertas, ${resolvedNostr.length} resolvidas (Nostr), ${allDisputes.length} locais');
       
         // Carregar dados do AI Agent (Phase 4)
         List<Map<String, dynamic>> agentAnalyses = [];
@@ -225,7 +226,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
           agentAnalyses = await ApiService().getAgentPendingAnalyses();
           agentStats = await ApiService().getAgentStats();
         } catch (e) {
-          debugPrint('⚠️ Agent não disponível: $e');
+          broLog('⚠️ Agent não disponível: $e');
         }
 
         setState(() {
@@ -239,7 +240,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
           _agentStats = agentStats;
         });
       } catch (e) {
-        debugPrint('⚠️ Erro ao buscar disputas do Nostr: $e');
+        broLog('⚠️ Erro ao buscar disputas do Nostr: $e');
         setState(() {
           _totals = totals;
           _pendingRecords = pending;
@@ -248,7 +249,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
         });
       }
     } catch (e) {
-      debugPrint('Erro ao carregar dados: $e');
+      broLog('Erro ao carregar dados: $e');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -335,8 +336,8 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
     setState(() => _isTesting = true);
     
     try {
-      debugPrint('🧪 Testando envio de taxa da plataforma...');
-      debugPrint('📍 Destino: ${AppConfig.platformLightningAddress}');
+      broLog('🧪 Testando envio de taxa da plataforma...');
+      broLog('📍 Destino: ${AppConfig.platformLightningAddress}');
       
       final result = await PlatformFeeService.sendPlatformFee(
         orderId: 'test_${DateTime.now().millisecondsSinceEpoch}',
@@ -356,7 +357,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
         await _loadData();
       }
     } catch (e) {
-      debugPrint('❌ Erro no teste: $e');
+      broLog('❌ Erro no teste: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('❌ Erro: $e'), backgroundColor: Colors.red),
@@ -2164,7 +2165,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
           providerId: providerId.isNotEmpty ? providerId : null,
         );
       } catch (e) {
-        debugPrint('⚠️ Erro ao atualizar status da ordem: $e');
+        broLog('⚠️ Erro ao atualizar status da ordem: $e');
       }
       
       // 3. NOVO: Persistir resolução localmente (independente do relay)
@@ -2181,7 +2182,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
             resolution: 'Resolvida via Nostr',
             mediatorNotes: notes,
           );
-          debugPrint('⚖️ Disputa local ${localDispute.id} sincronizada: $resolution');
+          broLog('⚖️ Disputa local ${localDispute.id} sincronizada: $resolution');
         }
       }
       
@@ -2231,7 +2232,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
               status: orderStatus,
             );
           } catch (e) {
-            debugPrint('⚠️ Erro ao atualizar status da ordem: $e');
+            broLog('⚠️ Erro ao atualizar status da ordem: $e');
           }
         }
       }
@@ -2459,7 +2460,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
             recordedCount++;
           }
         } catch (e) {
-          debugPrint('Erro ao registrar taxa para ordem ${order.id}: $e');
+          broLog('Erro ao registrar taxa para ordem ${order.id}: $e');
         }
       }
       

@@ -1,8 +1,9 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
 import '../providers/order_provider.dart';
 import '../services/nip44_service.dart';
@@ -80,10 +81,10 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
         final foundProvider = await nostrService.fetchOrderProviderPubkey(orderId);
         if (foundProvider != null && mounted) {
           setState(() => _resolvedProviderId = foundProvider);
-          debugPrint('✅ Provider descoberto para disputa: ${foundProvider.substring(0, 8)}');
+          broLog('✅ Provider descoberto para disputa: ${foundProvider.substring(0, 8)}');
         }
       } catch (e) {
-        debugPrint('⚠️ Erro ao buscar provider: $e');
+        broLog('⚠️ Erro ao buscar provider: $e');
       }
     }
     _fetchProofImage();
@@ -105,7 +106,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
           _isResolved = true;
         });
         final localRes = await StorageService().getLocalDisputeResolution(orderId);
-        debugPrint('⚖️ Disputa $orderId já resolvida (local): $localRes');
+        broLog('⚖️ Disputa $orderId já resolvida (local): $localRes');
         return;
       }
       
@@ -119,10 +120,10 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
         // Persistir localmente para futuras consultas
         final resText = resolution['resolution'] as String? ?? 'resolved';
         await StorageService().markDisputeResolved(orderId, resText);
-        debugPrint('⚖️ Disputa $orderId já resolvida (Nostr): ${resolution['resolution']}');
+        broLog('⚖️ Disputa $orderId já resolvida (Nostr): ${resolution['resolution']}');
       }
     } catch (e) {
-      debugPrint('⚠️ Erro ao verificar resolução existente: $e');
+      broLog('⚠️ Erro ao verificar resolução existente: $e');
     }
   }
   
@@ -145,7 +146,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
         });
       }
     } catch (e) {
-      debugPrint('⚠️ Erro ao buscar evidências: $e');
+      broLog('⚠️ Erro ao buscar evidências: $e');
       if (mounted) setState(() => _loadingEvidence = false);
     }
   }
@@ -171,7 +172,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
         }
       }
     } catch (e) {
-      debugPrint('⚠️ Erro ao buscar histórico de disputas: $e');
+      broLog('⚠️ Erro ao buscar histórico de disputas: $e');
     } finally {
       if (mounted) setState(() => _loadingLosses = false);
     }
@@ -194,7 +195,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
         });
       }
     } catch (e) {
-      debugPrint('⚠️ Erro ao buscar mensagens: $e');
+      broLog('⚠️ Erro ao buscar mensagens: $e');
       if (mounted) setState(() => _loadingMessages = false);
     }
   }
@@ -247,7 +248,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
         }
       });
     } catch (e) {
-      debugPrint('⚠️ Erro ao buscar comprovante: $e');
+      broLog('⚠️ Erro ao buscar comprovante: $e');
     } finally {
       if (mounted) setState(() => _loadingProof = false);
     }
@@ -964,10 +965,10 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
           if (adminPrivKey != null) {
             final nip44 = __getNip44();
             userEvidence = nip44.decryptBetween(encryptedPayload, adminPrivKey, senderPubkey);
-            debugPrint('🔓 user_evidence descriptografada com NIP-44');
+            broLog('🔓 user_evidence descriptografada com NIP-44');
           }
         } catch (e) {
-          debugPrint('⚠️ Falha ao descriptografar user_evidence: $e');
+          broLog('⚠️ Falha ao descriptografar user_evidence: $e');
           userEvidence = null;
         }
       } else {
@@ -1488,7 +1489,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
         setState(() => _agentAnalysis = analysis['analysis'] as Map<String, dynamic>?);
       }
     } catch (e) {
-      debugPrint('⚠️ Agent analysis não disponível: $e');
+      broLog('⚠️ Agent analysis não disponível: $e');
     }
   }
 

@@ -1,10 +1,11 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:crypto/crypto.dart';
 import '../services/storage_service.dart';
 import '../services/version_check_service.dart';
@@ -41,7 +42,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _appVersion = '${packageInfo.version}+${packageInfo.buildNumber}';
       });
     } catch (e) {
-      debugPrint('Erro ao carregar versão: $e');
+      broLog('Erro ao carregar versão: $e');
     }
   }
 

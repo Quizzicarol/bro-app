@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/foundation.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:dio/dio.dart';
 
 /// ServiÃ§o para buscar preÃ§o real do Bitcoin de APIs pÃºblicas
@@ -22,14 +23,14 @@ class BitcoinPriceService {
     final coingeckoPrice = await _getCoingeckoPrice();
     if (coingeckoPrice != null) return coingeckoPrice;
 
-    debugPrint('âŒ NÃ£o foi possÃ­vel buscar preÃ§o do Bitcoin de nenhuma fonte');
+    broLog('âŒ NÃ£o foi possÃ­vel buscar preÃ§o do Bitcoin de nenhuma fonte');
     return null;
   }
 
   /// Coinbase API (mais confiÃ¡vel)
   static Future<double?> _getCoinbasePrice() async {
     try {
-      debugPrint('ðŸ“¡ Buscando preÃ§o Bitcoin na Coinbase...');
+      broLog('ðŸ“¡ Buscando preÃ§o Bitcoin na Coinbase...');
       final response = await _dio.get('https://api.coinbase.com/v2/exchange-rates?currency=BTC');
       
       final rates = response.data['data']['rates'];
@@ -37,11 +38,11 @@ class BitcoinPriceService {
       
       if (brlRate != null) {
         final price = double.parse(brlRate.toString());
-        debugPrint('âœ… Coinbase: R\$ ${price.toStringAsFixed(2)}');
+        broLog('âœ… Coinbase: R\$ ${price.toStringAsFixed(2)}');
         return price;
       }
     } catch (e) {
-      debugPrint('âš ï¸ Erro ao buscar preÃ§o na Coinbase: $e');
+      broLog('âš ï¸ Erro ao buscar preÃ§o na Coinbase: $e');
     }
     return null;
   }
@@ -49,7 +50,7 @@ class BitcoinPriceService {
   /// Binance API
   static Future<double?> _getBinancePrice() async {
     try {
-      debugPrint('ðŸ“¡ Buscando preÃ§o Bitcoin na Binance...');
+      broLog('ðŸ“¡ Buscando preÃ§o Bitcoin na Binance...');
       
       // Buscar BTC/USDT
       final btcUsdtResponse = await _dio.get('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
@@ -60,10 +61,10 @@ class BitcoinPriceService {
       final usdtBrl = double.parse(usdtBrlResponse.data['price']);
       
       final btcBrl = btcUsdt * usdtBrl;
-      debugPrint('âœ… Binance: R\$ ${btcBrl.toStringAsFixed(2)}');
+      broLog('âœ… Binance: R\$ ${btcBrl.toStringAsFixed(2)}');
       return btcBrl;
     } catch (e) {
-      debugPrint('âš ï¸ Erro ao buscar preÃ§o na Binance: $e');
+      broLog('âš ï¸ Erro ao buscar preÃ§o na Binance: $e');
     }
     return null;
   }
@@ -71,7 +72,7 @@ class BitcoinPriceService {
   /// CoinGecko API (free, sem autenticaÃ§Ã£o)
   static Future<double?> _getCoingeckoPrice() async {
     try {
-      debugPrint('ðŸ“¡ Buscando preÃ§o Bitcoin no CoinGecko...');
+      broLog('ðŸ“¡ Buscando preÃ§o Bitcoin no CoinGecko...');
       final response = await _dio.get(
         'https://api.coingecko.com/api/v3/simple/price',
         queryParameters: {
@@ -83,11 +84,11 @@ class BitcoinPriceService {
       final price = response.data['bitcoin']['brl'];
       if (price != null) {
         final priceDouble = double.parse(price.toString());
-        debugPrint('âœ… CoinGecko: R\$ ${priceDouble.toStringAsFixed(2)}');
+        broLog('âœ… CoinGecko: R\$ ${priceDouble.toStringAsFixed(2)}');
         return priceDouble;
       }
     } catch (e) {
-      debugPrint('âš ï¸ Erro ao buscar preÃ§o no CoinGecko: $e');
+      broLog('âš ï¸ Erro ao buscar preÃ§o no CoinGecko: $e');
     }
     return null;
   }
@@ -102,7 +103,7 @@ class BitcoinPriceService {
     if (_cachedPrice != null && _lastFetch != null) {
       final age = DateTime.now().difference(_lastFetch!);
       if (age < _cacheDuration) {
-        debugPrint('ðŸ’¾ Usando preÃ§o em cache: R\$ ${_cachedPrice!.toStringAsFixed(2)}');
+        broLog('ðŸ’¾ Usando preÃ§o em cache: R\$ ${_cachedPrice!.toStringAsFixed(2)}');
         return _cachedPrice;
       }
     }

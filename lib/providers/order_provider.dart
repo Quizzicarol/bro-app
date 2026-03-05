@@ -1,6 +1,7 @@
 ﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../services/api_service.dart';
@@ -229,12 +230,12 @@ class OrderProvider with ChangeNotifier {
       final sats = (o.btcAmount * 100000000).round();
       if (sats > 0) {
         locked += sats;
-        debugPrint('LOCKED: ordem=\${o.id.substring(0, 8)} status=\${o.status} sats=\$sats');
+        broLog('LOCKED: ordem=\${o.id.substring(0, 8)} status=\${o.status} sats=\$sats');
       }
     }
     
     if (locked > 0) {
-      debugPrint('TOTAL LOCKED (wallet payments): \$locked sats');
+      broLog('TOTAL LOCKED (wallet payments): \$locked sats');
     }
     
     return locked;
@@ -540,7 +541,7 @@ class OrderProvider with ChangeNotifier {
                 order.providerId == _currentUserPubkey) {
               // userPubkey == providerId == eu => userPubkey esta errado
               // Marcar para correcao durante proximo sync
-              debugPrint('v257-FIX: ordem  tem userPubkey corrompido (== providerId)');
+              broLog('v257-FIX: ordem  tem userPubkey corrompido (== providerId)');
               needsMigration = true;
               // Flag para republish posterior
               _ordersNeedingUserPubkeyFix.add(order.id);
@@ -933,7 +934,7 @@ class OrderProvider with ChangeNotifier {
         await syncAllPendingOrdersFromNostr(force: true).timeout(
           const Duration(seconds: 60),
           onTimeout: () {
-            debugPrint('Ã¢ÂÂ° fetchOrders: timeout externo de 60s atingido');
+            broLog('Ã¢ÂÂ° fetchOrders: timeout externo de 60s atingido');
           },
         );
       } else {
@@ -961,7 +962,7 @@ class OrderProvider with ChangeNotifier {
     if (_isSyncingProvider && _syncProviderStartedAt != null) {
       final elapsed = DateTime.now().difference(_syncProviderStartedAt!).inSeconds;
       if (elapsed > _maxSyncDurationSeconds) {
-        debugPrint('v259: syncProvider LOCK STALE detectado (${elapsed}s) - resetando');
+        broLog('v259: syncProvider LOCK STALE detectado (${elapsed}s) - resetando');
         _isSyncingProvider = false;
         _syncProviderStartedAt = null;
         _providerSyncCompleter?.complete();
@@ -970,11 +971,11 @@ class OrderProvider with ChangeNotifier {
     }
     if (_isSyncingProvider) {
       if (force && _providerSyncCompleter != null) {
-        debugPrint('syncAllPending: sync em andamento, aguardando (pull-to-refresh)...');
+        broLog('syncAllPending: sync em andamento, aguardando (pull-to-refresh)...');
         try {
           await _providerSyncCompleter!.future.timeout(const Duration(seconds: 15));
         } catch (_) {
-          debugPrint('syncAllPending: timeout aguardando sync atual');
+          broLog('syncAllPending: timeout aguardando sync atual');
         }
       }
       return;
@@ -1000,11 +1001,11 @@ class OrderProvider with ChangeNotifier {
       Future<List<Order>> safeFetch(Future<List<Order>> Function() fetcher, String name) async {
         try {
           return await fetcher().timeout(const Duration(seconds: 30), onTimeout: () {
-            debugPrint('Ã¢ÂÂ° safeFetch timeout: $name');
+            broLog('Ã¢ÂÂ° safeFetch timeout: $name');
             return <Order>[];
           });
         } catch (e) {
-          debugPrint('Ã¢ÂÅ safeFetch error $name: $e');
+          broLog('Ã¢ÂÅ safeFetch error $name: $e');
           return <Order>[];
         }
       }
@@ -1019,7 +1020,7 @@ class OrderProvider with ChangeNotifier {
       );
       
       if (!hasActiveUserOrders) {
-        debugPrint('⚡ syncProvider: todas ordens do user são terminais, pulando fetchUserOrders');
+        broLog('⚡ syncProvider: todas ordens do user são terminais, pulando fetchUserOrders');
       }
       
       final results = await Future.wait([
@@ -1039,12 +1040,12 @@ class OrderProvider with ChangeNotifier {
       final userOrders = results[1];
       final providerOrders = results[2];
       
-      debugPrint('Ã°Å¸ââ syncProvider: pending=${allPendingOrders.length}, user=${userOrders.length}, provider=${providerOrders.length}');
+      broLog('Ã°Å¸ââ syncProvider: pending=${allPendingOrders.length}, user=${userOrders.length}, provider=${providerOrders.length}');
       
       // PROTEÃâ¡ÃÆO: Se TODAS as buscas retornaram vazio, provavelmente houve timeout/erro
       // NÃÂ£o limpar a lista anterior para nÃÂ£o perder dados
       if (allPendingOrders.isEmpty && userOrders.isEmpty && providerOrders.isEmpty) {
-        debugPrint('Ã¢Å¡Â Ã¯Â¸Â syncProvider: TODAS as buscas retornaram vazio - mantendo dados anteriores');
+        broLog('Ã¢Å¡Â Ã¯Â¸Â syncProvider: TODAS as buscas retornaram vazio - mantendo dados anteriores');
         _lastProviderSyncTime = DateTime.now();
         _isSyncingProvider = false;
         _syncProviderStartedAt = null; // v259: clear stale tracker
@@ -1156,13 +1157,13 @@ class OrderProvider with ChangeNotifier {
         _availableOrdersForProvider = newAvailableOrders;
         
         if (previousCount > 0 && newAvailableOrders.isEmpty) {
-          debugPrint('✅ Lista de disponiveis limpa: $previousCount -> 0 (todas aceitas/concluidas)');
+          broLog('✅ Lista de disponiveis limpa: $previousCount -> 0 (todas aceitas/concluidas)');
         } else if (previousCount != newAvailableOrders.length) {
-          debugPrint('Disponiveis: $previousCount -> ${newAvailableOrders.length}');
+          broLog('Disponiveis: $previousCount -> ${newAvailableOrders.length}');
         }
       }
       
-      debugPrint('Ã°Å¸ââ syncProvider: $addedToAvailable disponÃÂ­veis, $updated atualizadas, _orders total=${_orders.length}');
+      broLog('Ã°Å¸ââ syncProvider: $addedToAvailable disponÃÂ­veis, $updated atualizadas, _orders total=${_orders.length}');
       
       // Processar ordens do prÃÂ³prio usuÃÂ¡rio (jÃÂ¡ buscadas em paralelo)
       int addedFromUser = 0;
@@ -1202,7 +1203,7 @@ class OrderProvider with ChangeNotifier {
           if (savedOrder != null && 
               provOrder.status != 'cancelled' &&
               _isStatusMoreRecent(savedOrder.status, provOrder.status)) {
-            debugPrint('Ã°Å¸âºÂ¡Ã¯Â¸Â PROTEÃâ¡ÃÆO: Ordem ${provOrder.id.substring(0, 8)} no cache=${ savedOrder.status}, relay=${provOrder.status} - mantendo cache');
+            broLog('Ã°Å¸âºÂ¡Ã¯Â¸Â PROTEÃâ¡ÃÆO: Ordem ${provOrder.id.substring(0, 8)} no cache=${ savedOrder.status}, relay=${provOrder.status} - mantendo cache');
             provOrder = provOrder.copyWith(
               status: savedOrder.status,
               completedAt: savedOrder.completedAt,
@@ -1258,9 +1259,9 @@ class OrderProvider with ChangeNotifier {
             .map((o) => o.id)
             .toList();
         
-        debugPrint('Ã°Å¸âÂ Provider status check: ${myOrderIds.length} ordens nÃÂ£o-finais, ${awaitingOrderIds.length} aguardando confirmaÃÂ§ÃÂ£o');
+        broLog('Ã°Å¸âÂ Provider status check: ${myOrderIds.length} ordens nÃÂ£o-finais, ${awaitingOrderIds.length} aguardando confirmaÃÂ§ÃÂ£o');
         if (awaitingOrderIds.isNotEmpty) {
-          debugPrint('   Aguardando: ${awaitingOrderIds.map((id) => id.substring(0, 8)).join(", ")}');
+          broLog('   Aguardando: ${awaitingOrderIds.map((id) => id.substring(0, 8)).join(", ")}');
         }
         
         if (myOrderIds.isNotEmpty) {
@@ -1269,9 +1270,9 @@ class OrderProvider with ChangeNotifier {
             orderIds: myOrderIds,
           );
           
-          debugPrint('Ã°Å¸âÂ Provider updates encontrados: ${providerUpdates.length}');
+          broLog('Ã°Å¸âÂ Provider updates encontrados: ${providerUpdates.length}');
           for (final entry in providerUpdates.entries) {
-            debugPrint('   Update: orderId=${entry.key.substring(0, 8)} status=${entry.value['status']}');
+            broLog('   Update: orderId=${entry.key.substring(0, 8)} status=${entry.value['status']}');
           }
           
           int statusUpdated = 0;
@@ -1281,18 +1282,18 @@ class OrderProvider with ChangeNotifier {
             final newStatus = update['status'] as String?;
             
             if (newStatus == null) {
-              debugPrint('   Ã¢Å¡Â Ã¯Â¸Â Update sem status para orderId=${orderId.substring(0, 8)}');
+              broLog('   Ã¢Å¡Â Ã¯Â¸Â Update sem status para orderId=${orderId.substring(0, 8)}');
               continue;
             }
             
             final existingIndex = _orders.indexWhere((o) => o.id == orderId);
             if (existingIndex == -1) {
-              debugPrint('   Ã¢Å¡Â Ã¯Â¸Â Ordem ${orderId.substring(0, 8)} nÃÂ£o encontrada em _orders');
+              broLog('   Ã¢Å¡Â Ã¯Â¸Â Ordem ${orderId.substring(0, 8)} nÃÂ£o encontrada em _orders');
               continue;
             }
             
             final existing = _orders[existingIndex];
-            debugPrint('   Comparando: orderId=${orderId.substring(0, 8)} local=${existing.status} nostr=$newStatus');
+            broLog('   Comparando: orderId=${orderId.substring(0, 8)} local=${existing.status} nostr=$newStatus');
             
             // Verificar se ÃÂ© completed e local ÃÂ© awaiting_confirmation
             if (newStatus == 'completed' && existing.status == 'awaiting_confirmation') {
@@ -1301,7 +1302,7 @@ class OrderProvider with ChangeNotifier {
                 completedAt: DateTime.now(),
               );
               statusUpdated++;
-              debugPrint('   Ã¢Åâ¦ Atualizado ${orderId.substring(0, 8)} para completed!');
+              broLog('   Ã¢Åâ¦ Atualizado ${orderId.substring(0, 8)} para completed!');
             } else if (_isStatusMoreRecent(newStatus, existing.status)) {
               // Caso genÃÂ©rico
               _orders[existingIndex] = existing.copyWith(
@@ -1309,13 +1310,13 @@ class OrderProvider with ChangeNotifier {
                 completedAt: newStatus == 'completed' ? DateTime.now() : existing.completedAt,
               );
               statusUpdated++;
-              debugPrint('   Ã¢Åâ¦ Atualizado ${orderId.substring(0, 8)} para $newStatus');
+              broLog('   Ã¢Åâ¦ Atualizado ${orderId.substring(0, 8)} para $newStatus');
             } else {
-              debugPrint('   Ã¢ÂÂ­Ã¯Â¸Â Sem mudanÃÂ§a para ${orderId.substring(0, 8)}: $newStatus nÃÂ£o ÃÂ© mais recente que ${existing.status}');
+              broLog('   Ã¢ÂÂ­Ã¯Â¸Â Sem mudanÃÂ§a para ${orderId.substring(0, 8)}: $newStatus nÃÂ£o ÃÂ© mais recente que ${existing.status}');
             }
           }
           
-          debugPrint('Ã°Å¸ââ Provider sync: $statusUpdated ordens atualizadas');
+          broLog('Ã°Å¸ââ Provider sync: $statusUpdated ordens atualizadas');
         }
       }
       
@@ -1332,19 +1333,19 @@ class OrderProvider with ChangeNotifier {
           userOrders: userOrders,
           providerOrders: providerOrders,
         ).timeout(const Duration(seconds: 30), onTimeout: () {
-          debugPrint('v259: AUTO-REPAIR timeout (30s) no provider sync - continuando');
+          broLog('v259: AUTO-REPAIR timeout (30s) no provider sync - continuando');
         });
       } catch (e) {
-        debugPrint('v259: AUTO-REPAIR exception no provider sync: \$e');
+        broLog('v259: AUTO-REPAIR exception no provider sync: \$e');
       }
       
       // v257/v259: Corrigir ordens com userPubkey corrompido (com timeout)
       try {
         await _fixCorruptedUserPubkeys().timeout(const Duration(seconds: 20), onTimeout: () {
-          debugPrint('v259: _fixCorruptedUserPubkeys timeout (20s) - continuando');
+          broLog('v259: _fixCorruptedUserPubkeys timeout (20s) - continuando');
         });
       } catch (e) {
-        debugPrint('v259: _fixCorruptedUserPubkeys exception: $e');
+        broLog('v259: _fixCorruptedUserPubkeys exception: $e');
       }
       
       // AUTO-LIQUIDAÃâ¡ÃÆO: Verificar ordens awaiting_confirmation com prazo expirado
@@ -1456,7 +1457,7 @@ class OrderProvider with ChangeNotifier {
         providerId: order.providerId,
       );
     } catch (e) {
-      debugPrint('v261: _republishOrderEventWithTerminalStatus ERROR: $e');
+      broLog('v261: _republishOrderEventWithTerminalStatus ERROR: $e');
     }
   }
 
@@ -1471,13 +1472,13 @@ class OrderProvider with ChangeNotifier {
     if (index != -1) {
       final currentStatus = _orders[index].status;
       if (status != 'cancelled' && status != 'disputed' && !_isStatusMoreRecent(status, currentStatus)) {
-        debugPrint('updateOrderStatusLocalOnly: bloqueado $currentStatus -> $status');
+        broLog('updateOrderStatusLocalOnly: bloqueado $currentStatus -> $status');
         return;
       }
       _orders[index] = _orders[index].copyWith(status: status);
       _debouncedSave();
       _throttledNotify();
-      debugPrint('v259: updateOrderStatusLocalOnly: $orderId -> $status (SEM publicar no Nostr)');
+      broLog('v259: updateOrderStatusLocalOnly: $orderId -> $status (SEM publicar no Nostr)');
     }
   }
 
@@ -1489,7 +1490,7 @@ class OrderProvider with ChangeNotifier {
       // ExceÃÂ§ÃÂ£o: 'cancelled' e 'disputed' sempre sÃÂ£o aceitos (aÃÂ§ÃÂµes explÃÂ­citas)
       final currentStatus = _orders[index].status;
       if (status != 'cancelled' && status != 'disputed' && !_isStatusMoreRecent(status, currentStatus)) {
-        debugPrint('Ã¢Å¡Â Ã¯Â¸Â updateOrderStatusLocal: bloqueado $currentStatus Ã¢â â $status (regressÃÂ£o)');
+        broLog('Ã¢Å¡Â Ã¯Â¸Â updateOrderStatusLocal: bloqueado $currentStatus Ã¢â â $status (regressÃÂ£o)');
         return;
       }
       _orders[index] = _orders[index].copyWith(status: status);
@@ -1544,7 +1545,7 @@ class OrderProvider with ChangeNotifier {
         // é definitivamente um auto-complete indevido - BLOQUEAR
         const earlyStatuses = ['', 'draft', 'pending', 'payment_received'];
         if (earlyStatuses.contains(currentStatus) && (effectiveProviderId == null || effectiveProviderId.isEmpty)) {
-          debugPrint('🚨 BLOQUEADO: completed para ${orderId.length > 8 ? orderId.substring(0, 8) : orderId} em status "$currentStatus" sem providerId!');
+          broLog('🚨 BLOQUEADO: completed para ${orderId.length > 8 ? orderId.substring(0, 8) : orderId} em status "$currentStatus" sem providerId!');
           _isLoading = false;
           _immediateNotify();
           return false;
@@ -1570,7 +1571,7 @@ class OrderProvider with ChangeNotifier {
       if (orderUserPubkeyForUpdate != null &&
           orderUserPubkeyForUpdate == _currentUserPubkey &&
           effectiveProviderIdForUpdate == _currentUserPubkey) {
-        debugPrint('\xe2\x9a\xa0\xef\xb8\x8f [updateOrderStatus] orderUserPubkey == currentUser == providerId! Buscando criador real do Nostr...');
+        broLog('\xe2\x9a\xa0\xef\xb8\x8f [updateOrderStatus] orderUserPubkey == currentUser == providerId! Buscando criador real do Nostr...');
         try {
           final originalOrderData = await _nostrOrderService.fetchOrderFromNostr(orderId).timeout(
             const Duration(seconds: 5),
@@ -1580,7 +1581,7 @@ class OrderProvider with ChangeNotifier {
             final realUserPubkey = originalOrderData['userPubkey'] as String?;
             if (realUserPubkey != null && realUserPubkey.isNotEmpty && realUserPubkey != _currentUserPubkey) {
               orderUserPubkeyForUpdate = realUserPubkey;
-              debugPrint('\xe2\x9c\x85 [updateOrderStatus] userPubkey corrigido para ');
+              broLog('\xe2\x9c\x85 [updateOrderStatus] userPubkey corrigido para ');
               // Corrigir localmente tambem
               final fixIdx = _orders.indexWhere((o) => o.id == orderId);
               if (fixIdx != -1) {
@@ -1589,7 +1590,7 @@ class OrderProvider with ChangeNotifier {
             }
           }
         } catch (e) {
-          debugPrint('\xe2\x9a\xa0\xef\xb8\x8f [updateOrderStatus] Falha ao buscar criador real: ');
+          broLog('\xe2\x9a\xa0\xef\xb8\x8f [updateOrderStatus] Falha ao buscar criador real: ');
         }
       }
       
@@ -1667,7 +1668,7 @@ class OrderProvider with ChangeNotifier {
 
   /// Provedor aceita uma ordem - publica aceitaÃÂ§ÃÂ£o no Nostr e atualiza localmente
   Future<bool> acceptOrderAsProvider(String orderId) async {
-    debugPrint('Ã°Å¸âÂµ [acceptOrderAsProvider] INICIADO para $orderId');
+    broLog('Ã°Å¸âÂµ [acceptOrderAsProvider] INICIADO para $orderId');
     _isLoading = true;
     _error = null;
     _immediateNotify();
@@ -1675,7 +1676,7 @@ class OrderProvider with ChangeNotifier {
     try {
       // Buscar a ordem localmente primeiro (verificar AMBAS as listas)
       Order? order = getOrderById(orderId);
-      debugPrint('Ã°Å¸âÂµ [acceptOrderAsProvider] getOrderById: ${order != null ? "encontrado (status=${order.status})" : "null"}');
+      broLog('Ã°Å¸âÂµ [acceptOrderAsProvider] getOrderById: ${order != null ? "encontrado (status=${order.status})" : "null"}');
       
       // TambÃÂ©m verificar em _availableOrdersForProvider
       if (order == null) {
@@ -1684,7 +1685,7 @@ class OrderProvider with ChangeNotifier {
           orElse: () => null,
         );
         if (availableOrder != null) {
-          debugPrint('Ã°Å¸âÂµ [acceptOrderAsProvider] Encontrado em _availableOrdersForProvider (status=${availableOrder.status})');
+          broLog('Ã°Å¸âÂµ [acceptOrderAsProvider] Encontrado em _availableOrdersForProvider (status=${availableOrder.status})');
           order = availableOrder;
           // Adicionar ÃÂ  lista _orders para referÃÂªncia futura
           _orders.add(order);
@@ -1693,11 +1694,11 @@ class OrderProvider with ChangeNotifier {
       
       // Se nÃÂ£o encontrou localmente, buscar do Nostr com timeout
       if (order == null) {
-        debugPrint('Ã°Å¸âÂµ [acceptOrderAsProvider] Buscando do Nostr...');
+        broLog('Ã°Å¸âÂµ [acceptOrderAsProvider] Buscando do Nostr...');
         final orderData = await _nostrOrderService.fetchOrderFromNostr(orderId).timeout(
           const Duration(seconds: 10),
           onTimeout: () {
-            debugPrint('Ã¢ÂÂ±Ã¯Â¸Â [acceptOrderAsProvider] timeout ao buscar do Nostr');
+            broLog('Ã¢ÂÂ±Ã¯Â¸Â [acceptOrderAsProvider] timeout ao buscar do Nostr');
             return null;
           },
         );
@@ -1705,13 +1706,13 @@ class OrderProvider with ChangeNotifier {
           order = Order.fromJson(orderData);
           // Adicionar ÃÂ  lista local para referÃÂªncia futura
           _orders.add(order);
-          debugPrint('Ã°Å¸âÂµ [acceptOrderAsProvider] Encontrado no Nostr (status=${order.status})');
+          broLog('Ã°Å¸âÂµ [acceptOrderAsProvider] Encontrado no Nostr (status=${order.status})');
         }
       }
       
       if (order == null) {
         _error = 'Ordem nÃÂ£o encontrada';
-        debugPrint('Ã¢ÂÅ [acceptOrderAsProvider] Ordem nÃÂ£o encontrada em nenhum lugar');
+        broLog('Ã¢ÂÅ [acceptOrderAsProvider] Ordem nÃÂ£o encontrada em nenhum lugar');
         _isLoading = false;
         _immediateNotify();
         return false;
@@ -1721,14 +1722,14 @@ class OrderProvider with ChangeNotifier {
       final privateKey = _nostrService.privateKey;
       if (privateKey == null) {
         _error = 'Chave privada nÃÂ£o disponÃÂ­vel';
-        debugPrint('Ã¢ÂÅ [acceptOrderAsProvider] Chave privada null');
+        broLog('Ã¢ÂÅ [acceptOrderAsProvider] Chave privada null');
         _isLoading = false;
         _immediateNotify();
         return false;
       }
 
       final providerPubkey = _nostrService.publicKey;
-      debugPrint('Ã°Å¸âÂµ [acceptOrderAsProvider] Publicando aceitaÃÂ§ÃÂ£o no Nostr (providerPubkey=${providerPubkey?.substring(0, 8)}...)');
+      broLog('Ã°Å¸âÂµ [acceptOrderAsProvider] Publicando aceitaÃÂ§ÃÂ£o no Nostr (providerPubkey=${providerPubkey?.substring(0, 8)}...)');
 
       // Publicar aceitaÃÂ§ÃÂ£o no Nostr
       final success = await _nostrOrderService.acceptOrderOnNostr(
@@ -1736,7 +1737,7 @@ class OrderProvider with ChangeNotifier {
         providerPrivateKey: privateKey,
       );
 
-      debugPrint('Ã°Å¸âÂµ [acceptOrderAsProvider] Resultado da publicaÃÂ§ÃÂ£o: $success');
+      broLog('Ã°Å¸âÂµ [acceptOrderAsProvider] Resultado da publicaÃÂ§ÃÂ£o: $success');
 
       if (!success) {
         _error = 'Falha ao publicar aceitaÃÂ§ÃÂ£o no Nostr';
@@ -1749,7 +1750,7 @@ class OrderProvider with ChangeNotifier {
       // Sem isso, a ordem ficava em _availableOrdersForProvider com status stale
       // e continuava aparecendo na aba "Disponíveis" mesmo após aceita/completada
       _availableOrdersForProvider.removeWhere((o) => o.id == orderId);
-      debugPrint('🗑️ [acceptOrderAsProvider] Removido de _availableOrdersForProvider');
+      broLog('🗑️ [acceptOrderAsProvider] Removido de _availableOrdersForProvider');
       
       // Atualizar localmente
       final index = _orders.indexWhere((o) => o.id == orderId);
@@ -1762,20 +1763,20 @@ class OrderProvider with ChangeNotifier {
         
         // Salvar localmente (apenas ordens do usuÃÂ¡rio/provedor atual)
         await _saveOnlyUserOrders();
-        debugPrint('Ã¢Åâ¦ [acceptOrderAsProvider] Ordem atualizada localmente: status=accepted, providerId=$providerPubkey');
+        broLog('Ã¢Åâ¦ [acceptOrderAsProvider] Ordem atualizada localmente: status=accepted, providerId=$providerPubkey');
       } else {
-        debugPrint('Ã¢Å¡Â Ã¯Â¸Â [acceptOrderAsProvider] Ordem nÃÂ£o encontrada em _orders para atualizar (index=-1)');
+        broLog('Ã¢Å¡Â Ã¯Â¸Â [acceptOrderAsProvider] Ordem nÃÂ£o encontrada em _orders para atualizar (index=-1)');
       }
 
       return true;
     } catch (e) {
       _error = e.toString();
-      debugPrint('Ã¢ÂÅ [acceptOrderAsProvider] ERRO: $e');
+      broLog('Ã¢ÂÅ [acceptOrderAsProvider] ERRO: $e');
       return false;
     } finally {
       _isLoading = false;
       _immediateNotify();
-      debugPrint('Ã°Å¸âÂµ [acceptOrderAsProvider] FINALIZADO');
+      broLog('Ã°Å¸âÂµ [acceptOrderAsProvider] FINALIZADO');
     }
   }
 
@@ -1795,7 +1796,7 @@ class OrderProvider with ChangeNotifier {
         final orderData = await _nostrOrderService.fetchOrderFromNostr(orderId).timeout(
           const Duration(seconds: 10),
           onTimeout: () {
-            debugPrint('[completeOrderAsProvider] timeout ao buscar ordem do Nostr');
+            broLog('[completeOrderAsProvider] timeout ao buscar ordem do Nostr');
             return null;
           },
         );
@@ -1883,7 +1884,7 @@ class OrderProvider with ChangeNotifier {
     final privateKey = _nostrService.privateKey;
     if (privateKey == null) return;
     
-    debugPrint('v257-FIX:  ordens com userPubkey corrompido');
+    broLog('v257-FIX:  ordens com userPubkey corrompido');
     
     int fixed = 0;
     final orderIdsToFix = List<String>.from(_ordersNeedingUserPubkeyFix);
@@ -1897,13 +1898,13 @@ class OrderProvider with ChangeNotifier {
         );
         
         if (originalData == null) {
-          debugPrint('v257-FIX:  - nao encontrado no Nostr');
+          broLog('v257-FIX:  - nao encontrado no Nostr');
           continue;
         }
         
         final realUserPubkey = originalData['userPubkey'] as String?;
         if (realUserPubkey == null || realUserPubkey.isEmpty || realUserPubkey == _currentUserPubkey) {
-          debugPrint('v257-FIX:  - userPubkey do Nostr tambem invalido');
+          broLog('v257-FIX:  - userPubkey do Nostr tambem invalido');
           continue;
         }
         
@@ -1912,7 +1913,7 @@ class OrderProvider with ChangeNotifier {
         if (idx != -1) {
           final order = _orders[idx];
           _orders[idx] = order.copyWith(userPubkey: realUserPubkey);
-          debugPrint('v257-FIX:  userPubkey corrigido para ');
+          broLog('v257-FIX:  userPubkey corrigido para ');
           
           // Republicar evento com tags corretas
           final success = await _nostrOrderService.updateOrderStatus(
@@ -1926,19 +1927,19 @@ class OrderProvider with ChangeNotifier {
           if (success) {
             fixed++;
             _ordersNeedingUserPubkeyFix.remove(orderId);
-            debugPrint('v257-FIX:  republicado com sucesso');
+            broLog('v257-FIX:  republicado com sucesso');
           }
         }
         
         // Delay entre correcoes
         await Future.delayed(const Duration(milliseconds: 300));
       } catch (e) {
-        debugPrint('v257-FIX:  erro: ');
+        broLog('v257-FIX:  erro: ');
       }
     }
     
     if (fixed > 0) {
-      debugPrint('v257-FIX:  ordens corrigidas e republicadas');
+      broLog('v257-FIX:  ordens corrigidas e republicadas');
       await _saveOrders();
     }
   }
@@ -1960,7 +1961,7 @@ class OrderProvider with ChangeNotifier {
     
     // v256: So reparar UMA VEZ por sessao para evitar spam nos relays
     if (_autoRepairDoneThisSession) {
-      debugPrint('AUTO-REPAIR: ja executado nesta sessao, pulando');
+      broLog('AUTO-REPAIR: ja executado nesta sessao, pulando');
       return;
     }
     
@@ -2003,14 +2004,14 @@ class OrderProvider with ChangeNotifier {
       return;
     }
     
-    debugPrint('AUTO-REPAIR: ${ordersToRepair.length} ordens com eventos perdidos nos relays');
+    broLog('AUTO-REPAIR: ${ordersToRepair.length} ordens com eventos perdidos nos relays');
     
     // v259: Limitar batch size para nao travar sync com dezenas de publishes
     final batch = ordersToRepair.length > _maxRepairBatchSize 
         ? ordersToRepair.sublist(0, _maxRepairBatchSize)
         : ordersToRepair;
     if (ordersToRepair.length > _maxRepairBatchSize) {
-      debugPrint('AUTO-REPAIR: limitado a $_maxRepairBatchSize de ${ordersToRepair.length} (v259 batch limit)');
+      broLog('AUTO-REPAIR: limitado a $_maxRepairBatchSize de ${ordersToRepair.length} (v259 batch limit)');
     }
     
     int repaired = 0;
@@ -2022,7 +2023,7 @@ class OrderProvider with ChangeNotifier {
           effectiveProviderId = order.metadata?['providerId'] as String?;
           effectiveProviderId ??= order.metadata?['provider_id'] as String?;
           if (effectiveProviderId != null && effectiveProviderId.isNotEmpty) {
-            debugPrint('AUTO-REPAIR: providerId recuperado de metadata: ${effectiveProviderId.substring(0, 16)}');
+            broLog('AUTO-REPAIR: providerId recuperado de metadata: ${effectiveProviderId.substring(0, 16)}');
             final idx = _orders.indexWhere((o) => o.id == order.id);
             if (idx != -1) {
               _orders[idx] = _orders[idx].copyWith(providerId: effectiveProviderId);
@@ -2036,11 +2037,11 @@ class OrderProvider with ChangeNotifier {
         if (effectiveProviderId != null && 
             effectiveProviderId == _currentUserPubkey && 
             order.userPubkey == _currentUserPubkey) {
-          debugPrint('AUTO-REPAIR: SKIP self-reference! orderId=${order.id.substring(0, 8)} providerId igual ao userPubkey - dados corrompidos, nao republicar');
+          broLog('AUTO-REPAIR: SKIP self-reference! orderId=${order.id.substring(0, 8)} providerId igual ao userPubkey - dados corrompidos, nao republicar');
           continue;
         }
         
-        debugPrint('Reparando: orderId=${order.id.substring(0, 8)} status=${order.status} providerId=${effectiveProviderId?.substring(0, 16) ?? "NULL"}');
+        broLog('Reparando: orderId=${order.id.substring(0, 8)} status=${order.status} providerId=${effectiveProviderId?.substring(0, 16) ?? "NULL"}');
         
         final success = await _nostrOrderService.updateOrderStatus(
           privateKey: privateKey,
@@ -2052,20 +2053,20 @@ class OrderProvider with ChangeNotifier {
         
         if (success) {
           repaired++;
-          debugPrint('Reparada: orderId=${order.id.substring(0, 8)}');
+          broLog('Reparada: orderId=${order.id.substring(0, 8)}');
         } else {
-          debugPrint('Falha ao reparar: orderId=${order.id.substring(0, 8)}');
+          broLog('Falha ao reparar: orderId=${order.id.substring(0, 8)}');
         }
         
         // Pequeno delay entre reparacoes para nao sobrecarregar relays
         await Future.delayed(const Duration(milliseconds: 500));
       } catch (e) {
-        debugPrint('AUTO-REPAIR exception: $e');
+        broLog('AUTO-REPAIR exception: $e');
       }
     }
     
     _autoRepairDoneThisSession = true;
-    debugPrint('AUTO-REPAIR concluido: $repaired/${batch.length} reparadas (de ${ordersToRepair.length} total, flag sessao ativado)');
+    broLog('AUTO-REPAIR concluido: $repaired/${batch.length} reparadas (de ${ordersToRepair.length} total, flag sessao ativado)');
   }
 
   /// Verifica ordens em 'awaiting_confirmation' com prazo de 36h expirado
@@ -2079,7 +2080,7 @@ class OrderProvider with ChangeNotifier {
     if (lockTime != null) {
       final elapsed = DateTime.now().millisecondsSinceEpoch - lockTime;
       if (elapsed < 120000) {
-        debugPrint('[AutoLiquidation] Background task is running, skipping foreground check');
+        broLog('[AutoLiquidation] Background task is running, skipping foreground check');
         return;
       }
     }
@@ -2115,13 +2116,13 @@ class OrderProvider with ChangeNotifier {
     }).toList();
     
     for (final order in expiredOrders) {
-      debugPrint('[AutoLiquidation] Ordem ${order.id} expirou 36h - auto-liquidando...');
+      broLog('[AutoLiquidation] Ordem ${order.id} expirou 36h - auto-liquidando...');
       final proof = order.metadata?['paymentProof'] ?? '';
       await autoLiquidateOrder(order.id, proof.toString());
     }
     
     if (expiredOrders.isNotEmpty) {
-      debugPrint('[AutoLiquidation] ${expiredOrders.length} ordens auto-liquidadas em background');
+      broLog('[AutoLiquidation] ${expiredOrders.length} ordens auto-liquidadas em background');
     }
   }
 
@@ -2270,7 +2271,7 @@ class OrderProvider with ChangeNotifier {
       );
       
       if (localOrder != null) {
-        debugPrint('Ã°Å¸âÂ getOrder($orderId): encontrado em _orders (status=${localOrder.status})');
+        broLog('Ã°Å¸âÂ getOrder($orderId): encontrado em _orders (status=${localOrder.status})');
         return localOrder.toJson();
       }
       
@@ -2281,31 +2282,31 @@ class OrderProvider with ChangeNotifier {
       );
       
       if (availableOrder != null) {
-        debugPrint('Ã°Å¸âÂ getOrder($orderId): encontrado em _availableOrdersForProvider (status=${availableOrder.status})');
+        broLog('Ã°Å¸âÂ getOrder($orderId): encontrado em _availableOrdersForProvider (status=${availableOrder.status})');
         return availableOrder.toJson();
       }
       
       // Tentar buscar do Nostr (mais confiÃÂ¡vel que backend)
-      debugPrint('Ã°Å¸âÂ getOrder($orderId): nÃÂ£o encontrado localmente, buscando no Nostr...');
+      broLog('Ã°Å¸âÂ getOrder($orderId): nÃÂ£o encontrado localmente, buscando no Nostr...');
       try {
         final nostrOrder = await _nostrOrderService.fetchOrderFromNostr(orderId).timeout(
           const Duration(seconds: 10),
           onTimeout: () {
-            debugPrint('Ã¢ÂÂ±Ã¯Â¸Â getOrder: timeout ao buscar do Nostr');
+            broLog('Ã¢ÂÂ±Ã¯Â¸Â getOrder: timeout ao buscar do Nostr');
             return null;
           },
         );
         if (nostrOrder != null) {
-          debugPrint('Ã¢Åâ¦ getOrder($orderId): encontrado no Nostr');
+          broLog('Ã¢Åâ¦ getOrder($orderId): encontrado no Nostr');
           return nostrOrder;
         }
       } catch (e) {
-        debugPrint('Ã¢Å¡Â Ã¯Â¸Â getOrder: erro ao buscar do Nostr: $e');
+        broLog('Ã¢Å¡Â Ã¯Â¸Â getOrder: erro ao buscar do Nostr: $e');
       }
       
       // NOTA: Backend API em http://10.0.2.2:3002 sÃÂ³ funciona no emulator
       // Em dispositivo real, nÃÂ£o tentar Ã¢â¬â causaria timeout desnecessÃÂ¡rio
-      debugPrint('Ã¢Å¡Â Ã¯Â¸Â getOrder($orderId): nÃÂ£o encontrado em nenhum lugar');
+      broLog('Ã¢Å¡Â Ã¯Â¸Â getOrder($orderId): nÃÂ£o encontrado em nenhum lugar');
       return null;
     } catch (e) {
       _error = e.toString();
@@ -2585,15 +2586,15 @@ class OrderProvider with ChangeNotifier {
       if (_syncUserStartedAt != null) {
         final elapsed = DateTime.now().difference(_syncUserStartedAt!).inSeconds;
         if (elapsed > _maxSyncDurationSeconds) {
-          debugPrint('v259: syncUser LOCK STALE detectado (${elapsed}s) - resetando');
+          broLog('v259: syncUser LOCK STALE detectado (${elapsed}s) - resetando');
           _isSyncingUser = false;
           _syncUserStartedAt = null;
         } else {
-          debugPrint('syncOrdersFromNostr: sync em andamento (${elapsed}s), ignorando');
+          broLog('syncOrdersFromNostr: sync em andamento (${elapsed}s), ignorando');
           return;
         }
       } else {
-        debugPrint('syncOrdersFromNostr: sync em andamento, ignorando');
+        broLog('syncOrdersFromNostr: sync em andamento, ignorando');
         return;
       }
     }
@@ -2603,7 +2604,7 @@ class OrderProvider with ChangeNotifier {
     if (!force && _lastUserSyncTime != null) {
       final elapsed = DateTime.now().difference(_lastUserSyncTime!).inSeconds;
       if (elapsed < _minSyncIntervalSeconds) {
-        debugPrint('Ã¢ÂÂ­Ã¯Â¸Â syncOrdersFromNostr: ÃÂºltimo sync hÃÂ¡ ${elapsed}s (mÃÂ­n: ${_minSyncIntervalSeconds}s), ignorando');
+        broLog('Ã¢ÂÂ­Ã¯Â¸Â syncOrdersFromNostr: ÃÂºltimo sync hÃÂ¡ ${elapsed}s (mÃÂ­n: ${_minSyncIntervalSeconds}s), ignorando');
         return;
       }
     }
@@ -2632,7 +2633,7 @@ class OrderProvider with ChangeNotifier {
       if (hasActiveOrders) {
         nostrOrders = await _nostrOrderService.fetchUserOrders(_currentUserPubkey!);
       } else {
-        debugPrint('⚡ syncOrdersFromNostr: todas ${_orders.length} ordens são terminais, pulando fetchUserOrders (9 WebSockets economizados)');
+        broLog('⚡ syncOrdersFromNostr: todas ${_orders.length} ordens são terminais, pulando fetchUserOrders (9 WebSockets economizados)');
         nostrOrders = [];
       }
       
@@ -2729,13 +2730,13 @@ class OrderProvider with ChangeNotifier {
       const terminalStatuses = ['completed', 'cancelled', 'liquidated'];
       final activeOrders = _orders.where((o) => !terminalStatuses.contains(o.status)).toList();
       final orderIds = activeOrders.map((o) => o.id).toList();
-      debugPrint('syncOrdersFromNostr: ${orderIds.length} ordens ativas, ${_orders.length - orderIds.length} terminais ignoradas');
+      broLog('syncOrdersFromNostr: ${orderIds.length} ordens ativas, ${_orders.length - orderIds.length} terminais ignoradas');
       final orderUpdates = await _nostrOrderService.fetchOrderUpdatesForUser(
         _currentUserPubkey!,
         orderIds: orderIds,
       );
       
-      debugPrint('Ã°Å¸âÂ¡ syncOrdersFromNostr: ${orderUpdates.length} updates recebidos');
+      broLog('Ã°Å¸âÂ¡ syncOrdersFromNostr: ${orderUpdates.length} updates recebidos');
       int statusUpdated = 0;
       for (final entry in orderUpdates.entries) {
         final orderId = entry.key;
@@ -2774,10 +2775,10 @@ class OrderProvider with ChangeNotifier {
             final effectiveProviderId = newProviderId ?? existing.providerId;
             if (effectiveProviderId == null || effectiveProviderId.isEmpty) {
               if (existing.status != 'disputed') {
-                debugPrint('syncOrdersFromNostr: BLOQUEADO completed sem providerId');
+                broLog('syncOrdersFromNostr: BLOQUEADO completed sem providerId');
                 continue;
               } else {
-                debugPrint('syncOrdersFromNostr: permitido completed de disputed (resolução de disputa)');
+                broLog('syncOrdersFromNostr: permitido completed de disputed (resolução de disputa)');
               }
             }
           }
@@ -2800,7 +2801,7 @@ class OrderProvider with ChangeNotifier {
                 'wasDisputed': true,
                 'disputeResolvedAt': DateTime.now().toIso8601String(),
               };
-              debugPrint('⚖️ syncOrdersFromNostr: ordem ${existing.id.substring(0, 8)} resolvida de disputa → $statusToUse');
+              broLog('⚖️ syncOrdersFromNostr: ordem ${existing.id.substring(0, 8)} resolvida de disputa → $statusToUse');
             } else if (update['proofImage'] != null || update['providerInvoice'] != null) {
               updatedMetadata = {
                 ...?existing.metadata,
@@ -2843,19 +2844,19 @@ class OrderProvider with ChangeNotifier {
           userOrders: nostrOrders,
           providerOrders: <Order>[],
         ).timeout(const Duration(seconds: 30), onTimeout: () {
-          debugPrint('v259: AUTO-REPAIR timeout (30s) no user sync - continuando');
+          broLog('v259: AUTO-REPAIR timeout (30s) no user sync - continuando');
         });
       } catch (e) {
-        debugPrint('v259: AUTO-REPAIR exception no user sync: $e');
+        broLog('v259: AUTO-REPAIR exception no user sync: $e');
       }
       
       // v257/v259: Corrigir ordens com userPubkey corrompido (com timeout)
       try {
         await _fixCorruptedUserPubkeys().timeout(const Duration(seconds: 20), onTimeout: () {
-          debugPrint('v259: _fixCorruptedUserPubkeys timeout (20s) no user sync');
+          broLog('v259: _fixCorruptedUserPubkeys timeout (20s) no user sync');
         });
       } catch (e) {
-        debugPrint('v259: _fixCorruptedUserPubkeys exception: $e');
+        broLog('v259: _fixCorruptedUserPubkeys exception: $e');
       }
       
       // Ordenar por data (mais recente primeiro)
@@ -3067,9 +3068,9 @@ class OrderProvider with ChangeNotifier {
     required int amountSats,
     String? paymentHash,
   }) async {
-    debugPrint('OrderProvider.onPaymentSent: $amountSats sats (hash: ${paymentHash ?? "N/A"})');
-    debugPrint('onPaymentSent: Auto-complete DESATIVADO (v1.0.129+232)');
-    debugPrint('   Ordens só podem ser completadas via confirmação manual do usuário');
+    broLog('OrderProvider.onPaymentSent: $amountSats sats (hash: ${paymentHash ?? "N/A"})');
+    broLog('onPaymentSent: Auto-complete DESATIVADO (v1.0.129+232)');
+    broLog('   Ordens só podem ser completadas via confirmação manual do usuário');
     // NÃO fazer nada - a confirmação é feita via _handleConfirmPayment na tela de ordem
     // que já chama updateOrderStatus('completed') após o pagamento ao provedor ser confirmado
   }
@@ -3087,7 +3088,7 @@ class OrderProvider with ChangeNotifier {
     final usedPaymentIds = <String>{};
     final reconciliationLog = <Map<String, dynamic>>[];
     
-    debugPrint('Ã°Å¸âÅ forceReconcileAllOrders: ${breezPayments.length} pagamentos');
+    broLog('Ã°Å¸âÅ forceReconcileAllOrders: ${breezPayments.length} pagamentos');
     
     // Separar por tipo
     final receivedPayments = breezPayments.where((p) {

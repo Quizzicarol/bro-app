@@ -21,6 +21,7 @@ import '../providers/platform_balance_provider.dart';
 import '../config.dart';
 import '../services/notification_service.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter/services.dart';
 
 /// Tela exibida após pagamento confirmado
@@ -93,13 +94,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       try {
         order = await _orderService.getOrder(widget.orderId);
       } catch (serviceError) {
-        debugPrint('⚠️ OrderService falhou: $serviceError');
+        broLog('⚠️ OrderService falhou: $serviceError');
         // Continua para tentar o OrderProvider
       }
       
       // Se não encontrou, tenta buscar pelo OrderProvider (que tem as ordens em memória)
       if (order == null && mounted) {
-        debugPrint('⚠️ Ordem não encontrada no OrderService, tentando OrderProvider...');
+        broLog('⚠️ Ordem não encontrada no OrderService, tentando OrderProvider...');
         try {
           final orderProvider = Provider.of<OrderProvider>(context, listen: false);
           final orderFromProvider = orderProvider.orders.firstWhere(
@@ -108,9 +109,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           );
           // Converter Order para Map
           order = orderFromProvider.toJson();
-          debugPrint('✅ Ordem encontrada no OrderProvider: ${widget.orderId}');
+          broLog('✅ Ordem encontrada no OrderProvider: ${widget.orderId}');
         } catch (providerError) {
-          debugPrint('⚠️ OrderProvider também falhou: $providerError');
+          broLog('⚠️ OrderProvider também falhou: $providerError');
         }
       }
       
@@ -136,7 +137,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         });
       }
     } catch (e) {
-      debugPrint('❌ Erro ao carregar ordem: $e');
+      broLog('❌ Erro ao carregar ordem: $e');
       if (!mounted) return;
       setState(() {
         _error = e.toString();
@@ -156,10 +157,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       final resolution = await nostrService.fetchDisputeResolution(widget.orderId);
       if (resolution != null && mounted) {
         setState(() => _disputeResolution = resolution);
-        debugPrint('✅ Resolução de disputa encontrada para ${widget.orderId.substring(0, 8)}');
+        broLog('✅ Resolução de disputa encontrada para ${widget.orderId.substring(0, 8)}');
       }
     } catch (e) {
-      debugPrint('⚠️ Erro ao buscar resolução: $e');
+      broLog('⚠️ Erro ao buscar resolução: $e');
     }
   }
   
@@ -191,11 +192,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           _loadingMediatorMessages = false;
         });
         if (messages.isNotEmpty) {
-          debugPrint('📨 Usuário: ${messages.length} mensagens do mediador para ordem ${widget.orderId.substring(0, 8)}');
+          broLog('📨 Usuário: ${messages.length} mensagens do mediador para ordem ${widget.orderId.substring(0, 8)}');
         }
       }
     } catch (e) {
-      debugPrint('⚠️ Erro ao buscar mensagens do mediador: $e');
+      broLog('⚠️ Erro ao buscar mensagens do mediador: $e');
       if (mounted) setState(() => _loadingMediatorMessages = false);
     }
   }
@@ -289,7 +290,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       try {
         await orderProvider.syncOrdersFromNostr();
       } catch (e) {
-        debugPrint('⚠️ Erro ao sincronizar Nostr no polling: $e');
+        broLog('⚠️ Erro ao sincronizar Nostr no polling: $e');
       }
       
       if (!mounted) return;
@@ -408,9 +409,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         final orderProvider = Provider.of<OrderProvider>(context, listen: false);
         await orderProvider.updateOrderStatusLocal(widget.orderId, 'cancelled');
         success = true;
-        debugPrint('✅ Ordem ${widget.orderId} cancelada localmente');
+        broLog('✅ Ordem ${widget.orderId} cancelada localmente');
       } catch (e) {
-        debugPrint('⚠️ Erro ao cancelar ordem local: $e');
+        broLog('⚠️ Erro ao cancelar ordem local: $e');
       }
       
       // Se não está em modo teste, também tentar notificar backend (com timeout)
@@ -423,7 +424,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           ).timeout(
             const Duration(seconds: 5),
             onTimeout: () {
-              debugPrint('⚠️ Timeout ao cancelar no backend, usando cancelamento local');
+              broLog('⚠️ Timeout ao cancelar no backend, usando cancelamento local');
               return false;
             },
           );
@@ -433,18 +434,18 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             final orderProvider = Provider.of<OrderProvider>(context, listen: false);
             await orderProvider.updateOrderStatusLocal(widget.orderId, 'cancelled');
             success = true;
-            debugPrint('✅ Ordem ${widget.orderId} cancelada localmente (fallback)');
+            broLog('✅ Ordem ${widget.orderId} cancelada localmente (fallback)');
           }
         } catch (e) {
-          debugPrint('⚠️ Erro ao cancelar no backend: $e');
+          broLog('⚠️ Erro ao cancelar no backend: $e');
           // Tentar cancelar local como fallback
           try {
             final orderProvider = Provider.of<OrderProvider>(context, listen: false);
             await orderProvider.updateOrderStatusLocal(widget.orderId, 'cancelled');
             success = true;
-            debugPrint('✅ Ordem ${widget.orderId} cancelada localmente (fallback)');
+            broLog('✅ Ordem ${widget.orderId} cancelada localmente (fallback)');
           } catch (e2) {
-            debugPrint('❌ Erro ao cancelar ordem local (fallback): $e2');
+            broLog('❌ Erro ao cancelar ordem local (fallback): $e2');
           }
         }
       }
@@ -1041,15 +1042,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               child: MobileScanner(
                 onDetect: (capture) {
                   final List<Barcode> barcodes = capture.barcodes;
-                  debugPrint('📷 QR Scanner detectou ${barcodes.length} códigos');
+                  broLog('📷 QR Scanner detectou ${barcodes.length} códigos');
                   
                   for (final barcode in barcodes) {
                     final code = barcode.rawValue;
-                    debugPrint('📷 Código raw: $code');
+                    broLog('📷 Código raw: $code');
                     
                     if (code != null && code.isNotEmpty) {
                       String cleaned = code.trim();
-                      debugPrint('📷 Código limpo: $cleaned');
+                      broLog('📷 Código limpo: $cleaned');
                       
                       // Remover prefixos comuns de URI
                       final lowerCleaned = cleaned.toLowerCase();
@@ -1066,14 +1067,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         cleaned = cleaned.split('?')[0];
                       }
                       
-                      debugPrint('📷 Código após limpeza: $cleaned');
+                      broLog('📷 Código após limpeza: $cleaned');
                       
                       // BOLT11 Invoice - aceitar qualquer coisa que comece com ln
                       if (cleaned.toLowerCase().startsWith('lnbc') || 
                           cleaned.toLowerCase().startsWith('lntb') ||
                           cleaned.toLowerCase().startsWith('lnurl')) {
                         scannedCode = cleaned;
-                        debugPrint('✅ Invoice detectada: $scannedCode');
+                        broLog('✅ Invoice detectada: $scannedCode');
                         Navigator.pop(ctx);
                         return;
                       }
@@ -1084,7 +1085,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         final cleanedAddress = LnAddressService.cleanAddress(cleaned);
                         if (LnAddressService.isLightningAddress(cleanedAddress)) {
                           scannedCode = cleanedAddress;
-                          debugPrint('✅ LN Address detectado: $scannedCode');
+                          broLog('✅ LN Address detectado: $scannedCode');
                           Navigator.pop(ctx);
                           return;
                         }
@@ -1094,7 +1095,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       // O usuário pode ter escaneado algo que o app não conhece
                       if (cleaned.length > 10) {
                         scannedCode = cleaned;
-                        debugPrint('⚠️ Código não reconhecido, aceitando: $scannedCode');
+                        broLog('⚠️ Código não reconhecido, aceitando: $scannedCode');
                         Navigator.pop(ctx);
                         return;
                       }
@@ -1873,22 +1874,22 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       final order = orderProvider.getOrderById(widget.orderId);
       if (order?.metadata != null) {
         metadata = order!.metadata;
-        debugPrint('🔍 Metadata carregado do OrderProvider');
+        broLog('🔍 Metadata carregado do OrderProvider');
       }
     }
 
-    debugPrint('🔍 _buildReceiptCard - metadata keys: ${metadata?.keys.toList()}');
-    debugPrint('   proofImage existe: ${metadata?['proofImage'] != null}');
-    debugPrint('   paymentProof existe: ${metadata?['paymentProof'] != null}');
+    broLog('🔍 _buildReceiptCard - metadata keys: ${metadata?.keys.toList()}');
+    broLog('   proofImage existe: ${metadata?['proofImage'] != null}');
+    broLog('   paymentProof existe: ${metadata?['paymentProof'] != null}');
     if (metadata?['proofImage'] != null) {
       final pi = metadata!['proofImage'] as String;
-      debugPrint('   proofImage length: ${pi.length}');
-      debugPrint('   proofImage preview: ${pi.substring(0, pi.length > 50 ? 50 : pi.length)}');
+      broLog('   proofImage length: ${pi.length}');
+      broLog('   proofImage preview: ${pi.substring(0, pi.length > 50 ? 50 : pi.length)}');
     }
     if (metadata?['paymentProof'] != null) {
       final pp = metadata!['paymentProof'] as String;
-      debugPrint('   paymentProof length: ${pp.length}');
-      debugPrint('   paymentProof preview: ${pp.substring(0, pp.length > 50 ? 50 : pp.length)}');
+      broLog('   paymentProof length: ${pp.length}');
+      broLog('   paymentProof preview: ${pp.substring(0, pp.length > 50 ? 50 : pp.length)}');
     }
 
     // Compatibilidade com TODOS os formatos de comprovante
@@ -2114,14 +2115,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   Widget _buildReceiptImageWidget(String imageUrl) {
-    debugPrint('🖼️ _buildReceiptImageWidget chamado');
-    debugPrint('   imageUrl length: ${imageUrl.length}');
-    debugPrint('   imageUrl starts with: ${imageUrl.substring(0, imageUrl.length > 20 ? 20 : imageUrl.length)}');
+    broLog('🖼️ _buildReceiptImageWidget chamado');
+    broLog('   imageUrl length: ${imageUrl.length}');
+    broLog('   imageUrl starts with: ${imageUrl.substring(0, imageUrl.length > 20 ? 20 : imageUrl.length)}');
     
     // Verificar se é base64 (vindo do Nostr proofImage)
     if (imageUrl.startsWith('data:image')) {
       // Data URI format: data:image/png;base64,xxxxx
-      debugPrint('   Formato: data:image URI');
+      broLog('   Formato: data:image URI');
       try {
         final base64String = imageUrl.split(',').last;
         final bytes = base64Decode(base64String);
@@ -2135,17 +2136,17 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       }
     } else if (_isBase64Image(imageUrl)) {
       // Base64 puro (sem prefixo data:) - pode ser JPEG (/9j/), PNG (iVBOR), etc
-      debugPrint('   Formato: base64 puro detectado');
+      broLog('   Formato: base64 puro detectado');
       try {
         final bytes = base64Decode(imageUrl);
-        debugPrint('   Bytes decodificados: ${bytes.length}');
+        broLog('   Bytes decodificados: ${bytes.length}');
         return Image.memory(
           bytes,
           fit: BoxFit.contain,
           errorBuilder: (context, error, stackTrace) => _buildImageError('Erro ao decodificar: $error'),
         );
       } catch (e) {
-        debugPrint('   Erro ao decodificar base64: $e');
+        broLog('   Erro ao decodificar base64: $e');
         return _buildImageError('Erro ao processar imagem: $e');
       }
     } else if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
@@ -2687,10 +2688,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               orderDetails: orderDetails,
               userEvidence: userEvidence,
             );
-            debugPrint('📤 Disputa publicada no Nostr com sucesso');
+            broLog('📤 Disputa publicada no Nostr com sucesso');
           }
         } catch (e) {
-          debugPrint('⚠️ Erro ao publicar disputa no Nostr: $e');
+          broLog('⚠️ Erro ao publicar disputa no Nostr: $e');
         }
         
         setState(() {
@@ -2790,7 +2791,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   /// Mostra o bottom sheet com opções de pagamento (Lightning ou On-Chain)
   void _showPaymentMethodsSheet() {
-    debugPrint('🔵 _showPaymentMethodsSheet chamado');
+    broLog('🔵 _showPaymentMethodsSheet chamado');
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1A1A1A),
@@ -2941,7 +2942,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   /// Cria o invoice Lightning e mostra o dialog com QR Code
   Future<void> _createLightningInvoiceAndShow() async {
-    debugPrint('🔵 _createLightningInvoiceAndShow chamado');
+    broLog('🔵 _createLightningInvoiceAndShow chamado');
     
     // Mostrar loading
     showDialog(
@@ -2968,7 +2969,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     final breezProvider = context.read<BreezProvider>();
     
     try {
-      debugPrint('🔵 Criando Lightning invoice para ${widget.amountSats} sats (com fallback)...');
+      broLog('🔵 Criando Lightning invoice para ${widget.amountSats} sats (com fallback)...');
       
       // LightningProvider tenta Spark primeiro, depois Liquid se Spark falhar
       final invoiceData = await lightningProvider.createInvoice(
@@ -2977,7 +2978,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       ).timeout(
         const Duration(seconds: 45), // Timeout maior para fallback
         onTimeout: () {
-          debugPrint('⏰ Timeout ao criar invoice Lightning');
+          broLog('⏰ Timeout ao criar invoice Lightning');
           return {'success': false, 'error': 'Timeout ao criar invoice'};
         },
       );
@@ -2985,31 +2986,31 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       // Fechar loading
       if (mounted) Navigator.pop(context);
 
-      debugPrint('🔵 Invoice data recebido: $invoiceData');
+      broLog('🔵 Invoice data recebido: $invoiceData');
       
       // Verificar se usou Liquid (para log)
       final isLiquid = invoiceData?['isLiquid'] == true;
       if (isLiquid) {
         final fees = invoiceData?['fees'] ?? 0;
-        debugPrint('💧 Invoice criada via LIQUID (fallback). Taxas: $fees sats');
+        broLog('💧 Invoice criada via LIQUID (fallback). Taxas: $fees sats');
       }
       
       if (invoiceData != null && invoiceData['success'] == true) {
         final invoice = invoiceData['invoice'] as String;
         final paymentHash = invoiceData['paymentHash'] as String? ?? '';
-        debugPrint('🔵 Invoice criada: ${invoice.substring(0, 50)}...');
+        broLog('🔵 Invoice criada: ${invoice.substring(0, 50)}...');
         
         if (mounted) {
           _showLightningPaymentDialog(invoice, paymentHash, isLiquid: isLiquid);
         }
       } else {
-        debugPrint('❌ Falha ao criar invoice: ${invoiceData?['error']}');
+        broLog('❌ Falha ao criar invoice: ${invoiceData?['error']}');
         _showError('Erro ao criar invoice: ${invoiceData?['error'] ?? 'Desconhecido'}');
       }
     } catch (e) {
       // Fechar loading
       if (mounted) Navigator.pop(context);
-      debugPrint('❌ Erro ao criar invoice: $e');
+      broLog('❌ Erro ao criar invoice: $e');
       _showError('Erro ao criar invoice: $e');
     }
   }
@@ -3036,7 +3037,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     // Registrar callback para pagamento recebido
     final breezProvider = context.read<BreezProvider>();
     breezProvider.onPaymentReceived = (paymentId, amountSats, pHash) {
-      debugPrint('🎉 Callback de pagamento recebido! ID: $paymentId, Amount: $amountSats, Hash: $pHash');
+      broLog('🎉 Callback de pagamento recebido! ID: $paymentId, Amount: $amountSats, Hash: $pHash');
       _onPaymentReceived();
     };
     
@@ -3044,7 +3045,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     if (isLiquid) {
       final lightningProvider = context.read<LightningProvider>();
       lightningProvider.liquidProvider.onPaymentReceived = (paymentId, amountSats, pHash) {
-        debugPrint('🎉 Callback de pagamento Liquid recebido! ID: $paymentId, Amount: $amountSats');
+        broLog('🎉 Callback de pagamento Liquid recebido! ID: $paymentId, Amount: $amountSats');
         _onPaymentReceived();
       };
     }
@@ -3202,7 +3203,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   Timer? _paymentCheckTimer;
   
   void _startPaymentMonitoring(String paymentHash) {
-    debugPrint('🔍 Iniciando monitoramento de pagamento: $paymentHash');
+    broLog('🔍 Iniciando monitoramento de pagamento: $paymentHash');
     
     _paymentCheckTimer?.cancel();
     _paymentCheckTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
@@ -3210,14 +3211,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         final breezProvider = context.read<BreezProvider>();
         final status = await breezProvider.checkPaymentStatus(paymentHash);
         
-        debugPrint('📊 Status do pagamento: $status');
+        broLog('📊 Status do pagamento: $status');
         
         if (status != null && status['paid'] == true) {
           timer.cancel();
           _onPaymentReceived();
         }
       } catch (e) {
-        debugPrint('❌ Erro ao verificar pagamento: $e');
+        broLog('❌ Erro ao verificar pagamento: $e');
       }
     });
   }
@@ -3236,7 +3237,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
   
   void _onPaymentReceived() {
-    debugPrint('✅ PAGAMENTO RECEBIDO!');
+    broLog('✅ PAGAMENTO RECEBIDO!');
     
     // Fechar dialog atual
     if (mounted) Navigator.of(context).pop();
@@ -3247,7 +3248,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       orderId: widget.orderId,
       status: 'payment_received',
     ).then((_) {
-      debugPrint('💾 Status da ordem ${widget.orderId} atualizado para payment_received');
+      broLog('💾 Status da ordem ${widget.orderId} atualizado para payment_received');
     });
     
     // Mostrar dialog de sucesso
@@ -3742,12 +3743,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       
       // Só fazer sync se NÃO temos providerId (sync com timeout de 10s para iOS)
       if (providerId == null || providerId.isEmpty) {
-        debugPrint('🔄 Sincronizando ordem antes de confirmar (providerId não encontrado localmente)...');
+        broLog('🔄 Sincronizando ordem antes de confirmar (providerId não encontrado localmente)...');
         try {
           await orderProvider.syncOrdersFromNostr().timeout(
             const Duration(seconds: 10),  // iOS precisa de mais tempo
             onTimeout: () {
-              debugPrint('⏱️ Timeout no sync (10s) - continuando com dados locais');
+              broLog('⏱️ Timeout no sync (10s) - continuando com dados locais');
             },
           );
           // Recarregar ordem após sync
@@ -3757,10 +3758,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             providerId = order.providerId;
           }
         } catch (e) {
-          debugPrint('⚠️ Erro no sync: $e - continuando com dados locais');
+          broLog('⚠️ Erro no sync: $e - continuando com dados locais');
         }
       } else {
-        debugPrint('✅ providerId já disponível localmente: ${providerId.substring(0, 16)}');
+        broLog('✅ providerId já disponível localmente: ${providerId.substring(0, 16)}');
       }
       
       // Atualizar providerId de múltiplas fontes se ainda não temos
@@ -3775,21 +3776,21 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       // FALLBACK CRÍTICO: Se ainda não temos providerId, buscar diretamente do Nostr
       // Isso acontece quando o provedor aceitou mas o sync local não atualizou
       if (providerId == null || providerId.isEmpty) {
-        debugPrint('🔍 providerId ainda é null, buscando diretamente do Nostr...');
+        broLog('🔍 providerId ainda é null, buscando diretamente do Nostr...');
         final nostrService = NostrOrderService();
         final nostrOrder = await nostrService.fetchOrderFromNostr(widget.orderId);
         if (nostrOrder != null) {
           providerId = nostrOrder['providerId'] as String?;
           providerId ??= nostrOrder['provider_id'] as String?;
-          debugPrint('   Nostr retornou providerId: ${providerId?.substring(0, 16) ?? "NULL"}');
+          broLog('   Nostr retornou providerId: ${providerId?.substring(0, 16) ?? "NULL"}');
         }
       }
       
-      debugPrint('📤 Confirmando ordem ${widget.orderId.substring(0, 8)}');
-      debugPrint('   providerId: ${providerId?.substring(0, 16) ?? "NULL - PROBLEMA!"}');
+      broLog('📤 Confirmando ordem ${widget.orderId.substring(0, 8)}');
+      broLog('   providerId: ${providerId?.substring(0, 16) ?? "NULL - PROBLEMA!"}');
       
       if (providerId == null || providerId.isEmpty) {
-        debugPrint('⚠️ AVISO: providerId é null - o Bro pode não receber a notificação!');
+        broLog('⚠️ AVISO: providerId é null - o Bro pode não receber a notificação!');
         // NOVO: Mostrar aviso ao usuário mas continuar
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -3816,24 +3817,24 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       
       // FALLBACK: Se não encontrou invoice no cache local, buscar do evento COMPLETE no Nostr
       if (providerInvoice == null || providerInvoice.isEmpty) {
-        debugPrint('🔍 providerInvoice não encontrado no cache, buscando evento COMPLETE no Nostr...');
+        broLog('🔍 providerInvoice não encontrado no cache, buscando evento COMPLETE no Nostr...');
         try {
           final nostrService = NostrOrderService();
           final completeData = await nostrService.fetchOrderCompleteEvent(widget.orderId);
           if (completeData != null) {
             providerInvoice = completeData['providerInvoice'] as String?;
             if (providerInvoice != null && providerInvoice.isNotEmpty) {
-              debugPrint('✅ Invoice encontrado no evento COMPLETE: ${providerInvoice.substring(0, 30)}...');
+              broLog('✅ Invoice encontrado no evento COMPLETE: ${providerInvoice.substring(0, 30)}...');
             }
           }
         } catch (e) {
-          debugPrint('⚠️ Erro ao buscar invoice do Nostr: $e');
+          broLog('⚠️ Erro ao buscar invoice do Nostr: $e');
         }
       }
       
       // Se não tem invoice, BLOQUEAR a confirmação
       if (providerInvoice == null || providerInvoice.isEmpty) {
-        debugPrint('🚨 BLOQUEANDO confirmação: Nenhum providerInvoice encontrado!');
+        broLog('🚨 BLOQUEANDO confirmação: Nenhum providerInvoice encontrado!');
         if (mounted) {
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
           ScaffoldMessenger.of(context).showSnackBar(
@@ -3852,7 +3853,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       }
       
       // PAGAR O PROVEDOR
-      debugPrint('⚡ Pagando invoice do provedor: ${providerInvoice.substring(0, 30)}...');
+      broLog('⚡ Pagando invoice do provedor: ${providerInvoice.substring(0, 30)}...');
       bool paymentSuccess = false;
       String paymentError = '';
       
@@ -3860,9 +3861,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         final breezProvider = context.read<BreezProvider>();
         final liquidProvider = context.read<BreezLiquidProvider>();
         
-        debugPrint('🔍 DEBUG PAY INVOICE:');
-        debugPrint('   breezProvider.isInitialized: ${breezProvider.isInitialized}');
-        debugPrint('   liquidProvider.isInitialized: ${liquidProvider.isInitialized}');
+        broLog('🔍 DEBUG PAY INVOICE:');
+        broLog('   breezProvider.isInitialized: ${breezProvider.isInitialized}');
+        broLog('   liquidProvider.isInitialized: ${liquidProvider.isInitialized}');
         
         if (!breezProvider.isInitialized && !liquidProvider.isInitialized) {
           paymentError = 'Carteira não inicializada. Abra sua carteira e tente novamente.';
@@ -3874,14 +3875,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               String usedBackend = 'none';
               
               if (breezProvider.isInitialized) {
-                debugPrint('⚡ Tentativa $attempt/3: Pagando via Breez Spark...');
+                broLog('⚡ Tentativa $attempt/3: Pagando via Breez Spark...');
                 payResult = await breezProvider.payInvoice(providerInvoice).timeout(
                   const Duration(seconds: 30),
                   onTimeout: () => {'success': false, 'error': 'timeout'},
                 );
                 usedBackend = 'Spark';
               } else if (liquidProvider.isInitialized) {
-                debugPrint('⚡ Tentativa $attempt/3: Pagando via Liquid...');
+                broLog('⚡ Tentativa $attempt/3: Pagando via Liquid...');
                 payResult = await liquidProvider.payInvoice(providerInvoice).timeout(
                   const Duration(seconds: 30),
                   onTimeout: () => {'success': false, 'error': 'timeout'},
@@ -3890,32 +3891,32 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               }
               
               if (payResult != null && payResult['success'] == true) {
-                debugPrint('✅ Invoice do provedor pago com sucesso via $usedBackend na tentativa $attempt!');
+                broLog('✅ Invoice do provedor pago com sucesso via $usedBackend na tentativa $attempt!');
                 paymentSuccess = true;
                 break;
               } else {
                 paymentError = payResult?['error']?.toString() ?? 'Falha desconhecida';
-                debugPrint('⚠️ Tentativa $attempt falhou: $paymentError');
+                broLog('⚠️ Tentativa $attempt falhou: $paymentError');
               }
             } catch (e) {
               paymentError = e.toString();
-              debugPrint('⚠️ Tentativa $attempt erro: $paymentError');
+              broLog('⚠️ Tentativa $attempt erro: $paymentError');
             }
             
             if (attempt < 3) {
-              debugPrint('⏳ Aguardando 2s antes da próxima tentativa...');
+              broLog('⏳ Aguardando 2s antes da próxima tentativa...');
               await Future.delayed(const Duration(seconds: 2));
             }
           }
         }
       } catch (e) {
         paymentError = e.toString();
-        debugPrint('⚠️ Erro geral ao pagar invoice: $e');
+        broLog('⚠️ Erro geral ao pagar invoice: $e');
       }
       
       // Se o pagamento falhou, NÃO marcar como completed
       if (!paymentSuccess) {
-        debugPrint('❌ Pagamento ao provedor FALHOU após 3 tentativas: $paymentError');
+        broLog('❌ Pagamento ao provedor FALHOU após 3 tentativas: $paymentError');
         if (mounted) {
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
           ScaffoldMessenger.of(context).showSnackBar(
@@ -3933,7 +3934,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return; // CRÍTICO: Não finalizar sem pagamento
       }
       
-      debugPrint('✅ Pagamento ao provedor confirmado! Agora marcando ordem como completed...');
+      broLog('✅ Pagamento ao provedor confirmado! Agora marcando ordem como completed...');
 
       // ========== ETAPA 2: MARCAR COMO COMPLETED NO NOSTR (só após pagamento bem-sucedido) ==========
       final updateSuccess = await orderProvider.updateOrderStatus(
@@ -3943,7 +3944,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       );
       
       if (!updateSuccess) {
-        debugPrint('⚠️ Pagamento feito mas falha ao publicar status no Nostr - tentando novamente...');
+        broLog('⚠️ Pagamento feito mas falha ao publicar status no Nostr - tentando novamente...');
         // Pagamento já foi feito, tentar publicar novamente
         await Future.delayed(const Duration(seconds: 2));
         final retrySuccess = await orderProvider.updateOrderStatus(
@@ -3952,11 +3953,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           providerId: providerId,
         );
         if (!retrySuccess) {
-          debugPrint('⚠️ Segunda tentativa de publicar status falhou - pagamento foi feito, status será sincronizado depois');
+          broLog('⚠️ Segunda tentativa de publicar status falhou - pagamento foi feito, status será sincronizado depois');
         }
       }
       
-      debugPrint('✅ Ordem marcada como completed com sucesso');
+      broLog('✅ Ordem marcada como completed com sucesso');
       
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -3988,24 +3989,24 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
         // ========== PAGAR TAXA DA PLATAFORMA VIA LIGHTNING ==========
         // Usar serviço centralizado que já tem fallback Spark/Liquid
-        debugPrint('💼 Preparando envio de taxa da plataforma...');
-        debugPrint('   platformLightningAddress: "${AppConfig.platformLightningAddress}"');
-        debugPrint('   platformFeeSats: $platformFeeSats');
-        debugPrint('   widget.amountSats: ${widget.amountSats}');
+        broLog('💼 Preparando envio de taxa da plataforma...');
+        broLog('   platformLightningAddress: "${AppConfig.platformLightningAddress}"');
+        broLog('   platformFeeSats: $platformFeeSats');
+        broLog('   widget.amountSats: ${widget.amountSats}');
         
         if (AppConfig.platformLightningAddress.isNotEmpty && platformFeeSats > 0) {
-          debugPrint('💼 Enviando taxa da plataforma via PlatformFeeService...');
+          broLog('💼 Enviando taxa da plataforma via PlatformFeeService...');
           final feeSuccess = await PlatformFeeService.sendPlatformFee(
             orderId: widget.orderId,
             totalSats: widget.amountSats,
           );
           if (!feeSuccess) {
-            debugPrint('⚠️ Falha ao enviar taxa da plataforma');
+            broLog('⚠️ Falha ao enviar taxa da plataforma');
           } else {
-            debugPrint('✅ Taxa da plataforma enviada com sucesso!');
+            broLog('✅ Taxa da plataforma enviada com sucesso!');
           }
         } else {
-          debugPrint('⚠️ Taxa da plataforma não enviada: address=${AppConfig.platformLightningAddress.isNotEmpty}, sats=$platformFeeSats');
+          broLog('⚠️ Taxa da plataforma não enviada: address=${AppConfig.platformLightningAddress.isNotEmpty}, sats=$platformFeeSats');
         }
 
         // Registrar taxa da plataforma (para tracking local)
@@ -4015,8 +4016,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           orderDescription: orderDescription,
         );
 
-        debugPrint('💼 Taxa de $platformFee sats registrada para a plataforma');
-        debugPrint('ℹ️ Ganho do provedor será registrado no dispositivo do provedor via SDK Breez');
+        broLog('💼 Taxa de $platformFee sats registrada para a plataforma');
+        broLog('ℹ️ Ganho do provedor será registrado no dispositivo do provedor via SDK Breez');
       }
 
       if (mounted) {
@@ -4037,7 +4038,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         });
       }
     } catch (e) {
-      debugPrint('❌ ERRO na confirmação: $e');
+      broLog('❌ ERRO na confirmação: $e');
       if (mounted) {
         // CRÍTICO: Reverter status visual para não travar a UI
         setState(() {

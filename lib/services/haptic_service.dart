@@ -1,4 +1,5 @@
-import 'package:flutter/services.dart';
+﻿import 'package:flutter/services.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter/foundation.dart';
 
 /// Serviço de feedback háptico para melhorar UX
@@ -13,7 +14,7 @@ class HapticService {
   /// Habilita/desabilita feedback háptico
   void setEnabled(bool enabled) {
     _enabled = enabled;
-    debugPrint('📳 Haptic feedback ${enabled ? "habilitado" : "desabilitado"}');
+    broLog('📳 Haptic feedback ${enabled ? "habilitado" : "desabilitado"}');
   }
   
   bool get isEnabled => _enabled;
@@ -24,7 +25,7 @@ class HapticService {
     try {
       await HapticFeedback.lightImpact();
     } catch (e) {
-      debugPrint('Haptic light error: $e');
+      broLog('Haptic light error: $e');
     }
   }
   
@@ -34,7 +35,7 @@ class HapticService {
     try {
       await HapticFeedback.mediumImpact();
     } catch (e) {
-      debugPrint('Haptic medium error: $e');
+      broLog('Haptic medium error: $e');
     }
   }
   
@@ -44,7 +45,7 @@ class HapticService {
     try {
       await HapticFeedback.heavyImpact();
     } catch (e) {
-      debugPrint('Haptic heavy error: $e');
+      broLog('Haptic heavy error: $e');
     }
   }
   
@@ -54,7 +55,7 @@ class HapticService {
     try {
       await HapticFeedback.selectionClick();
     } catch (e) {
-      debugPrint('Haptic selection error: $e');
+      broLog('Haptic selection error: $e');
     }
   }
   
@@ -66,7 +67,7 @@ class HapticService {
       await Future.delayed(const Duration(milliseconds: 100));
       await HapticFeedback.lightImpact();
     } catch (e) {
-      debugPrint('Haptic success error: $e');
+      broLog('Haptic success error: $e');
     }
   }
   
@@ -80,7 +81,7 @@ class HapticService {
       await Future.delayed(const Duration(milliseconds: 80));
       await HapticFeedback.heavyImpact();
     } catch (e) {
-      debugPrint('Haptic error error: $e');
+      broLog('Haptic error error: $e');
     }
   }
   
@@ -90,7 +91,7 @@ class HapticService {
     try {
       await HapticFeedback.vibrate();
     } catch (e) {
-      debugPrint('Haptic warning error: $e');
+      broLog('Haptic warning error: $e');
     }
   }
   
@@ -105,7 +106,7 @@ class HapticService {
       await Future.delayed(const Duration(milliseconds: 100));
       await HapticFeedback.heavyImpact();
     } catch (e) {
-      debugPrint('Haptic payment error: $e');
+      broLog('Haptic payment error: $e');
     }
   }
   

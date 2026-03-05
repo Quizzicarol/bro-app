@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter/services.dart';
 import '../services/chat_service.dart';
 import '../services/storage_service.dart';
@@ -51,7 +52,7 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
       final publicKey = await _storage.getNostrPublicKey();
       
       if (privateKey == null || publicKey == null) {
-        debugPrint('❌ Chaves Nostr não encontradas no armazenamento seguro');
+        broLog('❌ Chaves Nostr não encontradas no armazenamento seguro');
         setState(() {
           _isLoading = false;
           _isInitialized = false;
@@ -59,9 +60,9 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
         return;
       }
       
-      debugPrint('✅ Chaves Nostr encontradas!');
+      broLog('✅ Chaves Nostr encontradas!');
       _myPubkey = publicKey;
-      debugPrint('💬 Conversas: Minha pubkey: ${publicKey.substring(0, 16)}...');
+      broLog('💬 Conversas: Minha pubkey: ${publicKey.substring(0, 16)}...');
       
       // Inicializar chat service
       await _chatService.initialize(privateKey, publicKey);
@@ -71,14 +72,14 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
       });
       
       // Aguardar mais tempo para receber mensagens dos relays
-      debugPrint('💬 Conversas: Aguardando mensagens dos relays...');
+      broLog('💬 Conversas: Aguardando mensagens dos relays...');
       await Future.delayed(const Duration(seconds: 4));
       
       // Carregar conversas
       await _loadConversations();
       
     } catch (e) {
-      debugPrint('❌ Erro ao inicializar chat: $e');
+      broLog('❌ Erro ao inicializar chat: $e');
       setState(() {
         _isLoading = false;
         _isInitialized = false;
@@ -97,8 +98,8 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
       final pubkeys = _chatService.getConversations();
       final conversations = <ConversationInfo>[];
       
-      debugPrint('💬 Conversas: ${pubkeys.length} conversas encontradas');
-      debugPrint('💬 Conversas: ${_chatService.totalCachedMessages} mensagens no cache');
+      broLog('💬 Conversas: ${pubkeys.length} conversas encontradas');
+      broLog('💬 Conversas: ${_chatService.totalCachedMessages} mensagens no cache');
       
       for (final pubkey in pubkeys) {
         final messages = _chatService.getMessages(pubkey);
@@ -107,7 +108,7 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
         // Verificar se é conversa consigo mesmo
         final isSelfChat = pubkey == _myPubkey;
         
-        debugPrint('   - ${pubkey.substring(0, 8)}...: ${messages.length} mensagens ${isSelfChat ? "(EU MESMO)" : ""}');
+        broLog('   - ${pubkey.substring(0, 8)}...: ${messages.length} mensagens ${isSelfChat ? "(EU MESMO)" : ""}');
         
         // Tentar obter nome salvo
         String? savedName = await _storage.getData('contact_name_$pubkey');
@@ -140,7 +141,7 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
         });
       }
     } catch (e) {
-      debugPrint('❌ Erro ao carregar conversas: $e');
+      broLog('❌ Erro ao carregar conversas: $e');
       if (mounted) {
         setState(() => _isLoading = false);
       }

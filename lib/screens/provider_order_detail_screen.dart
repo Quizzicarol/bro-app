@@ -1,6 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:convert';
@@ -90,10 +91,10 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       final resolution = await nostrService.fetchDisputeResolution(widget.orderId);
       if (resolution != null && mounted) {
         setState(() => _disputeResolution = resolution);
-        debugPrint('✅ Provider: resolução encontrada para ${widget.orderId.substring(0, 8)}');
+        broLog('✅ Provider: resolução encontrada para ${widget.orderId.substring(0, 8)}');
       }
     } catch (e) {
-      debugPrint('⚠️ Provider: erro ao buscar resolução: $e');
+      broLog('⚠️ Provider: erro ao buscar resolução: $e');
     }
   }
   
@@ -124,11 +125,11 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           _loadingProviderMediatorMessages = false;
         });
         if (messages.isNotEmpty) {
-          debugPrint('📨 Provider: ${messages.length} mensagens do mediador para ordem ${widget.orderId.substring(0, 8)}');
+          broLog('📨 Provider: ${messages.length} mensagens do mediador para ordem ${widget.orderId.substring(0, 8)}');
         }
       }
     } catch (e) {
-      debugPrint('⚠️ Provider: erro ao buscar mensagens do mediador: $e');
+      broLog('⚠️ Provider: erro ao buscar mensagens do mediador: $e');
       if (mounted) setState(() => _loadingProviderMediatorMessages = false);
     }
   }
@@ -142,7 +143,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       
       // Só fazer polling se estiver aguardando confirmação
       if (currentStatus == 'awaiting_confirmation' && mounted) {
-        debugPrint('🔄 [POLLING] Verificando status da ordem ${widget.orderId.substring(0, 8)}...');
+        broLog('🔄 [POLLING] Verificando status da ordem ${widget.orderId.substring(0, 8)}...');
         await _loadOrderDetails();
         
         // CORREÇÃO v234: Recalcular _timeRemaining a cada tick pra manter o countdown atualizado
@@ -156,7 +157,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         // Se mudou para completed ou liquidated, parar o polling
         final newStatus = _orderDetails?['status'] ?? '';
         if (newStatus == 'completed' || newStatus == 'liquidated') {
-          debugPrint('🎉 [POLLING] Ordem ${newStatus}! Parando polling.');
+          broLog('🎉 [POLLING] Ordem ${newStatus}! Parando polling.');
           timer.cancel();
           
           // Mostrar notificação ao Bro
@@ -179,7 +180,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   Future<void> _loadOrderDetails({bool forceSync = false}) async {
     if (!mounted) return;
     
-    debugPrint('🔵 [LOAD] _loadOrderDetails INICIADO (forceSync=$forceSync, _orderDetails=${_orderDetails != null ? "set" : "null"})');
+    broLog('🔵 [LOAD] _loadOrderDetails INICIADO (forceSync=$forceSync, _orderDetails=${_orderDetails != null ? "set" : "null"})');
     
     // Não mostrar loading se for polling (forceSync = false mantido do caller)
     if (_orderDetails == null) {
@@ -196,20 +197,20 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       // Isso permite que o Bro veja quando o usuário confirmou
       final currentStatus = _orderDetails?['status'] ?? '';
       if (currentStatus == 'awaiting_confirmation' || forceSync) {
-        debugPrint('🔄 [SYNC] Sincronizando com Nostr para buscar updates...');
+        broLog('🔄 [SYNC] Sincronizando com Nostr para buscar updates...');
         await orderProvider.syncOrdersFromNostr().timeout(
           const Duration(seconds: 5),
           onTimeout: () {
-            debugPrint('⏱️ [SYNC] Timeout - continuando com dados locais');
+            broLog('⏱️ [SYNC] Timeout - continuando com dados locais');
           },
         );
       }
       
-      debugPrint('🔵 [LOAD] Chamando getOrder(${widget.orderId.substring(0, 8)})...');
+      broLog('🔵 [LOAD] Chamando getOrder(${widget.orderId.substring(0, 8)})...');
       final order = await orderProvider.getOrder(widget.orderId);
       
-      debugPrint('🔍 _loadOrderDetails: ordem carregada = ${order != null ? "OK (status=${order['status']})" : "NULL"}');
-      debugPrint('🔍 _loadOrderDetails: billCode = ${order?['billCode'] != null && (order!['billCode'] as String).isNotEmpty ? "present (${(order['billCode'] as String).length} chars)" : "EMPTY"}');
+      broLog('🔍 _loadOrderDetails: ordem carregada = ${order != null ? "OK (status=${order['status']})" : "NULL"}');
+      broLog('🔍 _loadOrderDetails: billCode = ${order?['billCode'] != null && (order!['billCode'] as String).isNotEmpty ? "present (${(order['billCode'] as String).length} chars)" : "EMPTY"}');
 
       if (mounted) {
         setState(() {
@@ -232,7 +233,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           // Se tem providerId válido, a ordem FOI aceita - independente do status
           _orderAccepted = hasAdvancedStatus || hasValidProviderId;
           
-          debugPrint('🔍 _orderAccepted calc: hasAdvancedStatus=$hasAdvancedStatus, hasValidProviderId=$hasValidProviderId, result=$_orderAccepted');
+          broLog('🔍 _orderAccepted calc: hasAdvancedStatus=$hasAdvancedStatus, hasValidProviderId=$hasValidProviderId, result=$_orderAccepted');
           
           // Calcular tempo restante se comprovante foi enviado
           final metadata = order?['metadata'] as Map<String, dynamic>?;
@@ -246,13 +247,13 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             if (_receiptSubmittedAt != null) {
               final deadline = _receiptSubmittedAt!.add(const Duration(hours: 36));
               _timeRemaining = deadline.difference(DateTime.now());
-              debugPrint('⏱️ Timer 36h: prazo=${deadline.toIso8601String()}, restante=${_timeRemaining?.inHours ?? 0}h ${(_timeRemaining?.inMinutes.abs() ?? 0) % 60}m');
+              broLog('⏱️ Timer 36h: prazo=${deadline.toIso8601String()}, restante=${_timeRemaining?.inHours ?? 0}h ${(_timeRemaining?.inMinutes.abs() ?? 0) % 60}m');
             }
           } else {
-            debugPrint('⚠️ Nenhum timestamp de comprovante encontrado');
+            broLog('⚠️ Nenhum timestamp de comprovante encontrado');
           }
           
-          debugPrint('🔍 Ordem ${widget.orderId.substring(0, 8)}: status=$orderStatus, providerId=$orderProviderId, _orderAccepted=$_orderAccepted');
+          broLog('🔍 Ordem ${widget.orderId.substring(0, 8)}: status=$orderStatus, providerId=$orderProviderId, _orderAccepted=$_orderAccepted');
           _isLoading = false;
         });
       }
@@ -269,16 +270,16 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   Future<void> _acceptOrder() async {
     if (!mounted) return;
     
-    debugPrint('🔵 [ACCEPT] _acceptOrder INICIADO para ordem ${widget.orderId.substring(0, 8)}');
+    broLog('🔵 [ACCEPT] _acceptOrder INICIADO para ordem ${widget.orderId.substring(0, 8)}');
     
     // PROTEÇÃO CRÍTICA: Verificar se ordem já foi aceita
     final currentStatus = _orderDetails?['status'] ?? 'pending';
     final currentProviderId = _orderDetails?['providerId'] ?? _orderDetails?['provider_id'];
     
-    debugPrint('🔵 [ACCEPT] Status atual: $currentStatus, providerId: $currentProviderId, _orderAccepted: $_orderAccepted');
+    broLog('🔵 [ACCEPT] Status atual: $currentStatus, providerId: $currentProviderId, _orderAccepted: $_orderAccepted');
     
     if (currentStatus != 'pending' && currentStatus != 'payment_received') {
-      debugPrint('🚫 BLOQUEIO DE SEGURANÇA: Tentativa de aceitar ordem com status=$currentStatus');
+      broLog('🚫 BLOQUEIO DE SEGURANÇA: Tentativa de aceitar ordem com status=$currentStatus');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('❌ Esta ordem já está em status "$currentStatus" e não pode ser aceita novamente'),
@@ -289,7 +290,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     }
     
     if (_orderAccepted) {
-      debugPrint('🚫 BLOQUEIO DE SEGURANÇA: Ordem já marcada como aceita localmente');
+      broLog('🚫 BLOQUEIO DE SEGURANÇA: Ordem já marcada como aceita localmente');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('❌ Esta ordem já foi aceita'),
@@ -300,7 +301,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     }
     
     if (currentProviderId != null && currentProviderId.isNotEmpty) {
-      debugPrint('🚫 BLOQUEIO DE SEGURANÇA: Ordem já tem providerId=$currentProviderId');
+      broLog('🚫 BLOQUEIO DE SEGURANÇA: Ordem já tem providerId=$currentProviderId');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('❌ Esta ordem já foi aceita por outro provedor'),
@@ -376,17 +377,17 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       await _doAcceptOrder(orderAmount).timeout(
         const Duration(seconds: 45),
         onTimeout: () {
-          debugPrint('⏱️ [ACCEPT] TIMEOUT GLOBAL de 45s atingido!');
+          broLog('⏱️ [ACCEPT] TIMEOUT GLOBAL de 45s atingido!');
           throw TimeoutException('Tempo esgotado ao aceitar ordem (45s)');
         },
       );
     } catch (e) {
-      debugPrint('❌ [ACCEPT] ERRO: $e');
+      broLog('❌ [ACCEPT] ERRO: $e');
       _showError('Erro ao aceitar ordem: $e');
     } finally {
       // GARANTIA: _isAccepting SEMPRE é resetado
       if (mounted && _isAccepting) {
-        debugPrint('🔵 [ACCEPT] Resetando _isAccepting no finally');
+        broLog('🔵 [ACCEPT] Resetando _isAccepting no finally');
         setState(() {
           _isAccepting = false;
         });
@@ -402,35 +403,35 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       final currentTier = collateralProvider.getCurrentTier();
       
       if (currentTier != null) {
-        debugPrint('🔵 [ACCEPT] Bloqueando garantia (tier=${currentTier.id})...');
+        broLog('🔵 [ACCEPT] Bloqueando garantia (tier=${currentTier.id})...');
         await _escrowService.lockCollateral(
           providerId: widget.providerId,
           orderId: widget.orderId,
           lockedSats: (orderAmount * 1000).round(),
         );
-        debugPrint('🔵 [ACCEPT] Garantia bloqueada OK');
+        broLog('🔵 [ACCEPT] Garantia bloqueada OK');
       } else {
-        debugPrint('⚠️ [ACCEPT] Sem tier ativo — pulando lockCollateral');
+        broLog('⚠️ [ACCEPT] Sem tier ativo — pulando lockCollateral');
       }
     }
 
     // Publicar aceitação no Nostr E atualizar localmente
     // Retry automático: até 2 tentativas se falhar
-    debugPrint('🔵 [ACCEPT] Publicando aceitação no Nostr...');
+    broLog('🔵 [ACCEPT] Publicando aceitação no Nostr...');
     final orderProvider = context.read<OrderProvider>();
     
     bool success = false;
     for (int attempt = 1; attempt <= 2; attempt++) {
-      debugPrint('🔵 [ACCEPT] Tentativa $attempt/2...');
+      broLog('🔵 [ACCEPT] Tentativa $attempt/2...');
       success = await orderProvider.acceptOrderAsProvider(widget.orderId);
       if (success) break;
       if (attempt < 2) {
-        debugPrint('⚠️ [ACCEPT] Tentativa $attempt falhou, retentando em 2s...');
+        broLog('⚠️ [ACCEPT] Tentativa $attempt falhou, retentando em 2s...');
         await Future.delayed(const Duration(seconds: 2));
       }
     }
     
-    debugPrint('🔵 [ACCEPT] Resultado final: success=$success');
+    broLog('🔵 [ACCEPT] Resultado final: success=$success');
     
     if (!success) {
       _showError('Falha ao publicar aceitação no Nostr');
@@ -453,9 +454,9 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       );
     }
 
-    debugPrint('🔵 [ACCEPT] Recarregando detalhes da ordem...');
+    broLog('🔵 [ACCEPT] Recarregando detalhes da ordem...');
     await _loadOrderDetails();
-    debugPrint('🔵 [ACCEPT] Ordem aceita e detalhes carregados com sucesso!');
+    broLog('🔵 [ACCEPT] Ordem aceita e detalhes carregados com sucesso!');
   }
 
   Future<void> _pickReceipt() async {
@@ -553,8 +554,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         providerReceiveSats = 1;
       }
       
-      debugPrint('💰 Ordem: R\$ ${amount.toStringAsFixed(2)} = $totalSats sats');
-      debugPrint('💰 Provedor vai receber: $providerReceiveSats sats (valor total da ordem)');
+      broLog('💰 Ordem: R\$ ${amount.toStringAsFixed(2)} = $totalSats sats');
+      broLog('💰 Provedor vai receber: $providerReceiveSats sats (valor total da ordem)');
       
       String? generatedInvoice;
       
@@ -564,14 +565,14 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       final liquidProvider = context.read<BreezLiquidProvider>();
       
       // DEBUG: Verificar estado das carteiras
-      debugPrint('🔍 DEBUG INVOICE GENERATION:');
-      debugPrint('   breezProvider.isInitialized: ${breezProvider.isInitialized}');
-      debugPrint('   liquidProvider.isInitialized: ${liquidProvider.isInitialized}');
-      debugPrint('   providerReceiveSats: $providerReceiveSats');
+      broLog('🔍 DEBUG INVOICE GENERATION:');
+      broLog('   breezProvider.isInitialized: ${breezProvider.isInitialized}');
+      broLog('   liquidProvider.isInitialized: ${liquidProvider.isInitialized}');
+      broLog('   providerReceiveSats: $providerReceiveSats');
       
       // Só gerar invoice se o valor for maior que 0
       if (providerReceiveSats > 0 && breezProvider.isInitialized) {
-        debugPrint('⚡ Gerando invoice de $providerReceiveSats sats via Breez Spark...');
+        broLog('⚡ Gerando invoice de $providerReceiveSats sats via Breez Spark...');
         
         try {
           final result = await breezProvider.createInvoice(
@@ -581,15 +582,15 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           
           if (result != null && result['bolt11'] != null) {
             generatedInvoice = result['bolt11'] as String;
-            debugPrint('✅ Invoice gerado via Spark: ${generatedInvoice.substring(0, 30)}...');
+            broLog('✅ Invoice gerado via Spark: ${generatedInvoice.substring(0, 30)}...');
           } else {
-            debugPrint('⚠️ Falha ao gerar invoice via Spark: $result');
+            broLog('⚠️ Falha ao gerar invoice via Spark: $result');
           }
         } catch (e) {
-          debugPrint('⚠️ Erro/timeout ao gerar invoice Spark: $e — continuando sem invoice');
+          broLog('⚠️ Erro/timeout ao gerar invoice Spark: $e — continuando sem invoice');
         }
       } else if (providerReceiveSats > 0 && liquidProvider.isInitialized) {
-        debugPrint('⚡ Gerando invoice de $providerReceiveSats sats via Liquid (fallback)...');
+        broLog('⚡ Gerando invoice de $providerReceiveSats sats via Liquid (fallback)...');
         
         try {
           final result = await liquidProvider.createInvoice(
@@ -599,27 +600,27 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           
           if (result != null && result['bolt11'] != null) {
             generatedInvoice = result['bolt11'] as String;
-            debugPrint('✅ Invoice gerado via Liquid: ${generatedInvoice.substring(0, 30)}...');
+            broLog('✅ Invoice gerado via Liquid: ${generatedInvoice.substring(0, 30)}...');
           } else {
-            debugPrint('⚠️ Falha ao gerar invoice via Liquid: $result');
+            broLog('⚠️ Falha ao gerar invoice via Liquid: $result');
           }
         } catch (e) {
-          debugPrint('⚠️ Erro/timeout ao gerar invoice Liquid: $e — continuando sem invoice');
+          broLog('⚠️ Erro/timeout ao gerar invoice Liquid: $e — continuando sem invoice');
         }
       } else if (providerReceiveSats <= 0) {
-        debugPrint('ℹ️ providerReceiveSats=$providerReceiveSats (muito baixo), não gerando invoice');
+        broLog('ℹ️ providerReceiveSats=$providerReceiveSats (muito baixo), não gerando invoice');
       } else {
-        debugPrint('🚨 NENHUMA CARTEIRA INICIALIZADA! breez=${breezProvider.isInitialized}, liquid=${liquidProvider.isInitialized}');
+        broLog('🚨 NENHUMA CARTEIRA INICIALIZADA! breez=${breezProvider.isInitialized}, liquid=${liquidProvider.isInitialized}');
       }
 
-      debugPrint('📋 Resumo: providerReceiveSats=$providerReceiveSats, hasInvoice=${generatedInvoice != null}');
+      broLog('📋 Resumo: providerReceiveSats=$providerReceiveSats, hasInvoice=${generatedInvoice != null}');
       if (generatedInvoice != null) {
-        debugPrint('   Invoice: ${generatedInvoice.substring(0, 50)}...');
+        broLog('   Invoice: ${generatedInvoice.substring(0, 50)}...');
       }
 
       // CRÍTICO: Se não gerou invoice e há sats a receber, bloquear
       if (generatedInvoice == null && providerReceiveSats > 0) {
-        debugPrint('🚨 BLOQUEANDO: Sem invoice gerado para receber $providerReceiveSats sats!');
+        broLog('🚨 BLOQUEANDO: Sem invoice gerado para receber $providerReceiveSats sats!');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -638,7 +639,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       final orderProvider = context.read<OrderProvider>();
       bool success = false;
       for (int attempt = 1; attempt <= 2; attempt++) {
-        debugPrint('📤 [UPLOAD] Tentativa $attempt/2 de publicar comprovante...');
+        broLog('📤 [UPLOAD] Tentativa $attempt/2 de publicar comprovante...');
         success = await orderProvider.completeOrderAsProvider(
           widget.orderId, 
           proofImageBase64.isNotEmpty ? proofImageBase64 : confirmationCode,
@@ -647,7 +648,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         );
         if (success) break;
         if (attempt < 2) {
-          debugPrint('⚠️ [UPLOAD] Tentativa $attempt falhou, retentando em 3s...');
+          broLog('⚠️ [UPLOAD] Tentativa $attempt falhou, retentando em 3s...');
           await Future.delayed(const Duration(seconds: 3));
         }
       }
@@ -764,7 +765,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                      _orderDetails!['bill_code'] as String? ?? '';
     
     // DEBUG: Log para verificar se billCode está presente
-    debugPrint('🔍 _buildContent: billType=$billType, status=$status, billCode=${billCode.isNotEmpty ? "${billCode.substring(0, billCode.length > 20 ? 20 : billCode.length)}..." : "EMPTY"}');
+    broLog('🔍 _buildContent: billType=$billType, status=$status, billCode=${billCode.isNotEmpty ? "${billCode.substring(0, billCode.length > 20 ? 20 : billCode.length)}..." : "EMPTY"}');
     
     // SEMPRE construir payment_data a partir do billCode se existir
     Map<String, dynamic>? paymentData;
@@ -780,11 +781,11 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           'barcode': billCode,
         };
       }
-      debugPrint('✅ paymentData criado: ${paymentData.keys}');
+      broLog('✅ paymentData criado: ${paymentData.keys}');
     } else {
       // Fallback: tentar usar payment_data existente
       paymentData = _orderDetails!['payment_data'] as Map<String, dynamic>?;
-      debugPrint('⚠️ billCode vazio, usando payment_data existente: $paymentData');
+      broLog('⚠️ billCode vazio, usando payment_data existente: $paymentData');
     }
     
     final providerFee = amount * EscrowService.providerFeePercent / 100;
@@ -1731,7 +1732,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   Widget _buildAcceptButton() {
     // PROTEÇÃO CRÍTICA: Não mostrar botão se ordem já foi aceita
     if (_orderAccepted) {
-      debugPrint('🚫 _buildAcceptButton: Botão oculto porque _orderAccepted=true');
+      broLog('🚫 _buildAcceptButton: Botão oculto porque _orderAccepted=true');
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -1995,7 +1996,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     });
     
     try {
-      debugPrint('🔄 Executando auto-liquidação para ordem ${widget.orderId}');
+      broLog('🔄 Executando auto-liquidação para ordem ${widget.orderId}');
       
       final orderProvider = Provider.of<OrderProvider>(context, listen: false);
       
@@ -2035,7 +2036,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         await _loadOrderDetails();
       }
     } catch (e) {
-      debugPrint('❌ Erro na auto-liquidação: $e');
+      broLog('❌ Erro na auto-liquidação: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Erro na auto-liquidação: $e')),
@@ -2330,10 +2331,10 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             openedBy: 'provider',
             orderDetails: orderDetails,
           );
-          debugPrint('📤 Disputa do provedor publicada no Nostr');
+          broLog('📤 Disputa do provedor publicada no Nostr');
         }
       } catch (e) {
-        debugPrint('⚠️ Erro ao publicar disputa no Nostr: $e');
+        broLog('⚠️ Erro ao publicar disputa no Nostr: $e');
       }
 
       if (mounted) {

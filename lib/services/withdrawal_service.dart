@@ -1,5 +1,6 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/withdrawal.dart';
 
@@ -54,9 +55,9 @@ class WithdrawalService {
       // Salvar
       await prefs.setString(storageKey, jsonEncode(withdrawals));
       
-      debugPrint('✅ Saque registrado: ${withdrawal.id} - $amountSats sats - $status');
+      broLog('✅ Saque registrado: ${withdrawal.id} - $amountSats sats - $status');
     } catch (e) {
-      debugPrint('❌ Erro ao salvar saque: $e');
+      broLog('❌ Erro ao salvar saque: $e');
     }
   }
   
@@ -69,7 +70,7 @@ class WithdrawalService {
       final allWithdrawals = await getAllWithdrawals(userPubkey: userPubkey);
       return allWithdrawals.where((w) => w.orderId == orderId).toList();
     } catch (e) {
-      debugPrint('❌ Erro ao buscar saques da ordem: $e');
+      broLog('❌ Erro ao buscar saques da ordem: $e');
       return [];
     }
   }
@@ -97,7 +98,7 @@ class WithdrawalService {
       
       return withdrawals;
     } catch (e) {
-      debugPrint('❌ Erro ao buscar saques: $e');
+      broLog('❌ Erro ao buscar saques: $e');
       return [];
     }
   }

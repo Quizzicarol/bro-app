@@ -1,7 +1,8 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:nostr/nostr.dart';
 import 'nip04_service.dart';
 import 'storage_service.dart';
@@ -74,7 +75,7 @@ class ChatService {
   /// Limpar cache de mensagens (chamado no logout)
   Future<void> clearCache() async {
     _messageCache.clear();
-    debugPrint('💬 ChatService: Cache de mensagens limpo');
+    broLog('💬 ChatService: Cache de mensagens limpo');
   }
 
   /// Inicializar serviço de chat
@@ -82,23 +83,23 @@ class ChatService {
     // Limpar cache de memória ao trocar de usuário
     if (_publicKey != null && _publicKey != publicKey) {
       _messageCache.clear();
-      debugPrint('💬 ChatService: Cache limpo - usuário mudou');
+      broLog('💬 ChatService: Cache limpo - usuário mudou');
     }
     
     _privateKey = privateKey;
     _publicKey = publicKey;
     
-    debugPrint('💬 ChatService: Inicializando com pubkey ${publicKey.substring(0, 16)}...');
-    debugPrint('💬 ChatService: PrivateKey hash: ${privateKey.hashCode}');
+    broLog('💬 ChatService: Inicializando com pubkey ${publicKey.substring(0, 16)}...');
+    broLog('💬 ChatService: PrivateKey hash: ${privateKey.hashCode}');
     
     // Carregar mensagens do cache local
     await _loadCachedMessages();
-    debugPrint('💬 ChatService: ${_messageCache.length} conversas no cache local');
+    broLog('💬 ChatService: ${_messageCache.length} conversas no cache local');
     
     // Listar todas as conversas carregadas
     for (final entry in _messageCache.entries) {
       final isSelf = entry.key == publicKey;
-      debugPrint('   - ${entry.key.substring(0, 8)}...: ${entry.value.length} msgs ${isSelf ? "(SELF)" : ""}');
+      broLog('   - ${entry.key.substring(0, 8)}...: ${entry.value.length} msgs ${isSelf ? "(SELF)" : ""}');
     }
     
     // Conectar aos relays
@@ -107,11 +108,11 @@ class ChatService {
       final connected = await _connectToRelay(relay);
       if (connected) connectedCount++;
     }
-    debugPrint('💬 ChatService: Conectado a $connectedCount/${chatRelays.length} relays');
+    broLog('💬 ChatService: Conectado a $connectedCount/${chatRelays.length} relays');
     
     // Começar a escutar DMs
     _subscribeToDirectMessages();
-    debugPrint('💬 ChatService: Inscrito para receber DMs');
+    broLog('💬 ChatService: Inscrito para receber DMs');
   }
 
   /// Conectar a um relay
@@ -119,7 +120,7 @@ class ChatService {
     if (_connections.containsKey(url)) return true;
     
     try {
-      debugPrint('💬 Chat: Conectando ao relay $url');
+      broLog('💬 Chat: Conectando ao relay $url');
       final channel = WebSocketChannel.connect(Uri.parse(url));
       
       _connections[url] = channel;
@@ -127,19 +128,19 @@ class ChatService {
       channel.stream.listen(
         (message) => _handleMessage(url, message),
         onError: (error) {
-          debugPrint('❌ Chat: Erro no relay $url: $error');
+          broLog('❌ Chat: Erro no relay $url: $error');
           _connections.remove(url);
         },
         onDone: () {
-          debugPrint('🔌 Chat: Desconectado de $url');
+          broLog('🔌 Chat: Desconectado de $url');
           _connections.remove(url);
         },
       );
       
-      debugPrint('✅ Chat: Conectado ao relay $url');
+      broLog('✅ Chat: Conectado ao relay $url');
       return true;
     } catch (e) {
-      debugPrint('❌ Chat: Falha ao conectar ao relay $url: $e');
+      broLog('❌ Chat: Falha ao conectar ao relay $url: $e');
       return false;
     }
   }
@@ -171,7 +172,7 @@ class ChatService {
         try {
           channel.sink.add(request);
         } catch (e) {
-          debugPrint('❌ Chat: Erro ao enviar subscription: $e');
+          broLog('❌ Chat: Erro ao enviar subscription: $e');
         }
       }
     }
@@ -193,18 +194,18 @@ class ChatService {
         try {
           Event.fromJson(eventData, verify: true);
         } catch (e) {
-          debugPrint('⚠️ Chat: REJEITADO evento com assinatura inválida: $e');
+          broLog('⚠️ Chat: REJEITADO evento com assinatura inválida: $e');
           return;
         }
         
         _handleIncomingEvent(eventData);
       } else if (type == 'OK') {
-        debugPrint('✅ Chat: Mensagem aceita pelo relay $relayUrl');
+        broLog('✅ Chat: Mensagem aceita pelo relay $relayUrl');
       } else if (type == 'NOTICE') {
-        debugPrint('📢 Chat: $relayUrl: ${data[1]}');
+        broLog('📢 Chat: $relayUrl: ${data[1]}');
       }
     } catch (e) {
-      debugPrint('❌ Chat: Erro ao processar mensagem: $e');
+      broLog('❌ Chat: Erro ao processar mensagem: $e');
     }
   }
 
@@ -220,7 +221,7 @@ class ChatService {
       final createdAt = eventData['created_at'] as int;
       final tags = eventData['tags'] as List<dynamic>;
       
-      debugPrint('💬 Chat: Recebido evento DM de ${pubkey.substring(0, 8)}...');
+      broLog('💬 Chat: Recebido evento DM de ${pubkey.substring(0, 8)}...');
       
       // Extrair destinatário da tag 'p'
       String? recipientPubkey;
@@ -232,7 +233,7 @@ class ChatService {
       }
       
       if (recipientPubkey == null) {
-        debugPrint('⚠️ Chat: Evento sem tag p (destinatário)');
+        broLog('⚠️ Chat: Evento sem tag p (destinatário)');
         return;
       }
       
@@ -243,13 +244,13 @@ class ChatService {
       
       // SEGURANÇA: Rejeitar eventos que não são para/de mim
       if (!isFromMe && recipientPubkey != _publicKey) {
-        debugPrint('⚠️ Chat: Evento DM não direcionado a mim, ignorando');
+        broLog('⚠️ Chat: Evento DM não direcionado a mim, ignorando');
         return;
       }
       
       final otherPubkey = isFromMe ? recipientPubkey : pubkey;
       
-      debugPrint('💬 Chat: isFromMe=$isFromMe, otherPubkey=${otherPubkey.substring(0, 8)}...');
+      broLog('💬 Chat: isFromMe=$isFromMe, otherPubkey=${otherPubkey.substring(0, 8)}...');
       
       // Descriptografar mensagem
       String decryptedContent;
@@ -259,9 +260,9 @@ class ChatService {
           _privateKey!,
           otherPubkey,
         );
-        debugPrint('✅ Chat: Mensagem descriptografada com sucesso');
+        broLog('✅ Chat: Mensagem descriptografada com sucesso');
       } catch (e) {
-        debugPrint('⚠️ Chat: Não foi possível descriptografar: $e');
+        broLog('⚠️ Chat: Não foi possível descriptografar: $e');
         decryptedContent = '[Mensagem criptografada]';
       }
       
@@ -287,16 +288,16 @@ class ChatService {
         _saveCachedMessages();
       }
       
-      debugPrint('📨 Chat: Mensagem ${isFromMe ? "enviada" : "recebida"} de/para $otherPubkey');
+      broLog('📨 Chat: Mensagem ${isFromMe ? "enviada" : "recebida"} de/para $otherPubkey');
     } catch (e) {
-      debugPrint('❌ Chat: Erro ao processar evento: $e');
+      broLog('❌ Chat: Erro ao processar evento: $e');
     }
   }
 
   /// Enviar mensagem para um pubkey
   Future<bool> sendMessage(String recipientPubkey, String message) async {
     if (_privateKey == null || _publicKey == null) {
-      debugPrint('❌ Chat: Chaves não configuradas');
+      broLog('❌ Chat: Chaves não configuradas');
       return false;
     }
     
@@ -337,7 +338,7 @@ class ChatService {
           channel.sink.add(eventMessage);
           sentCount++;
         } catch (e) {
-          debugPrint('❌ Chat: Erro ao enviar para relay: $e');
+          broLog('❌ Chat: Erro ao enviar para relay: $e');
         }
       }
       
@@ -357,13 +358,13 @@ class ChatService {
         _messageStreams[recipientPubkey]?.add(chatMessage);
         _saveCachedMessages();
         
-        debugPrint('✅ Chat: Mensagem enviada para $sentCount relays');
+        broLog('✅ Chat: Mensagem enviada para $sentCount relays');
         return true;
       }
       
       return false;
     } catch (e) {
-      debugPrint('❌ Chat: Erro ao enviar mensagem: $e');
+      broLog('❌ Chat: Erro ao enviar mensagem: $e');
       return false;
     }
   }
@@ -386,7 +387,7 @@ class ChatService {
   Future<void> refreshAllMessages() async {
     if (_publicKey == null) return;
     
-    debugPrint('🔄 Chat: Forçando refresh de todas as mensagens...');
+    broLog('🔄 Chat: Forçando refresh de todas as mensagens...');
     
     // Re-inscrever para DMs
     _subscribeToDirectMessages();
@@ -396,7 +397,7 @@ class ChatService {
       await fetchMessagesFrom(pubkey);
     }
     
-    debugPrint('🔄 Chat: Refresh solicitado para ${_messageCache.length} conversas');
+    broLog('🔄 Chat: Refresh solicitado para ${_messageCache.length} conversas');
   }
 
   /// Obter número total de mensagens no cache
@@ -428,10 +429,10 @@ class ChatService {
               .toList();
           _messageCache[entry.key] = messages;
         }
-        debugPrint('💾 Chat: ${_messageCache.length} conversas carregadas');
+        broLog('💾 Chat: ${_messageCache.length} conversas carregadas');
       }
     } catch (e) {
-      debugPrint('⚠️ Chat: Erro ao carregar cache: $e');
+      broLog('⚠️ Chat: Erro ao carregar cache: $e');
     }
   }
 
@@ -447,7 +448,7 @@ class ChatService {
       final cacheKey = _publicKey != null ? 'chat_messages_${_publicKey!.substring(0, 16)}' : 'chat_messages';
       await prefs?.setString(cacheKey, jsonEncode(data));
     } catch (e) {
-      debugPrint('⚠️ Chat: Erro ao salvar cache: $e');
+      broLog('⚠️ Chat: Erro ao salvar cache: $e');
     }
   }
 
@@ -481,7 +482,7 @@ class ChatService {
         channel.sink.add(request1);
         channel.sink.add(request2);
       } catch (e) {
-        debugPrint('❌ Chat: Erro ao buscar mensagens: $e');
+        broLog('❌ Chat: Erro ao buscar mensagens: $e');
       }
     }
   }

@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart';
+﻿import 'package:flutter/foundation.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:dio/dio.dart';
 import '../config.dart';
 import 'api_service.dart';
@@ -13,7 +14,7 @@ class EscrowService {
   Future<Map<String, dynamic>> depositCollateral({required String tierId, required int amountSats}) async {
     // Em modo teste, simular depósito de garantia
     if (AppConfig.testMode) {
-      debugPrint('🧪 Modo teste: simulando depósito de garantia');
+      broLog('🧪 Modo teste: simulando depósito de garantia');
       return {
         'invoice': 'lnbc${amountSats}n1test_invoice_for_tier_$tierId',
         'deposit_id': 'test_deposit_${DateTime.now().millisecondsSinceEpoch}',
@@ -24,7 +25,7 @@ class EscrowService {
       final response = await _dio.post('/collateral/deposit', data: {'tierId': tierId, 'amountSats': amountSats, 'amountBrl': 0});
       return {'invoice': response.data['invoice'], 'deposit_id': response.data['deposit_id']};
     } catch (e) {
-      debugPrint('⚠️ Erro ao depositar garantia: $e');
+      broLog('⚠️ Erro ao depositar garantia: $e');
       rethrow;
     }
   }
@@ -32,7 +33,7 @@ class EscrowService {
   Future<void> lockCollateral({required String providerId, required String orderId, required int lockedSats}) async {
     // Em modo teste OU providerTestMode, apenas logar
     if (AppConfig.testMode || AppConfig.providerTestMode) {
-      debugPrint('🧪 Modo teste: lockCollateral simulado para ordem $orderId');
+      broLog('🧪 Modo teste: lockCollateral simulado para ordem $orderId');
       return;
     }
     
@@ -42,18 +43,18 @@ class EscrowService {
         data: {'orderId': orderId, 'lockedSats': lockedSats},
       ).timeout(const Duration(seconds: 10));
       
-      debugPrint('🔒 lockCollateral response: ${response.statusCode}');
+      broLog('🔒 lockCollateral response: ${response.statusCode}');
     } catch (e) {
       // Logar erro mas não bloquear - a garantia é gerenciada localmente
-      debugPrint('⚠️ Erro ao chamar lockCollateral no backend: $e');
-      debugPrint('   Continuando com garantia local...');
+      broLog('⚠️ Erro ao chamar lockCollateral no backend: $e');
+      broLog('   Continuando com garantia local...');
     }
   }
 
   Future<void> unlockCollateral({required String providerId, required String orderId}) async {
     // Em modo teste OU providerTestMode, apenas logar
     if (AppConfig.testMode || AppConfig.providerTestMode) {
-      debugPrint('🧪 Modo teste: unlockCollateral simulado para ordem $orderId');
+      broLog('🧪 Modo teste: unlockCollateral simulado para ordem $orderId');
       return;
     }
     
@@ -63,14 +64,14 @@ class EscrowService {
         data: {'orderId': orderId},
       ).timeout(const Duration(seconds: 10));
     } catch (e) {
-      debugPrint('⚠️ Erro ao chamar unlockCollateral no backend: $e');
+      broLog('⚠️ Erro ao chamar unlockCollateral no backend: $e');
     }
   }
 
   Future<Map<String, dynamic>> createEscrow({required String orderId, required String userId, required int amountSats}) async {
     // Em modo teste, simular criação de escrow
     if (AppConfig.testMode) {
-      debugPrint('🧪 Modo teste: createEscrow simulado para ordem $orderId');
+      broLog('🧪 Modo teste: createEscrow simulado para ordem $orderId');
       return {
         'escrow_id': 'test_escrow_${DateTime.now().millisecondsSinceEpoch}',
         'order_id': orderId,
@@ -82,7 +83,7 @@ class EscrowService {
       final response = await _dio.post('/escrow/create', data: {'orderId': orderId, 'btcAmount': amountSats / 100000000});
       return response.data as Map<String, dynamic>;
     } catch (e) {
-      debugPrint('⚠️ Erro ao criar escrow: $e');
+      broLog('⚠️ Erro ao criar escrow: $e');
       rethrow;
     }
   }
@@ -90,14 +91,14 @@ class EscrowService {
   Future<void> releaseEscrow({required String escrowId, required String orderId, required String providerId}) async {
     // Em modo teste, apenas logar
     if (AppConfig.testMode) {
-      debugPrint('🧪 Modo teste: releaseEscrow simulado para ordem $orderId');
+      broLog('🧪 Modo teste: releaseEscrow simulado para ordem $orderId');
       return;
     }
     try {
       await _dio.post('/escrow/release', data: {'orderId': orderId}).timeout(const Duration(seconds: 15));
     } catch (e) {
-      debugPrint('⚠️ Erro ao liberar escrow no backend: $e');
-      debugPrint('   Sats já foram pagos via Lightning - escrow release é apenas bookkeeping');
+      broLog('⚠️ Erro ao liberar escrow no backend: $e');
+      broLog('   Sats já foram pagos via Lightning - escrow release é apenas bookkeeping');
     }
   }
 
@@ -108,7 +109,7 @@ class EscrowService {
   Future<Map<String, dynamic>?> getProviderCollateral(String providerId) async {
     // Em modo teste, retornar null (sem garantia) para permitir testes
     if (AppConfig.testMode) {
-      debugPrint('🧪 Modo teste: retornando sem garantia depositada');
+      broLog('🧪 Modo teste: retornando sem garantia depositada');
       return null; // Provedor não tem garantia em modo teste
     }
     
@@ -119,7 +120,7 @@ class EscrowService {
       }
       return null;
     } catch (e) {
-      debugPrint('❌ Erro ao buscar garantia do provedor: $e');
+      broLog('❌ Erro ao buscar garantia do provedor: $e');
       return null;
     }
   }
@@ -131,11 +132,11 @@ class EscrowService {
   }) async {
     // SEMPRE usar as ordens do OrderProvider (P2P via Nostr)
     // O backend centralizado não é mais necessário para ordens
-    debugPrint('🔍 getAvailableOrdersForProvider - Total de ordens recebidas: ${orders.length}');
-    debugPrint('🔍 Pubkey do provedor: ${currentUserPubkey?.substring(0, 8) ?? "null"}...');
+    broLog('🔍 getAvailableOrdersForProvider - Total de ordens recebidas: ${orders.length}');
+    broLog('🔍 Pubkey do provedor: ${currentUserPubkey?.substring(0, 8) ?? "null"}...');
     
     if (orders.isEmpty) {
-      debugPrint('⚠️ NENHUMA ORDEM RECEBIDA DO ORDERPROVIDER!');
+      broLog('⚠️ NENHUMA ORDEM RECEBIDA DO ORDERPROVIDER!');
       return [];
     }
     
@@ -147,7 +148,7 @@ class EscrowService {
           // Em produção, pode querer descomentar o filtro abaixo:
           // final orderPubkey = order.userPubkey;
           // if (currentUserPubkey != null && orderPubkey == currentUserPubkey) {
-          //   debugPrint('  ⏭️ Ordem ${order.id.substring(0, 8)}: PULADA (própria ordem)');
+          //   broLog('  ⏭️ Ordem ${order.id.substring(0, 8)}: PULADA (própria ordem)');
           //   return false;
           // }
           
@@ -160,7 +161,7 @@ class EscrowService {
                              status == 'payment_received' ||
                              status == 'awaiting_provider' || 
                              status == 'confirmed';
-          debugPrint('  📋 Ordem ${order.id.substring(0, 8)}: status="$status", isAvailable=$isAvailable');
+          broLog('  📋 Ordem ${order.id.substring(0, 8)}: status="$status", isAvailable=$isAvailable');
           return isAvailable;
         })
         .map((order) => {
@@ -178,14 +179,14 @@ class EscrowService {
         .toList()
         .cast<Map<String, dynamic>>();
     
-    debugPrint('📦 Ordens filtradas para provedor: ${filteredOrders.length}');
+    broLog('📦 Ordens filtradas para provedor: ${filteredOrders.length}');
     
     if (filteredOrders.isEmpty && orders.isNotEmpty) {
-      debugPrint('⚠️ TODAS AS ORDENS FORAM FILTRADAS! Verificar status ou se são todas do próprio usuário.');
+      broLog('⚠️ TODAS AS ORDENS FORAM FILTRADAS! Verificar status ou se são todas do próprio usuário.');
     } else if (filteredOrders.isNotEmpty) {
-      debugPrint('✅ Ordens disponíveis:');
+      broLog('✅ Ordens disponíveis:');
       for (var order in filteredOrders) {
-        debugPrint('   - ${order['id'].toString().substring(0, 8)}: R\$ ${order['amount']} (${order['status']})');
+        broLog('   - ${order['id'].toString().substring(0, 8)}: R\$ ${order['amount']} (${order['status']})');
       }
     }
     

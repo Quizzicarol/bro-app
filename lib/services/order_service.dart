@@ -1,6 +1,7 @@
 ﻿import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config.dart';
 
@@ -18,7 +19,7 @@ class OrderService {
     required String paymentHash,
   }) async {
     try {
-      debugPrint('📝 Criando ordem: R\$ $amountBrl');
+      broLog('📝 Criando ordem: R\$ $amountBrl');
       
       final response = await http.post(
         Uri.parse('$baseUrl/orders/create'),
@@ -38,13 +39,13 @@ class OrderService {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = json.decode(response.body);
-        debugPrint('✅ Ordem criada: ${data['order_id']}');
+        broLog('✅ Ordem criada: ${data['order_id']}');
         return data;
       }
 
       throw Exception('Failed to create order: ${response.statusCode}');
     } catch (e) {
-      debugPrint('❌ Erro ao criar ordem: $e');
+      broLog('❌ Erro ao criar ordem: $e');
       rethrow;
     }
   }
@@ -68,8 +69,8 @@ class OrderService {
             );
             
             if (order != null) {
-              debugPrint('✅ Ordem encontrada no cache ($key): $orderId');
-              debugPrint('   Status: ${order['status']}, providerId: ${order['providerId']}');
+              broLog('✅ Ordem encontrada no cache ($key): $orderId');
+              broLog('   Status: ${order['status']}, providerId: ${order['providerId']}');
               return Map<String, dynamic>.from(order);
             }
           }
@@ -86,7 +87,7 @@ class OrderService {
         );
         
         if (order != null) {
-          debugPrint('✅ Ordem encontrada no cache (legacy): $orderId');
+          broLog('✅ Ordem encontrada no cache (legacy): $orderId');
           return Map<String, dynamic>.from(order);
         }
       }
@@ -103,14 +104,14 @@ class OrderService {
             return json.decode(response.body);
           }
         } catch (e) {
-          debugPrint('⚠️ API indisponível, usando apenas cache: $e');
+          broLog('⚠️ API indisponível, usando apenas cache: $e');
         }
       }
       
-      debugPrint('⚠️ Ordem não encontrada no cache: $orderId');
+      broLog('⚠️ Ordem não encontrada no cache: $orderId');
       return null;
     } catch (e) {
-      debugPrint('❌ Erro ao buscar ordem: $e');
+      broLog('❌ Erro ao buscar ordem: $e');
       rethrow;
     }
   }
@@ -130,7 +131,7 @@ class OrderService {
 
       return [];
     } catch (e) {
-      debugPrint('❌ Erro ao listar ordens: $e');
+      broLog('❌ Erro ao listar ordens: $e');
       return [];
     }
   }
@@ -142,7 +143,7 @@ class OrderService {
     required String reason,
   }) async {
     try {
-      debugPrint('🚫 Cancelando ordem: $orderId');
+      broLog('🚫 Cancelando ordem: $orderId');
       
       final response = await http.post(
         Uri.parse('$baseUrl/orders/$orderId/cancel'),
@@ -155,14 +156,14 @@ class OrderService {
       );
 
       if (response.statusCode == 200) {
-        debugPrint('✅ Ordem cancelada');
+        broLog('✅ Ordem cancelada');
         return true;
       }
 
-      debugPrint('❌ Falha ao cancelar: ${response.statusCode}');
+      broLog('❌ Falha ao cancelar: ${response.statusCode}');
       return false;
     } catch (e) {
-      debugPrint('❌ Erro ao cancelar ordem: $e');
+      broLog('❌ Erro ao cancelar ordem: $e');
       return false;
     }
   }
@@ -175,7 +176,7 @@ class OrderService {
       
       return order['status'] ?? 'unknown';
     } catch (e) {
-      debugPrint('❌ Erro ao verificar status: $e');
+      broLog('❌ Erro ao verificar status: $e');
       return 'error';
     }
   }

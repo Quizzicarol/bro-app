@@ -1,4 +1,5 @@
-import 'dart:async';
+﻿import 'dart:async';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter/foundation.dart';
 import '../services/api_service.dart';
 import '../models/escrow_deposit.dart';
@@ -44,7 +45,7 @@ class OrderChatService {
         _messageStreamControllers[orderId]?.add(message);
       }
     } catch (e) {
-      debugPrint('❌ Erro ao buscar mensagens: $e');
+      broLog('❌ Erro ao buscar mensagens: $e');
     }
   }
 
@@ -64,7 +65,7 @@ class OrderChatService {
     required String message,
   }) async {
     try {
-      debugPrint('💬 Enviando mensagem...');
+      broLog('💬 Enviando mensagem...');
 
       final response = await _api.post('/api/chat/send', {
         'orderId': orderId,
@@ -77,11 +78,11 @@ class OrderChatService {
         throw Exception(response?['error'] ?? 'Erro ao enviar mensagem');
       }
 
-      debugPrint('✅ Mensagem enviada');
+      broLog('✅ Mensagem enviada');
       return true;
 
     } catch (e) {
-      debugPrint('❌ Erro ao enviar mensagem: $e');
+      broLog('❌ Erro ao enviar mensagem: $e');
       return false;
     }
   }
@@ -95,7 +96,7 @@ class OrderChatService {
     String message = 'Comprovante enviado',
   }) async {
     try {
-      debugPrint('📎 Enviando comprovante...');
+      broLog('📎 Enviando comprovante...');
 
       final response = await _api.post('/api/chat/send-receipt', {
         'orderId': orderId,
@@ -109,11 +110,11 @@ class OrderChatService {
         throw Exception(response?['error'] ?? 'Erro ao enviar comprovante');
       }
 
-      debugPrint('✅ Comprovante enviado');
+      broLog('✅ Comprovante enviado');
       return true;
 
     } catch (e) {
-      debugPrint('❌ Erro ao enviar comprovante: $e');
+      broLog('❌ Erro ao enviar comprovante: $e');
       return false;
     }
   }
@@ -134,7 +135,7 @@ class OrderChatService {
       return messages;
 
     } catch (e) {
-      debugPrint('❌ Erro ao buscar mensagens: $e');
+      broLog('❌ Erro ao buscar mensagens: $e');
       return [];
     }
   }
@@ -150,7 +151,7 @@ class OrderChatService {
         'userId': userId,
       });
     } catch (e) {
-      debugPrint('❌ Erro ao marcar como lido: $e');
+      broLog('❌ Erro ao marcar como lido: $e');
     }
   }
 
@@ -169,7 +170,7 @@ class OrderChatService {
       return response!['count'] as int? ?? 0;
 
     } catch (e) {
-      debugPrint('❌ Erro ao contar não lidas: $e');
+      broLog('❌ Erro ao contar não lidas: $e');
       return 0;
     }
   }

@@ -1,9 +1,10 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_breez_liquid/flutter_breez_liquid.dart' as liquid;
 import 'package:path_provider/path_provider.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:bip39/bip39.dart' as bip39;
 import '../config.dart';
 import '../config/breez_config.dart';
@@ -97,19 +98,19 @@ class BreezLiquidProvider with ChangeNotifier {
   /// Initialize Breez SDK Liquid with mnemonic
   Future<bool> initialize({String? mnemonic}) async {
     if (kIsWeb || (!Platform.isAndroid && !Platform.isIOS)) {
-      debugPrint('🚫 Breez SDK Liquid não suportado nesta plataforma');
+      broLog('🚫 Breez SDK Liquid não suportado nesta plataforma');
       _isInitialized = false;
       _setLoading(false);
       return false;
     }
     
     if (_isInitialized) {
-      debugPrint('✅ SDK Liquid já inicializado');
+      broLog('✅ SDK Liquid já inicializado');
       return true;
     }
     
     if (_isLoading) {
-      debugPrint('⏳ SDK Liquid já está sendo inicializado...');
+      broLog('⏳ SDK Liquid já está sendo inicializado...');
       int waitCount = 0;
       const maxWait = 300;
       await Future.doWhile(() async {
@@ -128,23 +129,23 @@ class BreezLiquidProvider with ChangeNotifier {
     _setLoading(true);
     _setError(null);
     
-    debugPrint('💧 Iniciando Breez SDK Liquid...');
+    broLog('💧 Iniciando Breez SDK Liquid...');
 
     try {
       // Determinar mnemonic
       if (mnemonic != null) {
         _mnemonic = mnemonic;
         await StorageService().saveBreezMnemonic(_mnemonic!);
-        debugPrint('🔑 Usando seed fornecida para Liquid');
+        broLog('🔑 Usando seed fornecida para Liquid');
       } else {
         final savedMnemonic = await StorageService().getBreezMnemonic();
         if (savedMnemonic != null) {
           _mnemonic = savedMnemonic;
-          debugPrint('🔑 Usando seed salva para Liquid');
+          broLog('🔑 Usando seed salva para Liquid');
         } else {
           _mnemonic = bip39.generateMnemonic(strength: 128);
           await StorageService().saveBreezMnemonic(_mnemonic!);
-          debugPrint('🔑 Nova seed gerada para Liquid');
+          broLog('🔑 Nova seed gerada para Liquid');
         }
       }
       
@@ -154,7 +155,7 @@ class BreezLiquidProvider with ChangeNotifier {
       final userDirSuffix = pubkey != null ? '_${pubkey.substring(0, 8)}' : '';
       final workingDir = '${appDir.path}/breez_liquid$userDirSuffix';
       
-      debugPrint('📁 Liquid working dir: $workingDir');
+      broLog('📁 Liquid working dir: $workingDir');
 
       // Criar config - defaultConfig já inclui workingDir adequado
       final network = BreezConfig.useMainnet 
@@ -186,7 +187,7 @@ class BreezLiquidProvider with ChangeNotifier {
         onchainSyncRequestTimeoutSec: defaultCfg.onchainSyncRequestTimeoutSec,
       );
 
-      debugPrint('💧 Conectando ao Breez SDK Liquid ($network)...');
+      broLog('💧 Conectando ao Breez SDK Liquid ($network)...');
       
       // Conectar
       final connectRequest = liquid.ConnectRequest(
@@ -197,7 +198,7 @@ class BreezLiquidProvider with ChangeNotifier {
       _sdk = await liquid.connect(req: connectRequest);
 
       _isInitialized = true;
-      debugPrint('✅ Breez SDK Liquid inicializado com sucesso!');
+      broLog('✅ Breez SDK Liquid inicializado com sucesso!');
       
       // Ouvir eventos
       _eventsSub = _sdk!.addEventListener().listen(_handleSdkEvent);
@@ -208,7 +209,7 @@ class BreezLiquidProvider with ChangeNotifier {
       return true;
     } catch (e) {
       _setError('Erro ao inicializar Breez SDK Liquid: $e');
-      debugPrint('❌ Erro inicializando Breez SDK Liquid: $e');
+      broLog('❌ Erro inicializando Breez SDK Liquid: $e');
       return false;
     } finally {
       _setLoading(false);
@@ -226,22 +227,22 @@ class BreezLiquidProvider with ChangeNotifier {
       _minSendSats = limits.send.minSat.toInt();
       _maxSendSats = limits.send.maxSat.toInt();
       
-      debugPrint('📊 Limites Liquid Lightning:');
-      debugPrint('   Receber: $_minReceiveSats - $_maxReceiveSats sats');
-      debugPrint('   Enviar: $_minSendSats - $_maxSendSats sats');
+      broLog('📊 Limites Liquid Lightning:');
+      broLog('   Receber: $_minReceiveSats - $_maxReceiveSats sats');
+      broLog('   Enviar: $_minSendSats - $_maxSendSats sats');
     } catch (e) {
-      debugPrint('⚠️ Erro ao buscar limites: $e');
+      broLog('⚠️ Erro ao buscar limites: $e');
     }
   }
 
   /// Handle SDK events
   void _handleSdkEvent(liquid.SdkEvent event) {
-    debugPrint('🔔 Evento Liquid SDK: ${event.runtimeType}');
+    broLog('🔔 Evento Liquid SDK: ${event.runtimeType}');
     
     if (event is liquid.SdkEvent_PaymentSucceeded) {
       final payment = event.details;
       final txId = payment.txId ?? 'unknown';
-      debugPrint('💰 PAGAMENTO LIQUID SUCESSO! TxID: $txId');
+      broLog('💰 PAGAMENTO LIQUID SUCESSO! TxID: $txId');
       
       _lastPaymentId = txId;
       _lastPaymentAmount = payment.amountSat.toInt();
@@ -260,13 +261,13 @@ class BreezLiquidProvider with ChangeNotifier {
       notifyListeners();
     } else if (event is liquid.SdkEvent_PaymentFailed) {
       final txId = event.details.txId ?? 'unknown';
-      debugPrint('❌ PAGAMENTO LIQUID FALHOU! TxID: $txId');
+      broLog('❌ PAGAMENTO LIQUID FALHOU! TxID: $txId');
     } else if (event is liquid.SdkEvent_PaymentPending) {
-      debugPrint('⏳ Pagamento Liquid pendente...');
+      broLog('⏳ Pagamento Liquid pendente...');
     } else if (event is liquid.SdkEvent_PaymentWaitingConfirmation) {
-      debugPrint('⏳ Pagamento Liquid aguardando confirmação...');
+      broLog('⏳ Pagamento Liquid aguardando confirmação...');
     } else if (event is liquid.SdkEvent_Synced) {
-      debugPrint('🔄 Liquid wallet sincronizada');
+      broLog('🔄 Liquid wallet sincronizada');
     }
   }
 
@@ -279,10 +280,10 @@ class BreezLiquidProvider with ChangeNotifier {
     try {
       final info = await _sdk!.getInfo();
       final balance = info.walletInfo.balanceSat.toInt();
-      debugPrint('💰 Saldo Liquid: $balance sats');
+      broLog('💰 Saldo Liquid: $balance sats');
       return balance;
     } catch (e) {
-      debugPrint('❌ Erro ao obter saldo Liquid: $e');
+      broLog('❌ Erro ao obter saldo Liquid: $e');
       return 0;
     }
   }
@@ -296,7 +297,7 @@ class BreezLiquidProvider with ChangeNotifier {
     String? description,
   }) async {
     if (!_isInitialized) {
-      debugPrint('⚠️ SDK Liquid não inicializado, tentando inicializar...');
+      broLog('⚠️ SDK Liquid não inicializado, tentando inicializar...');
       final success = await initialize();
       if (!success) {
         _setError('Falha ao inicializar SDK Liquid');
@@ -327,7 +328,7 @@ class BreezLiquidProvider with ChangeNotifier {
     _setLoading(true);
     _setError(null);
     
-    debugPrint('💧 Criando invoice Liquid de $amountSats sats...');
+    broLog('💧 Criando invoice Liquid de $amountSats sats...');
 
     try {
       // Preparar pagamento
@@ -339,7 +340,7 @@ class BreezLiquidProvider with ChangeNotifier {
       final prepareResponse = await _sdk!.prepareReceivePayment(req: prepareRequest);
       final fees = prepareResponse.feesSat.toInt();
       
-      debugPrint('📊 Taxas Boltz: $fees sats');
+      broLog('📊 Taxas Boltz: $fees sats');
 
       // Criar invoice
       final receiveRequest = liquid.ReceivePaymentRequest(
@@ -350,7 +351,7 @@ class BreezLiquidProvider with ChangeNotifier {
       final receiveResponse = await _sdk!.receivePayment(req: receiveRequest);
       final bolt11 = receiveResponse.destination;
       
-      debugPrint('✅ Invoice Liquid BOLT11 criado: ${bolt11.substring(0, 50)}...');
+      broLog('✅ Invoice Liquid BOLT11 criado: ${bolt11.substring(0, 50)}...');
 
       _setLoading(false);
       return {
@@ -364,7 +365,7 @@ class BreezLiquidProvider with ChangeNotifier {
     } catch (e) {
       final errMsg = 'Erro ao criar invoice Liquid: $e';
       _setError(errMsg);
-      debugPrint('❌ $errMsg');
+      broLog('❌ $errMsg');
       _setLoading(false);
       return {'success': false, 'error': errMsg};
     }
@@ -379,7 +380,7 @@ class BreezLiquidProvider with ChangeNotifier {
     _setLoading(true);
     _setError(null);
     
-    debugPrint('💧 Pagando invoice via Liquid...');
+    broLog('💧 Pagando invoice via Liquid...');
 
     try {
       // Preparar pagamento
@@ -391,7 +392,7 @@ class BreezLiquidProvider with ChangeNotifier {
           .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Timeout ao preparar pagamento Liquid (30s)'));
       final fees = prepareResponse.feesSat?.toInt() ?? 0;
       
-      debugPrint('📊 Taxas para envio: $fees sats');
+      broLog('📊 Taxas para envio: $fees sats');
 
       // Enviar pagamento
       final sendRequest = liquid.SendPaymentRequest(
@@ -403,7 +404,7 @@ class BreezLiquidProvider with ChangeNotifier {
       final payment = sendResponse.payment;
       final txId = payment.txId ?? 'unknown';
       
-      debugPrint('✅ Pagamento Liquid enviado! TxID: $txId');
+      broLog('✅ Pagamento Liquid enviado! TxID: $txId');
 
       _setLoading(false);
       return {
@@ -415,7 +416,7 @@ class BreezLiquidProvider with ChangeNotifier {
     } catch (e) {
       final errMsg = 'Erro ao pagar invoice via Liquid: $e';
       _setError(errMsg);
-      debugPrint('❌ $errMsg');
+      broLog('❌ $errMsg');
       _setLoading(false);
       return {'success': false, 'error': errMsg};
     }
@@ -431,9 +432,9 @@ class BreezLiquidProvider with ChangeNotifier {
     if (_sdk != null) {
       try {
         await _sdk!.disconnect();
-        debugPrint('✅ SDK Liquid desconectado');
+        broLog('✅ SDK Liquid desconectado');
       } catch (e) {
-        debugPrint('⚠️ Erro ao desconectar SDK Liquid: $e');
+        broLog('⚠️ Erro ao desconectar SDK Liquid: $e');
       }
       _sdk = null;
     }

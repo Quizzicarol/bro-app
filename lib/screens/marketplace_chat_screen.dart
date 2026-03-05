@@ -1,6 +1,7 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
 import '../services/chat_service.dart';
 import '../services/storage_service.dart';
@@ -106,7 +107,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
         }
       }
     } catch (e) {
-      debugPrint('❌ Erro ao inicializar chat: $e');
+      broLog('❌ Erro ao inicializar chat: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -128,7 +129,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
       
       // v249: Quando receber confirmação de pagamento do comprador, atualizar sold count
       if (!message.isFromMe && message.content.contains('✅ PAGAMENTO CONFIRMADO')) {
-        debugPrint('📦 Pagamento confirmado detectado — atualizando sold count');
+        broLog('📦 Pagamento confirmado detectado — atualizando sold count');
         _updateOfferSoldCount();
       }
     }
@@ -374,14 +375,14 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
         if (widget.priceSats != null && widget.priceSats! > 0) {
           try {
             final feeOrderId = 'mkt_${txCode}_${DateTime.now().millisecondsSinceEpoch}';
-            debugPrint('💼 Marketplace: Enviando taxa 2% de ${widget.priceSats} sats (orderId=$feeOrderId, min=1sat)');
+            broLog('💼 Marketplace: Enviando taxa 2% de ${widget.priceSats} sats (orderId=$feeOrderId, min=1sat)');
             final feePaid = await PlatformFeeService.sendPlatformFee(
               orderId: feeOrderId,
               totalSats: widget.priceSats!,
             );
-            debugPrint('💼 Marketplace taxa: ${feePaid ? "PAGA" : "FALHOU"}');
+            broLog('💼 Marketplace taxa: ${feePaid ? "PAGA" : "FALHOU"}');
           } catch (e) {
-            debugPrint('⚠️ Marketplace taxa erro (não-bloqueante): $e');
+            broLog('⚠️ Marketplace taxa erro (não-bloqueante): $e');
           }
         }
         
@@ -1091,7 +1092,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
   Future<void> _updateOfferSoldCount() async {
     final offerId = widget.offerId;
     if (offerId == null || offerId.isEmpty) {
-      debugPrint('⚠️ _updateOfferSoldCount: offerId é null/vazio');
+      broLog('⚠️ _updateOfferSoldCount: offerId é null/vazio');
       return;
     }
     
@@ -1100,18 +1101,18 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
       final nostrOrderService = NostrOrderService();
       final privateKey = nostrService.privateKey;
       if (privateKey == null) {
-        debugPrint('⚠️ _updateOfferSoldCount: privateKey é null');
+        broLog('⚠️ _updateOfferSoldCount: privateKey é null');
         return;
       }
       
-      debugPrint('📦 _updateOfferSoldCount: buscando oferta $offerId...');
+      broLog('📦 _updateOfferSoldCount: buscando oferta $offerId...');
       
       // Buscar oferta atual para pegar dados + sold count
       final offers = await nostrOrderService.fetchMarketplaceOffers();
       final myOffer = offers.where((o) => o['id'] == offerId).toList();
       
       if (myOffer.isEmpty) {
-        debugPrint('⚠️ Oferta $offerId não encontrada para atualizar sold (${offers.length} ofertas totais)');
+        broLog('⚠️ Oferta $offerId não encontrada para atualizar sold (${offers.length} ofertas totais)');
         return;
       }
       
@@ -1120,7 +1121,7 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
       final quantity = offer['quantity'] as int? ?? 0;
       final newSold = currentSold + 1;
       
-      debugPrint('📦 Atualizando sold: $currentSold → $newSold (quantity=$quantity, offerId=${offerId.substring(0, 8)})');
+      broLog('📦 Atualizando sold: $currentSold → $newSold (quantity=$quantity, offerId=${offerId.substring(0, 8)})');
       
       List<String> photos = [];
       if (offer['photos'] is List) {
@@ -1140,9 +1141,9 @@ class _MarketplaceChatScreenState extends State<MarketplaceChatScreen> {
         quantity: quantity,
         newSold: newSold,
       );
-      debugPrint('📦 updateMarketplaceOfferSold resultado: $success');
+      broLog('📦 updateMarketplaceOfferSold resultado: $success');
     } catch (e) {
-      debugPrint('⚠️ Erro ao atualizar sold count: $e');
+      broLog('⚠️ Erro ao atualizar sold count: $e');
     }
   }
 }

@@ -1,3 +1,4 @@
+﻿import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter/foundation.dart';
 import '../models/collateral_tier.dart';
 import '../services/bitcoin_price_service.dart';
@@ -46,7 +47,7 @@ class CollateralProvider with ChangeNotifier {
     try {
       // Carregar preço do Bitcoin
       _btcPriceBrl = await _priceService.getBitcoinPrice();
-      debugPrint('💰 Preço do Bitcoin: R\$ $_btcPriceBrl');
+      broLog('💰 Preço do Bitcoin: R\$ $_btcPriceBrl');
 
       if (_btcPriceBrl == null) {
         throw Exception('Não foi possível obter o preço do Bitcoin');
@@ -54,26 +55,26 @@ class CollateralProvider with ChangeNotifier {
 
       // Carregar tiers disponíveis
       _availableTiers = CollateralTier.getAvailableTiers(_btcPriceBrl!);
-      debugPrint('📊 Tiers disponíveis: ${_availableTiers!.length}');
+      broLog('📊 Tiers disponíveis: ${_availableTiers!.length}');
 
       // Usar saldo da carteira se fornecido
       if (walletBalance != null) {
         _walletBalanceSats = walletBalance;
-        debugPrint('💳 Saldo da carteira: $_walletBalanceSats sats');
+        broLog('💳 Saldo da carteira: $_walletBalanceSats sats');
       }
       
       // Registrar sats comprometidos com ordens pendentes
       if (committedSats != null) {
         _committedSats = committedSats;
-        debugPrint('🔒 Sats comprometidos (ordens pendentes): $_committedSats sats');
-        debugPrint('💰 Saldo efetivo para garantia: $effectiveBalanceSats sats');
+        broLog('🔒 Sats comprometidos (ordens pendentes): $_committedSats sats');
+        broLog('💰 Saldo efetivo para garantia: $effectiveBalanceSats sats');
       }
 
       // 🔑 CRÍTICO: Obter pubkey do Nostr e setar no service ANTES de carregar
       // O setCurrentUser já gerencia cache e verifica se usuário mudou
       final nostrService = NostrService();
       final pubkey = nostrService.publicKey;
-      debugPrint('🔑 CollateralProvider: carregando tier para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
+      broLog('🔑 CollateralProvider: carregando tier para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
       _localCollateralService.setCurrentUser(pubkey);
       
       // SISTEMA LOCAL: Carregar garantia local (fundos ficam na carteira do provedor)
@@ -81,14 +82,14 @@ class CollateralProvider with ChangeNotifier {
       
       // Se não tem garantia local, tentar buscar do Nostr (restaurar tier que usuário já ativou)
       if (_localCollateral == null) {
-        debugPrint('📭 Garantia local não encontrada, buscando no Nostr...');
+        broLog('📭 Garantia local não encontrada, buscando no Nostr...');
         await _tryRestoreFromNostr();
       }
       
       if (_localCollateral != null) {
-        debugPrint('✅ Garantia local carregada: ${_localCollateral!.tierName}');
-        debugPrint('   Sats travados: ${_localCollateral!.lockedSats}');
-        debugPrint('   Ordens ativas: ${_localCollateral!.activeOrders}');
+        broLog('✅ Garantia local carregada: ${_localCollateral!.tierName}');
+        broLog('   Sats travados: ${_localCollateral!.lockedSats}');
+        broLog('   Ordens ativas: ${_localCollateral!.activeOrders}');
         
         // Converter garantia local para formato legado (compatibilidade)
         // IMPORTANTE: Usar effectiveBalanceSats ao invés de _walletBalanceSats
@@ -99,14 +100,14 @@ class CollateralProvider with ChangeNotifier {
           'available_amount': _localCollateralService.getAvailableBalance(_localCollateral!, effectiveBalanceSats),
         };
       } else {
-        debugPrint('📭 Provedor não possui garantia configurada');
+        broLog('📭 Provedor não possui garantia configurada');
         _collateral = null;
       }
 
       _isLoading = false;
       notifyListeners();
     } catch (e) {
-      debugPrint('❌ Erro ao inicializar CollateralProvider: $e');
+      broLog('❌ Erro ao inicializar CollateralProvider: $e');
       _error = e.toString();
       _isLoading = false;
       notifyListeners();
@@ -121,16 +122,16 @@ class CollateralProvider with ChangeNotifier {
       
       final publicKey = nostrService.publicKey;
       if (publicKey == null) {
-        debugPrint('⚠️ PublicKey não disponível para buscar tier no Nostr');
+        broLog('⚠️ PublicKey não disponível para buscar tier no Nostr');
         return;
       }
       
-      debugPrint('🔍 Buscando tier no Nostr para pubkey: $publicKey');
+      broLog('🔍 Buscando tier no Nostr para pubkey: $publicKey');
       
       final tierData = await nostrOrderService.fetchProviderTier(publicKey);
       
       if (tierData != null) {
-        debugPrint('✅ Tier encontrado no Nostr: ${tierData['tierName']}');
+        broLog('✅ Tier encontrado no Nostr: ${tierData['tierName']}');
         
         // Restaurar tier localmente
         _localCollateral = await _localCollateralService.setCollateral(
@@ -140,19 +141,19 @@ class CollateralProvider with ChangeNotifier {
           maxOrderBrl: (tierData['maxOrderValue'] as num).toDouble(),
         );
         
-        debugPrint('✅ Tier restaurado do Nostr e salvo localmente');
+        broLog('✅ Tier restaurado do Nostr e salvo localmente');
       } else {
-        debugPrint('📭 Nenhum tier encontrado no Nostr');
+        broLog('📭 Nenhum tier encontrado no Nostr');
       }
     } catch (e) {
-      debugPrint('⚠️ Erro ao buscar tier do Nostr: $e');
+      broLog('⚠️ Erro ao buscar tier do Nostr: $e');
     }
   }
 
   /// Atualizar saldo da carteira
   void updateWalletBalance(int balanceSats) {
     _walletBalanceSats = balanceSats;
-    debugPrint('💳 Saldo atualizado: $_walletBalanceSats sats');
+    broLog('💳 Saldo atualizado: $_walletBalanceSats sats');
     notifyListeners();
   }
 
@@ -176,8 +177,8 @@ class CollateralProvider with ChangeNotifier {
       // Encontrar tier selecionado
       final tier = _availableTiers!.firstWhere((t) => t.id == tierId);
       
-      debugPrint('💳 Configurando garantia para tier: ${tier.name}');
-      debugPrint('   Valor: ${tier.requiredCollateralSats} sats (R\$ ${tier.requiredCollateralBrl})');
+      broLog('💳 Configurando garantia para tier: ${tier.name}');
+      broLog('   Valor: ${tier.requiredCollateralSats} sats (R\$ ${tier.requiredCollateralBrl})');
 
       // Atualizar e verificar saldo da carteira
       _walletBalanceSats = walletBalanceSats;
@@ -205,9 +206,9 @@ class CollateralProvider with ChangeNotifier {
         'available_amount': _localCollateralService.getAvailableBalance(_localCollateral!, _walletBalanceSats),
       };
 
-      debugPrint('✅ Garantia configurada! Tier: ${tier.name}');
-      debugPrint('   Sats "travados": ${tier.requiredCollateralSats}');
-      debugPrint('   Máximo por ordem: R\$ ${tier.maxOrderValueBrl}');
+      broLog('✅ Garantia configurada! Tier: ${tier.name}');
+      broLog('   Sats "travados": ${tier.requiredCollateralSats}');
+      broLog('   Máximo por ordem: R\$ ${tier.maxOrderValueBrl}');
       
       _isLoading = false;
       notifyListeners();
@@ -219,7 +220,7 @@ class CollateralProvider with ChangeNotifier {
         'max_order_brl': tier.maxOrderValueBrl,
       };
     } catch (e) {
-      debugPrint('❌ Erro ao configurar garantia: $e');
+      broLog('❌ Erro ao configurar garantia: $e');
       _error = e.toString();
       _isLoading = false;
       notifyListeners();
@@ -249,7 +250,7 @@ class CollateralProvider with ChangeNotifier {
       
       notifyListeners();
     } catch (e) {
-      debugPrint('❌ Erro ao atualizar garantia: $e');
+      broLog('❌ Erro ao atualizar garantia: $e');
     }
   }
 
@@ -259,14 +260,14 @@ class CollateralProvider with ChangeNotifier {
     if (_localCollateral != null) {
       // IMPORTANTE: Usar effectiveBalanceSats (carteira - sats comprometidos com ordens cliente)
       final canAccept = _localCollateralService.canAcceptOrder(_localCollateral!, orderValueBrl, effectiveBalanceSats);
-      debugPrint('📊 canAcceptOrder (local): R\$ $orderValueBrl -> ${canAccept ? "✅" : "❌"}');
-      debugPrint('   Saldo efetivo: $effectiveBalanceSats sats (total: $_walletBalanceSats, comprometido: $_committedSats)');
-      debugPrint('   Tier ${_localCollateral!.tierName} requer: ${_localCollateral!.lockedSats} sats');
+      broLog('📊 canAcceptOrder (local): R\$ $orderValueBrl -> ${canAccept ? "✅" : "❌"}');
+      broLog('   Saldo efetivo: $effectiveBalanceSats sats (total: $_walletBalanceSats, comprometido: $_committedSats)');
+      broLog('   Tier ${_localCollateral!.tierName} requer: ${_localCollateral!.lockedSats} sats');
       return canAccept;
     }
     
     // Fallback: sem garantia
-    debugPrint('❌ canAcceptOrder: Sem garantia configurada');
+    broLog('❌ canAcceptOrder: Sem garantia configurada');
     return false;
   }
 

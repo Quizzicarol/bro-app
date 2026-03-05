@@ -1,9 +1,10 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:nostr/nostr.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../config.dart';
 import '../models/order.dart';
@@ -57,9 +58,9 @@ class NostrOrderService {
       final list = prefs.getStringList(_blockedOrdersKey) ?? [];
       _blockedOrderIds = list.toSet();
       _blockedOrdersLoaded = true;
-      debugPrint('🚫 Blocklist carregada: ${_blockedOrderIds.length} ordens bloqueadas');
+      broLog('🚫 Blocklist carregada: ${_blockedOrderIds.length} ordens bloqueadas');
     } catch (e) {
-      debugPrint('⚠️ Erro ao carregar blocklist: $e');
+      broLog('⚠️ Erro ao carregar blocklist: $e');
       _blockedOrdersLoaded = true;
     }
   }
@@ -70,7 +71,7 @@ class NostrOrderService {
     final newIds = orderIds.difference(_blockedOrderIds);
     if (newIds.isEmpty) return;
     _blockedOrderIds.addAll(newIds);
-    debugPrint('🚫 Blocklist: +${newIds.length} ordens (total: ${_blockedOrderIds.length})');
+    broLog('🚫 Blocklist: +${newIds.length} ordens (total: ${_blockedOrderIds.length})');
     try {
       final prefs = await SharedPreferences.getInstance();
       // Manter apenas últimas 2000 entradas para não crescer infinitamente
@@ -79,7 +80,7 @@ class NostrOrderService {
       }
       await prefs.setStringList(_blockedOrdersKey, _blockedOrderIds.toList());
     } catch (e) {
-      debugPrint('⚠️ Erro ao salvar blocklist: $e');
+      broLog('⚠️ Erro ao salvar blocklist: $e');
     }
   }
 
@@ -230,7 +231,7 @@ class NostrOrderService {
       // LOG v1.0.129+232: Alertar quando completed é publicado sem providerId
       // A proteção principal está no OrderProvider.updateOrderStatus()
       if (newStatus == 'completed' && (providerId == null || providerId.isEmpty)) {
-        debugPrint('⚠️ [NostrOrderService] completed sem providerId para ${orderId.substring(0, 8)} - verificar fluxo');
+        broLog('⚠️ [NostrOrderService] completed sem providerId para ${orderId.substring(0, 8)} - verificar fluxo');
       }
       
       final keychain = Keychain(privateKey);
@@ -288,7 +289,7 @@ class NostrOrderService {
       for (final pk in pTagSet) {
         tags.add(['p', pk]);
       }
-      debugPrint('📤 updateOrderStatus: orderId=${orderId.substring(0, 8)} status=$newStatus pTags=${pTagSet.map((p) => p.substring(0, 8)).toList()}');
+      broLog('📤 updateOrderStatus: orderId=${orderId.substring(0, 8)} status=$newStatus pTags=${pTagSet.map((p) => p.substring(0, 8)).toList()}');
 
       // IMPORTANTE: Usa kindBroPaymentProof (30080) para não substituir o evento original!
       final event = Event.from(
@@ -314,7 +315,7 @@ class NostrOrderService {
       );
 
       final successCount = results.where((r) => r).length;
-      debugPrint('📤 updateOrderStatus: publicado em $successCount/${_relays.length} relays (orderId=${orderId.substring(0, 8)}, status=$newStatus)');
+      broLog('📤 updateOrderStatus: publicado em $successCount/${_relays.length} relays (orderId=${orderId.substring(0, 8)}, status=$newStatus)');
       
       // Adicionar à blocklist se status é terminal
       if (successCount > 0) {
@@ -328,7 +329,7 @@ class NostrOrderService {
       
       return successCount > 0;
     } catch (e) {
-      debugPrint('❌ updateOrderStatus EXCEPTION: $e');
+      broLog('❌ updateOrderStatus EXCEPTION: $e');
       return false;
     }
   }
@@ -669,7 +670,7 @@ class NostrOrderService {
                 try {
                   Event.fromJson(eventData, verify: true);
                 } catch (e) {
-                  debugPrint('⚠️ REJEITADO evento com assinatura inválida: ${eventData['id']?.toString().substring(0, 8) ?? '?'} - $e');
+                  broLog('⚠️ REJEITADO evento com assinatura inválida: ${eventData['id']?.toString().substring(0, 8) ?? '?'} - $e');
                   return;
                 }
 
@@ -788,7 +789,7 @@ class NostrOrderService {
         final eventPubkey = event['pubkey'] as String?;
         if (eventPubkey != null && eventPubkey.isNotEmpty) {
           originalUserPubkey = eventPubkey;
-          debugPrint('ℹ️ Ordem legada: usando event.pubkey como userPubkey');
+          broLog('ℹ️ Ordem legada: usando event.pubkey como userPubkey');
         } else {
           return null; // Sem nenhuma forma de identificar o dono
         }
@@ -1040,7 +1041,7 @@ class NostrOrderService {
 
       // Só o dono da ordem pode re-publicar (assinatura deve bater)
       if (order.userPubkey != null && order.userPubkey != keychain.public) {
-        debugPrint('v261: republishOrderWithStatus: SKIP - não sou o dono da ordem');
+        broLog('v261: republishOrderWithStatus: SKIP - não sou o dono da ordem');
         return false;
       }
 
@@ -1081,10 +1082,10 @@ class NostrOrderService {
         _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
       );
       final successCount = results.where((r) => r).length;
-      debugPrint('v261: republishOrderWithStatus: ${order.id.substring(0, 8)} -> $newStatus ($successCount/${_relays.length} relays)');
+      broLog('v261: republishOrderWithStatus: ${order.id.substring(0, 8)} -> $newStatus ($successCount/${_relays.length} relays)');
       return successCount > 0;
     } catch (e) {
-      debugPrint('v261: republishOrderWithStatus ERROR: $e');
+      broLog('v261: republishOrderWithStatus ERROR: $e');
       return false;
     }
   }
@@ -1190,7 +1191,7 @@ class NostrOrderService {
             keychain.private,
             order.userPubkey!,
           );
-          debugPrint('🔐 proofImage criptografado com NIP-44 para usuário (${encryptedProofImage.length} chars)');
+          broLog('🔐 proofImage criptografado com NIP-44 para usuário (${encryptedProofImage.length} chars)');
         }
         // Também criptografar para o admin/mediador (para disputas)
         if (AppConfig.adminPubkey.isNotEmpty) {
@@ -1199,10 +1200,10 @@ class NostrOrderService {
             keychain.private,
             AppConfig.adminPubkey,
           );
-          debugPrint('🔐 proofImage criptografado com NIP-44 para admin (${encryptedProofImageAdmin.length} chars)');
+          broLog('🔐 proofImage criptografado com NIP-44 para admin (${encryptedProofImageAdmin.length} chars)');
         }
       } catch (e) {
-        debugPrint('⚠️ Falha ao criptografar proofImage: $e — enviando em plaintext');
+        broLog('⚠️ Falha ao criptografar proofImage: $e — enviando em plaintext');
       }
       
       final contentMap = {
@@ -1306,7 +1307,7 @@ class NostrOrderService {
     await _loadBlockedOrders();
     
     final rawOrders = await _fetchPendingOrdersRaw();
-    debugPrint('📋 fetchPendingOrders: ${rawOrders.length} raw events do relay');
+    broLog('📋 fetchPendingOrders: ${rawOrders.length} raw events do relay');
     
     // Converter para Orders COM DEDUPLICAÇÃO por orderId
     // PERFORMANCE v226: Verificar blocklist ANTES de eventToOrder() usando tag 'd'
@@ -1373,7 +1374,7 @@ class NostrOrderService {
       allOrders.add(order);
     }
     
-    debugPrint('📋 fetchPendingOrders: ${allOrders.length} ordens válidas ($nullOrders rejeitadas, $blockedCount bloqueadas localmente, $skippedByTagCount skipped por tag)');
+    broLog('📋 fetchPendingOrders: ${allOrders.length} ordens válidas ($nullOrders rejeitadas, $blockedCount bloqueadas localmente, $skippedByTagCount skipped por tag)');
     
     // Filtrar ordens expiradas ANTES do fetch de status (economiza queries)
     final now = DateTime.now();
@@ -1384,7 +1385,7 @@ class NostrOrderService {
     for (var order in allOrders) {
       final orderAge = now.difference(order.createdAt);
       if (orderAge > maxOrderAge && (order.status == 'pending')) {
-        debugPrint('  ⏰ Ordem ${order.id.substring(0, 8)} expirada: ${orderAge.inDays} dias atrás');
+        broLog('  ⏰ Ordem ${order.id.substring(0, 8)} expirada: ${orderAge.inDays} dias atrás');
         expiredIds.add(order.id);
         continue;
       }
@@ -1393,20 +1394,20 @@ class NostrOrderService {
     
     if (expiredIds.isNotEmpty) {
       _addToBlocklist(expiredIds);
-      debugPrint('📋 ${expiredIds.length} ordens expiradas bloqueadas');
+      broLog('📋 ${expiredIds.length} ordens expiradas bloqueadas');
     }
     
     if (freshOrders.isEmpty) {
-      debugPrint('📋 fetchPendingOrders: 0 ordens disponíveis (todas expiradas/bloqueadas)');
+      broLog('📋 fetchPendingOrders: 0 ordens disponíveis (todas expiradas/bloqueadas)');
       return [];
     }
     
     // PASSO 2: Buscar status via #d tag (PRIMARY - funciona em todos os relays)
     // Esta é a fonte de verdade: busca accept/complete events por #d tag
     final orderIdsToCheck = freshOrders.map((o) => o.id).toList();
-    debugPrint('🔍 fetchPendingOrders: buscando status de ${orderIdsToCheck.length} ordens via #d tag');
+    broLog('🔍 fetchPendingOrders: buscando status de ${orderIdsToCheck.length} ordens via #d tag');
     final statusUpdates = await _fetchTargetedStatusUpdates(orderIdsToCheck);
-    debugPrint('🔍 fetchPendingOrders: ${statusUpdates.length} ordens com status via #d');
+    broLog('🔍 fetchPendingOrders: ${statusUpdates.length} ordens com status via #d');
     
     // PASSO 2.5: Buscar cancelamentos/updates por AUTHOR (pubkey do criador)
     // Cancelamentos são kind 30080 publicados pelo criador da ordem.
@@ -1417,22 +1418,22 @@ class NostrOrderService {
     // Para poucas ordens, o _fetchTargetedStatusUpdates (#d tag) já é suficiente
     // Isso economiza 3 WebSocket conexões na maioria dos ciclos
     if (ordersWithoutStatus.length > 5) {
-      debugPrint('🔍 fetchPendingOrders: ${ordersWithoutStatus.length} ordens sem status - buscando por authors');
+      broLog('🔍 fetchPendingOrders: ${ordersWithoutStatus.length} ordens sem status - buscando por authors');
       final authorUpdates = await _fetchStatusByAuthors(ordersWithoutStatus);
       if (authorUpdates.isNotEmpty) {
-        debugPrint('🔍 fetchPendingOrders: ${authorUpdates.length} updates extras via authors!');
+        broLog('🔍 fetchPendingOrders: ${authorUpdates.length} updates extras via authors!');
         statusUpdates.addAll(authorUpdates);
       }
     } else if (ordersWithoutStatus.isNotEmpty) {
-      debugPrint('⚡ fetchPendingOrders: ${ordersWithoutStatus.length} ordens sem status (≤5), pulando fetchStatusByAuthors');
+      broLog('⚡ fetchPendingOrders: ${ordersWithoutStatus.length} ordens sem status (≤5), pulando fetchStatusByAuthors');
     }
-    debugPrint('🔍 fetchPendingOrders: ${statusUpdates.length} ordens com status total');
+    broLog('🔍 fetchPendingOrders: ${statusUpdates.length} ordens com status total');
     
     // LOG DETALHADO de cada ordem
     for (var order in freshOrders) {
       final update = statusUpdates[order.id];
       final updateStatus = update?['status'] as String?;
-      debugPrint('  📦 Ordem ${order.id.substring(0, 8)}: status=${order.status}, update=$updateStatus, amount=${order.amount}');
+      broLog('  📦 Ordem ${order.id.substring(0, 8)}: status=${order.status}, update=$updateStatus, amount=${order.amount}');
     }
     
     // PASSO 3: Salvar ordens com status terminal na blocklist local
@@ -1462,11 +1463,11 @@ class NostrOrderService {
       if (!isUnavailable) {
         availableOrders.add(order);
       } else {
-        debugPrint('  🚫 Ordem ${order.id.substring(0, 8)} filtrada: updateStatus=$updateStatus');
+        broLog('  🚫 Ordem ${order.id.substring(0, 8)} filtrada: updateStatus=$updateStatus');
       }
     }
     
-    debugPrint('📋 fetchPendingOrders: ${availableOrders.length} ordens disponíveis após filtro');
+    broLog('📋 fetchPendingOrders: ${availableOrders.length} ordens disponíveis após filtro');
     return availableOrders;
   }
   
@@ -1486,7 +1487,7 @@ class NostrOrderService {
       batches.add(orderIds.sublist(i, i + batchSize > orderIds.length ? orderIds.length : i + batchSize));
     }
     
-    debugPrint('🔍 _fetchTargetedStatusUpdates: ${orderIds.length} ordens em ${batches.length} batches');
+    broLog('🔍 _fetchTargetedStatusUpdates: ${orderIds.length} ordens em ${batches.length} batches');
     
     // Processar todos os batches
     final allEvents = <Map<String, dynamic>>[];
@@ -1545,7 +1546,7 @@ class NostrOrderService {
       }
     }
     
-    debugPrint('🔍 _fetchTargetedStatusUpdates: ${allEvents.length} eventos encontrados');
+    broLog('🔍 _fetchTargetedStatusUpdates: ${allEvents.length} eventos encontrados');
     
     // Processar eventos
     for (final event in allEvents) {
@@ -1614,7 +1615,7 @@ class NostrOrderService {
     // Mapeamento orderId -> set de orderIds que queremos
     final orderIdSet = orders.map((o) => o.id).toSet();
     
-    debugPrint('🔍 _fetchStatusByAuthors: buscando kind 30080 de ${pubkeys.length} authors para ${orders.length} ordens');
+    broLog('🔍 _fetchStatusByAuthors: buscando kind 30080 de ${pubkeys.length} authors para ${orders.length} ordens');
     
     // Buscar de todos os relays em paralelo
     final allEvents = <Map<String, dynamic>>[];
@@ -1651,7 +1652,7 @@ class NostrOrderService {
       }
     }
     
-    debugPrint('🔍 _fetchStatusByAuthors: ${allEvents.length} eventos de ${_relays.length} relays');
+    broLog('🔍 _fetchStatusByAuthors: ${allEvents.length} eventos de ${_relays.length} relays');
     
     // Processar: filtrar apenas eventos relevantes para nossas ordens
     for (final event in allEvents) {
@@ -1733,7 +1734,7 @@ class NostrOrderService {
     if (_statusUpdatesCache != null && _statusUpdatesCacheTime != null) {
       final elapsed = DateTime.now().difference(_statusUpdatesCacheTime!).inSeconds;
       if (elapsed < _statusUpdatesCacheTtlSeconds) {
-        debugPrint('📋 _fetchAllOrderStatusUpdates: usando cache (${elapsed}s ago, ${_statusUpdatesCache!.length} updates)');
+        broLog('📋 _fetchAllOrderStatusUpdates: usando cache (${elapsed}s ago, ${_statusUpdatesCache!.length} updates)');
         return _statusUpdatesCache!;
       }
     }
@@ -1741,7 +1742,7 @@ class NostrOrderService {
     // CORREÇÃO v1.0.129: Lock de concorrência — se já tem um fetch em andamento,
     // esperar pelo resultado ao invés de criar mais 6 conexões WebSocket
     if (_statusUpdatesFetching != null) {
-      debugPrint('📋 _fetchAllOrderStatusUpdates: aguardando fetch em andamento...');
+      broLog('📋 _fetchAllOrderStatusUpdates: aguardando fetch em andamento...');
       return _statusUpdatesFetching!.future;
     }
     _statusUpdatesFetching = Completer<Map<String, Map<String, dynamic>>>();
@@ -1804,7 +1805,7 @@ class NostrOrderService {
       allEvents.addAll(relayEvents);
     }
     
-    debugPrint('📋 _fetchAllOrderStatusUpdates: ${allEvents.length} eventos de ${_relays.length} relays (paralelo)');
+    broLog('📋 _fetchAllOrderStatusUpdates: ${allEvents.length} eventos de ${_relays.length} relays (paralelo)');
     
     // Processar todos os eventos coletados
     for (final event in allEvents) {
@@ -1863,7 +1864,7 @@ class NostrOrderService {
               // Apenas o provedor pode aceitar/completar
               if (contentProviderId != null && eventPubkey != null && 
                   eventPubkey != contentProviderId) {
-                debugPrint('⚠️ REJEITADO: ${eventType} de pubkey=${ eventPubkey.substring(0, 8)} mas providerId=${contentProviderId.substring(0, 8)}');
+                broLog('⚠️ REJEITADO: ${eventType} de pubkey=${ eventPubkey.substring(0, 8)} mas providerId=${contentProviderId.substring(0, 8)}');
                 continue;
               }
             }
@@ -1875,7 +1876,7 @@ class NostrOrderService {
               final isAuthorUser = contentUserPubkey != null && eventPubkey == contentUserPubkey;
               final isAuthorProvider = contentProviderId != null && eventPubkey == contentProviderId;
               if (!isAuthorUser && !isAuthorProvider) {
-                debugPrint('⚠️ REJEITADO: disputed de pubkey não autorizado ${eventPubkey?.substring(0, 8)}');
+                broLog('⚠️ REJEITADO: disputed de pubkey não autorizado ${eventPubkey?.substring(0, 8)}');
                 continue;
               }
             }
@@ -1886,7 +1887,7 @@ class NostrOrderService {
             final eventTime = DateTime.fromMillisecondsSinceEpoch(createdAt * 1000);
             final now = DateTime.now();
             if (eventTime.isAfter(now.add(const Duration(minutes: 15)))) {
-              debugPrint('⚠️ REJEITADO: evento com timestamp no futuro: $eventTime');
+              broLog('⚠️ REJEITADO: evento com timestamp no futuro: $eventTime');
               continue;
             }
             
@@ -1971,7 +1972,7 @@ class NostrOrderService {
           }
         }
     
-    debugPrint('📋 _fetchAllOrderStatusUpdates: ${updates.length} ordens com updates');
+    broLog('📋 _fetchAllOrderStatusUpdates: ${updates.length} ordens com updates');
     
     // PERFORMANCE: Salvar no cache para evitar chamadas redundantes
     _statusUpdatesCache = updates;
@@ -2017,9 +2018,9 @@ class NostrOrderService {
       if (senderPubkey != null) {
         try {
           proofImage = _nip44.decryptBetween(proofImageNip44, userPrivateKey, senderPubkey);
-          debugPrint('🔓 proofImage descriptografado com NIP-44');
+          broLog('🔓 proofImage descriptografado com NIP-44');
         } catch (e) {
-          debugPrint('⚠️ Falha ao descriptografar proofImage: $e');
+          broLog('⚠️ Falha ao descriptografar proofImage: $e');
           // Manter marcador [encrypted:nip44v2] como fallback
         }
       }
@@ -2119,7 +2120,7 @@ class NostrOrderService {
     
     // v259: Se NENHUM relay principal retornou dados, tentar fallback relays
     if (orders.isEmpty && successfulRelays == 0) {
-      debugPrint('⚠️ fetchPendingOrdersRaw: 0 relays principais responderam, tentando fallback...');
+      broLog('⚠️ fetchPendingOrdersRaw: 0 relays principais responderam, tentando fallback...');
       final fallbackFutures = _fallbackRelays.map(
         (relay) => _fetchPendingFromRelay(relay, sinceTimestamp)
       ).toList();
@@ -2134,7 +2135,7 @@ class NostrOrderService {
         }
       }
       if (orders.isNotEmpty) {
-        debugPrint('✅ Fallback relays retornaram ${orders.length} ordens!');
+        broLog('✅ Fallback relays retornaram ${orders.length} ordens!');
       }
     }
     
@@ -2166,7 +2167,7 @@ class NostrOrderService {
       );
       
       
-      debugPrint('📡 Relay $relay: ${relayOrders.length} eventos kind 30078 retornados');
+      broLog('📡 Relay $relay: ${relayOrders.length} eventos kind 30078 retornados');
       
       for (final order in relayOrders) {
         // Verificar se é ordem do Bro app (verificando content)
@@ -2177,9 +2178,9 @@ class NostrOrderService {
           }
         } catch (_) {}
       }
-      debugPrint('📡 Relay $relay: ${orders.length} ordens bro_order válidas');
+      broLog('📡 Relay $relay: ${orders.length} ordens bro_order válidas');
     } catch (e) {
-      debugPrint('❌ Relay $relay erro: $e');
+      broLog('❌ Relay $relay erro: $e');
     }
     
     return orders;
@@ -2261,7 +2262,7 @@ class NostrOrderService {
     // PERFORMANCE v1.0.129+218: Se não há ordens ativas para buscar, retornar vazio
     // Isso evita abrir 12 conexões WebSocket desnecessárias
     if (orderIds != null && orderIds.isEmpty) {
-      debugPrint('🔍 fetchOrderUpdatesForUser: 0 ordens ativas, pulando fetch');
+      broLog('🔍 fetchOrderUpdatesForUser: 0 ordens ativas, pulando fetch');
       return updates;
     }
     
@@ -2310,7 +2311,7 @@ class NostrOrderService {
     
     // LOG: Total de eventos recebidos dos relays
     final totalEvents = allRelayEvents.fold<int>(0, (sum, list) => sum + list.length);
-    debugPrint('🔍 fetchOrderUpdatesForUser: $totalEvents eventos de ${_relays.take(3).length} relays');
+    broLog('🔍 fetchOrderUpdatesForUser: $totalEvents eventos de ${_relays.take(3).length} relays');
     
     // Processar todos os eventos de todos os relays
     for (final events in allRelayEvents) {
@@ -2416,9 +2417,9 @@ class NostrOrderService {
       }
     }
 
-    debugPrint('🔍 fetchOrderUpdatesForUser: ${updates.length} updates encontrados');
+    broLog('🔍 fetchOrderUpdatesForUser: ${updates.length} updates encontrados');
     for (final entry in updates.entries) {
-      debugPrint('   📋 ${entry.key.substring(0, 8)}: status=${entry.value['status']}, kind=${entry.value['eventKind']}');
+      broLog('   📋 ${entry.key.substring(0, 8)}: status=${entry.value['status']}, kind=${entry.value['eventKind']}');
     }
     return updates;
   }
@@ -2436,7 +2437,7 @@ class NostrOrderService {
     }
 
     final orderIdSet = orderIds.toSet();
-    debugPrint('🔍 fetchOrderUpdatesForProvider: buscando updates para ${orderIds.length} ordens');
+    broLog('🔍 fetchOrderUpdatesForProvider: buscando updates para ${orderIds.length} ordens');
     
     // Construir d-tags para Estratégia 4
     final dTagsToSearch = orderIds.map((id) => '${id}_complete').toList();
@@ -2511,9 +2512,9 @@ class NostrOrderService {
       }
     }
 
-    debugPrint('🔍 fetchOrderUpdatesForProvider RESULTADO: ${updates.length} updates de $totalEvents eventos');
+    broLog('🔍 fetchOrderUpdatesForProvider RESULTADO: ${updates.length} updates de $totalEvents eventos');
     for (final entry in updates.entries) {
-      debugPrint('   → orderId=${entry.key.substring(0, 8)} status=${entry.value['status']}');
+      broLog('   → orderId=${entry.key.substring(0, 8)} status=${entry.value['status']}');
     }
     return updates;
   }
@@ -2757,10 +2758,10 @@ class NostrOrderService {
       );
       final successCount = publishResults.where((s) => s).length;
       
-      debugPrint('📦 updateMarketplaceOfferSold: offerId=${offerId.substring(0, 8)}, sold=$newSold, publicado em $successCount relays');
+      broLog('📦 updateMarketplaceOfferSold: offerId=${offerId.substring(0, 8)}, sold=$newSold, publicado em $successCount relays');
       return successCount > 0;
     } catch (e) {
-      debugPrint('❌ updateMarketplaceOfferSold EXCEPTION: $e');
+      broLog('❌ updateMarketplaceOfferSold EXCEPTION: $e');
       return false;
     }
   }
@@ -2815,10 +2816,10 @@ class NostrOrderService {
       );
       
       final successCount = results.where((s) => s).length;
-      debugPrint('🗑️ deleteMarketplaceOffer: offerId=${offerId.substring(0, 8)}, publicado em ${successCount ~/ 2}/${_relays.take(5).length} relays');
+      broLog('🗑️ deleteMarketplaceOffer: offerId=${offerId.substring(0, 8)}, publicado em ${successCount ~/ 2}/${_relays.take(5).length} relays');
       return successCount > 0;
     } catch (e) {
-      debugPrint('❌ deleteMarketplaceOffer EXCEPTION: $e');
+      broLog('❌ deleteMarketplaceOffer EXCEPTION: $e');
       return false;
     }
   }
@@ -2979,9 +2980,9 @@ class NostrOrderService {
           );
           contentMap['user_evidence_nip44'] = encryptedEvidence;
           contentMap['user_evidence'] = '[encrypted:nip44v2]'; // Marcador
-          debugPrint('🔐 user_evidence criptografada com NIP-44 (${encryptedEvidence.length} chars)');
+          broLog('🔐 user_evidence criptografada com NIP-44 (${encryptedEvidence.length} chars)');
         } catch (e) {
-          debugPrint('⚠️ Falha ao criptografar user_evidence: $e — não incluindo imagem');
+          broLog('⚠️ Falha ao criptografar user_evidence: $e — não incluindo imagem');
           // NÃO enviar em plaintext — dados sensíveis (fotos de banco/CPF)
         }
       }
@@ -3017,10 +3018,10 @@ class NostrOrderService {
       );
       
       final successCount = results.where((r) => r).length;
-      debugPrint('📤 publishDisputeNotification: publicado em $successCount/${_relays.length} relays');
+      broLog('📤 publishDisputeNotification: publicado em $successCount/${_relays.length} relays');
       return successCount > 0;
     } catch (e) {
-      debugPrint('❌ publishDisputeNotification EXCEPTION: $e');
+      broLog('❌ publishDisputeNotification EXCEPTION: $e');
       return false;
     }
   }
@@ -3072,7 +3073,7 @@ class NostrOrderService {
       }
     }
     
-    debugPrint('📤 fetchDisputeNotifications: ${allEvents.length} disputas encontradas');
+    broLog('📤 fetchDisputeNotifications: ${allEvents.length} disputas encontradas');
     return allEvents;
   }
 
@@ -3156,7 +3157,7 @@ class NostrOrderService {
     }
     
     allResolutions.addAll(bestByOrderId.values);
-    debugPrint('📤 fetchAllDisputeResolutions: ${allResolutions.length} resoluções encontradas');
+    broLog('📤 fetchAllDisputeResolutions: ${allResolutions.length} resoluções encontradas');
     return allResolutions;
   }
 
@@ -3226,7 +3227,7 @@ class NostrOrderService {
       );
       
       final successCount = results.where((r) => r).length;
-      debugPrint('📤 publishDisputeResolution: kind 1 publicado em $successCount/${_relays.length} relays (orderId=${orderId.substring(0, 8)}, resolution=$resolution)');
+      broLog('📤 publishDisputeResolution: kind 1 publicado em $successCount/${_relays.length} relays (orderId=${orderId.substring(0, 8)}, resolution=$resolution)');
       
       // AUDITABILIDADE: Publicar também como kind 30080 com tags de status
       // Isso permite que QUALQUER pessoa busque a resolução pela cadeia de eventos da ordem
@@ -3266,14 +3267,14 @@ class NostrOrderService {
           _relays.map((relay) => _publishToRelay(relay, auditEvent).catchError((_) => false)),
         );
         final auditSuccess = auditResults.where((r) => r).length;
-        debugPrint('📤 publishDisputeResolution: kind 30080 (audit) publicado em $auditSuccess/${_relays.length} relays');
+        broLog('📤 publishDisputeResolution: kind 30080 (audit) publicado em $auditSuccess/${_relays.length} relays');
       } catch (e) {
-        debugPrint('⚠️ Audit event (kind 30080) falhou: $e');
+        broLog('⚠️ Audit event (kind 30080) falhou: $e');
       }
       
       return successCount > 0;
     } catch (e) {
-      debugPrint('❌ publishDisputeResolution EXCEPTION: $e');
+      broLog('❌ publishDisputeResolution EXCEPTION: $e');
       return false;
     }
   }
@@ -3351,9 +3352,9 @@ class NostrOrderService {
           }
         }
       
-      debugPrint('📊 fetchDisputeLosses($pubkey): ${losses.length} derrotas');
+      broLog('📊 fetchDisputeLosses($pubkey): ${losses.length} derrotas');
     } catch (e) {
-      debugPrint('❌ fetchDisputeLosses EXCEPTION: $e');
+      broLog('❌ fetchDisputeLosses EXCEPTION: $e');
     }
     
     return losses;
@@ -3403,10 +3404,10 @@ class NostrOrderService {
       );
       
       final successCount = results.where((r) => r).length;
-      debugPrint('📤 publishMediatorMessage: publicado em $successCount/${_relays.length} relays (target=$target, orderId=${orderId.substring(0, 8)})');
+      broLog('📤 publishMediatorMessage: publicado em $successCount/${_relays.length} relays (target=$target, orderId=${orderId.substring(0, 8)})');
       return successCount > 0;
     } catch (e) {
-      debugPrint('❌ publishMediatorMessage EXCEPTION: $e');
+      broLog('❌ publishMediatorMessage EXCEPTION: $e');
       return false;
     }
   }
@@ -3424,7 +3425,7 @@ class NostrOrderService {
   }) async {
     try {
       if (recipientPubkey.isEmpty) {
-        debugPrint('⚠️ sendAdminNip04DM: recipientPubkey vazia, pulando');
+        broLog('⚠️ sendAdminNip04DM: recipientPubkey vazia, pulando');
         return false;
       }
 
@@ -3450,11 +3451,11 @@ class NostrOrderService {
       );
       
       final successCount = results.where((r) => r).length;
-      debugPrint('📨 sendAdminNip04DM: DM enviada para ${recipientPubkey.substring(0, 16)}... '
+      broLog('📨 sendAdminNip04DM: DM enviada para ${recipientPubkey.substring(0, 16)}... '
           'em $successCount/${_relays.length} relays');
       return successCount > 0;
     } catch (e) {
-      debugPrint('❌ sendAdminNip04DM EXCEPTION: $e');
+      broLog('❌ sendAdminNip04DM EXCEPTION: $e');
       return false;
     }
   }
@@ -3505,14 +3506,14 @@ class NostrOrderService {
       }
       
       if (latestResolution != null) {
-        debugPrint('✅ fetchDisputeResolution: resolução encontrada para ${orderId.substring(0, 8)} - ${latestResolution['resolution']}');
+        broLog('✅ fetchDisputeResolution: resolução encontrada para ${orderId.substring(0, 8)} - ${latestResolution['resolution']}');
       } else {
-        debugPrint('🔍 fetchDisputeResolution: nenhuma resolução para ${orderId.substring(0, 8)}');
+        broLog('🔍 fetchDisputeResolution: nenhuma resolução para ${orderId.substring(0, 8)}');
       }
       
       return latestResolution;
     } catch (e) {
-      debugPrint('❌ fetchDisputeResolution EXCEPTION: $e');
+      broLog('❌ fetchDisputeResolution EXCEPTION: $e');
       return null;
     }
   }
@@ -3561,10 +3562,10 @@ class NostrOrderService {
       
       // Ordenar por data (mais antiga primeiro para exibir como chat)
       messages.sort((a, b) => (a['eventCreatedAt'] as int? ?? 0).compareTo(b['eventCreatedAt'] as int? ?? 0));
-      debugPrint('📨 fetchAllMediatorMessagesForOrder: ${messages.length} mensagens para ordem ${orderId.substring(0, 8)}');
+      broLog('📨 fetchAllMediatorMessagesForOrder: ${messages.length} mensagens para ordem ${orderId.substring(0, 8)}');
       return messages;
     } catch (e) {
-      debugPrint('❌ fetchAllMediatorMessagesForOrder EXCEPTION: $e');
+      broLog('❌ fetchAllMediatorMessagesForOrder EXCEPTION: $e');
       return [];
     }
   }
@@ -3614,10 +3615,10 @@ class NostrOrderService {
       }
       
       messages.sort((a, b) => (b['eventCreatedAt'] as int? ?? 0).compareTo(a['eventCreatedAt'] as int? ?? 0));
-      debugPrint('📨 fetchMediatorMessages: ${messages.length} mensagens para ${pubkey.substring(0, 8)}');
+      broLog('📨 fetchMediatorMessages: ${messages.length} mensagens para ${pubkey.substring(0, 8)}');
       return messages;
     } catch (e) {
-      debugPrint('❌ fetchMediatorMessages EXCEPTION: $e');
+      broLog('❌ fetchMediatorMessages EXCEPTION: $e');
       return [];
     }
   }
@@ -3639,11 +3640,11 @@ class NostrOrderService {
       String? finalImage = imageBase64;
       if (finalImage != null && finalImage.isNotEmpty) {
         final imageBytes = finalImage.length;
-        debugPrint('📏 Evidência imagem: ${(imageBytes / 1024).toStringAsFixed(1)}KB base64');
+        broLog('📏 Evidência imagem: ${(imageBytes / 1024).toStringAsFixed(1)}KB base64');
         if (imageBytes > 45000) {
           // Imagem muito grande, truncar para evitar rejeição dos relays
           // (45KB base64 + metadados JSON + NIP-44 overhead ~ 64KB)
-          debugPrint('⚠️ Imagem muito grande ($imageBytes bytes), será comprimida');
+          broLog('⚠️ Imagem muito grande ($imageBytes bytes), será comprimida');
           // Tentar enviar mesmo assim, mas avisar
         }
       }
@@ -3674,9 +3675,9 @@ class NostrOrderService {
           'senderPubkey': keychain.public,
           'payload': _nip44.encryptBetween(plainContent, keychain.private, AppConfig.adminPubkey),
         });
-        debugPrint('🔐 Evidência criptografada com NIP-44 para admin');
+        broLog('🔐 Evidência criptografada com NIP-44 para admin');
       } catch (e) {
-        debugPrint('⚠️ Falha ao criptografar evidência: $e — abortando envio por segurança');
+        broLog('⚠️ Falha ao criptografar evidência: $e — abortando envio por segurança');
         return false; // NÃO enviar em plaintext — dados sensíveis
       }
       
@@ -3703,10 +3704,10 @@ class NostrOrderService {
       );
       
       final successCount = results.where((r) => r).length;
-      debugPrint('📤 publishDisputeEvidence: $senderRole enviou evidência para ordem ${orderId.substring(0, 8)}, $successCount relays');
+      broLog('📤 publishDisputeEvidence: $senderRole enviou evidência para ordem ${orderId.substring(0, 8)}, $successCount relays');
       return successCount > 0;
     } catch (e) {
-      debugPrint('❌ publishDisputeEvidence EXCEPTION: $e');
+      broLog('❌ publishDisputeEvidence EXCEPTION: $e');
       return false;
     }
   }
@@ -3744,9 +3745,9 @@ class NostrOrderService {
                     final payload = content['payload'] as String;
                     final decrypted = _nip44.decryptBetween(payload, adminPrivateKey, senderPubkey);
                     content = jsonDecode(decrypted) as Map<String, dynamic>;
-                    debugPrint('🔓 Evidência descriptografada de ${senderPubkey.substring(0, 8)}');
+                    broLog('🔓 Evidência descriptografada de ${senderPubkey.substring(0, 8)}');
                   } catch (e) {
-                    debugPrint('⚠️ Falha ao descriptografar evidência: $e');
+                    broLog('⚠️ Falha ao descriptografar evidência: $e');
                     content['description'] = '[Conteúdo criptografado — não foi possível descriptografar]';
                     content['image'] = null;
                   }
@@ -3770,7 +3771,7 @@ class NostrOrderService {
           
           if (evidences.isNotEmpty) break; // Já achou, não precisa de mais relays
         } catch (e) {
-          debugPrint('⚠️ fetchDisputeEvidence relay error: $e');
+          broLog('⚠️ fetchDisputeEvidence relay error: $e');
         }
       }
       
@@ -3781,10 +3782,10 @@ class NostrOrderService {
         return aDate.compareTo(bDate);
       });
       
-      debugPrint('📥 fetchDisputeEvidence: ${evidences.length} evidências para ${orderId.substring(0, 8)}');
+      broLog('📥 fetchDisputeEvidence: ${evidences.length} evidências para ${orderId.substring(0, 8)}');
       return evidences;
     } catch (e) {
-      debugPrint('❌ fetchDisputeEvidence EXCEPTION: $e');
+      broLog('❌ fetchDisputeEvidence EXCEPTION: $e');
       return [];
     }
   }
@@ -3877,7 +3878,7 @@ class NostrOrderService {
                   // Plaintext - perfeito
                   result['proofImage'] = proofImage;
                   result['encrypted'] = false;
-                  debugPrint('✅ Comprovante plaintext encontrado para ${orderId.substring(0, 8)}');
+                  broLog('✅ Comprovante plaintext encontrado para ${orderId.substring(0, 8)}');
                 } else if (privateKey != null) {
                   // Tentar descriptografar com a chave privada fornecida
                   final proofImageNip44Admin = content['proofImage_nip44_admin'] as String?;
@@ -3891,9 +3892,9 @@ class NostrOrderService {
                       result['proofImage'] = decryptedProof;
                       result['encrypted'] = false;
                       decrypted = true;
-                      debugPrint('🔓 Comprovante descriptografado (admin copy) para ${orderId.substring(0, 8)}');
+                      broLog('🔓 Comprovante descriptografado (admin copy) para ${orderId.substring(0, 8)}');
                     } catch (e) {
-                      debugPrint('⚠️ Falha decrypt admin copy: $e');
+                      broLog('⚠️ Falha decrypt admin copy: $e');
                     }
                   }
                   
@@ -3904,9 +3905,9 @@ class NostrOrderService {
                       result['proofImage'] = decryptedProof;
                       result['encrypted'] = false;
                       decrypted = true;
-                      debugPrint('🔓 Comprovante descriptografado (user copy) para ${orderId.substring(0, 8)}');
+                      broLog('🔓 Comprovante descriptografado (user copy) para ${orderId.substring(0, 8)}');
                     } catch (e) {
-                      debugPrint('⚠️ Falha decrypt user copy: $e');
+                      broLog('⚠️ Falha decrypt user copy: $e');
                     }
                   }
                   
@@ -3920,7 +3921,7 @@ class NostrOrderService {
                     result['encrypted'] = true;
                     result['proofImage_nip44'] = proofImageNip44;
                   }
-                  debugPrint('🔐 Comprovante NIP-44 criptografado para ${orderId.substring(0, 8)}');
+                  broLog('🔐 Comprovante NIP-44 criptografado para ${orderId.substring(0, 8)}');
                 } else if (proofImage == '[encrypted:nip44v2]') {
                   if (result['proofImage'] == null) {
                     result['encrypted'] = true;
@@ -3942,14 +3943,14 @@ class NostrOrderService {
           // Se já encontrou plaintext, parar
           if (result['proofImage'] != null && result['encrypted'] == false) break;
         } catch (e) {
-          debugPrint('⚠️ fetchProofForOrder relay error: $e');
+          broLog('⚠️ fetchProofForOrder relay error: $e');
         }
       }
       
-      debugPrint('🔍 fetchProofForOrder: orderId=${orderId.substring(0, 8)}, found=${result['proofImage'] != null}, encrypted=${result['encrypted']}');
+      broLog('🔍 fetchProofForOrder: orderId=${orderId.substring(0, 8)}, found=${result['proofImage'] != null}, encrypted=${result['encrypted']}');
       return result;
     } catch (e) {
-      debugPrint('❌ fetchProofForOrder EXCEPTION: $e');
+      broLog('❌ fetchProofForOrder EXCEPTION: $e');
       return {'proofImage': null, 'encrypted': false};
     }
   }
@@ -3997,13 +3998,13 @@ class NostrOrderService {
                 // Tentar providerId do content
                 final providerId = content['providerId'] as String?;
                 if (providerId != null && providerId.isNotEmpty) {
-                  debugPrint('\u2705 fetchOrderProviderPubkey: ${providerId.substring(0, 8)} para ordem ${orderId.substring(0, 8)}');
+                  broLog('\u2705 fetchOrderProviderPubkey: ${providerId.substring(0, 8)} para ordem ${orderId.substring(0, 8)}');
                   return providerId;
                 }
                 // Fallback: usar pubkey do autor do evento (quem aceitou = provedor)
                 final eventPubkey = event['pubkey'] as String?;
                 if (eventPubkey != null && eventPubkey.isNotEmpty) {
-                  debugPrint('\u2705 fetchOrderProviderPubkey (author): ${eventPubkey.substring(0, 8)} para ordem ${orderId.substring(0, 8)}');
+                  broLog('\u2705 fetchOrderProviderPubkey (author): ${eventPubkey.substring(0, 8)} para ordem ${orderId.substring(0, 8)}');
                   return eventPubkey;
                 }
               }
@@ -4011,10 +4012,10 @@ class NostrOrderService {
           }
         } catch (_) {}
       }
-      debugPrint('\uD83D\uDD0D fetchOrderProviderPubkey: n\u00e3o encontrado para ${orderId.substring(0, 8)}');
+      broLog('\uD83D\uDD0D fetchOrderProviderPubkey: n\u00e3o encontrado para ${orderId.substring(0, 8)}');
       return null;
     } catch (e) {
-      debugPrint('\u274C fetchOrderProviderPubkey EXCEPTION: $e');
+      broLog('\u274C fetchOrderProviderPubkey EXCEPTION: $e');
       return null;
     }
   }

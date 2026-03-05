@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:intl/intl.dart';
 import '../providers/breez_provider_export.dart';
 import '../providers/order_provider.dart';
@@ -56,7 +57,7 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _currentUserPubkey = pubkey;
       });
-      debugPrint('🔑 [HOME] Pubkey carregada: ${pubkey?.substring(0, 16) ?? "null"}');
+      broLog('🔑 [HOME] Pubkey carregada: ${pubkey?.substring(0, 16) ?? "null"}');
     }
   }
 
@@ -255,13 +256,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final breezProvider = context.read<BreezProvider>();
 
     if (!breezProvider.isInitialized) {
-      debugPrint('Inicializando Breez SDK Spark...');
+      broLog('Inicializando Breez SDK Spark...');
 
       try {
         final success = await breezProvider.initialize().timeout(
           const Duration(seconds: 30),
           onTimeout: () {
-            debugPrint('Timeout na inicializacao do Breez SDK');
+            broLog('Timeout na inicializacao do Breez SDK');
             return false;
           },
         );
@@ -272,7 +273,7 @@ class _HomeScreenState extends State<HomeScreen> {
             (String invoice) => breezProvider.payInvoice(invoice),
             'Spark',
           );
-          debugPrint('💼 PlatformFeeService callback configurado com BreezProvider');
+          broLog('💼 PlatformFeeService callback configurado com BreezProvider');
         }
 
         if (!success && mounted) {
@@ -285,7 +286,7 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }
       } catch (e) {
-        debugPrint('Erro ao inicializar Breez SDK: $e');
+        broLog('Erro ao inicializar Breez SDK: $e');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -323,13 +324,13 @@ class _HomeScreenState extends State<HomeScreen> {
         // O provider sync (ProviderOrdersScreen) já busca tudo que precisamos
         // Isso elimina ~42 WebSocket conexões/min de redundância
         if (orderProvider.isProviderMode) {
-          debugPrint('⚡ HomeScreen timer: provider mode ativo, pulando syncOrdersFromNostr');
+          broLog('⚡ HomeScreen timer: provider mode ativo, pulando syncOrdersFromNostr');
           return;
         }
         try {
           await orderProvider.syncOrdersFromNostr();
         } catch (e) {
-          debugPrint('⚠️ Erro no polling de ordens: $e');
+          broLog('⚠️ Erro no polling de ordens: $e');
         }
       }
     });
@@ -342,7 +343,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       // SEGURANÇA CRÍTICA: Garantir que NÃO estamos em modo provedor na home
       if (orderProvider.isProviderMode) {
-        debugPrint('⚠️ [HOME] Detectado modo provedor ativo! Forçando reset...');
+        broLog('⚠️ [HOME] Detectado modo provedor ativo! Forçando reset...');
         orderProvider.exitProviderMode();
       }
 
@@ -363,7 +364,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _showSyncSnackbar('✅ Dados atualizados!', duration: const Duration(seconds: 1));
       }
     } catch (e) {
-      debugPrint('❌ Erro no _loadData: $e');
+      broLog('❌ Erro no _loadData: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         _showSyncSnackbar('⚠️ Falha ao atualizar dados', duration: const Duration(seconds: 2));
@@ -1190,7 +1191,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showOrderDetails(dynamic order) async {
-    debugPrint('Navegando para detalhes da ordem: ${order.id}');
+    broLog('Navegando para detalhes da ordem: ${order.id}');
 
     if (!mounted) return;
 
@@ -1208,7 +1209,7 @@ class _HomeScreenState extends State<HomeScreen> {
         },
       );
     } catch (e) {
-      debugPrint('Erro ao navegar: $e');
+      broLog('Erro ao navegar: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1361,7 +1362,7 @@ class _HomeScreenState extends State<HomeScreen> {
         // Verificar se já tem tier ativado (collateral)
         final collateralService = LocalCollateralService();
         final hasActiveTier = await collateralService.hasCollateral(userPubkey: pubkey);
-        debugPrint('🔍 hasActiveTier (button): $hasActiveTier (pubkey: ${pubkey?.substring(0, 8) ?? "null"})');
+        broLog('🔍 hasActiveTier (button): $hasActiveTier (pubkey: ${pubkey?.substring(0, 8) ?? "null"})');
         
         if (hasActiveTier) {
           // Já tem tier, ir direto para tela de ordens

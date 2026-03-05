@@ -1,5 +1,6 @@
 ﻿import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:crypto/crypto.dart';
 import '../config.dart';
 import 'storage_service.dart';
@@ -122,7 +123,7 @@ class DisputeService {
       _disputes.addAll(seen.values);
       
       if (seen.length < loaded.length) {
-        debugPrint('⚠️ Removidas ${loaded.length - seen.length} disputas duplicadas do storage');
+        broLog('⚠️ Removidas ${loaded.length - seen.length} disputas duplicadas do storage');
         await _saveDisputes();
       }
     }
@@ -145,7 +146,7 @@ class DisputeService {
     // CORREÇÃO: Prevenir criação de disputa duplicada para a mesma ordem
     final existing = getDisputeByOrderId(orderId);
     if (existing != null) {
-      debugPrint('⚠️ Disputa já existe para ordem $orderId (id=${existing.id}), retornando existente');
+      broLog('⚠️ Disputa já existe para ordem $orderId (id=${existing.id}), retornando existente');
       return existing;
     }
 
@@ -169,7 +170,7 @@ class DisputeService {
     // Notificar suporte via Nostr
     await _notifySupport(dispute, orderDetails);
 
-    debugPrint('⚖️ Disputa criada: ${dispute.id}');
+    broLog('⚖️ Disputa criada: ${dispute.id}');
     return dispute;
   }
 
@@ -184,7 +185,7 @@ class DisputeService {
       final appPrivkey = await _storage.getNsec();
       
       if (appPrivkey == null) {
-        debugPrint('⚠️ Sem chave privada para enviar notificação');
+        broLog('⚠️ Sem chave privada para enviar notificação');
         return;
       }
 
@@ -195,9 +196,9 @@ class DisputeService {
       // Publicar nos relays
       await _relayService.publishEvent(event);
       
-      debugPrint('📤 Notificação de disputa enviada ao suporte');
+      broLog('📤 Notificação de disputa enviada ao suporte');
     } catch (e) {
-      debugPrint('❌ Erro ao notificar suporte: $e');
+      broLog('❌ Erro ao notificar suporte: $e');
     }
   }
 
@@ -351,7 +352,7 @@ class DisputeService {
         mediatorNotes: mediatorNotes,
       );
       await _saveDisputes();
-      debugPrint('⚖️ Disputa $disputeId atualizada: $newStatus');
+      broLog('⚖️ Disputa $disputeId atualizada: $newStatus');
     }
   }
 

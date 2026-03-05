@@ -1,6 +1,7 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/bitcoin_price_service.dart';
 import '../services/nostr_service.dart';
@@ -668,10 +669,10 @@ class _OfferScreenState extends State<OfferScreen> {
         if (bytes.length <= 200 * 1024) {
           result.add(base64Encode(bytes));
         } else {
-          debugPrint('⚠️ Foto muito grande: ${bytes.length} bytes, ignorando');
+          broLog('⚠️ Foto muito grande: ${bytes.length} bytes, ignorando');
         }
       } catch (e) {
-        debugPrint('⚠️ Erro ao converter foto: $e');
+        broLog('⚠️ Erro ao converter foto: $e');
       }
     }
     return result;
@@ -736,21 +737,21 @@ class _OfferScreenState extends State<OfferScreen> {
       }
 
       // Converter fotos para base64
-      debugPrint('📸 Convertendo ${_selectedPhotos.length} fotos para base64...');
+      broLog('📸 Convertendo ${_selectedPhotos.length} fotos para base64...');
       final photosBase64 = await _photosToBase64();
-      debugPrint('✅ Base64 pronto: ${photosBase64.length} fotos');
+      broLog('✅ Base64 pronto: ${photosBase64.length} fotos');
 
       // Verificar conteúdo NSFW via ML antes de publicar
       // v247: Timeout de 15s + catch robusto para evitar crash nativo do TFLite
       if (_selectedPhotos.isNotEmpty) {
         try {
-          debugPrint('🔍 Iniciando verificação NSFW...');
+          broLog('🔍 Iniciando verificação NSFW...');
           final nsfwError = await ContentModerationService.checkImagesForNsfw(_selectedPhotos)
               .timeout(const Duration(seconds: 15), onTimeout: () {
-            debugPrint('⏱️ NSFW check timeout após 15s, prosseguindo sem verificação');
+            broLog('⏱️ NSFW check timeout após 15s, prosseguindo sem verificação');
             return null;
           });
-          debugPrint('✅ Verificação NSFW concluída: ${nsfwError ?? "OK"}');
+          broLog('✅ Verificação NSFW concluída: ${nsfwError ?? "OK"}');
           if (nsfwError != null) {
             setState(() => _isPublishing = false);
             if (mounted) {
@@ -766,8 +767,8 @@ class _OfferScreenState extends State<OfferScreen> {
           }
         } catch (e, stack) {
           // v247: Captura qualquer erro (incluindo Error/native) para não crashar
-          debugPrint('⚠️ NSFW verificação falhou (prosseguindo): $e');
-          debugPrint('⚠️ Stack: $stack');
+          broLog('⚠️ NSFW verificação falhou (prosseguindo): $e');
+          broLog('⚠️ Stack: $stack');
         }
       }
 
@@ -789,7 +790,7 @@ class _OfferScreenState extends State<OfferScreen> {
         }
       }
 
-      debugPrint('📝 Verificando conteúdo de texto...');
+      broLog('📝 Verificando conteúdo de texto...');
       // Verificar conteúdo de texto proibido
       final modService = ContentModerationService();
       if (modService.containsBannedContent(_titleController.text) ||
@@ -807,7 +808,7 @@ class _OfferScreenState extends State<OfferScreen> {
         return;
       }
 
-      debugPrint('🚀 Publicando oferta no Nostr...');
+      broLog('🚀 Publicando oferta no Nostr...');
       final offerId = await nostrOrderService.publishMarketplaceOffer(
         privateKey: privateKey,
         title: _titleController.text,

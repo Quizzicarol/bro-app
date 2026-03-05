@@ -1,10 +1,11 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nsfw_detector_flutter/nsfw_detector_flutter.dart';
 import 'nostr_service.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:nostr/nostr.dart';
 
 /// Serviço de moderação de conteúdo descentralizado
@@ -72,7 +73,7 @@ class ContentModerationService {
     final lowerText = text.toLowerCase();
     for (final term in _bannedTerms) {
       if (lowerText.contains(term)) {
-        debugPrint('⚠️ Conteúdo filtrado: contém "$term"');
+        broLog('⚠️ Conteúdo filtrado: contém "$term"');
         return true;
       }
     }
@@ -142,9 +143,9 @@ class ContentModerationService {
       final followingJson = prefs.getStringList('following_$myPubkey') ?? [];
       _following = followingJson.toSet();
       
-      debugPrint('📋 Carregado ${_following.length} seguidos');
+      broLog('📋 Carregado ${_following.length} seguidos');
     } catch (e) {
-      debugPrint('❌ Erro ao carregar following: $e');
+      broLog('❌ Erro ao carregar following: $e');
     }
   }
 
@@ -228,7 +229,7 @@ class ContentModerationService {
           final success = await _publishReport(relay, event);
           if (success) successCount++;
         } catch (e) {
-          debugPrint('⚠️ Falha ao reportar em $relay: $e');
+          broLog('⚠️ Falha ao reportar em $relay: $e');
         }
       }
 
@@ -253,10 +254,10 @@ class ContentModerationService {
         await prefs2.setStringList('reported_events_$myPubkey2', _reportedEventIds.toList());
       }
 
-      debugPrint('✅ Report publicado em $successCount relays');
+      broLog('✅ Report publicado em $successCount relays');
       return successCount > 0;
     } catch (e) {
-      debugPrint('❌ Erro ao reportar: $e');
+      broLog('❌ Erro ao reportar: $e');
       return false;
     }
   }
@@ -316,7 +317,7 @@ class ContentModerationService {
         
         await ws.close();
       } catch (e) {
-        debugPrint('⚠️ Erro ao buscar reports de $relayUrl: $e');
+        broLog('⚠️ Erro ao buscar reports de $relayUrl: $e');
       }
     }
     
@@ -325,11 +326,11 @@ class ContentModerationService {
     _globalEventReports.forEach((eventId, reporters) {
       if (reporters.length >= 2) {
         totalReported++;
-        debugPrint('🚩 Oferta $eventId tem ${reporters.length} reports globais');
+        broLog('🚩 Oferta $eventId tem ${reporters.length} reports globais');
       }
     });
     if (totalReported > 0) {
-      debugPrint('🚩 $totalReported ofertas com 2+ reports globais (ocultas para todos)');
+      broLog('🚩 $totalReported ofertas com 2+ reports globais (ocultas para todos)');
     }
   }
 
@@ -347,10 +348,10 @@ class ContentModerationService {
       await Future.delayed(const Duration(seconds: 2));
       await ws.close();
       
-      debugPrint('✅ Report publicado em $relayUrl');
+      broLog('✅ Report publicado em $relayUrl');
       return true;
     } catch (e) {
-      debugPrint('⚠️ Falha ao publicar report em $relayUrl: $e');
+      broLog('⚠️ Falha ao publicar report em $relayUrl: $e');
       return false;
     }
   }
@@ -365,7 +366,7 @@ class ContentModerationService {
       await prefs.setStringList('muted_$myPubkey', _mutedPubkeys.toList());
     }
     
-    debugPrint('🔇 Pubkey mutada: ${pubkey.substring(0, 8)}...');
+    broLog('🔇 Pubkey mutada: ${pubkey.substring(0, 8)}...');
   }
 
   /// Remove mute de uma pubkey
@@ -420,9 +421,9 @@ class ContentModerationService {
       // Carregar event IDs reportados
       _reportedEventIds = (prefs.getStringList('reported_events_$myPubkey') ?? []).toSet();
 
-      debugPrint('📦 Moderação carregada: ${_following.length} seguidos, ${_mutedPubkeys.length} mutados');
+      broLog('📦 Moderação carregada: ${_following.length} seguidos, ${_mutedPubkeys.length} mutados');
     } catch (e) {
-      debugPrint('❌ Erro ao carregar moderação: $e');
+      broLog('❌ Erro ao carregar moderação: $e');
     }
   }
 
@@ -470,7 +471,7 @@ class ContentModerationService {
       // Imagem aprovada pelas verificações básicas
       return {'allowed': true, 'reason': null};
     } catch (e) {
-      debugPrint('❌ Erro na análise de imagem: $e');
+      broLog('❌ Erro na análise de imagem: $e');
       return {'allowed': false, 'reason': 'Erro ao analisar imagem: $e'};
     }
   }
@@ -514,16 +515,16 @@ class ContentModerationService {
     if (_nsfwDetectorFailed) return null;
     if (_nsfwDetector != null) return _nsfwDetector;
     try {
-      debugPrint('🔄 Carregando NSFW Detector...');
+      broLog('🔄 Carregando NSFW Detector...');
       _nsfwDetector = await NsfwDetector.load()
           .timeout(const Duration(seconds: 10), onTimeout: () {
-        debugPrint('⏱️ NsfwDetector.load() timeout após 10s');
+        broLog('⏱️ NsfwDetector.load() timeout após 10s');
         throw TimeoutException('NsfwDetector.load timeout');
       });
-      debugPrint('✅ NSFW Detector carregado com sucesso');
+      broLog('✅ NSFW Detector carregado com sucesso');
       return _nsfwDetector;
     } catch (e) {
-      debugPrint('⚠️ Falha ao carregar NSFW Detector: $e');
+      broLog('⚠️ Falha ao carregar NSFW Detector: $e');
       _nsfwDetectorFailed = true;
       return null;
     }
@@ -535,32 +536,32 @@ class ContentModerationService {
     try {
       final detector = await _getNsfwDetector();
       if (detector == null) {
-        debugPrint('⚠️ NSFW detector não disponível, usando apenas verificações básicas');
+        broLog('⚠️ NSFW detector não disponível, usando apenas verificações básicas');
         return null; // Graceful fallback - não bloquear se o detector falhar
       }
 
       for (int i = 0; i < photos.length; i++) {
         try {
-          debugPrint('🔍 Analisando foto ${i + 1}/${photos.length} para NSFW...');
+          broLog('🔍 Analisando foto ${i + 1}/${photos.length} para NSFW...');
           // v247: Timeout de 8s por foto para evitar hang nativo
           final result = await detector.detectNSFWFromFile(photos[i])
               .timeout(const Duration(seconds: 8), onTimeout: () {
-            debugPrint('⏱️ detectNSFWFromFile timeout para foto ${i + 1}');
+            broLog('⏱️ detectNSFWFromFile timeout para foto ${i + 1}');
             return null;
           });
           if (result == null) {
-            debugPrint('⚠️ Foto ${i + 1}: NSFW detector retornou null, ignorando');
+            broLog('⚠️ Foto ${i + 1}: NSFW detector retornou null, ignorando');
             continue;
           }
-          debugPrint('🔍 Foto ${i + 1} NSFW score: ${result.score.toStringAsFixed(3)} (isNsfw: ${result.isNsfw})');
+          broLog('🔍 Foto ${i + 1} NSFW score: ${result.score.toStringAsFixed(3)} (isNsfw: ${result.isNsfw})');
           
           if (result.score >= _nsfwThreshold) {
             return 'Foto ${i + 1}: Conteúdo impróprio detectado. '
                 'Imagens com nudez ou conteúdo adulto não são permitidas no marketplace.';
           }
         } catch (e, stack) {
-          debugPrint('⚠️ Erro ao analisar foto ${i + 1} para NSFW: $e');
-          debugPrint('⚠️ Stack: $stack');
+          broLog('⚠️ Erro ao analisar foto ${i + 1} para NSFW: $e');
+          broLog('⚠️ Stack: $stack');
           // v247: Se falhar em qualquer foto, marca detector como falho e prossegue
           _nsfwDetectorFailed = true;
           break;
@@ -568,7 +569,7 @@ class ContentModerationService {
       }
       return null; // Todas as fotos passaram
     } catch (e) {
-      debugPrint('❌ Erro geral na verificação NSFW: $e');
+      broLog('❌ Erro geral na verificação NSFW: $e');
       return null; // Graceful fallback
     }
   }

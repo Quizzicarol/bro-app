@@ -1,4 +1,5 @@
-import 'dart:io';
+﻿import 'dart:io';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter/foundation.dart';
 
 class ConnectivityService {
@@ -19,7 +20,7 @@ class ConnectivityService {
         return true;
       }
     } catch (e) {
-      debugPrint('Erro de conectividade: $e');
+      broLog('Erro de conectividade: $e');
       return false;
     }
   }

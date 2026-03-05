@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:bro_app/services/log_utils.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../providers/breez_provider_export.dart';
 import '../providers/order_provider.dart';
@@ -68,9 +69,9 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
       _currentBalance = totalBalance;
       _committedSats = committedSats;
       
-      debugPrint('💰 Saldo total: $totalBalance sats');
-      debugPrint('💰 Sats comprometidos com ordens: $committedSats sats');
-      debugPrint('💰 MODO BRO: Valor completo do tier é necessário');
+      broLog('💰 Saldo total: $totalBalance sats');
+      broLog('💰 Sats comprometidos com ordens: $committedSats sats');
+      broLog('💰 MODO BRO: Valor completo do tier é necessário');
       
       // Em modo Bro: só considera depósito completo se tiver saldo ALÉM do comprometido
       final availableForCollateral = (totalBalance - committedSats).clamp(0, totalBalance);
@@ -78,11 +79,11 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
       // CRÍTICO: Salvar saldo inicial para detectar NOVOS depósitos
       _initialBalance = totalBalance;
       _currentBalance = totalBalance;
-      debugPrint('💰 Saldo INICIAL salvo: $_initialBalance sats');
+      broLog('💰 Saldo INICIAL salvo: $_initialBalance sats');
       
       if (availableForCollateral >= widget.tier.requiredCollateralSats) {
         // ✅ IMPORTANTE: Ativar o tier antes de marcar como completo!
-        debugPrint('✅ Saldo suficiente detectado, ativando tier automaticamente...');
+        broLog('✅ Saldo suficiente detectado, ativando tier automaticamente...');
         await _activateTier(availableForCollateral);
         
         // ✅ NAVEGAR DIRETAMENTE PARA A TELA DE ORDENS
@@ -137,18 +138,18 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
     final breezProvider = context.read<BreezProvider>();
     _paymentMonitor = PaymentMonitorService(breezProvider);
     
-    debugPrint('🔍 Iniciando monitoramento de depósito: $expectedAmount sats');
+    broLog('🔍 Iniciando monitoramento de depósito: $expectedAmount sats');
     
     // Monitorar Lightning (se invoice disponível)
     if (_lightningInvoice != null && _lightningPaymentHash != null) {
-      debugPrint('⚡ Monitorando pagamento Lightning...');
+      broLog('⚡ Monitorando pagamento Lightning...');
       _paymentMonitor!.monitorPayment(
         paymentId: 'tier_deposit_lightning',
         paymentHash: _lightningPaymentHash!,
         checkInterval: const Duration(seconds: 3),
         onStatusChange: (status, data) async {
           if (status == PaymentStatus.confirmed && mounted) {
-            debugPrint('✅ Pagamento Lightning confirmado para tier!');
+            broLog('✅ Pagamento Lightning confirmado para tier!');
             await _onPaymentReceived();
           }
         },
@@ -180,14 +181,14 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
       final balanceIncrease = totalBalance - _initialBalance;
       final minRequired = (widget.tier.requiredCollateralSats * 0.90).round();
       
-      debugPrint('🔍 Polling: saldo=$totalBalance, inicial=$_initialBalance, aumento=$balanceIncrease, necessário=$_amountNeededSats');
+      broLog('🔍 Polling: saldo=$totalBalance, inicial=$_initialBalance, aumento=$balanceIncrease, necessário=$_amountNeededSats');
       
       // CONDIÇÃO CORRIGIDA: Só ativa se:
       // 1. O saldo disponível é suficiente para o tier E
       // 2. Houve um aumento real de saldo (depósito ocorreu)
       if (availableBalance >= minRequired && balanceIncrease >= (_amountNeededSats * 0.90).round()) {
         // Pagamento recebido! Ativar tier
-        debugPrint('✅ Depósito detectado! Aumento de $balanceIncrease sats');
+        broLog('✅ Depósito detectado! Aumento de $balanceIncrease sats');
         await _onPaymentReceived();
       } else if (totalBalance > _currentBalance) {
         // Recebeu algo mas ainda não é suficiente - mostrar progresso
@@ -230,7 +231,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
     
     // CRÍTICO: Verificar aumento real de saldo
     final balanceIncrease = totalBalance - _initialBalance;
-    debugPrint('💰 Pagamento detectado! Saldo total: $totalBalance, disponível: $availableBalance, aumento: $balanceIncrease');
+    broLog('💰 Pagamento detectado! Saldo total: $totalBalance, disponível: $availableBalance, aumento: $balanceIncrease');
     
     // 🔥 Tolerância de 10% para oscilação do Bitcoin
     final minRequired = (widget.tier.requiredCollateralSats * 0.90).round();
@@ -239,10 +240,10 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
     // CONDIÇÃO CORRIGIDA: Verificar saldo suficiente E aumento real
     if (availableBalance >= minRequired && balanceIncrease >= minDeposit) {
       // Ativar o tier
-      debugPrint('✅ Condições atendidas: disponível=$availableBalance >= $minRequired, aumento=$balanceIncrease >= $minDeposit');
+      broLog('✅ Condições atendidas: disponível=$availableBalance >= $minRequired, aumento=$balanceIncrease >= $minDeposit');
       await _activateTier(availableBalance);
     } else {
-      debugPrint('⚠️ Ainda não atende: disponível=$availableBalance, minRequired=$minRequired, aumento=$balanceIncrease, minDeposit=$minDeposit');
+      broLog('⚠️ Ainda não atende: disponível=$availableBalance, minRequired=$minRequired, aumento=$balanceIncrease, minDeposit=$minDeposit');
       // Atualizar UI e continuar esperando
       if (mounted) {
         setState(() {
@@ -253,12 +254,12 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
   }
 
   Future<void> _activateTier(int balance) async {
-    debugPrint('🎯 Ativando tier ${widget.tier.name} com saldo disponível: $balance sats');
+    broLog('🎯 Ativando tier ${widget.tier.name} com saldo disponível: $balance sats');
     
     // ✅ IMPORTANTE: Obter pubkey ANTES de salvar o tier
     final nostrService = NostrService();
     final pubkey = nostrService.publicKey;
-    debugPrint('🔑 Salvando tier para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
+    broLog('🔑 Salvando tier para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
     
     // Usar LocalCollateralService instance COM pubkey
     final localCollateralService = LocalCollateralService();
@@ -271,17 +272,17 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
       userPubkey: pubkey, // CRÍTICO: Passar pubkey
     );
     
-    debugPrint('✅ Tier salvo localmente para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
+    broLog('✅ Tier salvo localmente para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
 
     // ✅ IMPORTANTE: Marcar como modo provedor para persistir entre sessões COM PUBKEY
     await SecureStorageService.setProviderMode(true, userPubkey: pubkey);
-    debugPrint('✅ Provider mode ativado e persistido para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
+    broLog('✅ Provider mode ativado e persistido para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
 
     // ✅ IMPORTANTE: Atualizar o CollateralProvider para refletir a mudança
     if (mounted) {
       final collateralProvider = context.read<CollateralProvider>();
       await collateralProvider.refreshCollateral('', walletBalance: balance);
-      debugPrint('✅ CollateralProvider atualizado após ativação do tier ${widget.tier.name}');
+      broLog('✅ CollateralProvider atualizado após ativação do tier ${widget.tier.name}');
     }
 
     setState(() {

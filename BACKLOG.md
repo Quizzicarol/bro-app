@@ -22,22 +22,17 @@
 
 ## 🟡 Prioridade Média
 
-### 3. Indicador de Status de Conexão com Relays
-**Versão Target:** 1.1.0  
-**Estimativa:** 0.5 dia  
-**Descrição:**  
-Usuário não sabe se está conectado aos relays Nostr. Operações podem parecer "travadas".
-
-**Solução:**  
-Adicionar indicador visual no AppBar ou Drawer mostrando status de conexão.
+### ~~3. Indicador de Status de Conexão com Relays~~ ✅ CONCLUÍDO
+**Versão:** 1.0.131+337  
+**Concluído em:** Março 2026  
+**Resultado:** RelayService agora é ChangeNotifier. Ícone cell_tower no AppBar com cores (verde=todos, laranja=parcial, vermelho=nenhum). Tooltip mostra contagem X/Y.
 
 ---
 
-### 4. Timeout Mais Curto para Criar Invoice
-**Versão Target:** 1.0.88  
-**Estimativa:** 0.5 dia  
-**Descrição:**  
-Timeout de 30s para criar invoice é muito longo. Adicionar feedback intermediário.
+### ~~4. Timeout Mais Curto para Criar Invoice~~ ✅ CONCLUÍDO
+**Versão:** 1.0.131+337  
+**Concluído em:** Março 2026  
+**Resultado:** Dialog de criação de invoice agora mostra feedback progressivo: "Conectando ao Spark... (Xs)" → "Aguardando resposta... (Xs)" → "Tentando via Liquid... (Xs)". Atualiza a cada 5s.
 
 ---
 
@@ -66,14 +61,10 @@ Adicionar `HapticFeedback.mediumImpact()` em ações críticas como "Aceitar Ord
 
 ---
 
-### 8. Limitar Tamanho de Imagem de Comprovante
-**Versão Target:** 1.0.88  
-**Estimativa:** 0.5 dia  
-**Descrição:**  
-Imagens de comprovante podem ser muito grandes (vários MB em base64). Relays podem rejeitar.
-
-**Solução:**  
-Adicionar `imageQuality: 50` e limitar tamanho final a 500KB.
+### ~~8. Limitar Tamanho de Imagem de Comprovante~~ ✅ CONCLUÍDO
+**Versão:** 1.0.131+337  
+**Concluído em:** Março 2026  
+**Resultado:** Validação de 500KB máximo em `completeOrderOnNostr` antes da criptografia NIP-44. Imagens de evidência reduzidas de 1024x1024/q70 para 600x600/q50. `order_details_modal` também atualizado para 600x600/q50.
 
 ---
 

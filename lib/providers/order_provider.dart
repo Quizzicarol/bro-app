@@ -2877,8 +2877,9 @@ class OrderProvider with ChangeNotifier {
       return true;
     }
     // disputed SEMPRE vence sobre qualquer status nao-terminal
+    // MAS disputed → disputed NÃO é avanço (evita loop de republish)
     if (newStatus == 'disputed') {
-      return true;
+      return currentStatus != 'disputed';
     }
     
     const finalStatuses = ['completed', 'liquidated', 'disputed'];

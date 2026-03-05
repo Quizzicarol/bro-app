@@ -127,9 +127,15 @@ class DisputeService {
     required String description,
     Map<String, dynamic>? orderDetails,
   }) async {
-    // Gerar ID único para a disputa
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final idContent = '$orderId-$openedBy-$timestamp';
+    // CORREÇÃO: Prevenir criação de disputa duplicada para a mesma ordem
+    final existing = getDisputeByOrderId(orderId);
+    if (existing != null) {
+      debugPrint('⚠️ Disputa já existe para ordem $orderId (id=${existing.id}), retornando existente');
+      return existing;
+    }
+
+    // Gerar ID único para a disputa (baseado em orderId + openedBy, sem timestamp)
+    final idContent = '$orderId-$openedBy';
     final id = sha256.convert(utf8.encode(idContent)).toString().substring(0, 16);
 
     final dispute = Dispute(

@@ -21,17 +21,24 @@ const DISPUTE_FILTERS = [
   {
     kinds: [1],
     '#t': ['bro-disputa'],
-    since: Math.floor(Date.now() / 1000) - 86400, // Last 24h on startup
+    since: Math.floor(Date.now() / 1000) - 7 * 86400, // Last 7 days on startup
   },
   {
     kinds: [1],
     '#t': ['bro-disputa-evidencia'],
-    since: Math.floor(Date.now() / 1000) - 86400,
+    since: Math.floor(Date.now() / 1000) - 7 * 86400,
   },
   {
     kinds: [1],
     '#t': ['bro-resolucao'],
-    since: Math.floor(Date.now() / 1000) - 86400,
+    since: Math.floor(Date.now() / 1000) - 7 * 86400,
+  },
+  // Also catch disputed status from order republish events (kind 30078)
+  // for orders where the kind 1 dispute event was never published or was lost
+  {
+    kinds: [30078],
+    '#t': ['bro-order'],
+    since: Math.floor(Date.now() / 1000) - 7 * 86400,
   },
 ];
 
@@ -217,7 +224,32 @@ class NostrListenerService extends EventEmitter {
           tags: event.tags || [],
         });
       }
-      
+      // Fallback: detect disputes from kind 30078 order republish events
+      // This catches orders that were set to 'disputed' without a kind 1 dispute event
+      else if (eventType === 'bro_order' && content.status === 'disputed' && content.orderId) {
+        console.log(`\ud83d\udd14 [NostrListener] Dispute via order republish: order ${content.orderId?.substring(0, 8)}... from ${relayUrl}`);
+        this.emit('dispute', {
+          eventId: event.id,
+          pubkey: event.pubkey,
+          createdAt: event.created_at,
+          relay: relayUrl,
+          dispute: {
+            type: 'bro_dispute',
+            orderId: content.orderId,
+            reason: content.reason || 'Disputa via status update',
+            description: content.description || '',
+            openedBy: 'user',
+            userPubkey: content.userPubkey || event.pubkey,
+            amount_brl: content.amount,
+            amount_sats: content.btcAmount,
+            payment_type: content.billType,
+            provider_id: content.providerId,
+            previous_status: content.previousStatus,
+            source: 'order_republish',
+          },
+          tags: event.tags || [],
+        });
+      }      
     } catch (e) {
       // Silently ignore malformed events
     }

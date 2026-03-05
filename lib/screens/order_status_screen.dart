@@ -319,8 +319,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           _startCountdownTimer();
         }
 
-        // CORREÇÃO: Só parar polling em estados FINAIS (completed, cancelled)
-        if (status == 'completed' || status == 'cancelled') {
+        // CORREÇÃO: Parar polling em estados FINAIS (completed, cancelled, disputed)
+        // disputed não precisa de polling — a resolução vem via Nostr events
+        if (status == 'completed' || status == 'cancelled' || status == 'disputed') {
           timer.cancel();
           _countdownTimer?.cancel();
         }
@@ -4190,22 +4191,24 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   child: const Icon(Icons.gavel, color: Colors.orange, size: 20),
                 ),
                 const SizedBox(width: 10),
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Disputa em Análise',
-                        style: TextStyle(
+                        dispute?.status == 'in_review' ? 'Disputa em Análise' : 'Disputa Aberta',
+                        style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                           color: Colors.orange,
                         ),
                       ),
-                      SizedBox(height: 4),
+                      const SizedBox(height: 4),
                       Text(
-                        'Um mediador está analisando seu caso',
-                        style: TextStyle(fontSize: 14, color: Colors.white70),
+                        dispute?.status == 'in_review'
+                            ? 'Um mediador está analisando seu caso'
+                            : 'Aguardando revisão do mediador',
+                        style: const TextStyle(fontSize: 14, color: Colors.white70),
                       ),
                     ],
                   ),

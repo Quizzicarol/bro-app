@@ -201,15 +201,24 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
   
   /// Busca o comprovante do provedor via Nostr
   /// Usa fetchProofForOrder que pesquisa kind 30081 e 30080 diretamente pelo orderId
+  /// Passa a chave privada do admin para descriptografar proofImage NIP-44
   Future<void> _fetchProofImage() async {
     if (orderId.isEmpty) return;
     setState(() => _loadingProof = true);
     
     try {
+      // Obter chave privada do admin para descriptografar NIP-44
+      String? adminPrivKey;
+      try {
+        final orderProvider = context.read<OrderProvider>();
+        adminPrivKey = orderProvider.nostrPrivateKey;
+      } catch (_) {}
+      
       final nostrService = NostrOrderService();
       final result = await nostrService.fetchProofForOrder(
         orderId,
         providerPubkey: providerId.isNotEmpty ? providerId : null,
+        privateKey: adminPrivKey,
       );
       
       if (!mounted) return;

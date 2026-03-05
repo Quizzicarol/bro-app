@@ -1182,6 +1182,7 @@ class NostrOrderService {
       // NOTA: O comprovante é criptografado via NIP-44 entre provedor e usuário
       // Apenas o destinatário (userPubkey) pode descriptografar
       String? encryptedProofImage;
+      String? encryptedProofImageAdmin;
       try {
         if (order.userPubkey != null && order.userPubkey!.isNotEmpty) {
           encryptedProofImage = _nip44.encryptBetween(
@@ -1189,7 +1190,16 @@ class NostrOrderService {
             keychain.private,
             order.userPubkey!,
           );
-          debugPrint('🔐 proofImage criptografado com NIP-44 (${encryptedProofImage.length} chars)');
+          debugPrint('🔐 proofImage criptografado com NIP-44 para usuário (${encryptedProofImage.length} chars)');
+        }
+        // Também criptografar para o admin/mediador (para disputas)
+        if (AppConfig.adminPubkey.isNotEmpty) {
+          encryptedProofImageAdmin = _nip44.encryptBetween(
+            proofImageBase64,
+            keychain.private,
+            AppConfig.adminPubkey,
+          );
+          debugPrint('🔐 proofImage criptografado com NIP-44 para admin (${encryptedProofImageAdmin.length} chars)');
         }
       } catch (e) {
         debugPrint('⚠️ Falha ao criptografar proofImage: $e — enviando em plaintext');
@@ -1209,6 +1219,10 @@ class NostrOrderService {
         contentMap['proofImage_nip44'] = encryptedProofImage;
         contentMap['proofImage'] = '[encrypted:nip44v2]'; // Marcador para clientes antigos
         contentMap['encryption'] = 'nip44v2';
+        // Cópia criptografada para admin (usado em disputas)
+        if (encryptedProofImageAdmin != null) {
+          contentMap['proofImage_nip44_admin'] = encryptedProofImageAdmin;
+        }
       } else {
         contentMap['proofImage'] = proofImageBase64;
       }
@@ -3760,7 +3774,7 @@ class NostrOrderService {
   /// Retorna Map com 'proofImage' (plaintext ou null) e 'encrypted' (bool)
   /// CORREÇÃO build 216: Usar tags single-letter (#d, #r, #t) suportadas por relays
   /// em vez de #orderId que é multi-char e NÃO é suportada por relays
-  Future<Map<String, dynamic>> fetchProofForOrder(String orderId, {String? providerPubkey}) async {
+  Future<Map<String, dynamic>> fetchProofForOrder(String orderId, {String? providerPubkey, String? privateKey}) async {
     try {
       final result = <String, dynamic>{
         'proofImage': null,
@@ -3844,8 +3858,44 @@ class NostrOrderService {
                   result['proofImage'] = proofImage;
                   result['encrypted'] = false;
                   debugPrint('✅ Comprovante plaintext encontrado para ${orderId.substring(0, 8)}');
+                } else if (privateKey != null) {
+                  // Tentar descriptografar com a chave privada fornecida
+                  final proofImageNip44Admin = content['proofImage_nip44_admin'] as String?;
+                  final senderPubkey = content['providerId'] as String? ?? (eventData['pubkey'] as String?);
+                  bool decrypted = false;
+                  
+                  // Tentar primeiro a cópia do admin
+                  if (proofImageNip44Admin != null && proofImageNip44Admin.isNotEmpty && senderPubkey != null) {
+                    try {
+                      final decryptedProof = _nip44.decryptBetween(proofImageNip44Admin, privateKey, senderPubkey);
+                      result['proofImage'] = decryptedProof;
+                      result['encrypted'] = false;
+                      decrypted = true;
+                      debugPrint('🔓 Comprovante descriptografado (admin copy) para ${orderId.substring(0, 8)}');
+                    } catch (e) {
+                      debugPrint('⚠️ Falha decrypt admin copy: $e');
+                    }
+                  }
+                  
+                  // Fallback: tentar a cópia do usuário
+                  if (!decrypted && proofImageNip44 != null && proofImageNip44.isNotEmpty && senderPubkey != null) {
+                    try {
+                      final decryptedProof = _nip44.decryptBetween(proofImageNip44, privateKey, senderPubkey);
+                      result['proofImage'] = decryptedProof;
+                      result['encrypted'] = false;
+                      decrypted = true;
+                      debugPrint('🔓 Comprovante descriptografado (user copy) para ${orderId.substring(0, 8)}');
+                    } catch (e) {
+                      debugPrint('⚠️ Falha decrypt user copy: $e');
+                    }
+                  }
+                  
+                  if (!decrypted) {
+                    result['encrypted'] = true;
+                    if (proofImageNip44 != null) result['proofImage_nip44'] = proofImageNip44;
+                  }
                 } else if (proofImageNip44 != null && proofImageNip44.isNotEmpty) {
-                  // Existe mas é criptografado
+                  // Existe mas é criptografado e sem chave para descriptografar
                   if (result['proofImage'] == null) {
                     result['encrypted'] = true;
                     result['proofImage_nip44'] = proofImageNip44;

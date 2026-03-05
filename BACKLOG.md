@@ -1,54 +1,22 @@
 # 📋 BACKLOG - Tarefas Futuras do Bro App
 
-**Última Atualização:** 31 de Janeiro de 2026
+**Última Atualização:** 5 de Março de 2026
 
 ---
 
 ## 🔒 Prioridade Alta
 
-### 1. Implementar NIP-17 (Gift Wraps) para Comprovantes
-**Versão Target:** 1.1.0  
-**Estimativa:** 2-3 dias  
-**Descrição:**  
-Atualmente os comprovantes de pagamento (imagens de PIX) são enviados em texto claro nos eventos Nostr. Isso expõe dados sensíveis como:
-- Nome do pagador/recebedor
-- CPF parcial
-- Banco
-- Valor
-
-**Solução:**  
-Implementar NIP-17 (Private Direct Messages via Gift Wraps) para encriptar o comprovante de forma que apenas o criador da ordem possa ver.
-
-**Passos:**
-1. [ ] Adicionar biblioteca de criptografia (NIP-04 ou NIP-44)
-2. [ ] Modificar `completeOrderOnNostr()` para encriptar proof com pubkey do usuário
-3. [ ] Modificar `fetchStatusUpdates()` para descriptografar proof
-4. [ ] Manter compatibilidade retroativa (detectar se está encriptado ou não)
-5. [ ] Testes cross-device
-
-**Referências:**
-- [NIP-17 Spec](https://github.com/nostr-protocol/nips/blob/master/17.md)
-- [NIP-44 Versioned Encryption](https://github.com/nostr-protocol/nips/blob/master/44.md)
+### ~~1. Implementar NIP-44 para Comprovantes~~ ✅ CONCLUÍDO
+**Versão:** 1.0.131+274  
+**Concluído em:** Fevereiro 2026  
+**Resultado:** Implementado NIP-44v2 (XChaCha20-Poly1305) para encriptar comprovantes entre user↔provider e admin mediador. Inclui fallback para plaintext com warning.
 
 ---
 
-### 2. Auto-liquidação em Background
-**Versão Target:** 1.1.0  
-**Estimativa:** 1-2 dias  
-**Descrição:**  
-Atualmente a auto-liquidação só executa quando o provedor está com o app aberto na tela da ordem. Isso é ruim porque:
-- Provedor pode esquecer de abrir o app
-- Ganhos ficam presos até abrir manualmente
-
-**Solução:**  
-Implementar WorkManager (Android) / BGTaskScheduler (iOS) para verificar periodicamente ordens expiradas.
-
-**Passos:**
-1. [ ] Adicionar `workmanager` package
-2. [ ] Criar task de verificação a cada 1h
-3. [ ] Task verifica ordens locais em `awaiting_confirmation` > 24h
-4. [ ] Executar auto-liquidação para cada uma
-5. [ ] Enviar notificação local informando
+### ~~2. Auto-liquidação em Background~~ ✅ CONCLUÍDO
+**Versão:** 1.0.131+274  
+**Concluído em:** Fevereiro 2026  
+**Resultado:** WorkManager com task periódica de 15min. Verifica ordens em `awaiting_confirmation` > 36h. Race condition lock (2min TTL) entre foreground/background. Event signature verification no background.
 
 ---
 
@@ -83,14 +51,10 @@ Formato de moeda hardcoded como `R$`. Usar `Intl` package para detectar locale.
 
 ## 🟢 Prioridade Baixa
 
-### 6. Reduzir Logs em Produção
-**Versão Target:** 1.1.0  
-**Estimativa:** 0.5 dia  
-**Descrição:**  
-Logs verbosos (`debugPrint`) em produção afetam performance levemente.
-
-**Solução:**  
-Criar wrapper que só loga em `kDebugMode`.
+### ~~6. Reduzir Logs em Produção~~ ✅ CONCLUÍDO
+**Versão:** 1.0.131+336  
+**Concluído em:** Março 2026  
+**Resultado:** Criado `broLog()` wrapper em `lib/services/log_utils.dart`. Substituídos 1579 `debugPrint()` em 74 arquivos. Zero logs em release builds.
 
 ---
 
@@ -117,6 +81,8 @@ Adicionar `imageQuality: 50` e limitar tamanho final a 500KB.
 
 | Versão | Data | Principais Mudanças |
 |--------|------|---------------------|
+| 1.0.131+336 | 2026-03-05 | Open source docs, Breez cert limpo do histórico, bump build |
+| 1.0.131+274 | 2026-02 | Security audit (18 vulns), NIP-44 proofs, auto-liquidação background, broLog |
 | 1.0.87+126 | 2026-01-31 | Correções de duplicação, auto-liquidação, aviso privacidade |
 | 1.0.87+125 | 2026-01-31 | Filtro userPubkey, deduplicação |
 | 1.0.87+124 | 2026-01-31 | Bump de versão |

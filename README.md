@@ -3,74 +3,78 @@
 </p>
 
 <p align="center">
-  <strong>O app de escambo digital via Nostr</strong><br>
-  Pague contas, troque produtos ou serviços. Sem bancos. Sem dados.
+  <strong>Pay bills with Bitcoin. No banks. No KYC.</strong><br>
+  A peer-to-peer protocol for exchanging Bitcoin (Lightning) for fiat payments, built on Nostr.
 </p>
 
 <p align="center">
   <a href="https://testflight.apple.com/join/rkHbPQ94">
     <img src="https://img.shields.io/badge/TestFlight_Beta-0D96F6?style=for-the-badge&logo=apple&logoColor=white" alt="TestFlight">
   </a>
-  <a href="https://api.codemagic.io/artifacts/2fa39094-261b-4c42-a832-ae89dc8b21fe/206f592d-63e5-456b-819b-8273a22a265e/app-release.apk">
+  <a href="https://github.com/Quizzicarol/bro-releases/releases">
     <img src="https://img.shields.io/badge/Android_APK-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android APK">
   </a>
 </p>
 
 <p align="center">
-    <img src="https://img.shields.io/badge/Lightning-792EE5?style=flat-square&logo=lightning&logoColor=white" alt="Lightning">
+  <img src="https://img.shields.io/badge/Lightning-792EE5?style=flat-square&logo=lightning&logoColor=white" alt="Lightning">
   <img src="https://img.shields.io/badge/Nostr-8B5CF6?style=flat-square&logo=nostr&logoColor=white" alt="Nostr">
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License">
+  <img src="https://img.shields.io/badge/Flutter-02569B?style=flat-square&logo=flutter&logoColor=white" alt="Flutter">
 </p>
 
 <p align="center">
   <a href="https://www.brostr.app">Website</a> •
-  <a href="#features">Features</a> •
+  <a href="#how-it-works">How It Works</a> •
   <a href="#download">Download</a> •
   <a href="#architecture">Architecture</a> •
-  <a href="#contributing">Contributing</a>
+  <a href="CONTRIBUTING.md">Contributing</a> •
+  <a href="SECURITY.md">Security</a>
 </p>
 
 ---
 
-## 📖 About
+## About
 
-**Bro** é uma plataforma P2P que permite pagar boletos, código pix e contas usando Bitcoin via Lightning Network e Nostr, sem precisar de bancos ou intermediários.
+**Bro** is an open P2P protocol that lets anyone pay bills (PIX, Boleto, TED) using Bitcoin via the Lightning Network. Communication between users and providers happens entirely over **Nostr** — no central server, no accounts, no KYC.
 
-Como funciona:
-1. 📸 **Escaneie** seu boleto ou código PIX
-2. ⚡ **Pague** com Bitcoin via Lightning
-3. ✅ **Pronto** — um provedor da comunidade efetua o pagamento e te envia o comprovante
-4. 🔍 **Verifique** o pagamento no seu banco ou app
+### How It Works
 
-Tudo isso de forma privada, apoiado em Bitcoin e comunicação descentralizada via **Nostr**.
+1. **Scan** your bill (barcode or PIX QR code)
+2. **Pay** with Bitcoin via Lightning
+3. **Done** — a community provider executes the fiat payment and sends you the receipt
+4. **Verify** the payment in your banking app
+
+All communication is encrypted (NIP-44) and relayed through decentralized Nostr relays.
 
 ---
 
-## ✨ Features
+## Features
 
 <table>
 <tr>
 <td width="50%">
 
-### 👤 Para Usuários
+### For Users
 
-- ⚡ Pague boletos e PIX com Bitcoin
-- 📸 Scanner de código de barras e QR Code
-- 🔐 Carteira Lightning self-custodial
-- 📊 Acompanhamento em tempo real
-- 📜 Histórico de transações
-- 🔑 Login com chave Nostr (nsec)
+- ⚡ Pay PIX, Boleto, and TED bills with Bitcoin
+- 📸 Barcode & QR code scanner
+- 🔐 Self-custodial Lightning wallet (Breez Spark)
+- 📊 Real-time order tracking
+- 📜 Transaction history
+- 🔑 Login with Nostr key (nsec) or BIP-39 seed
 
 </td>
 <td width="50%">
 
-### 💼 Para Provedores
+### For Providers (Bros)
 
-- 📥 Receba ordens de pagamento
-- 💰 Ganhe spread nas transações
-- 🔒 Sistema de garantia (colateral)
-- 📈 Dashboard de acompanhamento
-
+- 📥 Accept payment orders from the network
+- 💰 Earn spread on every transaction (configurable)
+- 🔒 Collateral tiers (Bronze → Diamond)
+- 📈 Reputation system with Web of Trust
+- 🤖 Auto-liquidation after 36h confirmation timeout
+- 🛡️ AI-assisted dispute resolution
 
 </td>
 </tr>
@@ -78,164 +82,266 @@ Tudo isso de forma privada, apoiado em Bitcoin e comunicação descentralizada v
 
 ---
 
-## 🤔 Por que usar o Bro?
-
-> **Sem taxas para a plataforma.** Um protocolo que conecta pessoas e facilita a vida.
+## Why Bro?
 
 | | |
 |:---:|---|
-| **🔄 Troca Fácil** | Publique o que você tem, encontre o que você quer. Simples assim. |
-| **🔒 Seguro** | Trocas privadas via Nostr sem intermediários. |
-| **👥 Comunidade** | Troque e pague contas com quem você confia. |
-| **🌐 Descentralizado** | Sem servidores centrais, você decide onde armazenar seus dados. |
-| **📖 Open Source** | Código aberto e transparente para todos. |
-| **🕵️ Privacidade** | O Bro não exige registro, números de telefone ou informações pessoais. |
-| **⚡ Lightning** | Pagamentos instantâneos via Bitcoin Lightning Network. |
-| **🔐 Self-Custodial** | Suas chaves, seu Bitcoin. Você controla seus fundos. |
+| **🔒 Private** | No registration, no phone number, no personal data. Your keys, your identity. |
+| **🌐 Decentralized** | Built on Nostr — no central servers, no single point of failure. |
+| **⚡ Instant** | Lightning payments settle in seconds. |
+| **🔐 Self-Custodial** | You hold your own keys and funds at all times. |
+| **📖 Open Source** | Fully transparent — audit the code yourself. |
+| **🛡️ Secure** | NIP-44 encrypted proofs, NIP-98 authenticated API, event signature verification. |
+| **🤝 Trustless** | Collateral system and reputation scoring minimize counterparty risk. |
 
 ---
 
-## 📱 Download
+## Download
 
-<p align="center">
-  <strong>🍎 Disponível em TestFlight</strong>
-</p>
-
-| Plataforma | Link | Status |
-|------------|------|--------|
-| 🍎 iOS Beta | [TestFlight](https://testflight.apple.com/join/rkHbPQ94) | ✅ Disponível |
-| 🤖 Android Beta | [Download APK](https://api.codemagic.io/artifacts/2fa39094-261b-4c42-a832-ae89dc8b21fe/206f592d-63e5-456b-819b-8273a22a265e/app-release.apk) | ✅ Disponível |
-| 🤖 Google Play | Em breve | 🔜 Aguardando |
-| 🍎 iOS App Store | Em breve | 🔜 Aguardando |
+| Platform | Link | Status |
+|----------|------|--------|
+| 🍎 iOS Beta | [TestFlight](https://testflight.apple.com/join/rkHbPQ94) | ✅ Available |
+| 🤖 Android | [Releases](https://github.com/Quizzicarol/bro-releases/releases) | ✅ Available |
+| 🤖 Google Play | Coming soon | 🔜 |
+| 🍎 App Store | Coming soon | 🔜 |
 
 ---
 
-## 🏗 Architecture
+## Protocol
+
+Bro defines a set of custom Nostr event kinds for P2P order management:
+
+| Kind | Name | Purpose |
+|------|------|---------|
+| **30078** | Bro Order | User creates a payment order |
+| **30079** | Bro Accept | Provider accepts an order |
+| **30080** | Bro Update | Status changes, cancellations |
+| **30081** | Bro Complete | Provider submits proof of payment |
+| **30082** | Bro Provider Profile | Provider capabilities & reputation |
+
+### Order Lifecycle
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        BRO APP                              │
-├─────────────────────────────────────────────────────────────┤
-│  UI Layer (Flutter)                                         │
-│  ├── Screens (Home, Wallet, Orders, Settings)               │
-│  ├── Widgets (Reusable Components)                          │
-│  └── Theme (Dark/Light Mode)                                │
-├─────────────────────────────────────────────────────────────┤
-│  State Management (Provider)                                │
-│  ├── WalletProvider (Balance, Transactions)                 │
-│  ├── OrderProvider (P2P Orders)                             │
-│  └── AuthProvider (Nostr Keys)                              │
-├─────────────────────────────────────────────────────────────┤
-│  Services Layer                                             │
-│  ├── BreezService (Lightning Network)                       │
-│  ├── NostrService (P2P Communication)                       │
-│  ├── StorageService (Secure Local Storage)                  │
-│  └── ScannerService (Barcode/QR)                            │
-├─────────────────────────────────────────────────────────────┤
-│  External                                                   │
-│  ├── Breez SDK Spark (Self-custodial Lightning)             │
-│  ├── Nostr Relays (Decentralized Messaging)                 │
-│  └── Backend (Order Matching)                               │
-└─────────────────────────────────────────────────────────────┘
+pending → accepted → paid → in_progress → awaiting_confirmation → completed
+   ↓                                              ↓
+ expired                                      disputed → resolved
+```
+
+### Nostr NIPs Used
+
+| NIP | Purpose |
+|-----|---------|
+| [NIP-01](https://github.com/nostr-protocol/nips/blob/master/01.md) | Core protocol & events |
+| [NIP-04](https://github.com/nostr-protocol/nips/blob/master/04.md) | Encrypted direct messages (chat) |
+| [NIP-05](https://github.com/nostr-protocol/nips/blob/master/05.md) | Provider domain verification |
+| [NIP-15](https://github.com/nostr-protocol/nips/blob/master/15.md) | Classifieds marketplace |
+| [NIP-19](https://github.com/nostr-protocol/nips/blob/master/19.md) | Entity encoding (npub, nsec) |
+| [NIP-33](https://github.com/nostr-protocol/nips/blob/master/33.md) | Parameterized replaceable events |
+| [NIP-44](https://github.com/nostr-protocol/nips/blob/master/44.md) | Versioned encryption (proof images) |
+| [NIP-98](https://github.com/nostr-protocol/nips/blob/master/98.md) | HTTP authentication (backend API) |
+
+Full protocol specification: [`specs/`](specs/)
+
+---
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                         BRO APP                              │
+├──────────────────────────────────────────────────────────────┤
+│  UI Layer (Flutter)                                          │
+│  ├── Screens (Home, Wallet, Orders, Marketplace, Settings)   │
+│  ├── Widgets (Reusable Components)                           │
+│  └── Theme (Dark Mode)                                       │
+├──────────────────────────────────────────────────────────────┤
+│  State Management (Provider)                                 │
+│  ├── WalletProvider    ← Balance, transactions, Lightning    │
+│  ├── OrderProvider     ← P2P orders, auto-liquidation        │
+│  └── AuthProvider      ← Nostr keys, BIP-39 seed            │
+├──────────────────────────────────────────────────────────────┤
+│  Services Layer                                              │
+│  ├── BreezService      ← Spark SDK (Lightning payments)      │
+│  ├── NostrOrderService ← Event publishing/fetching           │
+│  ├── NIP44Service      ← E2E encryption for proofs           │
+│  ├── BackgroundService ← WorkManager (notifications, auto-liq)│
+│  └── ApiService        ← Backend communication (NIP-98)      │
+├──────────────────────────────────────────────────────────────┤
+│  External                                                    │
+│  ├── Breez SDK Spark   ← Self-custodial Lightning wallet     │
+│  ├── Breez Liquid      ← Liquid sidechain fallback (Boltz)   │
+│  ├── Nostr Relays      ← Decentralized event transport       │
+│  └── Backend API       ← Order matching, escrow, disputes    │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ### Tech Stack
 
 | Layer | Technology |
 |-------|------------|
-| **Framework** | Flutter 3.x / Dart |
-| **Lightning** | [Breez SDK Spark](https://breez.technology/sdk/) (self-custodial) |
-| **Protocol** | [Nostr](https://nostr.com/) (NIPs 01, 04) |
+| **Framework** | Flutter 3.x / Dart 3.x |
+| **Lightning** | [Breez SDK Spark](https://breez.technology/sdk/) (primary) + Liquid (fallback) |
+| **Protocol** | [Nostr](https://nostr.com/) (NIPs 01, 04, 05, 15, 19, 33, 44, 98) |
+| **Encryption** | NIP-44v2 (XChaCha20-Poly1305) |
 | **State** | Provider + ChangeNotifier |
-| **Storage** | SharedPreferences + FlutterSecureStorage |
-| **CI/CD** | Codemagic |
-| **Distribution** | App Store, Google Play, TestFlight |
+| **Storage** | SharedPreferences + FlutterSecureStorage (encrypted) |
+| **Background** | WorkManager (Android) |
+| **Backend** | Node.js / Express with NIP-98 auth |
+| **CI/CD** | Codemagic → TestFlight + Google Play |
 
 ---
 
-## 🚀 Development
+## Development
 
 ### Prerequisites
 
 - Flutter 3.19+ ([Install](https://docs.flutter.dev/get-started/install))
 - Dart 3.3+
-- Android Studio / VS Code
-- Xcode 15+ (para iOS)
+- Android Studio or VS Code
+- Xcode 15+ (for iOS builds)
+- A [Breez SDK](https://breez.technology/sdk/) API key
 
-### Quick Start
+### Setup
 
 ```bash
-# Clone
+# Clone the repository
 git clone https://github.com/Quizzicarol/Bro.git
 cd bro_app
 
 # Install dependencies
 flutter pub get
 
-# Run
-flutter run
+# Create environment config (required)
+cat > env.json << EOF
+{
+  "BREEZ_API_KEY": "your-breez-api-key",
+  "PLATFORM_LIGHTNING_ADDRESS": "your@lightning.address",
+  "BACKEND_URL": "https://your-backend-url"
+}
+EOF
+
+# Run in debug mode
+flutter run --dart-define-from-file=env.json
 ```
+
+> **Note:** `env.json` is gitignored and never committed. Get a Breez API key at [breez.technology](https://breez.technology/sdk/).
 
 ### Build
 
 ```bash
-# Android Release
-flutter build apk --release
+# Android APK (release)
+flutter build apk --release --dart-define-from-file=env.json
 
-# iOS Release
-flutter build ios --release
-
-# Build Runner (if needed)
-flutter pub run build_runner build
+# iOS (release)
+flutter build ipa --release --dart-define-from-file=env.json
 ```
+
+### Backend
+
+```bash
+cd backend
+npm install
+# Set environment variables (PORT, ALLOWED_ORIGINS, etc.)
+node server.js
+```
+
+The backend provides order matching, escrow management, and AI dispute resolution. See [`backend/README.md`](backend/README.md).
 
 ### Project Structure
 
 ```
 lib/
 ├── main.dart                 # App entry point
-├── config.dart               # Environment configuration
-├── models/                   # Data models
-│   ├── order.dart
-│   ├── transaction.dart
-│   └── user.dart
+├── config.dart               # Environment configuration (dart-define)
+├── config/                   # Feature configs (Breez, fees, limits)
+├── models/                   # Data models (Order, Transaction, User)
 ├── providers/                # State management
-│   ├── wallet_provider.dart
-│   └── order_provider.dart
+│   ├── order_provider.dart   #   Order lifecycle, auto-liquidation
+│   └── wallet_provider.dart  #   Balance, Lightning operations
 ├── screens/                  # UI screens
 │   ├── home_screen.dart
 │   ├── wallet_screen.dart
 │   ├── orders_screen.dart
+│   ├── marketplace_screen.dart
 │   └── settings_screen.dart
 ├── services/                 # Business logic
-│   ├── breez_service.dart    # Lightning Network
-│   ├── nostr_service.dart    # P2P communication
-│   └── storage_service.dart  # Local storage
+│   ├── breez_service.dart    #   Lightning Network (Spark SDK)
+│   ├── nostr_order_service.dart  # Nostr event publish/fetch
+│   ├── nip44_service.dart    #   NIP-44 encryption
+│   ├── api_service.dart      #   Backend API (NIP-98)
+│   ├── background_notification_service.dart  # WorkManager
+│   └── log_utils.dart        #   Production-safe logging
 ├── theme/                    # App theming
-│   ├── bro_colors.dart
-│   └── bro_theme.dart
 └── widgets/                  # Reusable components
 ```
 
 ---
 
-## 🤝 Contributing
+## Security
 
-Contribuições são bem-vindas! 
+Bro takes security seriously. Key protections include:
+
+- **NIP-44v2 encryption** for payment proofs (XChaCha20-Poly1305)
+- **NIP-98 HTTP authentication** on all backend API calls
+- **Event signature verification** on all incoming Nostr events
+- **Dispute authorization** — only order participants can open disputes
+- **Future timestamp rejection** (15-min tolerance for clock skew)
+- **Clipboard auto-clear** (2 minutes) for sensitive data (seeds, private keys)
+- **Auto-liquidation race condition lock** (2-min TTL) between foreground/background
+- **Rate limiting** on backend (200 req/15min general, 5 req/min for writes)
+- **NSFW detection** on proof images
+
+For details, see [SECURITY.md](SECURITY.md). To report a vulnerability, email **carol@areabitcoin.com.br**.
 
 ---
 
-## 📄 License
+## Collateral Tiers
 
-Distribuído sob a licença MIT. Veja [LICENSE](LICENSE) para mais informações.
+Providers deposit collateral to unlock higher order limits:
+
+| Tier | Collateral | Max Order |
+|------|-----------|-----------|
+| 🥉 Bronze | 100,000 sats | R$ 500 |
+| 🥈 Silver | 500,000 sats | R$ 2,000 |
+| 🥇 Gold | 2,000,000 sats | R$ 10,000 |
+| 💎 Diamond | 10,000,000 sats | R$ 50,000 |
 
 ---
 
-## 📞 Contact
+## Reputation System
+
+Provider reputation is calculated from:
+
+| Metric | Weight |
+|--------|--------|
+| Success rate | 35% |
+| Dispute rate (negative) | 20% |
+| Total orders completed | 15% |
+| Average response time | 15% |
+| Total volume | 10% |
+| Days since last active | 5% |
+
+Levels: ⭐ New → 🌱 Beginner → 🥉 Regular → 🥈 Good → 🥇 Excellent → 💎 Legendary
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribute.
+
+---
+
+## License
+
+Distributed under the MIT License. See [LICENSE](LICENSE) for details.
+
+---
+
+## Contact
 
 - 🌐 Website: [brostr.app](https://www.brostr.app)
 - 🐙 GitHub: [@Quizzicarol](https://github.com/Quizzicarol)
-- ⚡ Nostr: `npub...`
+- ⚡ Nostr: Follow us on Nostr for updates
 
 ---
 
@@ -244,5 +350,5 @@ Distribuído sob a licença MIT. Veja [LICENSE](LICENSE) para mais informações
 </p>
 
 <p align="center">
-  Feito com 💚 para conectar pessoas
+  Built with 💚 to connect people
 </p>

@@ -1868,7 +1868,27 @@ class NostrOrderService {
               }
             }
             
+            // SEGURANÇA: Para status 'disputed', validar que o autor é parte da ordem
+            // Apenas userPubkey ou providerId podem abrir disputa
+            final contentStatus = content['status'] as String?;
+            if (contentStatus == 'disputed' && eventType == 'bro_order_update') {
+              final isAuthorUser = contentUserPubkey != null && eventPubkey == contentUserPubkey;
+              final isAuthorProvider = contentProviderId != null && eventPubkey == contentProviderId;
+              if (!isAuthorUser && !isAuthorProvider) {
+                debugPrint('⚠️ REJEITADO: disputed de pubkey não autorizado ${eventPubkey?.substring(0, 8)}');
+                continue;
+              }
+            }
+            
             final createdAt = event['created_at'] as int? ?? 0;
+            
+            // SEGURANÇA: Rejeitar eventos com timestamp no futuro (clock skew attack)
+            final eventTime = DateTime.fromMillisecondsSinceEpoch(createdAt * 1000);
+            final now = DateTime.now();
+            if (eventTime.isAfter(now.add(const Duration(minutes: 15)))) {
+              debugPrint('⚠️ REJEITADO: evento com timestamp no futuro: $eventTime');
+              continue;
+            }
             
             // Manter apenas o update mais recente para cada ordem
             final existingUpdate = updates[orderId];

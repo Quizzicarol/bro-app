@@ -209,10 +209,17 @@ class _LoginScreenState extends State<LoginScreen> {
           TextButton(
             onPressed: () async {
               await Clipboard.setData(ClipboardData(text: seed));
+              // SEGURANÇA: Limpar clipboard após 2 minutos
+              Future.delayed(const Duration(minutes: 2), () async {
+                final current = await Clipboard.getData('text/plain');
+                if (current?.text == seed) {
+                  await Clipboard.setData(const ClipboardData(text: ''));
+                }
+              });
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('✅ Seed copiada! Guarde em local seguro!'),
+                    content: Text('✅ Seed copiada! Clipboard será limpo em 2min.'),
                     backgroundColor: Color(0xFF3DE98C),
                   ),
                 );
@@ -321,10 +328,17 @@ class _LoginScreenState extends State<LoginScreen> {
               // Copiar ambos para área de transferência
               final text = 'CHAVE NOSTR:\n$privateKey\n\nSEED CARTEIRA:\n$walletSeed';
               await Clipboard.setData(ClipboardData(text: text));
+              // SEGURANÇA: Limpar clipboard após 2 minutos
+              Future.delayed(const Duration(minutes: 2), () async {
+                final current = await Clipboard.getData('text/plain');
+                if (current?.text == text) {
+                  await Clipboard.setData(const ClipboardData(text: ''));
+                }
+              });
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('✅ Copiado para área de transferência!'),
+                    content: Text('✅ Copiado! Clipboard será limpo em 2min.'),
                     backgroundColor: Color(0xFF3DE98C),
                   ),
                 );

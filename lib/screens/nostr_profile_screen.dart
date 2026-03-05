@@ -48,9 +48,18 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
 
   void _copyToClipboard(String text, String label) {
     Clipboard.setData(ClipboardData(text: text));
+    // SEGURANÇA: Se for chave privada, limpar clipboard após 2 minutos
+    if (label.toLowerCase().contains('privad') || label.toLowerCase().contains('private') || label.toLowerCase().contains('seed')) {
+      Future.delayed(const Duration(minutes: 2), () async {
+        final current = await Clipboard.getData('text/plain');
+        if (current?.text == text) {
+          await Clipboard.setData(const ClipboardData(text: ''));
+        }
+      });
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('📋 $label copiado!'),
+        content: Text('📋 $label copiado!${label.toLowerCase().contains('privad') ? ' Clipboard será limpo em 2min.' : ''}'),
         backgroundColor: const Color(0xFF9C27B0),
         duration: const Duration(seconds: 2),
       ),

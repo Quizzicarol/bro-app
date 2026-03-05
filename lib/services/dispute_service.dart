@@ -103,13 +103,28 @@ class DisputeService {
     await _loadDisputes();
   }
 
-  /// Carregar disputas do storage
+  /// Carregar disputas do storage (com dedup por orderId)
   Future<void> _loadDisputes() async {
     final disputesJson = await _storage.getData('disputes');
     if (disputesJson != null) {
       final List<dynamic> list = jsonDecode(disputesJson);
       _disputes.clear();
-      _disputes.addAll(list.map((e) => Dispute.fromJson(e)));
+      final loaded = list.map((e) => Dispute.fromJson(e)).toList();
+      
+      // Deduplicar: manter apenas a mais recente por orderId
+      final seen = <String, Dispute>{};
+      for (final d in loaded) {
+        final existing = seen[d.orderId];
+        if (existing == null || d.createdAt.isAfter(existing.createdAt)) {
+          seen[d.orderId] = d;
+        }
+      }
+      _disputes.addAll(seen.values);
+      
+      if (seen.length < loaded.length) {
+        debugPrint('⚠️ Removidas ${loaded.length - seen.length} disputas duplicadas do storage');
+        await _saveDisputes();
+      }
     }
   }
 

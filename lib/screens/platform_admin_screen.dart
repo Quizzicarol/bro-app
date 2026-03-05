@@ -1264,9 +1264,13 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
   // ========== SEÇÃO DE DISPUTAS ==========
 
   Widget _buildDisputesSection() {
-    final openCount = _openDisputes.length + _nostrDisputes.length;
-    final resolvedCount = _resolvedNostrDisputes.length + 
-        _allDisputes.where((d) => d.status.startsWith('resolved') || d.status == 'cancelled').length;
+    // Contar sem duplicatas (local que já aparece via Nostr não conta duas vezes)
+    final localOnlyCount = _openDisputes.where((d) => !_nostrDisputes.any((n) => n['orderId'] == d.orderId)).length;
+    final openCount = localOnlyCount + _nostrDisputes.length;
+    final resolvedLocalOnly = _allDisputes.where((d) =>
+        (d.status.startsWith('resolved') || d.status == 'cancelled') &&
+        !_resolvedNostrDisputes.any((r) => r['orderId'] == d.orderId)).length;
+    final resolvedCount = _resolvedNostrDisputes.length + resolvedLocalOnly;
     final hasAny = openCount > 0 || resolvedCount > 0;
     
     return Container(
@@ -1410,8 +1414,11 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
               if (_nostrDisputes.isNotEmpty) ...[
                 ..._nostrDisputes.map((d) => _buildNostrDisputeCard(d)),
               ],
+              // Mostrar disputas locais que NÃO já apareceram via Nostr (evitar duplicata)
               if (_openDisputes.isNotEmpty) ...[
-                ..._openDisputes.map((d) => _buildDisputeCard(d, isOpen: true)),
+                ..._openDisputes
+                  .where((d) => !_nostrDisputes.any((n) => n['orderId'] == d.orderId))
+                  .map((d) => _buildDisputeCard(d, isOpen: true)),
               ],
             ],
           ] else ...[
@@ -1433,10 +1440,14 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
               if (_resolvedNostrDisputes.isNotEmpty) ...[
                 ..._resolvedNostrDisputes.map((d) => _buildResolvedNostrDisputeCard(d)),
               ],
-              if (_allDisputes.where((d) => d.status.startsWith('resolved') || d.status == 'cancelled').isNotEmpty) ...[
+              if (_allDisputes.where((d) =>
+                  (d.status.startsWith('resolved') || d.status == 'cancelled') &&
+                  !_resolvedNostrDisputes.any((r) => r['orderId'] == d.orderId)).isNotEmpty) ...[
                 const SizedBox(height: 8),
                 ..._allDisputes
-                  .where((d) => d.status.startsWith('resolved') || d.status == 'cancelled')
+                  .where((d) =>
+                      (d.status.startsWith('resolved') || d.status == 'cancelled') &&
+                      !_resolvedNostrDisputes.any((r) => r['orderId'] == d.orderId))
                   .map((d) => _buildDisputeCard(d, isOpen: false)),
               ],
             ],

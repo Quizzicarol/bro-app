@@ -4182,20 +4182,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
     setState(() => _isPayingDisputeResolution = true);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Row(
-          children: [
-            SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
-            SizedBox(width: 12),
-            Text('Processando pagamento ao provedor...'),
-          ],
-        ),
-        backgroundColor: Color(0xFFFF6B6B),
-        duration: Duration(seconds: 15),
-      ),
-    );
-
     try {
       final orderProvider = context.read<OrderProvider>();
       final order = orderProvider.getOrderById(widget.orderId);
@@ -4244,6 +4230,25 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             broLog('⚠️ [DisputePay] Erro ao buscar invoice do Nostr: $e');
           }
         }
+      }
+
+      // Snackbar com texto correto dependendo do alvo
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                const SizedBox(width: 12),
+                Text(paymentTarget == 'provedor'
+                  ? 'Processando pagamento ao provedor...'
+                  : 'Processando reembolso ao admin...'),
+              ],
+            ),
+            backgroundColor: const Color(0xFFFF6B6B),
+            duration: const Duration(seconds: 15),
+          ),
+        );
       }
 
       if (invoiceToPay == null || invoiceToPay.isEmpty) {
@@ -4329,7 +4334,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return;
       }
 
-      broLog('✅ [DisputePay] Pagamento ao provedor confirmado!');
+      broLog('✅ [DisputePay] Pagamento confirmado! Alvo: $paymentTarget');
 
       // ========== MARCAR COMO PAGO NO METADATA ==========
       if (order != null) {
@@ -4368,10 +4373,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Pagamento enviado ao provedor com sucesso!'),
+          SnackBar(
+            content: Text(paymentTarget == 'provedor'
+              ? '✅ Pagamento enviado ao provedor com sucesso!'
+              : '✅ Reembolso ao admin processado com sucesso!'),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 4),
+            duration: const Duration(seconds: 4),
           ),
         );
         setState(() {

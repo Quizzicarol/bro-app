@@ -254,6 +254,13 @@ Future<List<Map<String, dynamic>>> _fetchFromRelay(
           final response = jsonDecode(message);
           if (response[0] == 'EVENT' && response[1] == subscriptionId) {
             final eventData = response[2] as Map<String, dynamic>;
+            // SEGURANCA v274: Verificar assinatura do evento antes de aceitar
+            try {
+              Event.fromJson(eventData, verify: true);
+            } catch (e) {
+              debugPrint('[BRO-BG] REJEITADO evento com assinatura invalida: ${eventData['id']?.toString().substring(0, 8) ?? '?'}');
+              return; // Ignorar evento com assinatura invalida
+            }
             // Parsear content
             try {
               eventData['parsedContent'] = jsonDecode(eventData['content'] ?? '{}');
@@ -419,10 +426,23 @@ String? _getTagValue(Map<String, dynamic> event, String tagName) {
 // ============================================================
 
 const String _bgAutoLiqKey = 'bro_bg_auto_liq_done';
+const String _bgAutoLiqLockKey = 'bro_bg_auto_liq_lock';
 
 /// Verifica ordens locais e executa auto-liquidacao para expiradas
 Future<void> _checkAutoLiquidationBackground() async {
   try {
+    // SEGURANCA v274: Lock para evitar race condition entre foreground e background
+    final lockPrefs = await SharedPreferences.getInstance();
+    final lockTimestamp = lockPrefs.getInt(_bgAutoLiqLockKey) ?? 0;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    // Se lock foi adquirido ha menos de 2 minutos, outra instancia esta rodando
+    if (nowMs - lockTimestamp < 120000) {
+      debugPrint('[BRO-BG-LIQ] Lock ativo — outra instancia rodando, abortando');
+      return;
+    }
+    // Adquirir lock
+    await lockPrefs.setInt(_bgAutoLiqLockKey, nowMs);
+    
     // 1. Recuperar chaves do storage seguro
     const secureStorage = FlutterSecureStorage(
       aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -584,6 +604,12 @@ Future<void> _checkAutoLiquidationBackground() async {
     }
   } catch (e) {
     debugPrint('[BRO-BG-LIQ] Erro geral: $e');
+  } finally {
+    // Liberar lock
+    try {
+      final lockPrefs = await SharedPreferences.getInstance();
+      await lockPrefs.remove(_bgAutoLiqLockKey);
+    } catch (_) {}
   }
 }
 

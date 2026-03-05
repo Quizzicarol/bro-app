@@ -2073,6 +2073,17 @@ class OrderProvider with ChangeNotifier {
   Future<void> _checkAutoLiquidation() async {
     if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return;
     
+    // Check if background task is already running auto-liquidation (lock with 2min TTL)
+    final prefs = await SharedPreferences.getInstance();
+    final lockTime = prefs.getInt('bg_auto_liq_lock');
+    if (lockTime != null) {
+      final elapsed = DateTime.now().millisecondsSinceEpoch - lockTime;
+      if (elapsed < 120000) {
+        debugPrint('[AutoLiquidation] Background task is running, skipping foreground check');
+        return;
+      }
+    }
+    
     final now = DateTime.now();
     const deadline = Duration(hours: 36);
     

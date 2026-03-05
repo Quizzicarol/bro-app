@@ -6,6 +6,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
 import '../providers/order_provider.dart';
+import '../providers/breez_provider_export.dart';
+import '../providers/breez_liquid_provider.dart';
 import '../services/nip44_service.dart';
 import '../services/nostr_order_service.dart';
 import '../services/storage_service.dart';
@@ -25,6 +27,9 @@ class DisputeDetailScreen extends StatefulWidget {
 class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
   bool _isLoading = false;
   bool _isResolved = false;
+  String? _resolvedDirection; // v338: 'resolved_provider' ou 'resolved_user'
+  bool _adminPaidProvider = false;
+  bool _isAdminPaying = false;
   String? _proofImageData;
   bool _proofEncrypted = false;
   bool _loadingProof = false;
@@ -102,10 +107,11 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
       // 1. Verificar resolução LOCAL primeiro (mais confiável que relay)
       final locallyResolved = await StorageService().isDisputeResolved(orderId);
       if (locallyResolved && mounted) {
+        final localRes = await StorageService().getLocalDisputeResolution(orderId);
         setState(() {
           _isResolved = true;
+          _resolvedDirection = localRes;
         });
-        final localRes = await StorageService().getLocalDisputeResolution(orderId);
         broLog('⚖️ Disputa $orderId já resolvida (local): $localRes');
         return;
       }
@@ -114,11 +120,12 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
       final nostrService = NostrOrderService();
       final resolution = await nostrService.fetchDisputeResolution(orderId);
       if (resolution != null && mounted) {
+        final resText = resolution['resolution'] as String? ?? 'resolved';
         setState(() {
           _isResolved = true;
+          _resolvedDirection = resText;
         });
         // Persistir localmente para futuras consultas
-        final resText = resolution['resolution'] as String? ?? 'resolved';
         await StorageService().markDisputeResolved(orderId, resText);
         broLog('⚖️ Disputa $orderId já resolvida (Nostr): ${resolution['resolution']}');
       }
@@ -370,15 +377,47 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: Colors.green.withOpacity(0.3)),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.check_circle, color: Colors.green, size: 24),
-                          SizedBox(width: 8),
-                          Text('Disputa Resolvida', style: TextStyle(color: Colors.green, fontSize: 16, fontWeight: FontWeight.bold)),
+                          const Icon(Icons.check_circle, color: Colors.green, size: 24),
+                          const SizedBox(width: 8),
+                          Text(
+                            _resolvedDirection == 'resolved_provider'
+                                ? 'Resolvida a Favor do Provedor'
+                                : _resolvedDirection == 'resolved_user'
+                                    ? 'Resolvida a Favor do Usuário'
+                                    : 'Disputa Resolvida',
+                            style: const TextStyle(color: Colors.green, fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
                         ],
                       ),
                     ),
+                  
+                  // v338: Botão para admin pagar provedor diretamente
+                  if (_isResolved && _resolvedDirection == 'resolved_provider' && !_adminPaidProvider) ...[
+                    const SizedBox(height: 12),
+                    _buildAdminPayProviderButton(),
+                  ],
+                  if (_adminPaidProvider) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.bolt, color: Colors.green, size: 20),
+                          SizedBox(width: 8),
+                          Text('✅ Provedor pago com sucesso!', style: TextStyle(color: Colors.green, fontSize: 14, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                  ],
                   
                   const SizedBox(height: 40),
                 ],
@@ -1740,6 +1779,191 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
     );
   }
   
+  /// v338: Botão para admin/mediador pagar o provedor diretamente da sua carteira
+  Widget _buildAdminPayProviderButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 54,
+      child: ElevatedButton(
+        onPressed: _isAdminPaying ? null : _handleAdminPayProvider,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: _isAdminPaying ? Colors.grey : const Color(0xFFFF6B6B),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+        child: _isAdminPaying
+            ? const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                  SizedBox(width: 10),
+                  Text('Pagando provedor...', style: TextStyle(color: Colors.white, fontSize: 15)),
+                ],
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.bolt, color: Colors.white, size: 22),
+                  const SizedBox(width: 10),
+                  Text(
+                    '⚡ Pagar Provedor (${amountSats ?? '?'} sats)',
+                    style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  /// v338: Admin paga o provedor diretamente buscando o invoice do evento COMPLETE
+  Future<void> _handleAdminPayProvider() async {
+    if (_isAdminPaying) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('⚡ Pagar Provedor'),
+        content: Text(
+          'Você vai pagar ${amountSats ?? '?'} sats ao provedor DA SUA CARTEIRA.\n\n'
+          'O invoice será buscado do evento COMPLETE no Nostr.\n\n'
+          'Confirmar?',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF6B6B)),
+            child: const Text('Pagar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    setState(() => _isAdminPaying = true);
+
+    try {
+      // 1. Buscar providerInvoice do evento COMPLETE no Nostr
+      final nostrService = NostrOrderService();
+      String? providerInvoice;
+
+      broLog('🔍 [AdminPay] Buscando invoice do provedor para ordem ${orderId.substring(0, 8)}...');
+      final completeData = await nostrService.fetchOrderCompleteEvent(orderId);
+      if (completeData != null) {
+        providerInvoice = completeData['providerInvoice'] as String?;
+      }
+
+      if (providerInvoice == null || providerInvoice.isEmpty) {
+        broLog('❌ [AdminPay] providerInvoice não encontrado no Nostr!');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('❌ Invoice do provedor não encontrado no Nostr. O provedor precisa gerar um novo invoice.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 5),
+            ),
+          );
+          setState(() => _isAdminPaying = false);
+        }
+        return;
+      }
+
+      broLog('✅ [AdminPay] Invoice encontrado: ${providerInvoice.substring(0, 30)}...');
+
+      // 2. Pagar via Breez Spark ou Liquid (carteira do admin)
+      final breezProvider = context.read<BreezProvider>();
+      final liquidProvider = context.read<BreezLiquidProvider>();
+      bool paymentSuccess = false;
+      String paymentError = '';
+
+      if (!breezProvider.isInitialized && !liquidProvider.isInitialized) {
+        paymentError = 'Carteira não inicializada. Abra sua carteira primeiro.';
+      } else {
+        for (int attempt = 1; attempt <= 3; attempt++) {
+          try {
+            Map<String, dynamic>? payResult;
+            String usedBackend = 'none';
+
+            if (breezProvider.isInitialized) {
+              broLog('⚡ [AdminPay] Tentativa $attempt/3: Pagando via Spark...');
+              payResult = await breezProvider.payInvoice(providerInvoice).timeout(
+                const Duration(seconds: 30),
+                onTimeout: () => {'success': false, 'error': 'timeout'},
+              );
+              usedBackend = 'Spark';
+            } else if (liquidProvider.isInitialized) {
+              broLog('⚡ [AdminPay] Tentativa $attempt/3: Pagando via Liquid...');
+              payResult = await liquidProvider.payInvoice(providerInvoice).timeout(
+                const Duration(seconds: 30),
+                onTimeout: () => {'success': false, 'error': 'timeout'},
+              );
+              usedBackend = 'Liquid';
+            }
+
+            if (payResult != null && payResult['success'] == true) {
+              broLog('✅ [AdminPay] Pago com sucesso via $usedBackend na tentativa $attempt!');
+              paymentSuccess = true;
+              break;
+            } else {
+              paymentError = payResult?['error']?.toString() ?? 'Falha desconhecida';
+              broLog('⚠️ [AdminPay] Tentativa $attempt falhou: $paymentError');
+            }
+          } catch (e) {
+            paymentError = e.toString();
+            broLog('⚠️ [AdminPay] Tentativa $attempt erro: $paymentError');
+          }
+          if (attempt < 3) await Future.delayed(const Duration(seconds: 2));
+        }
+      }
+
+      if (!paymentSuccess) {
+        broLog('❌ [AdminPay] Pagamento FALHOU: $paymentError');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('❌ Pagamento falhou: $paymentError'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 6),
+            ),
+          );
+        }
+      } else {
+        // 3. Marcar pagamento no metadata local da ordem
+        final orderProvider = context.read<OrderProvider>();
+        final order = orderProvider.getOrderById(orderId);
+        if (order != null) {
+          orderProvider.updateOrderMetadataLocal(orderId, {
+            ...?order.metadata,
+            'disputeProviderPaid': true,
+            'disputeProviderPaidAt': DateTime.now().toIso8601String(),
+            'disputeProviderPaidBy': 'admin',
+          });
+        }
+
+        setState(() => _adminPaidProvider = true);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Provedor pago com sucesso!'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      broLog('❌ [AdminPay] Erro geral: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+
+    if (mounted) setState(() => _isAdminPaying = false);
+  }
+
   Future<void> _executeResolution(String resolution, String message) async {
     setState(() => _isLoading = true);
     
@@ -1811,7 +2035,10 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
       // v270: Persistir resolução localmente para não depender do relay
       await StorageService().markDisputeResolved(orderId, resolution);
       
-      setState(() => _isResolved = true);
+      setState(() {
+        _isResolved = true;
+        _resolvedDirection = resolution;
+      });
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

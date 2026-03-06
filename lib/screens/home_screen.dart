@@ -21,6 +21,7 @@ import 'settings_screen.dart';
 import 'nostr_conversations_screen.dart';
 import 'order_status_screen.dart';
 import '../models/order.dart';
+import '../services/chat_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -35,6 +36,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _priceUpdateTimer;
   Timer? _ordersUpdateTimer; // Timer para atualizar ordens automaticamente
   String? _currentUserPubkey; // Para filtro extra de segurança
+  int _unreadMessages = 0;
+  StreamSubscription<int>? _unreadSub;
 
   @override
   void initState() {
@@ -43,6 +46,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _loadCurrentUserPubkey();
       _initializeBreezSdk();
       _loadData();
+      _listenUnreadMessages();
       _fetchBitcoinPrice();
       _startPricePolling();
       _startOrdersPolling(); // Iniciar polling de ordens
@@ -305,6 +309,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _priceUpdateTimer?.cancel();
     _ordersUpdateTimer?.cancel();
+    _unreadSub?.cancel();
     super.dispose();
   }
 
@@ -312,6 +317,16 @@ class _HomeScreenState extends State<HomeScreen> {
     _priceUpdateTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) {
         _fetchBitcoinPrice();
+      }
+    });
+  }
+
+  void _listenUnreadMessages() {
+    final chatService = ChatService();
+    _unreadMessages = chatService.totalUnread;
+    _unreadSub = chatService.unreadStream.listen((count) {
+      if (mounted) {
+        setState(() => _unreadMessages = count);
       }
     });
   }
@@ -488,10 +503,39 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       actions: [
+        // Carteira Lightning
         IconButton(
-          icon: const Icon(Icons.chat_bubble_outline, color: Colors.white),
-          onPressed: _openMessages,
-          tooltip: 'Mensagens',
+          icon: const Icon(Icons.account_balance_wallet, color: Colors.orange),
+          onPressed: () => Navigator.pushNamed(context, '/wallet'),
+          tooltip: 'Minha Carteira',
+        ),
+        // Mensagens com badge de não lidas
+        Stack(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.chat_bubble_outline, color: Colors.white),
+              onPressed: _openMessages,
+              tooltip: 'Mensagens',
+            ),
+            if (_unreadMessages > 0)
+              Positioned(
+                right: 6,
+                top: 6,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                  ),
+                  constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                  child: Text(
+                    _unreadMessages > 99 ? '99+' : '$_unreadMessages',
+                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+          ],
         ),
         IconButton(
           icon: const Icon(Icons.settings_outlined, color: Colors.white),
@@ -614,20 +658,31 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         const SizedBox(height: 12),
-        // Segunda linha: Marketplace + Modo Bro
+        // Segunda linha: Carteira + Marketplace
         Row(
           children: [
+            // Carteira Lightning
+            Expanded(
+              child: _buildGridButton(
+                icon: Icons.account_balance_wallet,
+                label: 'Carteira',
+                gradient: const [Color(0xFFF7931A), Color(0xFFFF6B00)],
+                onTap: () => Navigator.pushNamed(context, '/wallet'),
+              ),
+            ),
+            const SizedBox(width: 12),
             // Marketplace (laranja com transparência)
             Expanded(
               child: _buildMarketplaceButton(),
             ),
-            const SizedBox(width: 12),
-            // Modo Bro
-            Expanded(
-              child: _buildGridButton(
-                icon: Icons.volunteer_activism,
-                label: 'Modo Bro',
-                gradient: const [Color(0xFF3DE98C), Color(0xFF00CC7A)],
+          ],
+        ),
+        const SizedBox(height: 12),
+        // Terceira linha: Modo Bro (full width)
+        _buildGridButton(
+          icon: Icons.volunteer_activism,
+          label: 'Modo Bro — Ganhe Bitcoin pagando contas',
+          gradient: const [Color(0xFF3DE98C), Color(0xFF00CC7A)],
                 onTap: () async {
                   // Obter pubkey do usuário atual
                   final pubkey = await StorageService().getNostrPublicKey();
@@ -646,9 +701,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     Navigator.pushNamed(context, '/provider-education');
                   }
                 },
-              ),
-            ),
-          ],
         ),
       ],
     );

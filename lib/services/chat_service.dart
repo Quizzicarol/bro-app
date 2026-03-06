@@ -6,6 +6,7 @@ import 'package:bro_app/services/log_utils.dart';
 import 'package:nostr/nostr.dart';
 import 'nip04_service.dart';
 import 'storage_service.dart';
+import 'notification_service.dart';
 
 /// Modelo de mensagem de chat
 class ChatMessage {
@@ -60,6 +61,22 @@ class ChatService {
   final Map<String, WebSocketChannel> _connections = {};
   final Map<String, StreamController<ChatMessage>> _messageStreams = {};
   final Map<String, List<ChatMessage>> _messageCache = {};
+  
+  /// Tracking de mensagens não lidas por conversa
+  final Map<String, int> _unreadCounts = {};
+  /// Stream para notificar mudanças no unread count total
+  final StreamController<int> _unreadController = StreamController<int>.broadcast();
+  Stream<int> get unreadStream => _unreadController.stream;
+  int get totalUnread => _unreadCounts.values.fold(0, (a, b) => a + b);
+  
+  /// Marca conversa como lida
+  void markAsRead(String pubkey) {
+    _unreadCounts[pubkey] = 0;
+    _unreadController.add(totalUnread);
+  }
+  
+  /// Obter contagem de não lidas de uma conversa
+  int getUnreadCount(String pubkey) => _unreadCounts[pubkey] ?? 0;
   
   String? _privateKey;
   String? _publicKey;
@@ -280,6 +297,20 @@ class ChatService {
       if (!_messageCache[otherPubkey]!.any((m) => m.id == id)) {
         _messageCache[otherPubkey]!.add(chatMessage);
         _messageCache[otherPubkey]!.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+        
+        // Incrementar não-lidas se não for minha mensagem
+        if (!isFromMe) {
+          _unreadCounts[otherPubkey] = (_unreadCounts[otherPubkey] ?? 0) + 1;
+          _unreadController.add(totalUnread);
+          
+          // Disparar notificação local
+          NotificationService().notifyNewMessage(
+            senderName: otherPubkey.substring(0, 8),
+            preview: decryptedContent.length > 50
+                ? '${decryptedContent.substring(0, 50)}...'
+                : decryptedContent,
+          );
+        }
         
         // Notificar stream
         _messageStreams[otherPubkey]?.add(chatMessage);

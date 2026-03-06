@@ -88,7 +88,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
       final allOffers = nostrOffers.map((data) {
         List<String> photos = [];
         if (data['photos'] is List) {
-          photos = (data['photos'] as List).cast<String>();
+          photos = (data['photos'] as List).whereType<String>().toList();
         }
         return MarketplaceOffer(
           id: data['id'] ?? '',

@@ -1849,6 +1849,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
 
       broLog('🔍 [AdminPay] Buscando invoice do provedor para ordem ${orderId.substring(0, 8)}...');
       final completeData = await nostrService.fetchOrderCompleteEvent(orderId);
+      if (!mounted) return;
       if (completeData != null) {
         providerInvoice = completeData['providerInvoice'] as String?;
       }
@@ -1916,6 +1917,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
         }
       }
 
+      if (!mounted) return;
       if (!paymentSuccess) {
         broLog('❌ [AdminPay] Pagamento FALHOU: $paymentError');
         if (mounted) {
@@ -1964,9 +1966,20 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
                     amountSats: satsAmount,
                     userPubkey: userPubkey,
                   );
-                  broLog(published
-                    ? '✅ [AdminPay] Invoice de reembolso publicado no Nostr'
-                    : '⚠️ [AdminPay] Falha ao publicar invoice de reembolso');
+                  if (published) {
+                    broLog('✅ [AdminPay] Invoice de reembolso publicado no Nostr');
+                  } else {
+                    broLog('⚠️ [AdminPay] Falha ao publicar invoice de reembolso');
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('⚠️ Invoice de reembolso não publicado. Tente novamente.'),
+                          backgroundColor: Colors.orange,
+                          duration: Duration(seconds: 5),
+                        ),
+                      );
+                    }
+                  }
                 }
               }
             }

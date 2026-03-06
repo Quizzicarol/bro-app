@@ -4268,6 +4268,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       }
 
       // ========== PAGAR O INVOICE ==========
+      if (!mounted) return;
       broLog('⚡ [DisputePay] Pagando invoice ($paymentTarget): ${invoiceToPay.substring(0, 30)}...');
       bool paymentSuccess = false;
       String paymentError = '';
@@ -4337,6 +4338,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       broLog('✅ [DisputePay] Pagamento confirmado! Alvo: $paymentTarget');
 
       // ========== MARCAR COMO PAGO NO METADATA ==========
+      if (!mounted) return;
       if (order != null) {
         final updatedMetadata = {
           ...?order.metadata,

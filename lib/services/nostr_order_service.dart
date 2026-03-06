@@ -380,11 +380,11 @@ class NostrOrderService {
                 
                 final content = event['parsedContent'] ?? jsonDecode(event['content']);
                 
-                // CORREÇÃO v1.0.129: Ignorar eventos de resolução de disputa
+                // CORREÇÃO v1.0.129: Ignorar eventos administrativos do mediador
                 // Mediador publica kind 30080 com type=bro_dispute_resolution
-                // que NÃO deve ser tratado como atividade de provedor
+                // e type=bro_admin_reimbursement — nenhum deve ser tratado como atividade de provedor
                 final eventType = content['type'] as String?;
-                if (eventType == 'bro_dispute_resolution') continue;
+                if (eventType == 'bro_dispute_resolution' || eventType == 'bro_admin_reimbursement') continue;
                 
                 final orderId = content['orderId'] as String?;
                 if (orderId != null) relayAcceptIds.add(orderId);
@@ -1829,6 +1829,10 @@ class NostrOrderService {
                 eventType != 'bro_complete' &&
                 eventType != 'bro_dispute_resolution') continue;
             
+            // CORREÇÃO v348: Ignorar eventos de reembolso do admin
+            // bro_admin_reimbursement NÃO é status update — é invoice de cobrança
+            if (eventType == 'bro_admin_reimbursement') continue;
+            
             final orderId = content['orderId'] as String?;
             if (orderId == null) continue;
             
@@ -2339,6 +2343,9 @@ class NostrOrderService {
             // usuário (quando ele é o mediador). Estes eventos não devem criar/atualizar ordens
             // na lista do mediador, pois ele não é parte da transação.
             final contentType = content['type'] as String?;
+            // CORREÇÃO v348: Ignorar eventos de reembolso do admin completamente
+            // bro_admin_reimbursement NÃO é status update — não deve afetar lista de ordens
+            if (contentType == 'bro_admin_reimbursement') continue;
             if (contentType == 'bro_dispute_resolution') {
               // Se este usuário é o mediador (adminPubkey == userPubkey),
               // ignorar o evento para não poluir a lista do mediador

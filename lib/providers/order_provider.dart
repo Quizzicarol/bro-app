@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:bro_app/services/log_utils.dart';
@@ -67,10 +67,19 @@ class OrderProvider with ChangeNotifier {
       
       // REGRA 3: Ordem que este usuÃÂ¡rio aceitou como Bro (providerId)
       final isMyProviderOrder = o.providerId == _currentUserPubkey;
-      
+
+      // REGRA 4 (v348): Se sou 'provedor' mas metadata indica que participei
+      // apenas como mediador/admin, NAO mostrar na lista
+      if (isMyProviderOrder && !isOwner) {
+        final meta = o.metadata;
+        if (meta != null && meta['disputeProviderPaidBy'] == 'admin') {
+          return false;
+        }
+      }
+
       if (!isOwner && !isMyProviderOrder) {
       }
-      
+
       return isOwner || isMyProviderOrder;
     }).toList();
     
@@ -631,10 +640,17 @@ class OrderProvider with ChangeNotifier {
     
     try {
       // SEGURANÃâ¡A: Filtrar apenas ordens do usuÃÂ¡rio atual antes de salvar
-      final userOrders = _orders.where((o) => 
-        o.userPubkey == _currentUserPubkey || 
-        o.providerId == _currentUserPubkey
-      ).toList();
+      final userOrders = _orders.where((o) {
+        final isMine = o.userPubkey == _currentUserPubkey ||
+            o.providerId == _currentUserPubkey;
+        if (!isMine) return false;
+        // v348: Excluir ordens onde admin participou apenas como mediador
+        if (o.providerId == _currentUserPubkey && o.userPubkey != _currentUserPubkey) {
+          final meta = o.metadata;
+          if (meta != null && meta['disputeProviderPaidBy'] == 'admin') return false;
+        }
+        return true;
+      }).toList();
       
       final prefs = await SharedPreferences.getInstance();
       final ordersJson = json.encode(userOrders.map((o) => o.toJson()).toList());
@@ -657,11 +673,18 @@ class OrderProvider with ChangeNotifier {
     }
     
     try {
-      // Filtrar apenas ordens do usuÃÂ¡rio atual
-      final userOrders = _orders.where((o) => 
-        o.userPubkey == _currentUserPubkey || 
-        o.providerId == _currentUserPubkey  // Ordens que este usuÃÂ¡rio aceitou como provedor
-      ).toList();
+      // Filtrar apenas ordens do usuario atual
+      // v348: Excluir ordens onde admin participou apenas como mediador
+      final userOrders = _orders.where((o) {
+        final isMine = o.userPubkey == _currentUserPubkey ||
+            o.providerId == _currentUserPubkey;
+        if (!isMine) return false;
+        if (o.providerId == _currentUserPubkey && o.userPubkey != _currentUserPubkey) {
+          final meta = o.metadata;
+          if (meta != null && meta['disputeProviderPaidBy'] == 'admin') return false;
+        }
+        return true;
+      }).toList();
       
       final prefs = await SharedPreferences.getInstance();
       final ordersJson = json.encode(userOrders.map((o) => o.toJson()).toList());

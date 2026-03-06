@@ -15,7 +15,7 @@ import '../services/version_check_service.dart';
 import '../widgets/stat_card.dart';
 import '../widgets/gradient_button.dart';
 import '../widgets/transaction_card.dart';
-import 'new_trade_screen.dart';
+import 'payment_screen.dart';
 import 'login_screen.dart';
 import 'settings_screen.dart';
 import 'nostr_conversations_screen.dart';
@@ -378,7 +378,7 @@ class _HomeScreenState extends State<HomeScreen> {
       // Mostrar conclusão
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        _showSyncSnackbar('✅ Dados atualizados!', duration: const Duration(seconds: 1));
+        _showSyncSnackbar('✅ Dados atualizados!', duration: const Duration(seconds: 3));
       }
     } catch (e) {
       broLog('❌ Erro no _loadData: $e');
@@ -633,19 +633,19 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildActionButtonsGrid() {
     return Column(
       children: [
-        // Primeira linha: Nova Troca + Preço Bitcoin
+        // Primeira linha: Pagar Conta + Preço Bitcoin
         Row(
           children: [
-            // Nova Troca
+            // Pagar Conta
             Expanded(
               child: _buildGridButton(
-                icon: Icons.swap_horiz,
-                label: 'Nova Troca',
+                icon: Icons.receipt_long,
+                label: 'Pagar Conta',
                 gradient: const [Color(0xFFFF6B6B), Color(0xFFFF8A8A)],
                 onTap: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const NewTradeScreen()),
+                    MaterialPageRoute(builder: (_) => const PaymentScreen()),
                   );
                 },
               ),
@@ -658,49 +658,37 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         const SizedBox(height: 12),
-        // Segunda linha: Carteira + Marketplace
+        // Segunda linha: Marketplace + Modo Bro
         Row(
           children: [
-            // Carteira Lightning
-            Expanded(
-              child: _buildGridButton(
-                icon: Icons.account_balance_wallet,
-                label: 'Carteira',
-                gradient: const [Color(0xFFF7931A), Color(0xFFFF6B00)],
-                onTap: () => Navigator.pushNamed(context, '/wallet'),
-              ),
-            ),
-            const SizedBox(width: 12),
-            // Marketplace (laranja com transparência)
+            // Marketplace
             Expanded(
               child: _buildMarketplaceButton(),
             ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        // Terceira linha: Modo Bro (full width)
-        _buildGridButton(
-          icon: Icons.volunteer_activism,
-          label: 'Modo Bro — Ganhe Bitcoin pagando contas',
-          gradient: const [Color(0xFF3DE98C), Color(0xFF00CC7A)],
+            const SizedBox(width: 12),
+            // Modo Bro
+            Expanded(
+              child: _buildGridButton(
+                icon: Icons.volunteer_activism,
+                label: 'Modo Bro',
+                gradient: const [Color(0xFF3DE98C), Color(0xFF00CC7A)],
                 onTap: () async {
-                  // Obter pubkey do usuário atual
                   final pubkey = await StorageService().getNostrPublicKey();
-                  // Verificar se já tem tier ativado (collateral)
                   final collateralService = LocalCollateralService();
                   final hasActiveTier = await collateralService.hasCollateral(userPubkey: pubkey);
                   
                   if (hasActiveTier) {
-                    // Já tem tier, ir direto para tela de ordens
                     final providerId = pubkey ?? 'unknown';
                     Navigator.pushNamed(context, '/provider-orders', arguments: {
                       'providerId': providerId,
                     });
                   } else {
-                    // Não tem tier, mostrar educação primeiro
                     Navigator.pushNamed(context, '/provider-education');
                   }
                 },
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -997,12 +985,12 @@ class _HomeScreenState extends State<HomeScreen> {
       width: double.infinity,
       height: 60,
       child: GradientButton(
-        text: 'Nova Troca',
-        icon: Icons.swap_horiz,
+        text: 'Pagar Conta',
+        icon: Icons.receipt_long,
         onPressed: () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => const NewTradeScreen()),
+            MaterialPageRoute(builder: (_) => const PaymentScreen()),
           );
         },
       ),

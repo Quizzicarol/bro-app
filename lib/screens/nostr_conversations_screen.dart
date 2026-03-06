@@ -71,12 +71,11 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
         _isInitialized = true;
       });
       
-      // Aguardar mais tempo para receber mensagens dos relays
-      broLog('💬 Conversas: Aguardando mensagens dos relays...');
-      await Future.delayed(const Duration(seconds: 4));
-      
-      // Carregar conversas
+      // Mostrar cache imediato (sem esperar relay)
       await _loadConversations();
+      
+      // Atualizar do relay em background
+      _refreshFromRelays();
       
     } catch (e) {
       broLog('❌ Erro ao inicializar chat: $e');
@@ -89,12 +88,6 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
 
   Future<void> _loadConversations() async {
     try {
-      // Forçar refresh das mensagens dos relays
-      await _chatService.refreshAllMessages();
-      
-      // Aguardar mais um pouco para receber respostas
-      await Future.delayed(const Duration(seconds: 2));
-      
       final pubkeys = _chatService.getConversations();
       final conversations = <ConversationInfo>[];
       
@@ -122,7 +115,7 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
           pubkey: pubkey,
           displayName: savedName,
           lastMessage: lastMessage,
-          unreadCount: 0, // TODO: implementar contagem de não lidos
+          unreadCount: _chatService.getUnreadCount(pubkey),
         ));
       }
       
@@ -145,6 +138,15 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  Future<void> _refreshFromRelays() async {
+    try {
+      await _chatService.refreshAllMessages();
+      if (mounted) await _loadConversations();
+    } catch (e) {
+      broLog('❌ Erro ao atualizar do relay: $e');
     }
   }
 
@@ -171,6 +173,7 @@ class _NostrConversationsScreenState extends State<NostrConversationsScreen> {
   }
 
   void _openChat(ConversationInfo conversation) {
+    _chatService.markAsRead(conversation.pubkey);
     Navigator.push(
       context,
       MaterialPageRoute(

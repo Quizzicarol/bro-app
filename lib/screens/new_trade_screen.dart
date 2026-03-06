@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'payment_screen.dart';
 import 'offer_screen.dart';
 
-/// Tela de Nova Troca - Hub para criar ofertas ou pagar contas
+/// Tela de Pagar Conta - Hub para criar ofertas ou pagar contas
 class NewTradeScreen extends StatelessWidget {
   const NewTradeScreen({Key? key}) : super(key: key);
 
@@ -14,7 +14,7 @@ class NewTradeScreen extends StatelessWidget {
         backgroundColor: const Color(0xF70A0A0A),
         elevation: 0,
         title: const Text(
-          'Nova Troca',
+          'Pagar Conta',
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.w600,

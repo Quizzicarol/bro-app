@@ -17,7 +17,7 @@ class GradientButton extends StatelessWidget {
     this.onPressed,
     this.isLoading = false,
     this.width,
-    this.height = 44,
+    this.height = 48,
   }) : super(key: key);
 
   @override
@@ -104,7 +104,7 @@ class CustomOutlineButton extends StatelessWidget {
     this.onPressed,
     this.isLoading = false,
     this.width,
-    this.height = 44,
+    this.height = 48,
   }) : super(key: key);
 
   @override

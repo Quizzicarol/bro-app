@@ -14,6 +14,7 @@ import '../services/nostr_service.dart';
 import '../services/lnaddress_service.dart';
 import '../services/local_collateral_service.dart';
 import '../services/platform_fee_service.dart';
+import '../services/bitcoin_price_service.dart';
 import '../config.dart';
 
 /// Tela de Carteira Lightning - Apenas BOLT11 (invoice)
@@ -30,6 +31,7 @@ class _WalletScreenState extends State<WalletScreen> {
   List<Map<String, dynamic>> _payments = [];
   bool _isLoading = false;
   String? _error;
+  double _btcPrice = 0;
 
   @override
   void initState() {
@@ -56,6 +58,10 @@ class _WalletScreenState extends State<WalletScreen> {
 
       final balance = await breezProvider.getBalance();
       final payments = await breezProvider.listPayments();
+      
+      // Buscar preço BTC para equivalência em BRL
+      final price = await BitcoinPriceService.getBitcoinPriceWithCache();
+      if (price != null) _btcPrice = price;
       
       // NOTA: Ganhos como Bro são recebidos via Lightning (invoice pago pelo usuário)
       // e já aparecem em payments como transações recebidas.
@@ -473,6 +479,15 @@ class _WalletScreenState extends State<WalletScreen> {
                 fontSize: 13,
               ),
             ),
+            if (_btcPrice > 0) ...[              const SizedBox(height: 2),
+              Text(
+                '≈ R\$ ${(availableBtc * _btcPrice).toStringAsFixed(2)}',
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 13,
+                ),
+              ),
+            ],
             if (hasLocked) ...[
               const SizedBox(height: 8),
               Container(

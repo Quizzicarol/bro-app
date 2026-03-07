@@ -2931,23 +2931,18 @@ class OrderProvider with ChangeNotifier {
     if (newStatus == 'cancelled') {
       return true;
     }
-    // disputed SEMPRE vence sobre qualquer status nao-terminal
-    // MAS disputed → disputed NÃO é avanço (evita loop de republish)
-    if (newStatus == 'disputed') {
-      return currentStatus != 'disputed';
-    }
-    
-    const finalStatuses = ['completed', 'liquidated'];
-    if (finalStatuses.contains(currentStatus)) {
-      // Status final - so pode virar disputed
-      if (newStatus == 'disputed') {
-        return true;
-      }
-      return false;
-    }
-    // disputed pode transicionar para completed/cancelled (resolucao de disputa)
+    // CORREÇÃO v349: disputed pode transicionar para completed/cancelled (resolução)
     if (currentStatus == 'disputed') {
       return newStatus == 'completed' || newStatus == 'cancelled';
+    }
+    // Status finais NÃO regridem  completed/liquidated é definitivo
+    const finalStatuses = ['completed', 'liquidated'];
+    if (finalStatuses.contains(currentStatus)) {
+      return false;
+    }
+    // disputed vence sobre status NÃO-FINAIS
+    if (newStatus == 'disputed') {
+      return currentStatus != 'disputed';
     }
     
     // Ordem de progressÃÂ£o de status (SEM cancelled - tratado separadamente acima):

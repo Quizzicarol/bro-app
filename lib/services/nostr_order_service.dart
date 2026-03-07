@@ -93,19 +93,17 @@ class NostrOrderService {
     if (currentStatus == 'cancelled') return newStatus == 'disputed';
     // cancelled SEMPRE vence (ação explícita do usuário)
     if (newStatus == 'cancelled') return true;
-    // disputed SEMPRE vence sobre qualquer status não-terminal
-    // CORREÇÃO: 'disputed' não estava no statusOrder linear, causando rejeição
-    // quando processado depois de 'awaiting_confirmation' em fetchOrderUpdatesForUser
-    if (newStatus == 'disputed') return true;
-    // CORREÇÃO v233: disputed pode transicionar para completed/cancelled (resolução de disputa)
+    // CORREÇÃO v349: disputed pode transicionar para completed/cancelled (resolução)
     if (currentStatus == 'disputed') {
       return newStatus == 'completed' || newStatus == 'cancelled';
     }
-    // Status finais - só disputed pode seguir
+    // Status finais NÃO regridem — completed/liquidated é definitivo
     const finalStatuses = ['completed', 'liquidated'];
     if (finalStatuses.contains(currentStatus)) {
-      return newStatus == 'disputed';
+      return false;
     }
+    // disputed vence sobre status NÃO-FINAIS (abertura de disputa durante fluxo ativo)
+    if (newStatus == 'disputed') return true;
     // Progressão linear
     const statusOrder = [
       'draft', 'pending', 'payment_received', 'accepted', 'processing',
@@ -2411,7 +2409,12 @@ class NostrOrderService {
               }
             } else if (isValidProgression) {
               // Evento mais antigo MAS progressão válida de status
-              // Ex: 'disputed' (kind 30080, older) supera 'awaiting_confirmation' (kind 30081, newer)
+              // CORREÇÃO v349: Se o update existente é resolução (completed/cancelled),
+              // NUNCA permitir que evento 'disputed' mais antigo o sobrescreva
+              if ((existingStatus == 'completed' || existingStatus == 'cancelled') && 
+                  newStatus == 'disputed') {
+                continue; // Resolução é final
+              }
             } else {
               continue; // Evento antigo e não é progressão - ignorar
             }

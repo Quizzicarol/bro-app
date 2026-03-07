@@ -31,6 +31,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   bool _isProcessing = false;
   Map<String, dynamic>? _billData;
   Map<String, dynamic>? _conversionData;
+  String? _errorMessage;
 
   /// Mascara o nome do beneficiário para privacidade
   /// Mostra apenas o primeiro nome e hachurado o resto
@@ -110,6 +111,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       _isProcessing = true;
       _billData = null;
       _conversionData = null;
+      _errorMessage = null;
     });
     broLog('🔒 _isProcessing setado para TRUE');
 
@@ -1084,10 +1086,41 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
+    if (!mounted) return;
+    setState(() => _errorMessage = message);
+  }
+
+  void _clearError() {
+    if (mounted && _errorMessage != null) {
+      setState(() => _errorMessage = null);
+    }
+  }
+
+  Widget _buildErrorCard() {
+    if (_errorMessage == null) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.red.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.red.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline, color: Colors.red, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _errorMessage!,
+              style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.w500),
+            ),
+          ),
+          GestureDetector(
+            onTap: _clearError,
+            child: const Icon(Icons.close, color: Colors.red, size: 18),
+          ),
+        ],
       ),
     );
   }
@@ -1206,7 +1239,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             _buildInstructionsCard(),
           ],
           
-          const SizedBox(height: 24),
+          _buildErrorCard(),
           if (_billData != null) ..._buildBillInfo(),
           if (_conversionData != null) ..._buildConversionInfo(),
           

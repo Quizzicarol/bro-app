@@ -2,6 +2,7 @@
 import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
 import 'screens/login_screen.dart'; // Login original com chave privada
+import 'screens/onboarding_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/provider_education_screen.dart';
@@ -74,9 +75,12 @@ void main() async {
     broLog('🔔 Background notifications ativado');
   }
 
+  // Verificar se já viu onboarding
+  final hasSeenOnboarding = await storage.getData('has_seen_onboarding') == 'true';
+
   // Breez SDK sera inicializado no provider (lazy initialization)
 
-  runApp(BroApp(isLoggedIn: isLoggedIn, userPubkey: userPubkey));
+  runApp(BroApp(isLoggedIn: isLoggedIn, userPubkey: userPubkey, hasSeenOnboarding: hasSeenOnboarding));
 }
 
 /// Restaurar chaves Nostr do armazenamento seguro
@@ -150,8 +154,9 @@ Future<void> _tryReconciliation(BreezProvider breezProvider, OrderProvider order
 class BroApp extends StatelessWidget {
   final bool isLoggedIn;
   final String? userPubkey;
+  final bool hasSeenOnboarding;
 
-  const BroApp({Key? key, required this.isLoggedIn, this.userPubkey}) : super(key: key);
+  const BroApp({Key? key, required this.isLoggedIn, this.userPubkey, required this.hasSeenOnboarding}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -237,7 +242,11 @@ class BroApp extends StatelessWidget {
                     ],
                   );
                 },
-                home: isLoggedIn ? const HomeScreen() : const LoginScreen(),
+                home: isLoggedIn 
+                    ? const HomeScreen() 
+                    : (!hasSeenOnboarding 
+                        ? OnboardingScreen(onComplete: () {}) 
+                        : const LoginScreen()),
             onGenerateRoute: (settings) {
               // Rotas com parametros
               if (settings.name == '/order-status') {

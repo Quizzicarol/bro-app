@@ -175,12 +175,22 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
         final locallyResolvedIds = await StorageService().getResolvedDisputeOrderIds();
         
         // 3. Classificar disputas do fetch em abertas/resolvidas
+        // Carregar ordens locais para verificar status atual
+        final orderProvider = context.read<OrderProvider>();
+        final allOrders = orderProvider.orders;
+        
         for (final dispute in nostrDisputes) {
           final dOrderId = dispute['orderId'] as String? ?? '';
           final resolution = resolutionsByOrderId[dOrderId];
           final isLocallyResolved = locallyResolvedIds.contains(dOrderId);
           
-          if (resolution != null || isLocallyResolved) {
+          // CORREÇÃO: Se a ordem já está completed/cancelled/liquidated,
+          // a disputa foi resolvida (independente de haver evento de resolução)
+          final matchingOrder = allOrders.where((o) => o.id == dOrderId).firstOrNull;
+          final isOrderResolved = matchingOrder != null && 
+              const ['completed', 'cancelled', 'liquidated'].contains(matchingOrder.status);
+          
+          if (resolution != null || isLocallyResolved || isOrderResolved) {
             dispute['resolution'] = resolution;
             dispute['resolved'] = true;
             resolvedNostr.add(dispute);

@@ -1,7 +1,7 @@
 {
-  "name": "paga-conta-backend",
+  "name": "bro-backend",
   "version": "1.0.0",
-  "description": "Backend para Paga Conta - Sistema de escrow com Bitcoin",
+  "description": "Backend Node.js para o Bro - Protocolo P2P de pagamento de contas com Bitcoin",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

@@ -1,270 +1,181 @@
-# Backend - Paga Conta
+# Backend — Bro
 
-Backend Node.js para o sistema de escrow com Bitcoin do Paga Conta.
+Backend Node.js para o protocolo **Bro** — sistema P2P de pagamento de contas com Bitcoin via Lightning Network + Nostr.
 
-## 🚀 Instalação
+## Instalação
 
 ### Pré-requisitos
 
-- Node.js 16+ instalado
-- npm ou yarn
+- Node.js 16+
+- npm
 
-### Passo 1: Instalar dependências
+### Setup
 
 ```bash
 cd backend
 npm install
 ```
 
-### Passo 2: Configurar ambiente (opcional)
+### Configurar ambiente (opcional)
 
-Crie um arquivo `.env` se quiser customizar a porta:
+Crie um arquivo `.env` para customizar:
 
 ```
 PORT=3002
+NODE_ENV=development
+ALLOWED_ORIGINS=http://localhost:3000
 ```
 
-### Passo 3: Iniciar servidor
+### Iniciar servidor
 
-**Modo desenvolvimento** (com auto-reload):
+**Desenvolvimento** (com auto-reload):
 ```bash
 npm run dev
 ```
 
-**Modo produção**:
+**Produção**:
 ```bash
 npm start
 ```
 
-O servidor estará rodando em `http://localhost:3002`
+Servidor roda em `http://localhost:3002`
 
 ---
 
-## 📡 Endpoints Disponíveis
+## Autenticação
+
+Todas as rotas de negócio são protegidas por **NIP-98 HTTP Auth** (assinatura Nostr).
+
+Cada request deve incluir um header `Authorization` com um evento Nostr kind 27235 assinado, contendo a URL e o método HTTP.
+
+Única rota pública: `GET /health`
+
+Ver `middleware/verifyNip98Auth.js` para detalhes.
+
+---
+
+## Endpoints
 
 ### Health Check
-- **GET** `/health` - Verificar status do servidor
+- **GET** `/health` — Status do servidor (público, sem auth)
 
-### Orders (Ordens)
+### Orders
 
-- **POST** `/orders/create` - Criar nova ordem após pagamento Lightning
-  ```json
-  {
-    "userId": "string",
-    "paymentHash": "string",
-    "paymentType": "electricity|water|internet|gas|phone",
-    "accountNumber": "string",
-    "billValue": 150.50,
-    "btcAmount": 0.00027
-  }
-  ```
+- **POST** `/orders/create` — Criar nova ordem
+- **GET** `/orders/:orderId` — Buscar ordem por ID
+- **GET** `/orders/user/:userId` — Listar ordens de um usuário
+- **POST** `/orders/:orderId/cancel` — Cancelar ordem (apenas `pending`)
+- **GET** `/orders/available?providerId=xxx` — Listar ordens disponíveis para provedores
+- **POST** `/orders/:orderId/accept` — Provedor aceita ordem
+- **POST** `/orders/:orderId/submit-proof` — Provedor envia comprovante
+- **POST** `/orders/:orderId/validate` — Validar pagamento (aprovar/rejeitar)
 
-- **GET** `/orders/:orderId` - Buscar ordem por ID
+### Collateral (Garantias)
 
-- **GET** `/orders/user/:userId` - Listar todas as ordens de um usuário
+- **POST** `/collateral/deposit` — Criar invoice para depósito de garantia
+- **POST** `/collateral/lock` — Bloquear garantia ao aceitar ordem
+- **POST** `/collateral/unlock` — Desbloquear garantia após conclusão
+- **GET** `/collateral/:providerId` — Consultar garantia do provedor
 
-- **POST** `/orders/:orderId/cancel` - Cancelar ordem (apenas pending)
-  ```json
-  {
-    "userId": "string"
-  }
-  ```
+### Escrow
 
-- **GET** `/orders/available?providerId=xxx` - Listar ordens disponíveis para provedores
+- **POST** `/escrow/create` — Criar escrow com Bitcoin do usuário
+- **POST** `/escrow/release` — Liberar Bitcoin do escrow para provedor
+- **GET** `/escrow/:orderId` — Consultar status do escrow
 
-- **POST** `/orders/:orderId/accept` - Provedor aceita ordem
-  ```json
-  {
-    "providerId": "string",
-    "collateralLocked": 1500
-  }
-  ```
+### Agent (Disputas)
 
-- **POST** `/orders/:orderId/submit-proof` - Provedor envia comprovante de pagamento
-  ```json
-  {
-    "providerId": "string",
-    "proofUrl": "string",
-    "proofData": {}
-  }
-  ```
-
-- **POST** `/orders/:orderId/validate` - Validar pagamento (aprovar/rejeitar)
-  ```json
-  {
-    "approved": true,
-    "rejectionReason": "string (opcional)"
-  }
-  ```
-
-### Collateral (Garantias de Provedores)
-
-- **POST** `/collateral/deposit` - Criar invoice para depósito de garantia
-  ```json
-  {
-    "providerId": "string",
-    "tierId": "basic|intermediate|advanced",
-    "amountBrl": 500,
-    "amountSats": 89820
-  }
-  ```
-
-- **POST** `/collateral/lock` - Bloquear garantia ao aceitar ordem
-  ```json
-  {
-    "providerId": "string",
-    "orderId": "string",
-    "lockedSats": 1500
-  }
-  ```
-
-- **POST** `/collateral/unlock` - Desbloquear garantia após conclusão
-  ```json
-  {
-    "providerId": "string",
-    "orderId": "string"
-  }
-  ```
-
-- **GET** `/collateral/:providerId` - Consultar garantia total do provedor
-
-### Escrow (Bitcoin em Custódia)
-
-- **POST** `/escrow/create` - Criar escrow com Bitcoin do usuário
-  ```json
-  {
-    "orderId": "string",
-    "userId": "string",
-    "btcAmount": 0.00027
-  }
-  ```
-
-- **POST** `/escrow/release` - Liberar Bitcoin do escrow para provedor
-  ```json
-  {
-    "orderId": "string",
-    "providerId": "string"
-  }
-  ```
-
-- **GET** `/escrow/:orderId` - Consultar status do escrow
+- **POST/GET** `/agent/*` — Endpoints do agente automático de disputas
 
 ---
 
-## ⚙️ Funcionalidades Automáticas
+## Segurança
 
-### Job de Expiração de Ordens
+O backend já implementa:
 
-- Roda **a cada 5 minutos** automaticamente
-- Verifica ordens no estado `pending` que passaram de 24 horas
-- Processa refund automático do Bitcoin
-- Atualiza status para `expired`
-
-Logs:
-```
-[CRON] Verificando ordens expiradas...
-⏰ Ordem expirada detectada: abc-123
-💰 Processando refund: abc-123 | Valor: 0.00027 BTC
-✅ Refund concluído: abc-123
-✅ 1 ordem(ns) expirada(s) processada(s)
-```
+- **Helmet** — Headers de segurança HTTP
+- **Rate Limiting** — 200 req/15min geral, 5 req/min para criação de ordens/collateral/escrow
+- **CORS** — Origens configuráveis via `ALLOWED_ORIGINS` (obrigatório em produção)
+- **NIP-98 Auth** — Autenticação via assinatura Nostr em todas as rotas de negócio
+- **Body limit** — Máximo 5MB por request
 
 ---
 
-## 🗃️ Banco de Dados
+## Funcionalidades Automáticas
 
-Atualmente usando **banco em memória** (Map do JavaScript) para desenvolvimento rápido.
+### Expiração de Ordens
 
-**Para produção**, substituir por:
-- **MongoDB** - NoSQL, ideal para JSON
-- **PostgreSQL** - SQL, ideal para transações
-- **Redis** - Cache rápido
+- Job roda **a cada 5 minutos** via `node-cron`
+- Ordens `pending` há mais de 24h são expiradas automaticamente
+- Refund automático do Bitcoin em escrow
 
-Arquivos a modificar:
-- `models/database.js` - Conexão e schemas
-- `routes/*.js` - Trocar `Map` por queries do BD
+### Agente de Disputas
+
+- Serviço automático para mediação de disputas entre usuário e provedor
+- Ver `services/disputeAgentService.js`
 
 ---
 
-## 📊 Estrutura de Status das Ordens
+## Estrutura de Status
 
 ```
 pending → accepted → payment_submitted → completed
-   ↓                                           ↓
+   ↓                                         ↓
 cancelled/expired                         rejected
 ```
 
-### Status possíveis:
-- `pending` - Aguardando provedor aceitar (24h)
-- `accepted` - Provedor aceitou e vai pagar a conta
-- `payment_submitted` - Provedor enviou comprovante
-- `completed` - Pagamento aprovado, Bitcoin liberado
-- `rejected` - Pagamento rejeitado na validação
-- `cancelled` - Usuário cancelou antes de aceitar
-- `expired` - Passou 24h sem provedor aceitar
+- `pending` — Aguardando provedor aceitar (24h)
+- `accepted` — Provedor aceitou, vai pagar a conta
+- `payment_submitted` — Comprovante enviado
+- `completed` — Pagamento aprovado, Bitcoin liberado
+- `rejected` — Pagamento rejeitado na validação
+- `cancelled` — Usuário cancelou
+- `expired` — 24h sem aceitação
 
 ---
 
-## 💰 Estrutura de Fees
+## Fees
 
-- **Provedor**: 3% (descontado do Bitcoin ao liberar escrow)
-- **Plataforma**: 2% (descontado do Bitcoin ao liberar escrow)
-- **Total**: 5% de fee sobre o valor da ordem
-
-Exemplo:
-- Ordem de R$ 150 = 0.00027 BTC
-- Provedor recebe: 0.0002565 BTC (95%)
-- Plataforma recebe: 0.0000054 BTC (2%)
+- **Provedor**: 3%
+- **Plataforma**: 2%
+- **Total**: 5% sobre o valor da ordem (descontado ao liberar escrow)
 
 ---
 
-## 🔐 Segurança (TODO para produção)
+## Banco de Dados
 
-- [ ] Adicionar autenticação JWT nos endpoints
-- [ ] Validar assinaturas das requisições
-- [ ] Rate limiting para evitar spam
-- [ ] HTTPS obrigatório
-- [ ] Logs de auditoria
-- [ ] Backup automático do banco de dados
-- [ ] Monitoramento de transações suspeitas
+Atualmente usa **banco em memória** (`Map` do JavaScript) para desenvolvimento.
+
+Para produção, substituir em `models/database.js` por MongoDB, PostgreSQL ou equivalente.
 
 ---
 
-## 🐛 Debug
+## Estrutura do Projeto
 
-**Ver logs em tempo real:**
-```bash
-npm run dev
+```
+backend/
+├── server.js                    # Entry point, middlewares, rotas
+├── middleware/
+│   └── verifyNip98Auth.js       # Autenticação NIP-98
+├── models/
+│   └── database.js              # Banco em memória
+├── routes/
+│   ├── orders.js                # CRUD de ordens
+│   ├── collateral.js            # Garantias de provedores
+│   ├── escrow.js                # Escrow de Bitcoin
+│   └── agent.js                 # Agente de disputas
+└── services/
+    ├── bitcoinService.js        # Integração Bitcoin/Lightning
+    ├── disputeAgentService.js   # Mediação automática
+    ├── nostrListenerService.js  # Listener de eventos Nostr
+    └── orderExpirationService.js # Job de expiração
 ```
 
-**Testar endpoint:**
-```bash
-curl http://localhost:3002/health
-```
-
-**Ver todas as ordens em memória:**
-- Endpoints GET retornam o estado atual
-- Logs no terminal mostram todas as operações
-
 ---
 
-## 📝 Próximos Passos
+## Troubleshooting
 
-1. ✅ Estrutura básica com 13 endpoints
-2. ✅ Job de expiração automático
-3. ✅ Sistema de fees (3% + 2%)
-4. ⏳ Integrar com Breez SDK para pagamentos reais
-5. ⏳ Implementar banco de dados persistente
-6. ⏳ Sistema de autenticação
-7. ⏳ Upload de comprovantes (S3/Firebase)
-8. ⏳ OCR para validação automática de recibos
-9. ⏳ Painel administrativo
-
----
-
-## 🆘 Problemas Comuns
-
-**Porta 3002 já em uso:**
+**Porta 3002 em uso:**
 ```bash
 # Windows
 netstat -ano | findstr :3002
@@ -280,15 +191,10 @@ rm -rf node_modules package-lock.json
 npm install
 ```
 
-**Servidor não inicia:**
-- Verificar Node.js versão 16+: `node --version`
-- Verificar erros no console
-- Verificar se `package.json` existe
-
 ---
 
-## 📞 Suporte
+## Mais informações
 
-Para dúvidas sobre integração com o app Flutter, consulte:
-- `../FLUXO_COMPLETO_ORDENS.md` - Documentação do fluxo completo
-- Logs do servidor mostram todas as operações em tempo real
+- [Especificação do protocolo Bro](../specs/) — BROSPEC-01 a 06
+- [README principal](../README.md) — Visão geral do projeto
+- [CONTRIBUTING](../CONTRIBUTING.md) — Como contribuir

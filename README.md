@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Brostr/bro/main/assets/images/bro-logo.png" alt="Bro Logo" width="200">
+  <img src="https://github.com/Brostr/bro/blob/main/assets/images/bro-logo.png?raw=true" alt="Bro Logo" width="200">
 </p>
 
 <p align="center">

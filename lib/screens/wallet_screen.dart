@@ -16,6 +16,7 @@ import '../services/local_collateral_service.dart';
 import '../services/platform_fee_service.dart';
 import '../services/bitcoin_price_service.dart';
 import '../config.dart';
+import '../l10n/app_localizations.dart';
 
 /// Tela de Carteira Lightning - Apenas BOLT11 (invoice)
 /// Funções: Ver saldo, Enviar pagamento, Receber (gerar invoice)
@@ -327,11 +328,11 @@ class _WalletScreenState extends State<WalletScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.account_balance_wallet, color: Color(0xFFFF9800)),
-            SizedBox(width: 8),
-            Text('Minha Carteira', style: TextStyle(fontWeight: FontWeight.bold)),
+            const Icon(Icons.account_balance_wallet, color: Color(0xFFFF9800)),
+            const SizedBox(width: 8),
+            Text(AppLocalizations.of(context).t('wallet_title'), style: const TextStyle(fontWeight: FontWeight.bold)),
           ],
         ),
       ),
@@ -341,13 +342,13 @@ class _WalletScreenState extends State<WalletScreen> {
 
   Widget _buildBody() {
     if (_isLoading) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CircularProgressIndicator(color: Color(0xFFFF6B6B)),
-            SizedBox(height: 16),
-            Text('Carregando carteira...', style: TextStyle(color: Colors.white70)),
+            const CircularProgressIndicator(color: Color(0xFFFF6B6B)),
+            const SizedBox(height: 16),
+            Text(AppLocalizations.of(context).t('wallet_loading'), style: const TextStyle(color: Colors.white70)),
           ],
         ),
       );
@@ -363,7 +364,7 @@ class _WalletScreenState extends State<WalletScreen> {
               const Icon(Icons.error_outline, color: Colors.red, size: 64),
               const SizedBox(height: 16),
               Text(
-                'Erro ao carregar carteira',
+                AppLocalizations.of(context).t('wallet_load_error'),
                 style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
@@ -376,7 +377,7 @@ class _WalletScreenState extends State<WalletScreen> {
               ElevatedButton.icon(
                 onPressed: _loadWalletInfo,
                 icon: const Icon(Icons.refresh),
-                label: const Text('Tentar novamente'),
+                label: Text(AppLocalizations.of(context).t('wallet_retry')),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFFF9800),
                 ),
@@ -442,13 +443,13 @@ class _WalletScreenState extends State<WalletScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.flash_on, color: Colors.white, size: 24),
-              SizedBox(width: 8),
+              const Icon(Icons.flash_on, color: Colors.white, size: 24),
+              const SizedBox(width: 8),
               Text(
-                'Saldo Lightning',
-                style: TextStyle(
+                AppLocalizations.of(context).t('wallet_balance_lightning'),
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
@@ -502,7 +503,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     const Icon(Icons.lock, color: Colors.white70, size: 14),
                     const SizedBox(width: 4),
                     Text(
-                      '${_formatSats(lockedSats)} em ordens',
+                      '${_formatSats(lockedSats)} ${AppLocalizations.of(context).t('wallet_locked_in_orders')}',
                       style: const TextStyle(color: Colors.white70, fontSize: 12),
                     ),
                   ],
@@ -525,7 +526,7 @@ class _WalletScreenState extends State<WalletScreen> {
         Expanded(
           child: _buildActionButton(
             icon: Icons.arrow_upward,
-            label: 'Enviar',
+            label: AppLocalizations.of(context).t('wallet_send'),
             color: const Color(0xFFE53935),
             onTap: _showSendDialog,
           ),
@@ -534,7 +535,7 @@ class _WalletScreenState extends State<WalletScreen> {
         Expanded(
           child: _buildActionButton(
             icon: Icons.arrow_downward,
-            label: 'Receber',
+            label: AppLocalizations.of(context).t('wallet_receive'),
             color: const Color(0xFF4CAF50),
             onTap: _showReceiveDialog,
           ),
@@ -652,9 +653,9 @@ class _WalletScreenState extends State<WalletScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Enviar Bitcoin',
-                            style: TextStyle(
+                          Text(
+                            AppLocalizations.of(context).t('wallet_send_bitcoin'),
+                            style: const TextStyle(
                               color: Colors.white,
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
@@ -662,7 +663,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           ),
                           if (hasLockedFunds) ...[
                             Text(
-                              'Disponível: $availableSats sats',
+                              AppLocalizations.of(context).tp('wallet_available_sats', {'available': availableSats.toString()}),
                               style: TextStyle(
                                 color: availableSats > 0 ? Colors.green : Colors.orange,
                                 fontSize: 13,
@@ -670,7 +671,7 @@ class _WalletScreenState extends State<WalletScreen> {
                               ),
                             ),
                             Text(
-                              'Em ordens: $committedSats sats',
+                              AppLocalizations.of(context).tp('wallet_in_orders_sats', {'committed': committedSats.toString()}),
                               style: const TextStyle(
                                 color: Colors.orange,
                                 fontSize: 13,
@@ -678,7 +679,7 @@ class _WalletScreenState extends State<WalletScreen> {
                             ),
                           ] else ...[
                             Text(
-                              'Saldo: $balanceSats sats',
+                              AppLocalizations.of(context).tp('wallet_balance_sats', {'balance': balanceSats.toString()}),
                               style: TextStyle(
                                 color: balanceSats > 0 ? Colors.green : Colors.grey,
                                 fontSize: 13,
@@ -714,7 +715,7 @@ class _WalletScreenState extends State<WalletScreen> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                '$totalLockedSats sats bloqueados',
+                                AppLocalizations.of(context).tp('wallet_sats_locked', {'total': totalLockedSats.toString()}),
                                 style: const TextStyle(color: Colors.orange, fontSize: 12, fontWeight: FontWeight.bold),
                               ),
                             ),
@@ -723,21 +724,21 @@ class _WalletScreenState extends State<WalletScreen> {
                         if (hasTierActive) ...[
                           const SizedBox(height: 4),
                           Text(
-                            '• $tierLockedSats sats no Tier "$tierName"',
+                            AppLocalizations.of(context).tp('wallet_sats_locked_tier', {'amount': tierLockedSats.toString(), 'tier': tierName ?? ''}),
                             style: const TextStyle(color: Colors.orange, fontSize: 11),
                           ),
                         ],
                         if (committedSats > 0) ...[
                           const SizedBox(height: 2),
                           Text(
-                            '• $committedSats sats em ordens abertas',
+                            AppLocalizations.of(context).tp('wallet_sats_in_open_orders', {'amount': committedSats.toString()}),
                             style: const TextStyle(color: Colors.orange, fontSize: 11),
                           ),
                         ],
                         if (hasTierActive) ...[
                           const SizedBox(height: 6),
                           Text(
-                            '⚠️ Sacar tudo desativará seu Tier!',
+                            AppLocalizations.of(context).t('wallet_withdraw_all_warning'),
                             style: TextStyle(color: Colors.red.shade300, fontSize: 11, fontWeight: FontWeight.bold),
                           ),
                         ],
@@ -769,11 +770,11 @@ class _WalletScreenState extends State<WalletScreen> {
                     }
                   },
                   decoration: InputDecoration(
-                    labelText: 'Destino',
+                    labelText: AppLocalizations.of(context).t('wallet_destination_label'),
                     labelStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
-                    hintText: 'Invoice, Lightning Address ou LNURL',
+                    hintText: AppLocalizations.of(context).t('wallet_destination_hint'),
                     hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
-                    helperText: 'Ex: lnbc..., user@wallet.com, LNURL...',
+                    helperText: AppLocalizations.of(context).t('wallet_destination_helper'),
                     helperStyle: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -799,7 +800,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     keyboardType: TextInputType.number,
                     enabled: !isSending,
                     decoration: InputDecoration(
-                      labelText: 'Valor a enviar',
+                      labelText: AppLocalizations.of(context).t('wallet_amount_label'),
                       labelStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
                       hintText: 'Ex: 1000',
                       hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
@@ -873,8 +874,8 @@ class _WalletScreenState extends State<WalletScreen> {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(needsAmount 
-                                ? '✅ Colado! Digite o valor em sats.'
-                                : '✅ Colado!'),
+                                ? AppLocalizations.of(context).t('wallet_pasted_enter_amount')
+                                : AppLocalizations.of(context).t('wallet_pasted')),
                               duration: const Duration(seconds: 1),
                             ),
                           );
@@ -882,7 +883,7 @@ class _WalletScreenState extends State<WalletScreen> {
                       }
                     },
                     icon: const Icon(Icons.paste),
-                    label: const Text('Colar da área de transferência'),
+                    label: Text(AppLocalizations.of(context).t('wallet_paste_clipboard')),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFFFF9800),
                       side: const BorderSide(color: Color(0xFFFF9800)),
@@ -908,7 +909,7 @@ class _WalletScreenState extends State<WalletScreen> {
                       }
                     },
                     icon: const Icon(Icons.qr_code_scanner),
-                    label: const Text('Escanear QR Code'),
+                    label: Text(AppLocalizations.of(context).t('wallet_scan_qr')),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.green,
                       side: const BorderSide(color: Colors.green),
@@ -928,7 +929,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     onPressed: isSending ? null : () async {
                       final destination = invoiceController.text.trim();
                       if (destination.isEmpty) {
-                        setModalState(() => errorMessage = 'Digite um destino');
+                        setModalState(() => errorMessage = AppLocalizations.of(context).t('wallet_enter_destination'));
                         return;
                       }
                       
@@ -936,7 +937,7 @@ class _WalletScreenState extends State<WalletScreen> {
                       
                       // Verificar se é endereço Bitcoin (não suportado)
                       if (_isBitcoinAddress(destination)) {
-                        setModalState(() => errorMessage = 'Envio para endereço Bitcoin on-chain não disponível. Use Lightning.');
+                        setModalState(() => errorMessage = AppLocalizations.of(context).t('wallet_onchain_not_available'));
                         return;
                       }
                       
@@ -949,7 +950,7 @@ class _WalletScreenState extends State<WalletScreen> {
                       if (needsAmountInput != showAmountField) {
                         setModalState(() {
                           showAmountField = needsAmountInput;
-                          errorMessage = needsAmountInput ? 'Digite o valor em sats' : null;
+                          errorMessage = needsAmountInput ? AppLocalizations.of(context).t('wallet_enter_amount_sats') : null;
                         });
                         return;
                       }
@@ -960,17 +961,17 @@ class _WalletScreenState extends State<WalletScreen> {
                         final amountSats = int.tryParse(amountText);
                         
                         if (amountSats == null || amountSats <= 0) {
-                          setModalState(() => errorMessage = 'Digite um valor válido em sats');
+                          setModalState(() => errorMessage = AppLocalizations.of(context).t('wallet_enter_valid_amount'));
                           return;
                         }
                         
                         if (amountSats > availableSats) {
                           if (hasTierActive && amountSats > balanceSats - tierLockedSats) {
-                            setModalState(() => errorMessage = 'Você precisa manter $tierLockedSats sats para o Tier "$tierName". Remova o tier primeiro em Níveis de Garantia.');
+                            setModalState(() => errorMessage = AppLocalizations.of(context).tp('wallet_tier_locked_error', {'amount': tierLockedSats.toString(), 'tier': tierName ?? ''}));
                           } else if (hasLockedFunds) {
-                            setModalState(() => errorMessage = 'Saldo insuficiente! Disponível: $availableSats sats ($totalLockedSats bloqueados)');
+                            setModalState(() => errorMessage = AppLocalizations.of(context).tp('wallet_insufficient_balance_locked', {'available': availableSats.toString(), 'locked': totalLockedSats.toString()}));
                           } else {
-                            setModalState(() => errorMessage = 'Saldo insuficiente! Você tem $balanceSats sats');
+                            setModalState(() => errorMessage = AppLocalizations.of(context).tp('wallet_insufficient_balance', {'balance': balanceSats.toString()}));
                           }
                           return;
                         }
@@ -995,7 +996,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           if (invoiceResult['success'] != true) {
                             setModalState(() {
                               isSending = false;
-                              errorMessage = invoiceResult['error'] ?? 'Falha ao resolver endereço';
+                              errorMessage = invoiceResult['error'] ?? AppLocalizations.of(context).t('wallet_resolve_failed');
                             });
                             return;
                           }
@@ -1010,9 +1011,9 @@ class _WalletScreenState extends State<WalletScreen> {
                             if (context.mounted) {
                               Navigator.pop(context);
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('✅ Pagamento enviado com sucesso!'),
-                                  backgroundColor: Color(0xFF4CAF50),
+                                SnackBar(
+                                  content: Text(AppLocalizations.of(context).t('wallet_payment_sent_success')),
+                                  backgroundColor: const Color(0xFF4CAF50),
                                 ),
                               );
                             }
@@ -1020,7 +1021,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           } else {
                             setModalState(() {
                               isSending = false;
-                              errorMessage = result?['error'] ?? 'Falha ao enviar pagamento';
+                              errorMessage = result?['error'] ?? AppLocalizations.of(context).t('wallet_send_payment_failed');
                             });
                           }
                         } catch (e) {
@@ -1038,7 +1039,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           !lowerDest.startsWith('lntb') &&
                           !lowerDest.startsWith('lnurl') &&
                           !isLnAddress) {
-                        setModalState(() => errorMessage = 'Formato inválido. Use Invoice, Lightning Address ou LNURL.');
+                        setModalState(() => errorMessage = AppLocalizations.of(context).t('wallet_invalid_format'));
                         return;
                       }
                       
@@ -1058,9 +1059,9 @@ class _WalletScreenState extends State<WalletScreen> {
                           if (context.mounted) {
                             Navigator.pop(context);
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('✅ Pagamento enviado com sucesso!'),
-                                backgroundColor: Color(0xFF4CAF50),
+                              SnackBar(
+                                content: Text(AppLocalizations.of(context).t('wallet_payment_sent_success')),
+                                backgroundColor: const Color(0xFF4CAF50),
                               ),
                             );
                           }
@@ -1068,7 +1069,7 @@ class _WalletScreenState extends State<WalletScreen> {
                         } else {
                           // Erro específico de saldo insuficiente
                           final errorType = result?['errorType'];
-                          final errorMsg = result?['error'] ?? 'Falha ao enviar pagamento';
+                          final errorMsg = result?['error'] ?? AppLocalizations.of(context).t('wallet_send_payment_failed');
                           
                           setModalState(() => isSending = false);
                           
@@ -1080,11 +1081,11 @@ class _WalletScreenState extends State<WalletScreen> {
                                 builder: (ctx) => AlertDialog(
                                   backgroundColor: const Color(0xFF1A1A1A),
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                  title: const Row(
+                                  title: Row(
                                     children: [
-                                      Icon(Icons.account_balance_wallet, color: Colors.orange, size: 28),
-                                      SizedBox(width: 12),
-                                      Text('Saldo Insuficiente', style: TextStyle(color: Colors.white)),
+                                      const Icon(Icons.account_balance_wallet, color: Colors.orange, size: 28),
+                                      const SizedBox(width: 12),
+                                      Text(AppLocalizations.of(context).t('wallet_insufficient_balance_title'), style: const TextStyle(color: Colors.white)),
                                     ],
                                   ),
                                   content: Column(
@@ -1109,7 +1110,7 @@ class _WalletScreenState extends State<WalletScreen> {
                                             const SizedBox(width: 8),
                                             Expanded(
                                               child: Text(
-                                                'Deposite mais sats na sua carteira para fazer este pagamento.',
+                                                AppLocalizations.of(context).t('wallet_deposit_more_sats'),
                                                 style: TextStyle(color: Colors.orange.shade200, fontSize: 13),
                                               ),
                                             ),
@@ -1160,7 +1161,7 @@ class _WalletScreenState extends State<WalletScreen> {
                             ),
                           )
                         : const Icon(Icons.send),
-                    label: Text(isSending ? 'Enviando...' : 'Enviar Pagamento'),
+                    label: Text(isSending ? AppLocalizations.of(context).t('wallet_sending') : AppLocalizations.of(context).t('wallet_send_payment')),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFE53935),
                       foregroundColor: Colors.white,
@@ -1222,14 +1223,14 @@ class _WalletScreenState extends State<WalletScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.currency_bitcoin, color: Colors.orange, size: 28),
-            SizedBox(width: 12),
+            const Icon(Icons.currency_bitcoin, color: Colors.orange, size: 28),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
-                'Endereço Bitcoin',
-                style: TextStyle(color: Colors.white, fontSize: 18),
+                AppLocalizations.of(context).t('wallet_bitcoin_address'),
+                style: const TextStyle(color: Colors.white, fontSize: 18),
               ),
             ),
           ],
@@ -1272,14 +1273,14 @@ class _WalletScreenState extends State<WalletScreen> {
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Colors.orange.withOpacity(0.3)),
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  Icon(Icons.info_outline, color: Colors.orange, size: 20),
-                  SizedBox(width: 12),
+                  const Icon(Icons.info_outline, color: Colors.orange, size: 20),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Pagamentos para endereços Bitcoin on-chain ainda não são suportados.\n\nUse uma Lightning Invoice (lnbc/lntb) para enviar pagamentos.',
-                      style: TextStyle(color: Colors.white70, fontSize: 13),
+                      AppLocalizations.of(context).t('wallet_onchain_not_supported'),
+                      style: const TextStyle(color: Colors.white70, fontSize: 13),
                     ),
                   ),
                 ],
@@ -1290,7 +1291,7 @@ class _WalletScreenState extends State<WalletScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('ENTENDI', style: TextStyle(color: Colors.orange)),
+            child: Text(AppLocalizations.of(ctx).t('wallet_understood'), style: const TextStyle(color: Colors.orange)),
           ),
         ],
       ),
@@ -1325,21 +1326,21 @@ class _WalletScreenState extends State<WalletScreen> {
                   children: [
                     const Icon(Icons.qr_code_scanner, color: Colors.green, size: 28),
                     const SizedBox(width: 12),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Escanear QR Code',
-                            style: TextStyle(
+                            AppLocalizations.of(context).t('wallet_scan_qr_title'),
+                            style: const TextStyle(
                               color: Colors.white,
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
                           Text(
-                            'Lightning Invoice ou Endereço Bitcoin',
-                            style: TextStyle(
+                            AppLocalizations.of(context).t('wallet_scan_qr_subtitle'),
+                            style: const TextStyle(
                               color: Colors.white54,
                               fontSize: 12,
                             ),
@@ -1402,13 +1403,13 @@ class _WalletScreenState extends State<WalletScreen> {
               Container(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
                 color: const Color(0xFF1A1A1A),
-                child: const Column(
+                child: Column(
                   children: [
-                    Icon(Icons.lightbulb_outline, color: Colors.amber, size: 24),
-                    SizedBox(height: 8),
+                    const Icon(Icons.lightbulb_outline, color: Colors.amber, size: 24),
+                    const SizedBox(height: 8),
                     Text(
-                      'Formatos suportados:\n• Lightning Invoice (lnbc, lntb)\n• Endereço Bitcoin (bc1, 1, 3)',
-                      style: TextStyle(
+                      AppLocalizations.of(context).t('wallet_supported_formats'),
+                      style: const TextStyle(
                         color: Colors.white54,
                         fontSize: 12,
                       ),
@@ -1530,9 +1531,9 @@ class _WalletScreenState extends State<WalletScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Invoice Escaneada!',
-                            style: TextStyle(
+                          Text(
+                            AppLocalizations.of(context).t('wallet_invoice_scanned'),
+                            style: const TextStyle(
                               color: Colors.white,
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
@@ -1540,7 +1541,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           ),
                           if (hasLockedFunds) ...[
                             Text(
-                              'Disponível: $availableSats sats',
+                              AppLocalizations.of(context).tp('wallet_available_sats', {'available': availableSats.toString()}),
                               style: TextStyle(
                                 color: availableSats > 0 ? Colors.green : Colors.orange,
                                 fontSize: 12,
@@ -1548,7 +1549,7 @@ class _WalletScreenState extends State<WalletScreen> {
                             ),
                           ] else ...[
                             Text(
-                              'Saldo: $balanceSats sats',
+                              AppLocalizations.of(context).tp('wallet_balance_sats', {'balance': balanceSats.toString()}),
                               style: TextStyle(
                                 color: balanceSats > 0 ? Colors.green : Colors.grey,
                                 fontSize: 12,
@@ -1581,7 +1582,7 @@ class _WalletScreenState extends State<WalletScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            '$committedSats sats estão em ordens abertas',
+                            AppLocalizations.of(context).tp('wallet_sats_in_open_orders_simple', {'amount': committedSats.toString()}),
                             style: const TextStyle(color: Colors.orange, fontSize: 12),
                           ),
                         ),
@@ -1659,7 +1660,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     keyboardType: TextInputType.number,
                     style: const TextStyle(color: Colors.white, fontSize: 18),
                     decoration: InputDecoration(
-                      labelText: 'Valor em sats *',
+                      labelText: AppLocalizations.of(context).t('wallet_amount_sats_required'),
                       labelStyle: const TextStyle(color: Colors.white54),
                       hintText: 'Ex: 1000',
                       hintStyle: const TextStyle(color: Colors.white24),
@@ -1675,9 +1676,9 @@ class _WalletScreenState extends State<WalletScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    '* Este endereço requer que você informe o valor',
-                    style: TextStyle(color: Colors.amber, fontSize: 11),
+                  Text(
+                    AppLocalizations.of(context).t('wallet_address_requires_amount'),
+                    style: const TextStyle(color: Colors.amber, fontSize: 11),
                   ),
                 ],
                 
@@ -1719,23 +1720,23 @@ class _WalletScreenState extends State<WalletScreen> {
                       if (needsAmountInput) {
                         final amountStr = amountController.text.trim();
                         if (amountStr.isEmpty) {
-                          setModalState(() => errorMessage = 'Por favor, informe o valor em sats');
+                          setModalState(() => errorMessage = AppLocalizations.of(context).t('wallet_please_enter_amount'));
                           return;
                         }
                         final amount = int.tryParse(amountStr);
                         if (amount == null || amount <= 0) {
-                          setModalState(() => errorMessage = 'Valor inválido');
+                          setModalState(() => errorMessage = AppLocalizations.of(context).t('wallet_invalid_amount'));
                           return;
                         }
                         if (amount > availableSats) {
-                          setModalState(() => errorMessage = 'Saldo insuficiente (disponível: $availableSats sats)');
+                          setModalState(() => errorMessage = AppLocalizations.of(context).tp('wallet_insufficient_available', {'available': availableSats.toString()}));
                           return;
                         }
                       }
                       
                       // Validar saldo para invoice BOLT11 com valor
                       if (invoiceAmountSats != null && invoiceAmountSats! > availableSats) {
-                        setModalState(() => errorMessage = 'Saldo insuficiente! Necessário: $invoiceAmountSats sats, Disponível: $availableSats sats');
+                        setModalState(() => errorMessage = AppLocalizations.of(context).tp('wallet_insufficient_needed', {'needed': invoiceAmountSats.toString(), 'available': availableSats.toString()}));
                         return;
                       }
                       
@@ -1771,7 +1772,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           if (resolveResult['success'] != true) {
                             setModalState(() {
                               isSending = false;
-                              errorMessage = resolveResult['error'] ?? 'Falha ao resolver endereço';
+                              errorMessage = resolveResult['error'] ?? AppLocalizations.of(context).t('wallet_resolve_failed');
                             });
                             return;
                           }
@@ -1791,16 +1792,16 @@ class _WalletScreenState extends State<WalletScreen> {
                             Navigator.pop(context);
                             _loadWalletInfo();
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
+                              SnackBar(
                                 content: Row(
                                   children: [
-                                    Icon(Icons.check_circle, color: Colors.white),
-                                    SizedBox(width: 8),
-                                    Text('✅ Pagamento enviado com sucesso!'),
+                                    const Icon(Icons.check_circle, color: Colors.white),
+                                    const SizedBox(width: 8),
+                                    Text(AppLocalizations.of(context).t('wallet_payment_sent_success')),
                                   ],
                                 ),
                                 backgroundColor: Colors.green,
-                                duration: Duration(seconds: 3),
+                                duration: const Duration(seconds: 3),
                               ),
                             );
                           }
@@ -1808,7 +1809,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           broLog('❌ Pagamento falhou: ${result?['error']}');
                           setModalState(() {
                             isSending = false;
-                            errorMessage = result?['error'] ?? 'Falha ao enviar pagamento';
+                            errorMessage = result?['error'] ?? AppLocalizations.of(context).t('wallet_send_payment_failed');
                           });
                         }
                       } catch (e, stack) {
@@ -1830,7 +1831,7 @@ class _WalletScreenState extends State<WalletScreen> {
                             ),
                           )
                         : const Icon(Icons.send),
-                    label: Text(isSending ? 'Enviando...' : 'Confirmar e Enviar'),
+                    label: Text(isSending ? AppLocalizations.of(context).t('wallet_sending') : AppLocalizations.of(context).t('wallet_confirm_and_send')),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
                       foregroundColor: Colors.white,
@@ -1848,9 +1849,9 @@ class _WalletScreenState extends State<WalletScreen> {
                   width: double.infinity,
                   child: TextButton(
                     onPressed: () => Navigator.pop(context),
-                    child: const Text(
-                      'Cancelar',
-                      style: TextStyle(color: Colors.white54),
+                    child: Text(
+                      AppLocalizations.of(context).t('cancel'),
+                      style: const TextStyle(color: Colors.white54),
                     ),
                   ),
                 ),
@@ -1903,10 +1904,10 @@ class _WalletScreenState extends State<WalletScreen> {
                       child: const Icon(Icons.arrow_downward, color: Color(0xFF4CAF50)),
                     ),
                     const SizedBox(width: 12),
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'Receber Bitcoin',
-                        style: TextStyle(
+                        AppLocalizations.of(context).t('wallet_receive_bitcoin'),
+                        style: const TextStyle(
                           color: Colors.white,
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
@@ -1929,7 +1930,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     enabled: !isGenerating,
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
-                      labelText: 'Quantidade (sats)',
+                      labelText: AppLocalizations.of(context).t('wallet_quantity_sats'),
                       labelStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -1983,12 +1984,12 @@ class _WalletScreenState extends State<WalletScreen> {
                         final amount = int.tryParse(amountText);
                         
                         if (amount == null || amount <= 0) {
-                          setModalState(() => errorMsg = 'Digite um valor válido');
+                          setModalState(() => errorMsg = AppLocalizations.of(context).t('wallet_enter_valid_value'));
                           return;
                         }
                         
                         if (amount < 100) {
-                          setModalState(() => errorMsg = 'Mínimo: 100 sats');
+                          setModalState(() => errorMsg = AppLocalizations.of(context).t('wallet_minimum_100_sats'));
                           return;
                         }
                         
@@ -2042,7 +2043,7 @@ class _WalletScreenState extends State<WalletScreen> {
                               ),
                             )
                           : const Icon(Icons.qr_code),
-                      label: Text(isGenerating ? 'Gerando...' : 'Gerar Invoice (QR Code)'),
+                      label: Text(isGenerating ? AppLocalizations.of(context).t('wallet_generating') : AppLocalizations.of(context).t('wallet_generate_invoice')),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF4CAF50),
                         foregroundColor: Colors.white,
@@ -2104,9 +2105,9 @@ class _WalletScreenState extends State<WalletScreen> {
                           onPressed: () {
                             Clipboard.setData(ClipboardData(text: generatedInvoice!));
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('✅ Invoice copiada!'),
-                                backgroundColor: Color(0xFF4CAF50),
+                              SnackBar(
+                                content: Text(AppLocalizations.of(context).t('wallet_invoice_copied')),
+                                backgroundColor: const Color(0xFF4CAF50),
                               ),
                             );
                           },
@@ -2127,7 +2128,7 @@ class _WalletScreenState extends State<WalletScreen> {
                         });
                       },
                       icon: const Icon(Icons.refresh),
-                      label: const Text('Gerar nova invoice'),
+                      label: Text(AppLocalizations.of(context).t('wallet_generate_new_invoice')),
                     ),
                   ),
                 ],
@@ -2144,9 +2145,9 @@ class _WalletScreenState extends State<WalletScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Histórico de Transações',
-          style: TextStyle(
+        Text(
+          AppLocalizations.of(context).t('wallet_transaction_history'),
+          style: const TextStyle(
             color: Colors.white,
             fontSize: 18,
             fontWeight: FontWeight.bold,
@@ -2167,7 +2168,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 Icon(Icons.history, color: Colors.white.withOpacity(0.3), size: 48),
                 const SizedBox(height: 12),
                 Text(
-                  'Nenhuma transação ainda',
+                  AppLocalizations.of(context).t('wallet_no_transactions'),
                   style: TextStyle(color: Colors.white.withOpacity(0.5)),
                 ),
               ],
@@ -2274,22 +2275,22 @@ class _WalletScreenState extends State<WalletScreen> {
     if (isMarketplace) {
       // v246: Transação do Marketplace
       if (isReceived) {
-        label = '🛒 Venda Marketplace: $marketplaceProduct';
+        label = AppLocalizations.of(context).tp('wallet_marketplace_sale', {'product': marketplaceProduct});
         iconColor = Colors.green;
         icon = Icons.storefront;
       } else {
-        label = '🛒 Compra Marketplace: $marketplaceProduct';
+        label = AppLocalizations.of(context).tp('wallet_marketplace_purchase', {'product': marketplaceProduct});
         iconColor = Colors.orange;
         icon = Icons.shopping_cart;
       }
     } else if (isBroEarning || isBroOrderPayment) {
-      label = '💪 Ganho como Bro';
+      label = AppLocalizations.of(context).t('wallet_bro_earning');
       iconColor = Colors.green;
       icon = Icons.volunteer_activism;
     } else if (isReceived) {
       // Se temos uma ordem correlacionada para este depósito
       if (correlatedOrderId != null) {
-        label = '📄 Depósito para Ordem #${correlatedOrderId.substring(0, 8)}';
+        label = AppLocalizations.of(context).tp('wallet_deposit_for_order_id', {'orderId': correlatedOrderId.substring(0, 8)});
         iconColor = Colors.amber;
         icon = Icons.receipt_long;
       } else if (description.contains('Depósito Bro') || description.contains('Deposito Bro')) {
@@ -2308,7 +2309,7 @@ class _WalletScreenState extends State<WalletScreen> {
         iconColor = Colors.amber;
         icon = Icons.shield;
       } else {
-        label = 'Recebido';
+        label = AppLocalizations.of(context).t('wallet_received');
         iconColor = Colors.green;
         icon = Icons.arrow_downward;
       }
@@ -2318,7 +2319,7 @@ class _WalletScreenState extends State<WalletScreen> {
       if (isWalletPayment) {
         // v257: Pagamento feito com saldo da carteira
         if (correlatedOrderId != null) {
-          label = '💰 Pagamento #${correlatedOrderId.substring(0, 8)} (carteira)';
+          label = AppLocalizations.of(context).tp('wallet_payment_wallet_id', {'orderId': correlatedOrderId.substring(0, 8)});
         } else {
           label = '💰 $description';
         }
@@ -2327,19 +2328,19 @@ class _WalletScreenState extends State<WalletScreen> {
       } else if (description == 'Bro Wallet Payment' || description == 'Bro Payment') {
         // Já correlacionado por paymentHash acima
         if (correlatedOrderId != null) {
-          label = '📄 Depósito para Ordem #${correlatedOrderId.substring(0, 8)}';
+          label = AppLocalizations.of(context).tp('wallet_deposit_for_order_id', {'orderId': correlatedOrderId.substring(0, 8)});
         } else {
-          label = '📄 Depósito para Ordem';
+          label = AppLocalizations.of(context).t('wallet_deposit_for_order');
         }
         iconColor = Colors.amber;
         icon = Icons.receipt_long;
       } else if (description.contains('Ordem') || description.contains('conta')) {
         // Pagamento de conta (descrição contém info de ordem)
-        label = '📄 Pagamento de Conta';
+        label = AppLocalizations.of(context).t('wallet_bill_payment');
         iconColor = Colors.red;
         icon = Icons.arrow_upward;
       } else {
-        label = 'Enviado';
+        label = AppLocalizations.of(context).t('wallet_sent');
         iconColor = Colors.red;
         icon = Icons.arrow_upward;
       }
@@ -2507,19 +2508,19 @@ class _WalletScreenState extends State<WalletScreen> {
     }
     
     if (isGanhoBro) {
-      typeLabel = 'Ganho como Bro';
+      typeLabel = AppLocalizations.of(context).t('wallet_type_bro_earning');
       typeColor = Colors.green;
       typeIcon = Icons.volunteer_activism;
     } else if (isReceived && correlatedOrderId != null) {
-      typeLabel = 'Depósito para Ordem';
+      typeLabel = AppLocalizations.of(context).t('wallet_type_deposit_order');
       typeColor = Colors.amber;
       typeIcon = Icons.receipt_long;
     } else if (isReceived) {
-      typeLabel = 'Recebido via Lightning';
+      typeLabel = AppLocalizations.of(context).t('wallet_type_received_lightning');
       typeColor = Colors.green;
       typeIcon = Icons.arrow_downward;
     } else {
-      typeLabel = 'Enviado via Lightning';
+      typeLabel = AppLocalizations.of(context).t('wallet_type_sent_lightning');
       typeColor = Colors.red;
       typeIcon = Icons.arrow_upward;
     }
@@ -2594,11 +2595,11 @@ class _WalletScreenState extends State<WalletScreen> {
                 const SizedBox(height: 16),
                 
                 // Detalhes
-                _buildDetailRow('📅 Data/Hora', date != null ? _formatDateFull(date) : 'Não disponível'),
-                _buildDetailRow('📊 Status', status.replaceAll('PaymentStatus.', '').toUpperCase()),
+                _buildDetailRow(AppLocalizations.of(context).t('wallet_date_time'), date != null ? _formatDateFull(date) : AppLocalizations.of(context).t('wallet_not_available')),
+                _buildDetailRow(AppLocalizations.of(context).t('wallet_status'), status.replaceAll('PaymentStatus.', '').toUpperCase()),
                 if (description.isNotEmpty)
-                  _buildDetailRow('📝 Descrição', description),
-                _buildDetailRow('⚡ Rede', 'Lightning Network'),
+                  _buildDetailRow(AppLocalizations.of(context).t('wallet_description'), description),
+                _buildDetailRow(AppLocalizations.of(context).t('wallet_network'), 'Lightning Network'),
                 
                 // NOVO: Mostrar dados da ordem correlacionada
                 if (correlatedOrder != null) ...[
@@ -2606,9 +2607,9 @@ class _WalletScreenState extends State<WalletScreen> {
                   const Divider(color: Color(0xFF333333)),
                   const SizedBox(height: 16),
                   
-                  const Text(
-                    'Dados da Ordem',
-                    style: TextStyle(
+                  Text(
+                    AppLocalizations.of(context).t('wallet_order_data'),
+                    style: const TextStyle(
                       color: Colors.amber,
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
@@ -2616,13 +2617,13 @@ class _WalletScreenState extends State<WalletScreen> {
                   ),
                   const SizedBox(height: 12),
                   
-                  _buildDetailRow('🔢 Nº Ordem', '#${correlatedOrder.id.substring(0, 8).toUpperCase()}'),
-                  _buildDetailRow('📄 Tipo', correlatedOrder.billType),
-                  _buildDetailRow('💰 Valor BRL', 'R\$ ${correlatedOrder.amount.toStringAsFixed(2)}'),
-                  _buildDetailRow('₿ Valor BTC', '${correlatedOrder.btcAmount.toStringAsFixed(8)} BTC'),
-                  _buildDetailRow('📊 Status Ordem', correlatedOrder.status.toUpperCase()),
+                  _buildDetailRow(AppLocalizations.of(context).t('wallet_order_number'), '#${correlatedOrder.id.substring(0, 8).toUpperCase()}'),
+                  _buildDetailRow(AppLocalizations.of(context).t('payment_type'), correlatedOrder.billType),
+                  _buildDetailRow(AppLocalizations.of(context).t('wallet_value_brl'), 'R\$ ${correlatedOrder.amount.toStringAsFixed(2)}'),
+                  _buildDetailRow(AppLocalizations.of(context).t('wallet_value_btc'), '${correlatedOrder.btcAmount.toStringAsFixed(8)} BTC'),
+                  _buildDetailRow(AppLocalizations.of(context).t('wallet_order_status'), correlatedOrder.status.toUpperCase()),
                   if (correlatedOrder.billCode.isNotEmpty)
-                    _buildDetailRow('📋 Código', correlatedOrder.billCode, monospace: true),
+                    _buildDetailRow(AppLocalizations.of(context).t('wallet_code'), correlatedOrder.billCode, monospace: true),
                 ],
                   
                 const SizedBox(height: 16),
@@ -2630,9 +2631,9 @@ class _WalletScreenState extends State<WalletScreen> {
                 const SizedBox(height: 16),
                 
                 // Dados técnicos
-                const Text(
-                  'Dados Técnicos',
-                  style: TextStyle(
+                Text(
+                  AppLocalizations.of(context).t('wallet_technical_data'),
+                  style: const TextStyle(
                     color: Colors.white70,
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
@@ -2641,9 +2642,9 @@ class _WalletScreenState extends State<WalletScreen> {
                 const SizedBox(height: 12),
                 
                 if (paymentHash.isNotEmpty && paymentHash != 'N/A' && paymentHash != 'null')
-                  _buildDetailRow('🔑 Payment Hash', paymentHash, copyable: true, monospace: true),
+                  _buildDetailRow(AppLocalizations.of(context).t('wallet_payment_hash'), paymentHash, copyable: true, monospace: true),
                 if (paymentId.isNotEmpty)
-                  _buildDetailRow('🆔 ID Transação', paymentId, copyable: true, monospace: true),
+                  _buildDetailRow(AppLocalizations.of(context).t('wallet_transaction_id'), paymentId, copyable: true, monospace: true),
                 
                 const SizedBox(height: 24),
                 
@@ -2653,7 +2654,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   child: ElevatedButton.icon(
                     onPressed: () => _copyAllDetails(payment),
                     icon: const Icon(Icons.copy, size: 18),
-                    label: const Text('Copiar todos os dados'),
+                    label: Text(AppLocalizations.of(context).t('wallet_copy_all_data')),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF333333),
                       foregroundColor: Colors.white,
@@ -2703,7 +2704,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 Clipboard.setData(ClipboardData(text: fullText ?? value));
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('$label copiado!'),
+                    content: Text(AppLocalizations.of(context).tp('nip06_copied', {'label': label})),
                     backgroundColor: const Color(0xFFFF9800),
                     duration: const Duration(seconds: 1),
                   ),
@@ -2734,24 +2735,24 @@ class _WalletScreenState extends State<WalletScreen> {
     final status = payment['status']?.toString() ?? '';
     
     final buffer = StringBuffer();
-    buffer.writeln('=== Detalhes da Transação ===');
-    buffer.writeln('Tipo: ${isReceived ? "Recebido" : "Enviado"}');
-    buffer.writeln('Valor: $amount sats');
-    if (date != null) buffer.writeln('Data: ${_formatDateFull(date)}');
-    buffer.writeln('Status: ${status.replaceAll('PaymentStatus.', '')}');
-    buffer.writeln('Rede: Lightning Network');
-    if (description.isNotEmpty) buffer.writeln('Descrição: $description');
+    buffer.writeln(AppLocalizations.of(context).t('wallet_copy_header'));
+    buffer.writeln('${AppLocalizations.of(context).t('payment_type')}: ${isReceived ? AppLocalizations.of(context).t('wallet_received') : AppLocalizations.of(context).t('wallet_sent')}');
+    buffer.writeln('${AppLocalizations.of(context).t('payment_value_label')}: $amount sats');
+    if (date != null) buffer.writeln('${AppLocalizations.of(context).t('wallet_date_time')}: ${_formatDateFull(date)}');
+    buffer.writeln('${AppLocalizations.of(context).t('wallet_status')}: ${status.replaceAll('PaymentStatus.', '')}');
+    buffer.writeln('${AppLocalizations.of(context).t('wallet_network')}: Lightning Network');
+    if (description.isNotEmpty) buffer.writeln('${AppLocalizations.of(context).t('wallet_description')}: $description');
     buffer.writeln('');
-    buffer.writeln('=== Dados Técnicos ===');
+    buffer.writeln(AppLocalizations.of(context).t('wallet_copy_technical_header'));
     if (paymentId.isNotEmpty) buffer.writeln('ID: $paymentId');
     if (paymentHash.isNotEmpty && paymentHash != 'null') buffer.writeln('Payment Hash: $paymentHash');
     
     Clipboard.setData(ClipboardData(text: buffer.toString()));
     
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Todos os dados copiados!'),
-        backgroundColor: Color(0xFFFF9800),
+      SnackBar(
+        content: Text(AppLocalizations.of(context).t('wallet_all_data_copied')),
+        backgroundColor: const Color(0xFFFF9800),
         duration: Duration(seconds: 2),
       ),
     );

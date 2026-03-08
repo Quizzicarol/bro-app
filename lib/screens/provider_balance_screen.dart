@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
@@ -53,9 +54,10 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Meu Saldo (Provedor)'),
+        title: Text(l.t('prov_bal_title')),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
       ),
@@ -104,6 +106,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
 
   /// Card com o saldo REAL da carteira Lightning (Breez)
   Widget _buildRealBalanceCard() {
+    final l = AppLocalizations.of(context)!;
     return Card(
       color: Colors.orange.shade800,
       child: Padding(
@@ -115,9 +118,9 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
               children: [
                 const Icon(Icons.flash_on, color: Colors.yellow, size: 24),
                 const SizedBox(width: 8),
-                const Text(
-                  'Carteira Lightning (Real)',
-                  style: TextStyle(
+                Text(
+                  l.t('prov_bal_lightning_real'),
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -150,9 +153,9 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
                 ],
               ),
             const SizedBox(height: 12),
-            const Text(
-              '⚡ Saldo real na rede Lightning',
-              style: TextStyle(
+            Text(
+              l.t('prov_bal_lightning_real_note'),
+              style: const TextStyle(
                 color: Colors.white60,
                 fontSize: 12,
                 fontStyle: FontStyle.italic,
@@ -165,15 +168,16 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
   }
 
   Widget _buildBalanceCard(ProviderBalance balance) {
+    final l = AppLocalizations.of(context)!;
     return Card(
       color: Colors.deepPurple,
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
-            const Text(
-              'Ganhos como Bro (Contábil)',
-              style: TextStyle(
+            Text(
+              l.t('prov_bal_bro_earnings'),
+              style: const TextStyle(
                 color: Colors.white70,
                 fontSize: 16,
               ),
@@ -207,9 +211,9 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              '💡 Ganhos das ordens completadas',
-              style: TextStyle(
+            Text(
+              l.t('prov_bal_bro_earnings_note'),
+              style: const TextStyle(
                 color: Colors.white60,
                 fontSize: 12,
                 fontStyle: FontStyle.italic,
@@ -222,20 +226,21 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
   }
 
   Widget _buildStatsCard(ProviderBalance balance) {
+    final l = AppLocalizations.of(context)!;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
             _buildStatRow(
-              'Total Ganho',
+              l.t('prov_bal_total_earned'),
               '${_formatSats(balance.totalEarnedSats)} sats',
               Icons.trending_up,
               Colors.green,
             ),
             const Divider(),
             _buildStatRow(
-              'Transações',
+              l.t('prov_bal_transactions'),
               balance.transactions.length.toString(),
               Icons.receipt_long,
               Colors.blue,
@@ -272,6 +277,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
   }
 
   Widget _buildWithdrawButtons(BuildContext context, double availableBalance) {
+    final l = AppLocalizations.of(context)!;
     final hasBalance = availableBalance > 0;
 
     return Row(
@@ -280,7 +286,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
           child: ElevatedButton.icon(
             onPressed: hasBalance ? () => _showWithdrawLightningDialog(context) : null,
             icon: const Icon(Icons.flash_on),
-            label: const Text('Sacar Lightning'),
+            label: Text(l.t('prov_bal_withdraw_ln')),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.orange,
               foregroundColor: Colors.white,
@@ -293,7 +299,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
           child: ElevatedButton.icon(
             onPressed: hasBalance ? () => _showWithdrawOnchainDialog(context) : null,
             icon: const Icon(Icons.currency_bitcoin),
-            label: const Text('Sacar Onchain'),
+            label: Text(l.t('prov_bal_withdraw_onchain')),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.deepOrange,
               foregroundColor: Colors.white,
@@ -306,6 +312,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
   }
 
   Widget _buildTransactionHistory(List<BalanceTransaction> transactions) {
+    final l = AppLocalizations.of(context)!;
     if (transactions.isEmpty) {
       return Card(
         child: Padding(
@@ -319,7 +326,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
               ),
               const SizedBox(height: 16),
               Text(
-                'Nenhuma transação ainda',
+                l.t('prov_bal_no_tx'),
                 style: TextStyle(
                   color: Colors.grey[600],
                   fontSize: 16,
@@ -334,9 +341,9 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Histórico',
-          style: TextStyle(
+        Text(
+          l.t('prov_bal_history'),
+          style: const TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
           ),
@@ -348,6 +355,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
   }
 
   Widget _buildTransactionCard(BalanceTransaction tx) {
+    final l = AppLocalizations.of(context)!;
     final isEarning = tx.type == 'earning';
     final isWithdrawal = tx.type.startsWith('withdrawal_');
     
@@ -358,15 +366,15 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
     if (isEarning) {
       icon = Icons.add_circle;
       color = Colors.green;
-      typeLabel = 'Ganho';
+      typeLabel = l.t('prov_bal_type_earning');
     } else if (tx.type == 'withdrawal_lightning') {
       icon = Icons.flash_on;
       color = Colors.orange;
-      typeLabel = 'Saque Lightning';
+      typeLabel = l.t('prov_bal_type_withdraw_ln');
     } else if (tx.type == 'withdrawal_onchain') {
       icon = Icons.currency_bitcoin;
       color = Colors.deepOrange;
-      typeLabel = 'Saque Onchain';
+      typeLabel = l.t('prov_bal_type_withdraw_onchain');
     } else {
       icon = Icons.remove_circle;
       color = Colors.red;
@@ -423,24 +431,25 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
   }
 
   void _showTransactionDetails(BalanceTransaction tx) {
+    final l = AppLocalizations.of(context)!;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Detalhes da Transação'),
+        title: Text(l.t('prov_bal_tx_details')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildDetailRow('Tipo', tx.type),
-            _buildDetailRow('Valor', '${tx.amountSats} sats'),
-            _buildDetailRow('Data/Hora', _formatDateTimeFull(tx.createdAt)),
+            _buildDetailRow(l.t('prov_bal_type_label'), tx.type),
+            _buildDetailRow(l.t('prov_bal_amount_label'), '${tx.amountSats} sats'),
+            _buildDetailRow(l.t('prov_bal_datetime_label'), _formatDateTimeFull(tx.createdAt)),
             if (tx.orderDescription != null)
-              _buildDetailRow('Descrição', tx.orderDescription!),
+              _buildDetailRow(l.t('prov_bal_description_label'), tx.orderDescription!),
             if (tx.txHash != null) ...[
               const SizedBox(height: 8),
-              const Text(
-                'Transaction Hash:',
-                style: TextStyle(fontWeight: FontWeight.bold),
+              Text(
+                l.t('prov_bal_tx_hash_label'),
+                style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 4),
               SelectableText(
@@ -453,9 +462,9 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
             ],
             if (tx.invoice != null) ...[
               const SizedBox(height: 8),
-              const Text(
-                'Lightning Invoice:',
-                style: TextStyle(fontWeight: FontWeight.bold),
+              Text(
+                l.t('prov_bal_ln_invoice_label'),
+                style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 4),
               SelectableText(
@@ -475,15 +484,15 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
               onPressed: () {
                 Clipboard.setData(ClipboardData(text: tx.txHash!));
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Hash copiado!')),
+                  SnackBar(content: Text(l.t('prov_bal_hash_copied'))),
                 );
               },
               icon: const Icon(Icons.copy),
-              label: const Text('Copiar Hash'),
+              label: Text(l.t('prov_bal_copy_hash')),
             ),
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Fechar'),
+            child: Text(l.t('close')),
           ),
         ],
       ),
@@ -512,6 +521,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
   }
 
   void _showWithdrawLightningDialog(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final balanceProvider = context.read<ProviderBalanceProvider>();
     final availableBalance = balanceProvider.balance?.availableBalanceSats ?? 0;
     final amountController = TextEditingController();
@@ -520,22 +530,22 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.flash_on, color: Colors.orange),
-            SizedBox(width: 8),
-            Text('Saque Lightning'),
+            const Icon(Icons.flash_on, color: Colors.orange),
+            const SizedBox(width: 8),
+            Text(l.t('prov_bal_type_withdraw_ln')),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Saldo disponível: ${_formatSats(availableBalance)} sats'),
+            Text(l.tp('prov_bal_available_balance', {'balance': _formatSats(availableBalance)})),
             const SizedBox(height: 16),
             TextField(
               controller: amountController,
               decoration: InputDecoration(
-                labelText: 'Valor (sats)',
+                labelText: l.t('prov_bal_amount_sats'),
                 hintText: 'Ex: ${availableBalance ~/ 2}',
                 border: const OutlineInputBorder(),
               ),
@@ -544,8 +554,8 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
             const SizedBox(height: 16),
             TextField(
               controller: invoiceController,
-              decoration: const InputDecoration(
-                labelText: 'Lightning Invoice',
+              decoration: InputDecoration(
+                labelText: l.t('prov_bal_ln_invoice'),
                 hintText: 'lnbc...',
                 border: OutlineInputBorder(),
               ),
@@ -556,7 +566,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
+            child: Text(l.t('cancel')),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -565,21 +575,21 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
 
               if (amount == null || amount <= 0) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Valor inválido')),
+                  SnackBar(content: Text(l.t('prov_bal_invalid_amount'))),
                 );
                 return;
               }
 
               if (amount > availableBalance) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Saldo insuficiente')),
+                  SnackBar(content: Text(l.t('prov_bal_insufficient'))),
                 );
                 return;
               }
 
               if (invoice.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Informe a invoice')),
+                  SnackBar(content: Text(l.t('prov_bal_enter_invoice'))),
                 );
                 return;
               }
@@ -594,8 +604,8 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
 
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('✅ Saque realizado!'),
+                    SnackBar(
+                      content: Text(l.t('prov_bal_withdraw_success')),
                       backgroundColor: Colors.green,
                     ),
                   );
@@ -614,7 +624,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.orange,
             ),
-            child: const Text('Sacar'),
+            child: Text(l.t('prov_bal_withdraw')),
           ),
         ],
       ),
@@ -622,6 +632,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
   }
 
   void _showWithdrawOnchainDialog(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final balanceProvider = context.read<ProviderBalanceProvider>();
     final availableBalance = balanceProvider.balance?.availableBalanceSats ?? 0;
     final amountController = TextEditingController();
@@ -630,22 +641,22 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.currency_bitcoin, color: Colors.deepOrange),
-            SizedBox(width: 8),
-            Text('Saque Onchain'),
+            const Icon(Icons.currency_bitcoin, color: Colors.deepOrange),
+            const SizedBox(width: 8),
+            Text(l.t('prov_bal_type_withdraw_onchain')),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Saldo disponível: ${_formatSats(availableBalance)} sats'),
+            Text(l.tp('prov_bal_available_balance', {'balance': _formatSats(availableBalance)})),
             const SizedBox(height: 16),
             TextField(
               controller: amountController,
               decoration: InputDecoration(
-                labelText: 'Valor (sats)',
+                labelText: l.t('prov_bal_amount_sats'),
                 hintText: 'Ex: ${availableBalance ~/ 2}',
                 border: const OutlineInputBorder(),
               ),
@@ -654,24 +665,24 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
             const SizedBox(height: 16),
             TextField(
               controller: addressController,
-              decoration: const InputDecoration(
-                labelText: 'Endereço Bitcoin',
+              decoration: InputDecoration(
+                labelText: l.t('prov_bal_btc_address'),
                 hintText: 'bc1...',
                 border: OutlineInputBorder(),
               ),
               maxLines: 2,
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Taxa de rede: ~1000 sats',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
+            Text(
+              l.t('prov_bal_network_fee'),
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
+            child: Text(l.t('cancel')),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -680,21 +691,21 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
 
               if (amount == null || amount <= 0) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Valor inválido')),
+                  SnackBar(content: Text(l.t('prov_bal_invalid_amount'))),
                 );
                 return;
               }
 
               if (amount > availableBalance) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Saldo insuficiente')),
+                  SnackBar(content: Text(l.t('prov_bal_insufficient'))),
                 );
                 return;
               }
 
               if (address.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Informe o endereço')),
+                  SnackBar(content: Text(l.t('prov_bal_enter_address'))),
                 );
                 return;
               }
@@ -709,8 +720,8 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
 
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('✅ Saque enviado!'),
+                    SnackBar(
+                      content: Text(l.t('prov_bal_withdraw_sent')),
                       backgroundColor: Colors.green,
                     ),
                   );
@@ -729,7 +740,7 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.deepOrange,
             ),
-            child: const Text('Sacar'),
+            child: Text(l.t('prov_bal_withdraw')),
           ),
         ],
       ),
@@ -754,21 +765,23 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
   }
 
   String _formatDate(DateTime date) {
+    final l = AppLocalizations.of(context)!;
     final now = DateTime.now();
     final difference = now.difference(date);
 
     if (difference.inDays == 0) {
-      return 'Hoje às ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+      return l.tp('prov_bal_today_at', {'time': '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}'});
     } else if (difference.inDays == 1) {
-      return 'Ontem';
+      return l.t('prov_bal_yesterday');
     } else if (difference.inDays < 7) {
-      return '${difference.inDays} dias atrás';
+      return l.tp('prov_bal_days_ago', {'days': difference.inDays.toString()});
     } else {
       return '${date.day}/${date.month}/${date.year}';
     }
   }
 
   String _formatDateTimeFull(DateTime date) {
+    final l = AppLocalizations.of(context)!;
     final day = date.day.toString().padLeft(2, '0');
     final month = date.month.toString().padLeft(2, '0');
     final year = date.year;
@@ -776,6 +789,6 @@ class _ProviderBalanceScreenState extends State<ProviderBalanceScreen> {
     final minute = date.minute.toString().padLeft(2, '0');
     final second = date.second.toString().padLeft(2, '0');
     
-    return '$day/$month/$year às $hour:$minute:$second';
+    return l.tp('prov_bal_datetime_full', {'date': '$day/$month/$year', 'time': '$hour:$minute:$second'});
   }
 }

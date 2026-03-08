@@ -15,6 +15,7 @@ import '../services/chat_service.dart';
 import 'marketplace_chat_screen.dart';
 import 'nostr_conversations_screen.dart';
 import 'offer_screen.dart';
+import '../l10n/app_localizations.dart';
 
 /// Tela do Marketplace para ver ofertas publicadas no Nostr
 /// Utiliza NIP-15 (kind 30019) para listagem de classificados
@@ -163,8 +164,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
     return [
       MarketplaceOffer(
         id: '1',
-        title: 'Consultoria em Bitcoin',
-        description: 'Ofereço consultoria personalizada sobre Bitcoin, carteiras, segurança e DCA. 1 hora de call.',
+        title: AppLocalizations.of(context).t('market_sample_title_1'),
+        description: AppLocalizations.of(context).t('market_sample_desc_1'),
         priceSats: 50000,
         priceDiscount: 0,
         category: 'servicos',
@@ -174,8 +175,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
       ),
       MarketplaceOffer(
         id: '2',
-        title: 'Hardware Wallet Coldcard',
-        description: 'Coldcard MK4 nova lacrada. Melhor segurança para suas chaves Bitcoin.',
+        title: AppLocalizations.of(context).t('market_sample_title_2'),
+        description: AppLocalizations.of(context).t('market_sample_desc_2'),
         priceSats: 200000,
         priceDiscount: 0,
         category: 'produtos',
@@ -192,7 +193,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
         backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('Marketplace'),
+        title: Text(AppLocalizations.of(context).t('market_title')),
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
@@ -202,7 +203,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                 MaterialPageRoute(builder: (_) => const OfferScreen()),
               ).then((_) => _loadOffers());
             },
-            tooltip: 'Criar Oferta',
+            tooltip: AppLocalizations.of(context).t('market_create_offer'),
           ),
         ],
         bottom: TabBar(
@@ -210,9 +211,9 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
           indicatorColor: Colors.orange,
           labelColor: Colors.orange,
           unselectedLabelColor: Colors.white60,
-          tabs: const [
-            Tab(text: 'Ofertas', icon: Icon(Icons.storefront)),
-            Tab(text: 'Minhas Ofertas', icon: Icon(Icons.sell)),
+          tabs: [
+            Tab(text: AppLocalizations.of(context).t('market_tab_offers'), icon: const Icon(Icons.storefront)),
+            Tab(text: AppLocalizations.of(context).t('market_tab_my_offers'), icon: const Icon(Icons.sell)),
           ],
         ),
       ),
@@ -262,11 +263,10 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
         children: [
           const Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 20),
           const SizedBox(width: 8),
-          const Expanded(
+          Expanded(
             child: Text(
-              'O Bro não se responsabiliza e nem tem ingerência nos anúncios publicados. '
-              'Verifique a procedência e reputação de produtos e serviços antes de qualquer negociação P2P.',
-              style: TextStyle(
+              AppLocalizations.of(context).t('market_disclaimer_full'),
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 11,
                 height: 1.3,
@@ -292,8 +292,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
   Widget _buildOffersTab() {
     if (_offers.isEmpty) {
       return _buildEmptyView(
-        'Nenhuma oferta encontrada',
-        'Seja o primeiro a publicar uma oferta no marketplace!',
+        AppLocalizations.of(context).t('market_no_offers'),
+        AppLocalizations.of(context).t('market_be_first'),
         Icons.storefront_outlined,
       );
     }
@@ -318,8 +318,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
   Widget _buildMyOffersTab() {
     if (_myOffers.isEmpty) {
       return _buildEmptyView(
-        'Você não tem ofertas',
-        'Crie uma oferta de produto ou serviço!',
+        AppLocalizations.of(context).t('market_no_my_offers'),
+        AppLocalizations.of(context).t('market_create_offer_cta'),
         Icons.sell_outlined,
       );
     }
@@ -346,7 +346,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
   // ============================================
 
   Widget _buildOfferCardGrid(MarketplaceOffer offer, {bool isMine = false}) {
-    final categoryInfo = _getCategoryInfo(offer.category);
+    final categoryInfo = _getCategoryInfo(offer.category, ctx: context);
     final priceInBrl = offer.priceSats > 0 && _btcPrice > 0
         ? (offer.priceSats / 100000000) * _btcPrice
         : 0.0;
@@ -406,9 +406,9 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                                 borderRadius: BorderRadius.circular(3),
                                 border: Border.all(color: Colors.orange, width: 0.5),
                               ),
-                              child: const Text(
-                                'MINHA',
-                                style: TextStyle(color: Colors.orange, fontSize: 7, fontWeight: FontWeight.bold),
+                              child: Text(
+                                AppLocalizations.of(context).t('market_mine_badge'),
+                                style: const TextStyle(color: Colors.orange, fontSize: 7, fontWeight: FontWeight.bold),
                               ),
                             ),
                           Expanded(
@@ -465,16 +465,16 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                             maxLines: 1,
                           ),
                       ] else
-                        const Text(
-                          'Sob consulta',
-                          style: TextStyle(color: Colors.white38, fontSize: 9),
+                        Text(
+                          AppLocalizations.of(context).t('market_price_on_request'),
+                          style: const TextStyle(color: Colors.white38, fontSize: 9),
                         ),
                       // Estoque
                       if (offer.quantity > 0)
                         Padding(
                           padding: const EdgeInsets.only(top: 2),
                           child: Text(
-                            offer.isOutOfStock ? 'ESGOTADO' : '${offer.remaining} un.',
+                            offer.isOutOfStock ? AppLocalizations.of(context).t('market_out_of_stock') : '${offer.remaining} un.',
                             style: TextStyle(
                               color: offer.isOutOfStock ? Colors.red : Colors.blue.shade300,
                               fontSize: 8,
@@ -510,14 +510,14 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: Colors.white12),
         ),
-        child: const Row(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.star_border, size: 14, color: Colors.white38),
-            SizedBox(width: 4),
+            const Icon(Icons.star_border, size: 14, color: Colors.white38),
+            const SizedBox(width: 4),
             Text(
-              'Sem avaliações ainda',
-              style: TextStyle(fontSize: 11, color: Colors.white38),
+              AppLocalizations.of(context).t('market_no_reviews'),
+              style: const TextStyle(fontSize: 11, color: Colors.white38),
             ),
           ],
         ),
@@ -540,7 +540,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
           Icon(Icons.star, size: 14, color: color),
           const SizedBox(width: 4),
           Text(
-            'Atend: ${_ratingEmoji(avgAtend)} • Produto: ${_ratingEmoji(avgProd)} • $total avaliações',
+            AppLocalizations.of(context).tp('market_reputation_summary', {'atend': _ratingEmoji(avgAtend), 'produto': _ratingEmoji(avgProd), 'total': total.toString()}),
             style: TextStyle(
               fontSize: 11,
               color: color,
@@ -568,7 +568,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
   // ============================================
 
   void _showOfferDetail(MarketplaceOffer offer) {
-    final categoryInfo = _getCategoryInfo(offer.category);
+    final categoryInfo = _getCategoryInfo(offer.category, ctx: context);
     final priceInBrl = offer.priceSats > 0 && _btcPrice > 0
         ? (offer.priceSats / 100000000) * _btcPrice
         : 0.0;
@@ -628,7 +628,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                   padding: const EdgeInsets.only(top: 8),
                   child: Center(
                     child: Text(
-                      '${offer.photoBase64List.length} fotos — deslize para ver',
+                      AppLocalizations.of(context).tp('market_photos_swipe', {'count': offer.photoBase64List.length.toString()}),
                       style: const TextStyle(color: Colors.white38, fontSize: 11),
                     ),
                   ),
@@ -672,13 +672,13 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
             const SizedBox(height: 4),
             // v248: ID do anúncio
             Text(
-              'Anúncio #$shortId',
+              AppLocalizations.of(context).tp('market_listing_id', {'id': shortId}),
               style: const TextStyle(color: Colors.white38, fontSize: 12, fontFamily: 'monospace'),
             ),
             const SizedBox(height: 16),
             
             // Descrição
-            const Text('Descrição', style: TextStyle(color: Colors.white54, fontSize: 12)),
+            Text(AppLocalizations.of(context).t('market_description'), style: const TextStyle(color: Colors.white54, fontSize: 12)),
             const SizedBox(height: 4),
             Text(
               offer.description,
@@ -751,8 +751,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                       children: [
                         Text(
                           offer.isOutOfStock
-                              ? 'ESGOTADO'
-                              : '${offer.remaining} unidades disponíveis',
+                              ? AppLocalizations.of(context).t('market_out_of_stock')
+                              : AppLocalizations.of(context).tp('market_units_available', {'count': offer.remaining.toString()}),
                           style: TextStyle(
                             color: offer.isOutOfStock ? Colors.red : Colors.blue,
                             fontSize: 16,
@@ -760,7 +760,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                           ),
                         ),
                         Text(
-                          '${offer.sold} de ${offer.quantity} vendidos',
+                          AppLocalizations.of(context).tp('market_sold_of', {'sold': offer.sold.toString(), 'total': offer.quantity.toString()}),
                           style: const TextStyle(color: Colors.white54, fontSize: 12),
                         ),
                       ],
@@ -792,7 +792,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Site ou Referências', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                          Text(AppLocalizations.of(context).t('market_site_references'), style: const TextStyle(color: Colors.white54, fontSize: 12)),
                           const SizedBox(height: 4),
                           Text(
                             offer.siteUrl!,
@@ -805,7 +805,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                       onPressed: () {
                         Clipboard.setData(ClipboardData(text: offer.siteUrl!));
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Link copiado!')),
+                          SnackBar(content: Text(AppLocalizations.of(context).t('market_link_copied'))),
                         );
                       },
                       icon: const Icon(Icons.copy, color: Colors.blue),
@@ -857,7 +857,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: offer.sellerPubkey));
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Pubkey copiada!')),
+                        SnackBar(content: Text(AppLocalizations.of(context).t('market_pubkey_copied'))),
                       );
                     },
                     icon: const Icon(Icons.copy, color: Colors.white54),
@@ -875,15 +875,14 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Colors.red.withOpacity(0.2)),
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  Icon(Icons.info_outline, color: Colors.redAccent, size: 16),
-                  SizedBox(width: 8),
+                  const Icon(Icons.info_outline, color: Colors.redAccent, size: 16),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'O Bro não se responsabiliza e nem tem ingerência nos anúncios publicados. '
-                      'Verifique a procedência e reputação de produtos e serviços antes de qualquer negociação P2P.',
-                      style: TextStyle(color: Colors.redAccent, fontSize: 11, height: 1.3),
+                      AppLocalizations.of(context).t('market_disclaimer_full'),
+                      style: const TextStyle(color: Colors.redAccent, fontSize: 11, height: 1.3),
                     ),
                   ),
                 ],
@@ -902,7 +901,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                     _showOfferMessages(offer);
                   },
                   icon: const Icon(Icons.message),
-                  label: const Text('Ver Mensagens de Interessados'),
+                  label: Text(AppLocalizations.of(context).t('market_view_messages')),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.orange,
                     padding: const EdgeInsets.symmetric(vertical: 14),
@@ -914,13 +913,13 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   onPressed: () {
-                    Clipboard.setData(ClipboardData(text: 'Anúncio #$shortId'));
+                    Clipboard.setData(ClipboardData(text: AppLocalizations.of(context).tp('market_listing_id', {'id': shortId})));
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('ID #$shortId copiado!')),
+                      SnackBar(content: Text(AppLocalizations.of(context).tp('market_id_copied', {'id': shortId}))),
                     );
                   },
                   icon: const Icon(Icons.copy, color: Colors.white54, size: 18),
-                  label: Text('Copiar ID #$shortId', style: const TextStyle(color: Colors.white54)),
+                  label: Text(AppLocalizations.of(context).tp('market_copy_id', {'id': shortId}), style: const TextStyle(color: Colors.white54)),
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: Colors.white24),
                     padding: const EdgeInsets.symmetric(vertical: 12),
@@ -934,7 +933,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                 child: OutlinedButton.icon(
                   onPressed: () => _confirmDeleteOffer(offer),
                   icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
-                  label: const Text('Excluir Oferta', style: TextStyle(color: Colors.redAccent)),
+                  label: Text(AppLocalizations.of(context).t('market_delete_offer'), style: const TextStyle(color: Colors.redAccent)),
                   style: OutlinedButton.styleFrom(
                     side: BorderSide(color: Colors.redAccent.withOpacity(0.5)),
                     padding: const EdgeInsets.symmetric(vertical: 12),
@@ -951,7 +950,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                   _contactSeller(offer);
                 },
                 icon: const Icon(Icons.message),
-                label: const Text('Entrar em Contato'),
+                label: Text(AppLocalizations.of(context).t('market_contact')),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.orange,
                   padding: const EdgeInsets.symmetric(vertical: 14),
@@ -970,7 +969,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                     _showPaymentFlow(offer);
                   },
                   icon: const Icon(Icons.bolt, color: Colors.black),
-                  label: const Text('Pagar com Lightning', style: TextStyle(color: Colors.black)),
+                  label: Text(AppLocalizations.of(context).t('market_pay_lightning'), style: const TextStyle(color: Colors.black)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.amber,
                     padding: const EdgeInsets.symmetric(vertical: 14),
@@ -988,7 +987,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                   _showReviewDialog(offer);
                 },
                 icon: const Icon(Icons.star_border, color: Colors.amber),
-                label: const Text('Avaliar Vendedor', style: TextStyle(color: Colors.amber)),
+                label: Text(AppLocalizations.of(context).t('market_rate_seller'), style: const TextStyle(color: Colors.amber)),
                 style: OutlinedButton.styleFrom(
                   side: const BorderSide(color: Colors.amber),
                   padding: const EdgeInsets.symmetric(vertical: 14),
@@ -1004,18 +1003,21 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                 Expanded(
                   child: TextButton.icon(
                     onPressed: () {
+                      final l = AppLocalizations.of(context);
                       Clipboard.setData(ClipboardData(
-                        text: 'Oferta: ${offer.title}\n'
-                              'Preço: ${_formatSats(offer.priceSats)} sats\n'
-                              'Vendedor: ${offer.sellerName}\n'
-                              'Pubkey: ${offer.sellerPubkey}${offer.siteUrl != null ? '\nSite: ${offer.siteUrl}' : ''}',
+                        text: l.tp('market_share_text', {
+                          'title': offer.title,
+                          'price': _formatSats(offer.priceSats),
+                          'seller': offer.sellerName,
+                          'pubkey': offer.sellerPubkey,
+                        }) + (offer.siteUrl != null ? l.tp('market_share_text_site', {'site': offer.siteUrl!}) : ''),
                       ));
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Oferta copiada!')),
+                        SnackBar(content: Text(l.t('market_offer_copied'))),
                       );
                     },
                     icon: const Icon(Icons.share, size: 16),
-                    label: const Text('Compartilhar'),
+                    label: Text(AppLocalizations.of(context).t('market_share')),
                     style: TextButton.styleFrom(foregroundColor: Colors.white70),
                   ),
                 ),
@@ -1023,7 +1025,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                   child: TextButton.icon(
                     onPressed: () => _showReportDialog(offer),
                     icon: const Icon(Icons.flag_outlined, color: Colors.red, size: 16),
-                    label: const Text('Reportar', style: TextStyle(color: Colors.red)),
+                    label: Text(AppLocalizations.of(context).t('market_report'), style: const TextStyle(color: Colors.red)),
                   ),
                 ),
               ],
@@ -1060,7 +1062,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
               const Icon(Icons.star, color: Colors.amber, size: 20),
               const SizedBox(width: 8),
               Text(
-                'Reputação do Vendedor',
+                AppLocalizations.of(context).t('market_seller_reputation'),
                 style: TextStyle(
                   color: Colors.amber.shade300,
                   fontSize: 14,
@@ -1069,7 +1071,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
               ),
               const Spacer(),
               Text(
-                '$total avaliações',
+                AppLocalizations.of(context).tp('market_reviews_count', {'total': total.toString()}),
                 style: const TextStyle(color: Colors.white38, fontSize: 12),
               ),
             ],
@@ -1079,19 +1081,19 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
             Row(
               children: [
                 Expanded(
-                  child: _buildRatingBar('Atendimento', avgAtend),
+                  child: _buildRatingBar(AppLocalizations.of(context).t('market_service_rating'), avgAtend),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: _buildRatingBar('Produto', avgProd),
+                  child: _buildRatingBar(AppLocalizations.of(context).t('market_product_rating'), avgProd),
                 ),
               ],
             ),
           ] else ...[
             const SizedBox(height: 8),
-            const Text(
-              'Nenhuma avaliação ainda. Seja o primeiro!',
-              style: TextStyle(color: Colors.white38, fontSize: 12),
+            Text(
+              AppLocalizations.of(context).t('market_no_reviews_be_first'),
+              style: const TextStyle(color: Colors.white38, fontSize: 12),
             ),
           ],
         ],
@@ -1147,13 +1149,13 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.map, color: Colors.green, size: 20),
-              SizedBox(width: 8),
+              const Icon(Icons.map, color: Colors.green, size: 20),
+              const SizedBox(width: 8),
               Text(
-                'BTCMap — Encontre no Mapa',
-                style: TextStyle(
+                AppLocalizations.of(context).t('market_btcmap_title'),
+                style: const TextStyle(
                   color: Colors.green,
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
@@ -1164,8 +1166,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
           const SizedBox(height: 8),
           Text(
             hasCity
-                ? 'Veja comerciantes Bitcoin perto de $cleanCity'
-                : 'Veja o mapa global de comerciantes Bitcoin',
+                ? AppLocalizations.of(context).tp('market_btcmap_near', {'city': cleanCity})
+                : AppLocalizations.of(context).t('market_btcmap_global'),
             style: const TextStyle(color: Colors.white54, fontSize: 12),
           ),
           const SizedBox(height: 10),
@@ -1175,7 +1177,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
               onPressed: () => _openBtcMap(cleanCity),
               icon: const Icon(Icons.open_in_new, size: 16, color: Colors.green),
               label: Text(
-                hasCity ? 'Ver $cleanCity no BTCMap' : 'Abrir BTCMap',
+                hasCity ? AppLocalizations.of(context).tp('market_btcmap_view_city', {'city': cleanCity}) : AppLocalizations.of(context).t('market_btcmap_open'),
                 style: const TextStyle(color: Colors.green),
               ),
               style: OutlinedButton.styleFrom(
@@ -1207,7 +1209,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao abrir BTCMap: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text(AppLocalizations.of(context).tp('market_btcmap_error', {'error': e.toString()})), backgroundColor: Colors.red),
         );
       }
     }
@@ -1229,12 +1231,12 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
         builder: (dialogContext, setDialogState) => AlertDialog(
           backgroundColor: const Color(0xFF1A1A1A),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.star, color: Colors.amber),
-              SizedBox(width: 8),
+              const Icon(Icons.star, color: Colors.amber),
+              const SizedBox(width: 8),
               Expanded(
-                child: Text('Avaliar Vendedor', style: TextStyle(color: Colors.white, fontSize: 18)),
+                child: Text(AppLocalizations.of(context).t('market_rate_seller_title'), style: const TextStyle(color: Colors.white, fontSize: 18)),
               ),
             ],
           ),
@@ -1249,19 +1251,21 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                 ),
                 const SizedBox(height: 20),
                 
-                const Text('Atendimento:', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                Text(AppLocalizations.of(context).t('market_rating_service'), style: const TextStyle(color: Colors.white70, fontSize: 14)),
                 const SizedBox(height: 8),
                 _buildRatingSelector(
                   value: ratingAtendimento,
                   onChanged: (v) => setDialogState(() => ratingAtendimento = v),
+                  ctx: context,
                 ),
                 const SizedBox(height: 16),
                 
-                const Text('Produto/Serviço:', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                Text(AppLocalizations.of(context).t('market_rating_product'), style: const TextStyle(color: Colors.white70, fontSize: 14)),
                 const SizedBox(height: 8),
                 _buildRatingSelector(
                   value: ratingProduto,
                   onChanged: (v) => setDialogState(() => ratingProduto = v),
+                  ctx: context,
                 ),
                 const SizedBox(height: 16),
                 
@@ -1270,7 +1274,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                   style: const TextStyle(color: Colors.white),
                   maxLines: 2,
                   decoration: InputDecoration(
-                    hintText: 'Comentário (opcional)',
+                    hintText: AppLocalizations.of(context).t('market_comment_hint'),
                     hintStyle: const TextStyle(color: Colors.white38),
                     filled: true,
                     fillColor: const Color(0xFF2E2E2E),
@@ -1286,21 +1290,21 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
+              child: Text(AppLocalizations.of(context).t('cancel'), style: const TextStyle(color: Colors.white54)),
             ),
             ElevatedButton.icon(
               onPressed: () async {
                 Navigator.pop(dialogContext);
                 
                 scaffoldMessenger.showSnackBar(
-                  const SnackBar(content: Text('Publicando avaliação...')),
+                  SnackBar(content: Text(AppLocalizations.of(context).t('market_publishing_review'))),
                 );
                 
                 final nostrService = NostrService();
                 final privateKey = nostrService.privateKey;
                 if (privateKey == null) {
                   scaffoldMessenger.showSnackBar(
-                    const SnackBar(content: Text('Faça login para avaliar'), backgroundColor: Colors.red),
+                    SnackBar(content: Text(AppLocalizations.of(context).t('market_login_to_rate')), backgroundColor: Colors.red),
                   );
                   return;
                 }
@@ -1317,8 +1321,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                 scaffoldMessenger.showSnackBar(
                   SnackBar(
                     content: Text(success 
-                      ? '⭐ Avaliação publicada com sucesso!'
-                      : '❌ Falha ao publicar avaliação'),
+                      ? AppLocalizations.of(context).t('market_review_published')
+                      : AppLocalizations.of(context).t('market_review_failed')),
                     backgroundColor: success ? Colors.green : Colors.red,
                   ),
                 );
@@ -1329,7 +1333,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                 }
               },
               icon: const Icon(Icons.send),
-              label: const Text('Publicar'),
+              label: Text(AppLocalizations.of(context).t('market_publish')),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
             ),
           ],
@@ -1338,11 +1342,12 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
     );
   }
 
-  Widget _buildRatingSelector({required int value, required ValueChanged<int> onChanged}) {
-    const options = [
-      {'value': 3, 'label': '👍 Bom', 'color': Colors.green},
-      {'value': 2, 'label': '👌 Médio', 'color': Colors.orange},
-      {'value': 1, 'label': '👎 Ruim', 'color': Colors.red},
+  Widget _buildRatingSelector({required int value, required ValueChanged<int> onChanged, BuildContext? ctx}) {
+    final effectiveCtx = ctx ?? this.context;
+    final options = [
+      {'value': 3, 'label': AppLocalizations.of(effectiveCtx).t('market_rating_good'), 'color': Colors.green},
+      {'value': 2, 'label': AppLocalizations.of(effectiveCtx).t('market_rating_medium'), 'color': Colors.orange},
+      {'value': 1, 'label': AppLocalizations.of(effectiveCtx).t('market_rating_bad'), 'color': Colors.red},
     ];
     
     return Row(
@@ -1425,9 +1430,9 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                 
                 const Icon(Icons.bolt, color: Colors.amber, size: 48),
                 const SizedBox(height: 12),
-                const Text(
-                  'Pagamento Lightning',
-                  style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                Text(
+                  AppLocalizations.of(context).t('market_payment_lightning'),
+                  style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 16),
                 
@@ -1440,11 +1445,11 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                   ),
                   child: Column(
                     children: [
-                      _buildPaymentRow('Produto', offer.title),
+                      _buildPaymentRow(AppLocalizations.of(context).t('market_product'), offer.title),
                       const Divider(color: Colors.white12),
-                      _buildPaymentRow('Vendedor', offer.sellerName),
+                      _buildPaymentRow(AppLocalizations.of(context).t('market_seller'), offer.sellerName),
                       const Divider(color: Colors.white12),
-                      _buildPaymentRow('Valor', '${_formatSats(offer.priceSats)} sats'),
+                      _buildPaymentRow(AppLocalizations.of(context).t('market_payment_value'), '${_formatSats(offer.priceSats)} sats'),
                       if (priceInBrl > 0) ...[
                         const Divider(color: Colors.white12),
                         _buildPaymentRow('≈ BRL', 'R\$ ${priceInBrl.toStringAsFixed(2)}'),
@@ -1462,27 +1467,24 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: Colors.green.withOpacity(0.3)),
                   ),
-                  child: const Column(
+                  child: Column(
                     children: [
                       Row(
                         children: [
-                          Icon(Icons.bolt, color: Colors.green, size: 16),
-                          SizedBox(width: 8),
+                          const Icon(Icons.bolt, color: Colors.green, size: 16),
+                          const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              'Pagamento automático:',
-                              style: TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold),
+                              AppLocalizations.of(context).t('market_auto_payment'),
+                              style: const TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold),
                             ),
                           ),
                         ],
                       ),
-                      SizedBox(height: 8),
+                      const SizedBox(height: 8),
                       Text(
-                        '1. Clique em "Comprar" → pedido enviado ao vendedor\n'
-                        '2. O vendedor gera a invoice com 1 clique\n'
-                        '3. Você recebe e paga com 1 clique\n'
-                        '4. Tudo dentro do Bro, sem sair do app!',
-                        style: TextStyle(color: Colors.white54, fontSize: 12, height: 1.5),
+                        AppLocalizations.of(context).t('market_auto_payment_steps'),
+                        style: const TextStyle(color: Colors.white54, fontSize: 12, height: 1.5),
                       ),
                     ],
                   ),
@@ -1497,14 +1499,14 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: Colors.red.withOpacity(0.2)),
                   ),
-                  child: const Row(
+                  child: Row(
                     children: [
-                      Icon(Icons.warning_amber, color: Colors.redAccent, size: 16),
-                      SizedBox(width: 8),
+                      const Icon(Icons.warning_amber, color: Colors.redAccent, size: 16),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Pagamentos Lightning são irreversíveis. Só pague após confirmar a procedência do vendedor.',
-                          style: TextStyle(color: Colors.redAccent, fontSize: 11),
+                          AppLocalizations.of(context).t('market_lightning_irreversible'),
+                          style: const TextStyle(color: Colors.redAccent, fontSize: 11),
                         ),
                       ),
                     ],
@@ -1521,7 +1523,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                       _startPaymentChat(offer);
                     },
                     icon: const Icon(Icons.shopping_cart),
-                    label: const Text('Comprar'),
+                    label: Text(AppLocalizations.of(context).t('market_buy')),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange,
                       padding: const EdgeInsets.symmetric(vertical: 14),
@@ -1540,7 +1542,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                       _contactSeller(offer);
                     },
                     icon: const Icon(Icons.chat_bubble_outline, size: 18),
-                    label: const Text('Apenas conversar'),
+                    label: Text(AppLocalizations.of(context).t('market_just_chat')),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.white54,
                       side: const BorderSide(color: Colors.white24),
@@ -1650,11 +1652,11 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
         builder: (dialogContext, setDialogState) => AlertDialog(
           backgroundColor: const Color(0xFF1A1A1A),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.flag, color: Colors.red),
-              SizedBox(width: 8),
-              Text('Reportar Oferta', style: TextStyle(color: Colors.white)),
+              const Icon(Icons.flag, color: Colors.red),
+              const SizedBox(width: 8),
+              Text(AppLocalizations.of(context).t('market_report_offer'), style: const TextStyle(color: Colors.white)),
             ],
           ),
           content: SingleChildScrollView(
@@ -1662,7 +1664,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Tipo de violação:', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                Text(AppLocalizations.of(context).t('market_violation_type'), style: const TextStyle(color: Colors.white70, fontSize: 14)),
                 const SizedBox(height: 8),
                 ...ContentModerationService.reportTypes.entries.map((entry) {
                   return RadioListTile<String>(
@@ -1679,7 +1681,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                   style: const TextStyle(color: Colors.white),
                   maxLines: 2,
                   decoration: InputDecoration(
-                    hintText: 'Motivo adicional (opcional)',
+                    hintText: AppLocalizations.of(context).t('market_report_reason_hint'),
                     hintStyle: const TextStyle(color: Colors.white38),
                     filled: true,
                     fillColor: const Color(0xFF2E2E2E),
@@ -1695,7 +1697,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
+              child: Text(AppLocalizations.of(context).t('cancel'), style: const TextStyle(color: Colors.white54)),
             ),
             ElevatedButton.icon(
               onPressed: () async {
@@ -1703,7 +1705,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                 navigator.pop();
                 
                 scaffoldMessenger.showSnackBar(
-                  const SnackBar(content: Text('Enviando report...')),
+                  SnackBar(content: Text(AppLocalizations.of(context).t('market_sending_report'))),
                 );
                 
                 final success = await _moderationService.reportContent(
@@ -1717,8 +1719,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                   scaffoldMessenger.showSnackBar(
                     SnackBar(
                       content: Text(success 
-                        ? '✅ Report enviado! Oferta ocultada.'
-                        : '❌ Oferta ocultada localmente (relay offline)'),
+                        ? AppLocalizations.of(context).t('market_report_sent')
+                        : AppLocalizations.of(context).t('market_report_local')),
                       backgroundColor: success ? Colors.green : Colors.orange,
                     ),
                   );
@@ -1726,7 +1728,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                 }
               },
               icon: const Icon(Icons.send),
-              label: const Text('Enviar Report'),
+              label: Text(AppLocalizations.of(context).t('market_submit_report')),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             ),
           ],
@@ -1763,7 +1765,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
                 ).then((_) => _loadOffers());
               },
               icon: const Icon(Icons.add),
-              label: const Text('Criar Oferta'),
+              label: Text(AppLocalizations.of(context).t('market_create_offer')),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
             ),
           ],
@@ -1782,14 +1784,14 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
             const Icon(Icons.error_outline, size: 64, color: Colors.red),
             const SizedBox(height: 16),
             Text(
-              'Erro: $_error',
+              AppLocalizations.of(context).tp('market_error_detail', {'error': _error ?? ''}),
               style: const TextStyle(color: Colors.white70),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: _loadData,
-              child: const Text('Tentar Novamente'),
+              child: Text(AppLocalizations.of(context).t('market_retry')),
             ),
           ],
         ),
@@ -1797,25 +1799,25 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
     );
   }
 
-  Map<String, dynamic> _getCategoryInfo(String category) {
+  Map<String, dynamic> _getCategoryInfo(String category, {BuildContext? ctx}) {
     switch (category) {
       case 'servico':
       case 'servicos':
         return {
-          'label': 'SERVIÇO',
+          'label': ctx != null ? AppLocalizations.of(ctx).t('market_service_label') : 'SERVIÇO',
           'icon': Icons.business_center,
           'color': Colors.orange,
         };
       case 'produto':
       case 'produtos':
         return {
-          'label': 'PRODUTO',
+          'label': ctx != null ? AppLocalizations.of(ctx).t('market_category_product') : 'PRODUTO',
           'icon': Icons.shopping_bag,
           'color': Colors.green,
         };
       default:
         return {
-          'label': 'OUTRO',
+          'label': ctx != null ? AppLocalizations.of(ctx).t('market_category_other') : 'OUTRO',
           'icon': Icons.category,
           'color': Colors.grey,
         };
@@ -1831,7 +1833,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
     return sats.toString();
   }
 
-  String _getTimeAgo(DateTime dateTime) {
+  String _getTimeAgo(DateTime dateTime, {BuildContext? context}) {
     final now = DateTime.now();
     final difference = now.difference(dateTime);
 
@@ -1842,7 +1844,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
     } else if (difference.inMinutes > 0) {
       return '${difference.inMinutes}min';
     } else {
-      return 'Agora';
+      return context != null ? AppLocalizations.of(context).t('market_now') : 'Agora';
     }
   }
 
@@ -1867,19 +1869,19 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('Excluir Oferta', style: TextStyle(color: Colors.white)),
+        title: Text(AppLocalizations.of(context).t('market_delete_offer'), style: const TextStyle(color: Colors.white)),
         content: Text(
-          'Tem certeza que deseja excluir a oferta "${offer.title}"?\n\nEssa ação não pode ser desfeita.',
+          AppLocalizations.of(context).tp('market_delete_confirm', {'title': offer.title}),
           style: const TextStyle(color: Colors.white70),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
+            child: Text(AppLocalizations.of(context).t('cancel')),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Excluir', style: TextStyle(color: Colors.redAccent)),
+            child: Text(AppLocalizations.of(context).t('market_delete'), style: const TextStyle(color: Colors.redAccent)),
           ),
         ],
       ),
@@ -1892,7 +1894,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
     final privateKey = _nostrService.privateKey;
     if (privateKey == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Erro: chave privada não encontrada')),
+        SnackBar(content: Text(AppLocalizations.of(context).t('market_private_key_error'))),
       );
       return;
     }
@@ -1912,12 +1914,12 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
           _isLoading = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ Oferta excluída com sucesso')),
+          SnackBar(content: Text(AppLocalizations.of(context).t('market_offer_deleted'))),
         );
       } else {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('❌ Erro ao excluir oferta')),
+          SnackBar(content: Text(AppLocalizations.of(context).t('market_offer_delete_error'))),
         );
       }
     }

@@ -15,6 +15,7 @@ import '../services/notification_service.dart';
 import '../services/bitcoin_price_service.dart';
 import '../models/collateral_tier.dart';
 import '../config.dart';
+import '../l10n/app_localizations.dart';
 import 'provider_order_detail_screen.dart';
 
 /// Helper para substring seguro - evita RangeError em strings curtas
@@ -136,7 +137,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
             orderMap['amount'] = o.amount;
             orderMap['payment_type'] = o.billType;
             orderMap['created_at'] = o.createdAt.toIso8601String();
-            orderMap['user_name'] = 'Usuário ${o.userPubkey?.substring(0, 6) ?? "anon"}';
+            orderMap['user_name'] = '${o.userPubkey?.substring(0, 6) ?? "anon"}';
             return orderMap;
           })
           .toList();
@@ -146,7 +147,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
             orderMap['amount'] = o.amount;
             orderMap['payment_type'] = o.billType;
             orderMap['created_at'] = o.createdAt.toIso8601String();
-            orderMap['user_name'] = 'Usuário ${o.userPubkey?.substring(0, 6) ?? "anon"}';
+            orderMap['user_name'] = '${o.userPubkey?.substring(0, 6) ?? "anon"}';
             return orderMap;
           })
           .toList();
@@ -281,7 +282,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         orderMap['amount'] = order.amount;
         orderMap['payment_type'] = order.billType;
         orderMap['created_at'] = order.createdAt.toIso8601String();
-        orderMap['user_name'] = 'Usuário ${order.userPubkey?.substring(0, 6) ?? "anon"}';
+        orderMap['user_name'] = '${order.userPubkey?.substring(0, 6) ?? "anon"}';
         myOrders.add(orderMap);
       }
       
@@ -297,7 +298,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         orderMap['amount'] = order.amount;
         orderMap['payment_type'] = order.billType;
         orderMap['created_at'] = order.createdAt.toIso8601String();
-        orderMap['user_name'] = 'Usuário ${order.userPubkey?.substring(0, 6) ?? "anon"}';
+        orderMap['user_name'] = '${order.userPubkey?.substring(0, 6) ?? "anon"}';
         available.add(orderMap);
       }
       
@@ -366,6 +367,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     return PopScope(
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) {
@@ -398,7 +400,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           title: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Modo Bro'),
+              Text(l.t('prov_bro_mode')),
               const SizedBox(width: 8),
               _buildTierBadge(),
             ],
@@ -418,13 +420,13 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                 // Navegar para o dashboard limpando toda a pilha de navegação
                 Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
               },
-              tooltip: 'Voltar ao Dashboard',
+              tooltip: l.t('prov_back_dashboard'),
             ),
             // Botão da Carteira Lightning
             IconButton(
               icon: const Icon(Icons.account_balance_wallet, color: Colors.orange),
               onPressed: () => Navigator.pushNamed(context, '/wallet'),
-              tooltip: 'Minha Carteira',
+              tooltip: l.t('prov_ord_my_wallet'),
             ),
             // Removido botão refresh - pull-to-refresh já funciona
           ],
@@ -439,21 +441,21 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                 icon: const Icon(Icons.local_offer, size: 20),
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
-                  child: Text('Disponíveis (${_availableOrders.length})', style: const TextStyle(fontSize: 12)),
+                  child: Text(l.tp('prov_ord_available_count', {'count': _availableOrders.length.toString()}), style: const TextStyle(fontSize: 12)),
                 ),
               ),
               Tab(
                 icon: const Icon(Icons.assignment_turned_in, size: 20),
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
-                  child: Text('Minhas (${_myOrders.length})', style: const TextStyle(fontSize: 12)),
+                  child: Text(l.tp('prov_ord_my_count', {'count': _myOrders.length.toString()}), style: const TextStyle(fontSize: 12)),
                 ),
               ),
-              const Tab(
-                icon: Icon(Icons.bar_chart, size: 20),
+              Tab(
+                icon: const Icon(Icons.bar_chart, size: 20),
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
-                  child: Text('Estatísticas', style: TextStyle(fontSize: 12)),
+                  child: Text(l.t('prov_statistics'), style: const TextStyle(fontSize: 12)),
                 ),
             ),
           ],
@@ -496,6 +498,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   /// v227: Wrapper que mostra loading/collateral DENTRO da aba "Disponíveis"
   /// em vez de bloquear todas as abas. Assim "Minhas" e "Estatísticas" ficam acessíveis.
   Widget _buildAvailableOrdersTabWithChecks(CollateralProvider collateralProvider) {
+    final l = AppLocalizations.of(context)!;
     // v227: Mostrar sync spinner SEMPRE que estiver sincronizando
     // Isso evita mostrar "Garantia Necessária" antes do sync terminar
     // (porque _hasCollateral só é atualizado DEPOIS do sync)
@@ -506,15 +509,15 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           children: [
             const CircularProgressIndicator(color: Color(0xFFFF6B6B)),
             const SizedBox(height: 16),
-            const Text(
-              '🔄 Sincronizando com Nostr...',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
+            Text(
+              l.t('prov_ord_syncing'),
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
             ),
-            const Padding(
-              padding: EdgeInsets.only(top: 8),
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
               child: Text(
-                'Buscando ordens de todos os usuários',
-                style: TextStyle(color: Colors.white38, fontSize: 12),
+                l.t('prov_ord_fetching'),
+                style: const TextStyle(color: Colors.white38, fontSize: 12),
               ),
             ),
           ],
@@ -555,6 +558,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   Widget _buildEmptyAvailableView() {
+    final l = AppLocalizations.of(context)!;
     return SizedBox(
       height: MediaQuery.of(context).size.height * 0.6,
       child: Center(
@@ -565,25 +569,25 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
             children: [
               Icon(Icons.inbox_outlined, size: 80, color: Colors.grey[600]),
               const SizedBox(height: 16),
-              const Text(
-                'Nenhuma ordem disponível',
-                style: TextStyle(
+              Text(
+                l.t('prov_ord_none_available'),
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Novas ordens aparecerão aqui quando usuários criarem pedidos.',
-                style: TextStyle(color: Colors.white70, fontSize: 14),
+              Text(
+                l.t('prov_ord_new_orders_hint'),
+                style: const TextStyle(color: Colors.white70, fontSize: 14),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
               ElevatedButton.icon(
                 onPressed: () => _loadOrders(isRefresh: true),
                 icon: const Icon(Icons.refresh),
-                label: const Text('Atualizar'),
+                label: Text(l.t('prov_refresh')),
                 style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF6B6B)),
               ),
             ],
@@ -594,6 +598,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   Widget _buildAvailableOrderCard(Map<String, dynamic> order, CollateralProvider collateralProvider) {
+    final l = AppLocalizations.of(context)!;
     final orderId = order['id'] as String? ?? '';
     if (orderId.isEmpty) return const SizedBox.shrink(); // Ordem inválida
     
@@ -602,7 +607,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     final createdAtStr = order['created_at'] as String?;
     final createdAt = createdAtStr != null ? DateTime.tryParse(createdAtStr) ?? DateTime.now() : DateTime.now();
     final timeAgo = _getTimeAgo(createdAt);
-    final userName = order['user_name'] as String? ?? 'Usuário';
+    final userName = order['user_name'] as String? ?? 'anon';
     
     bool canAccept;
     String? rejectReason;
@@ -664,7 +669,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                         border: Border.all(color: canAccept ? Colors.green : Colors.red),
                       ),
                       child: Text(
-                        canAccept ? 'DISPONÍVEL' : 'BLOQUEADA',
+                        canAccept ? l.t('prov_ord_status_available') : l.t('prov_ord_status_blocked'),
                         style: TextStyle(
                           color: canAccept ? Colors.green : Colors.red,
                           fontSize: 10,
@@ -685,7 +690,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Ganho: R\$ ${(amount * EscrowService.providerFeePercent / 100).toStringAsFixed(2)} (${EscrowService.providerFeePercent}%)',
+                  l.tp('prov_ord_earning', {'amount': (amount * EscrowService.providerFeePercent / 100).toStringAsFixed(2), 'percent': EscrowService.providerFeePercent.toString()}),
                   style: const TextStyle(color: Colors.green, fontSize: 14, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 12),
@@ -693,7 +698,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                   children: [
                     const Icon(Icons.person_outline, color: Colors.white54, size: 16),
                     const SizedBox(width: 6),
-                    Text(userName, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                    Text(l.tp('prov_ord_user', {'id': userName}), style: const TextStyle(color: Colors.white70, fontSize: 13)),
                     const Spacer(),
                     const Icon(Icons.tag, color: Colors.white54, size: 14),
                     const SizedBox(width: 4),
@@ -734,7 +739,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                     child: ElevatedButton.icon(
                       onPressed: () => _openOrderDetail(orderId),
                       icon: const Icon(Icons.touch_app),
-                      label: const Text('Ver Detalhes e Aceitar'),
+                      label: Text(l.t('prov_ord_view_accept')),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.orange,
                         padding: const EdgeInsets.symmetric(vertical: 12),
@@ -755,6 +760,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   // ============================================
   
   Widget _buildMyOrdersTab() {
+    final l = AppLocalizations.of(context)!;
     if (_myOrders.isEmpty) {
       return RefreshIndicator(
         onRefresh: () => _loadOrders(isRefresh: true),
@@ -773,14 +779,14 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                     children: [
                       Icon(Icons.assignment_outlined, size: 80, color: Colors.grey[600]),
                       const SizedBox(height: 16),
-                      const Text(
-                        'Nenhuma ordem ainda',
-                        style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                      Text(
+                        l.t('prov_ord_none_yet'),
+                        style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 8),
-                      const Text(
-                        'Aceite ordens na aba "Disponíveis" para começar a ganhar sats!',
-                        style: TextStyle(color: Colors.white70, fontSize: 14),
+                      Text(
+                        l.t('prov_ord_accept_hint'),
+                        style: const TextStyle(color: Colors.white70, fontSize: 14),
                         textAlign: TextAlign.center,
                       ),
                     ],
@@ -820,6 +826,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   Widget _buildMyOrderCard(Map<String, dynamic> order) {
+    final l = AppLocalizations.of(context)!;
     final orderId = order['id'] as String? ?? '';
     if (orderId.isEmpty) return const SizedBox.shrink(); // Ordem inválida
     
@@ -895,7 +902,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                 Row(
                   children: [
                     Text(
-                      'Ganho: R\$ ${earning.toStringAsFixed(2)}',
+                      l.tp('prov_ord_earning', {'amount': earning.toStringAsFixed(2), 'percent': EscrowService.providerFeePercent.toString()}),
                       style: TextStyle(
                         color: status == 'completed' ? Colors.green : Colors.white54,
                         fontSize: 13,
@@ -970,10 +977,11 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   Widget _buildTierStatusCard(CollateralProvider collateralProvider) {
+    final l = AppLocalizations.of(context)!;
     final currentTier = collateralProvider.getCurrentTier();
     final maxOrder = collateralProvider.getMaxOrderValue();
     
-    final tierName = AppConfig.providerTestMode ? 'Trial (Teste)' : (currentTier?.name ?? 'Nenhum');
+    final tierName = AppConfig.providerTestMode ? 'Trial (Teste)' : (currentTier?.name ?? l.t('prov_current_tier_none'));
     final tierMax = AppConfig.providerTestMode ? 'R\$ 10,00' : 'R\$ ${maxOrder.toStringAsFixed(0)}';
     
     return Container(
@@ -1002,12 +1010,12 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Tier: $tierName',
+                  l.tp('prov_ord_tier_name', {'name': tierName}),
                   style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Aceita ordens até $tierMax',
+                  l.tp('prov_ord_accepts_up_to', {'max': tierMax}),
                   style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 14),
                 ),
               ],
@@ -1016,7 +1024,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           ElevatedButton.icon(
             onPressed: () => Navigator.pushNamed(context, '/provider-collateral'),
             icon: const Icon(Icons.upgrade, size: 18),
-            label: const Text('Upgrade'),
+            label: Text(l.t('prov_ord_upgrade')),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.orange,
               foregroundColor: Colors.white,
@@ -1030,6 +1038,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   Widget _buildStatsCard() {
+    final l = AppLocalizations.of(context)!;
     final completedOrders = _myOrders.where((o) => o['status'] == 'completed').length;
     final pendingOrders = _myOrders.where((o) => o['status'] != 'completed' && o['status'] != 'cancelled').length;
     final totalOrders = _myOrders.length;
@@ -1043,13 +1052,13 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.analytics, color: Colors.blue),
-              SizedBox(width: 8),
+              const Icon(Icons.analytics, color: Colors.blue),
+              const SizedBox(width: 8),
               Text(
-                'Estatísticas',
-                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                l.t('prov_statistics'),
+                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -1057,8 +1066,8 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           Row(
             children: [
               _buildStatItem('Total', totalOrders.toString(), Colors.white),
-              _buildStatItem('Concluídas', completedOrders.toString(), Colors.green),
-              _buildStatItem('Em Andamento', pendingOrders.toString(), Colors.orange),
+              _buildStatItem(l.t('prov_ord_completed'), completedOrders.toString(), Colors.green),
+              _buildStatItem(l.t('prov_ord_in_progress'), pendingOrders.toString(), Colors.orange),
             ],
           ),
         ],
@@ -1081,6 +1090,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   Widget _buildEarningsCard() {
+    final l = AppLocalizations.of(context)!;
     final completedOrders = _myOrders.where((o) => o['status'] == 'completed');
     double totalEarnings = 0;
     for (final order in completedOrders) {
@@ -1097,13 +1107,13 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.monetization_on, color: Colors.green),
-              SizedBox(width: 8),
+              const Icon(Icons.monetization_on, color: Colors.green),
+              const SizedBox(width: 8),
               Text(
-                'Ganhos',
-                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                l.t('prov_ord_earnings'),
+                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -1112,15 +1122,15 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
             'R\$ ${totalEarnings.toStringAsFixed(2)}',
             style: const TextStyle(color: Colors.green, fontSize: 32, fontWeight: FontWeight.bold),
           ),
-          const Text(
-            'Total de comissões ganhas',
-            style: TextStyle(color: Colors.white54, fontSize: 12),
+          Text(
+            l.t('prov_ord_total_commissions'),
+            style: const TextStyle(color: Colors.white54, fontSize: 12),
           ),
           const SizedBox(height: 12),
           TextButton.icon(
             onPressed: () => Navigator.pushNamed(context, '/wallet'),
             icon: const Icon(Icons.account_balance_wallet, size: 18),
-            label: const Text('Ver Carteira'),
+            label: Text(l.t('prov_ord_view_wallet')),
             style: TextButton.styleFrom(foregroundColor: Colors.orange),
           ),
         ],
@@ -1129,6 +1139,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   Widget _buildActionsCard() {
+    final l = AppLocalizations.of(context)!;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1138,29 +1149,29 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.settings, color: Colors.grey),
-              SizedBox(width: 8),
+              const Icon(Icons.settings, color: Colors.grey),
+              const SizedBox(width: 8),
               Text(
-                'Ações',
-                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                l.t('prov_ord_actions'),
+                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ],
           ),
           const SizedBox(height: 16),
           ListTile(
             leading: const Icon(Icons.upgrade, color: Colors.orange),
-            title: const Text('Upgrade de Tier', style: TextStyle(color: Colors.white)),
-            subtitle: const Text('Aumente seu limite de ordens', style: TextStyle(color: Colors.white54)),
+            title: Text(l.t('prov_ord_tier_upgrade'), style: const TextStyle(color: Colors.white)),
+            subtitle: Text(l.t('prov_ord_increase_limit'), style: const TextStyle(color: Colors.white54)),
             trailing: const Icon(Icons.chevron_right, color: Colors.white54),
             onTap: () => Navigator.pushNamed(context, '/provider-collateral'),
           ),
           const Divider(color: Colors.white12),
           ListTile(
             leading: const Icon(Icons.school, color: Colors.blue),
-            title: const Text('Como Funciona', style: TextStyle(color: Colors.white)),
-            subtitle: const Text('Aprenda sobre o modo Bro', style: TextStyle(color: Colors.white54)),
+            title: Text(l.t('prov_ord_how_works'), style: const TextStyle(color: Colors.white)),
+            subtitle: Text(l.t('prov_ord_learn_bro'), style: const TextStyle(color: Colors.white54)),
             trailing: const Icon(Icons.chevron_right, color: Colors.white54),
             onTap: () => Navigator.pushNamed(context, '/provider-education'),
           ),
@@ -1213,6 +1224,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   Widget _buildNoCollateralView() {
+    final l = AppLocalizations.of(context)!;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -1221,14 +1233,14 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           children: [
             const Icon(Icons.lock_outline, size: 64, color: Colors.orange),
             const SizedBox(height: 16),
-            const Text(
-              'Garantia Necessária',
-              style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+            Text(
+              l.t('prov_ord_collateral_needed'),
+              style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Você precisa depositar uma garantia em Bitcoin para aceitar ordens.',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
+            Text(
+              l.t('prov_ord_collateral_needed_msg'),
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
@@ -1237,7 +1249,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                 Navigator.pushNamed(context, '/provider-collateral', arguments: widget.providerId);
               },
               icon: const Icon(Icons.account_balance_wallet),
-              label: const Text('Depositar Garantia'),
+              label: Text(l.t('prov_ord_deposit_collateral')),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.orange,
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
@@ -1250,6 +1262,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   Widget _buildErrorView() {
+    final l = AppLocalizations.of(context)!;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -1258,9 +1271,9 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           children: [
             const Icon(Icons.error_outline, size: 64, color: Colors.red),
             const SizedBox(height: 16),
-            Text('Erro: $_error', style: const TextStyle(color: Colors.white70), textAlign: TextAlign.center),
+            Text(l.tp('prov_tier_error', {'msg': _error ?? ''}), style: const TextStyle(color: Colors.white70), textAlign: TextAlign.center),
             const SizedBox(height: 24),
-            ElevatedButton(onPressed: _loadOrders, child: const Text('Tentar Novamente')),
+            ElevatedButton(onPressed: _loadOrders, child: Text(l.t('prov_tier_try_again'))),
           ],
         ),
       ),
@@ -1268,55 +1281,56 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   Map<String, dynamic> _getStatusInfo(String status) {
+    final l = AppLocalizations.of(context)!;
     switch (status) {
       case 'completed':
         return {
-          'label': 'CONCLUÍDA',
+          'label': l.t('prov_ord_status_completed'),
           'icon': Icons.check_circle,
           'color': Colors.green,
-          'description': 'Pagamento confirmado pelo usuário',
+          'description': l.t('prov_ord_status_completed_desc'),
         };
       case 'awaiting_confirmation':
         return {
-          'label': 'AGUARDANDO',
+          'label': l.t('prov_ord_status_waiting'),
           'icon': Icons.hourglass_empty,
           'color': Colors.orange,
-          'description': 'Aguardando confirmação do usuário',
+          'description': l.t('prov_ord_status_waiting_desc'),
         };
       case 'pending':
         return {
-          'label': 'PENDENTE',
+          'label': l.t('prov_ord_status_pending'),
           'icon': Icons.schedule,
           'color': Colors.amber,
-          'description': 'Aguardando aceitação de um Bro',
+          'description': l.t('prov_ord_status_pending_desc'),
         };
       case 'accepted':
         return {
-          'label': 'ACEITA',
+          'label': l.t('prov_ord_status_accepted'),
           'icon': Icons.assignment_turned_in,
           'color': Colors.blue,
-          'description': 'Você aceitou, agora pague a conta',
+          'description': l.t('prov_ord_status_accepted_desc'),
         };
       case 'cancelled':
         return {
-          'label': 'CANCELADA',
+          'label': l.t('prov_ord_status_cancelled'),
           'icon': Icons.cancel,
           'color': Colors.red,
-          'description': 'Ordem foi cancelada',
+          'description': l.t('prov_ord_status_cancelled_desc'),
         };
       case 'liquidated':
         return {
-          'label': 'LIQUIDADA ⚡',
+          'label': l.t('prov_ord_status_liquidated'),
           'icon': Icons.electric_bolt,
           'color': Colors.purple,
-          'description': 'Auto-liquidada após 36h sem confirmação',
+          'description': l.t('prov_ord_status_liquidated_desc'),
         };
       case 'disputed':
         return {
-          'label': 'EM DISPUTA',
+          'label': l.t('prov_ord_status_dispute'),
           'icon': Icons.gavel,
           'color': Colors.orange.shade800,
-          'description': 'Disputa aberta',
+          'description': l.t('prov_ord_status_dispute_desc'),
         };
       default:
         return {
@@ -1340,17 +1354,18 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   }
 
   String _getTimeAgo(DateTime dateTime) {
+    final l = AppLocalizations.of(context)!;
     final now = DateTime.now();
     final difference = now.difference(dateTime);
 
     if (difference.inDays > 0) {
-      return '${difference.inDays}d atrás';
+      return l.tp('prov_dash_days_ago', {'n': difference.inDays.toString()});
     } else if (difference.inHours > 0) {
-      return '${difference.inHours}h atrás';
+      return l.tp('prov_dash_hours_ago', {'n': difference.inHours.toString()});
     } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes}min atrás';
+      return l.tp('prov_dash_minutes_ago', {'n': difference.inMinutes.toString()});
     } else {
-      return 'Agora';
+      return l.t('prov_ord_now');
     }
   }
 
@@ -1363,6 +1378,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     // CRÍTICO: Usar Consumer para reagir às mudanças do CollateralProvider
     return Consumer<CollateralProvider>(
       builder: (context, collateralProvider, _) {
+        final l = AppLocalizations.of(context)!;
         final localCollateral = collateralProvider.localCollateral;
         final hasCollateral = collateralProvider.hasCollateral;
         
@@ -1378,9 +1394,9 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Colors.grey, width: 1),
               ),
-              child: const Text(
-                'Sem Tier',
-                style: TextStyle(
+              child: Text(
+                l.t('prov_no_tier'),
+                style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
                   color: Colors.grey,
@@ -1394,7 +1410,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         // Se não pode, tier está inativo por saldo insuficiente
         final (canAcceptTest, _) = collateralProvider.canAcceptOrderWithReason(1.0);
         final isActive = canAcceptTest;
-        final statusText = isActive ? 'Tier Ativo' : 'Tier Inativo';
+        final statusText = isActive ? l.t('prov_tier_active') : l.t('prov_tier_inactive');
         final statusColor = isActive ? Colors.green : Colors.orange;
         
         return GestureDetector(
@@ -1422,11 +1438,12 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   
   /// Dialog explicando status do tier - USA COLLATERAL PROVIDER
   void _showTierStatusDialog() {
+    final l = AppLocalizations.of(context)!;
     final collateralProvider = context.read<CollateralProvider>();
     final localCollateral = collateralProvider.localCollateral;
     final (canAccept, _) = collateralProvider.canAcceptOrderWithReason(1.0);
     final isActive = canAccept;
-    final tierName = localCollateral?.tierName ?? 'Nenhum';
+    final tierName = localCollateral?.tierName ?? l.t('prov_current_tier_none');
     
     showDialog(
       context: context,
@@ -1442,7 +1459,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
             ),
             const SizedBox(width: 12),
             Text(
-              isActive ? 'Tier Ativo' : 'Tier Inativo',
+              isActive ? l.t('prov_tier_active') : l.t('prov_tier_inactive'),
               style: const TextStyle(color: Colors.white),
             ),
           ],
@@ -1452,7 +1469,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Tier: $tierName',
+              l.tp('prov_tier_label', {'name': tierName}),
               style: const TextStyle(color: Colors.white70, fontSize: 14),
             ),
             const SizedBox(height: 12),
@@ -1467,8 +1484,8 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      '⚠️ Saldo insuficiente',
+                    Text(
+                      l.t('prov_ord_insufficient_balance'),
                       style: TextStyle(
                         color: Colors.orange,
                         fontWeight: FontWeight.bold,
@@ -1477,23 +1494,23 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Seu saldo de ${collateralProvider.effectiveBalanceSats} sats está abaixo do requerido para o tier. Deposite mais Bitcoin para reativar.',
+                      l.tp('prov_ord_insufficient_msg', {'balance': collateralProvider.effectiveBalanceSats.toString()}),
                       style: const TextStyle(color: Colors.white70, fontSize: 13),
                     ),
                   ],
                 ),
               ),
             ] else
-              const Text(
-                '✅ Seu tier está ativo e você pode aceitar ordens normalmente.',
-                style: TextStyle(color: Colors.white70, fontSize: 13),
+              Text(
+                l.t('prov_tier_active_msg'),
+                style: const TextStyle(color: Colors.white70, fontSize: 13),
               ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Fechar', style: TextStyle(color: Colors.white70)),
+            child: Text(l.t('close'), style: const TextStyle(color: Colors.white70)),
           ),
           if (!isActive)
             ElevatedButton(
@@ -1502,7 +1519,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                 Navigator.pushNamed(context, '/provider-collateral');
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-              child: const Text('Depositar'),
+              child: Text(l.t('prov_deposit')),
             ),
         ],
       ),

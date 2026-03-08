@@ -10,6 +10,8 @@ import 'package:crypto/crypto.dart';
 import '../services/storage_service.dart';
 import '../services/version_check_service.dart';
 import '../providers/breez_provider.dart';
+import '../l10n/app_localizations.dart';
+import '../providers/locale_provider.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -85,13 +87,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
               ),
-              const Row(
+              Row(
                 children: [
-                  Icon(Icons.notifications_active, color: Colors.amber, size: 28),
-                  SizedBox(width: 12),
+                  const Icon(Icons.notifications_active, color: Colors.amber, size: 28),
+                  const SizedBox(width: 12),
                   Text(
-                    'Notificações em segundo plano',
-                    style: TextStyle(
+                    AppLocalizations.of(context).t('settings_notifications_bg_title'),
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
@@ -100,31 +102,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
               ),
               const SizedBox(height: 16),
-              const Text(
-                'Para receber notificações de novas ordens mesmo com o app fechado, '
-                'é necessário desativar a otimização de bateria para o Bro.',
-                style: TextStyle(color: Colors.white70, fontSize: 14),
+              Text(
+                AppLocalizations.of(context).t('settings_notifications_desc'),
+                style: const TextStyle(color: Colors.white70, fontSize: 14),
               ),
               const SizedBox(height: 24),
               _buildGuideSection(
-                'Passo 1 — Abrir Configurações do celular',
-                'Vá em Configurações > Apps (ou Aplicativos) > Bro',
+                AppLocalizations.of(context).t('settings_notif_step1_title'),
+                AppLocalizations.of(context).t('settings_notif_step1_desc'),
                 Icons.settings,
               ),
               _buildGuideSection(
-                'Passo 2 — Bateria',
-                'Toque em "Bateria" (ou "Uso de bateria")',
+                AppLocalizations.of(context).t('settings_notif_step2_title'),
+                AppLocalizations.of(context).t('settings_notif_step2_desc'),
                 Icons.battery_std,
               ),
               _buildGuideSection(
-                'Passo 3 — Sem restrições',
-                'Selecione "Sem restrições" (ou "Não otimizado")',
+                AppLocalizations.of(context).t('settings_notif_step3_title'),
+                AppLocalizations.of(context).t('settings_notif_step3_desc'),
                 Icons.battery_charging_full,
               ),
               const Divider(color: Colors.white24, height: 32),
-              const Text(
-                'Samsung — Passo extra',
-                style: TextStyle(
+              Text(
+                AppLocalizations.of(context).t('settings_samsung_title'),
+                style: const TextStyle(
                   color: Colors.amber,
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -132,9 +133,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 8),
               _buildGuideSection(
-                'Apps que nunca entram em suspensão',
-                'Configurações > Cuidados com dispositivo > Bateria > '
-                'Apps que nunca entram em suspensão > Adicionar > Bro',
+                AppLocalizations.of(context).t('settings_samsung_step_title'),
+                AppLocalizations.of(context).t('settings_samsung_step_desc'),
                 Icons.phone_android,
               ),
               const SizedBox(height: 24),
@@ -150,15 +150,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         // If method channel fails, show fallback message
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Abra manualmente: Configurações > Apps > Bro > Bateria'),
+                            SnackBar(
+                              content: Text(AppLocalizations.of(context).t('settings_open_manually_battery')),
                             ),
                           );
                         }
                       }
                     },
                     icon: const Icon(Icons.open_in_new),
-                    label: const Text('Abrir Configurações de Bateria'),
+                    label: Text(AppLocalizations.of(context).t('settings_open_battery_settings')),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.amber,
                       foregroundColor: Colors.black,
@@ -173,7 +173,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Center(
                 child: TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('Entendi', style: TextStyle(color: Colors.amber, fontSize: 16)),
+                  child: Text(AppLocalizations.of(context).t('understood'), style: const TextStyle(color: Colors.amber, fontSize: 16)),
                 ),
               ),
             ],
@@ -242,9 +242,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                'Digite a senha de administrador:',
-                style: TextStyle(color: Colors.white70, fontSize: 14),
+              Text(
+                AppLocalizations.of(context).t('settings_enter_admin_password'),
+                style: const TextStyle(color: Colors.white70, fontSize: 14),
               ),
               const SizedBox(height: 16),
               TextField(
@@ -253,7 +253,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 autofocus: true,
                 style: const TextStyle(color: Colors.white),
                 decoration: InputDecoration(
-                  hintText: 'Senha',
+                  hintText: AppLocalizations.of(context).t('settings_password_hint'),
                   hintStyle: const TextStyle(color: Colors.white38),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                   enabledBorder: OutlineInputBorder(
@@ -284,14 +284,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
+              child: Text(AppLocalizations.of(context).t('cancel'), style: const TextStyle(color: Colors.white54)),
             ),
             ElevatedButton(
               onPressed: () {
                 _validateAdminPassword(passwordController.text);
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
-              child: const Text('Entrar', style: TextStyle(color: Colors.black)),
+              child: Text(AppLocalizations.of(context).t('enter'), style: const TextStyle(color: Colors.black)),
             ),
           ],
         ),
@@ -302,10 +302,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _validateAdminPassword(String password) {
     if (_adminPasswordHash.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('⚠️ Admin não configurado neste build'),
+        SnackBar(
+          content: Text(AppLocalizations.of(context).t('settings_admin_not_configured')),
           backgroundColor: Colors.orange,
-          duration: Duration(seconds: 3),
+          duration: const Duration(seconds: 3),
         ),
       );
       return;
@@ -318,10 +318,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       Navigator.pushNamed(context, '/admin-bro-2024');
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('❌ Senha incorreta'),
+        SnackBar(
+          content: Text(AppLocalizations.of(context).t('settings_wrong_password')),
           backgroundColor: Colors.red,
-          duration: Duration(seconds: 2),
+          duration: const Duration(seconds: 2),
         ),
       );
     }
@@ -339,10 +339,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (_mnemonic != null) {
       Clipboard.setData(ClipboardData(text: _mnemonic!));
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Seed copiada para a área de transferência'),
+        SnackBar(
+          content: Text(AppLocalizations.of(context).t('settings_seed_copied')),
           backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
+          duration: const Duration(seconds: 2),
         ),
       );
     }
@@ -352,21 +352,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
-            SizedBox(width: 10),
-            Text('Atenção'),
+            const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
+            const SizedBox(width: 10),
+            Text(AppLocalizations.of(context).t('settings_attention')),
           ],
         ),
-        content: const Text(
-          'Nunca compartilhe sua seed com ninguém!\n\n'
-          'Qualquer pessoa com acesso a estas 12 palavras pode roubar todos os seus Bitcoin.',
+        content: Text(
+          AppLocalizations.of(context).t('settings_never_share_seed'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
+            child: Text(AppLocalizations.of(context).t('cancel')),
           ),
           ElevatedButton(
             onPressed: () {
@@ -378,7 +377,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.orange,
             ),
-            child: const Text('Entendi, mostrar'),
+            child: Text(AppLocalizations.of(context).t('settings_understood_show')),
           ),
         ],
       ),
@@ -390,11 +389,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.restore, color: Colors.deepPurple, size: 28),
-            SizedBox(width: 10),
-            Expanded(child: Text('Restaurar Carteira')),
+            const Icon(Icons.restore, color: Colors.deepPurple, size: 28),
+            const SizedBox(width: 10),
+            Expanded(child: Text(AppLocalizations.of(context).t('settings_restore_wallet'))),
           ],
         ),
         content: SingleChildScrollView(
@@ -402,9 +401,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Digite as 12 palavras da sua seed, separadas por espaço:',
-                style: TextStyle(fontSize: 14),
+              Text(
+                AppLocalizations.of(context).t('settings_enter_12_words'),
+                style: const TextStyle(fontSize: 14),
               ),
               const SizedBox(height: 15),
               TextField(
@@ -423,14 +422,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   color: Colors.red.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.warning, color: Colors.red, size: 20),
-                    SizedBox(width: 10),
+                    const Icon(Icons.warning, color: Colors.red, size: 20),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'A carteira atual será substituída!',
-                        style: TextStyle(
+                        AppLocalizations.of(context).t('settings_wallet_replaced'),
+                        style: const TextStyle(
                           color: Colors.red,
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
@@ -446,7 +445,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
+            child: Text(AppLocalizations.of(context).t('cancel')),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -455,8 +454,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               
               if (words.length != 12) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('A seed deve ter exatamente 12 palavras'),
+                  SnackBar(
+                    content: Text(AppLocalizations.of(context).t('settings_seed_12_words_error')),
                     backgroundColor: Colors.red,
                   ),
                 );
@@ -503,8 +502,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ],
                       ),
                       content: Text(
-                        'Carteira restaurada com sucesso!\n\n'
-                        'Saldo: $balance sats',
+                        AppLocalizations.of(context).tp('settings_wallet_restored', {'balance': balance.toString()}),
                       ),
                       actions: [
                         ElevatedButton(
@@ -521,8 +519,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   );
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Erro ao reinicializar carteira'),
+                    SnackBar(
+                      content: Text(AppLocalizations.of(context).t('settings_error_reinitialize')),
                       backgroundColor: Colors.red,
                     ),
                   );
@@ -531,7 +529,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Navigator.pop(context); // Fechar loading
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('Erro ao restaurar: $e'),
+                    content: Text(AppLocalizations.of(context).tp('settings_error_restoring', {'error': e.toString()})),
                     backgroundColor: Colors.red,
                   ),
                 );
@@ -540,7 +538,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.deepPurple,
             ),
-            child: const Text('Restaurar'),
+            child: Text(AppLocalizations.of(context).t('settings_restore')),
           ),
         ],
       ),
@@ -554,7 +552,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: AppBar(
         title: GestureDetector(
           onTap: _onTitleTap,
-          child: const Text('Configurações'),
+          child: Text(AppLocalizations.of(context).t('settings_title')),
         ),
         backgroundColor: const Color(0xFF1A1A1A),
         foregroundColor: Colors.orange,
@@ -567,9 +565,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Seção de Segurança
-                  const Text(
-                    'Segurança',
-                    style: TextStyle(
+                  Text(
+                    AppLocalizations.of(context).t('settings_security'),
+                    style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                       color: Colors.orange,
@@ -605,22 +603,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 ),
                               ),
                               const SizedBox(width: 12),
-                              const Expanded(
+                              Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      'Seed da Carteira',
-                                      style: TextStyle(
+                                      AppLocalizations.of(context).t('settings_wallet_seed'),
+                                      style: const TextStyle(
                                         fontSize: 15,
                                         fontWeight: FontWeight.w600,
                                         color: Colors.white,
                                       ),
                                     ),
-                                    SizedBox(height: 2),
+                                    const SizedBox(height: 2),
                                     Text(
-                                      '12 palavras de recuperação',
-                                      style: TextStyle(
+                                      AppLocalizations.of(context).t('settings_12_recovery_words'),
+                                      style: const TextStyle(
                                         fontSize: 12,
                                         color: Colors.white54,
                                       ),
@@ -642,18 +640,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 color: Colors.orange.withOpacity(0.2),
                               ),
                             ),
-                            child: const Row(
+                            child: Row(
                               children: [
-                                Icon(
+                                const Icon(
                                   Icons.warning_amber_rounded,
                                   color: Colors.orange,
                                   size: 16,
                                 ),
-                                SizedBox(width: 8),
+                                const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
-                                    'Guarde estas palavras em local seguro!',
-                                    style: TextStyle(
+                                    AppLocalizations.of(context).t('settings_keep_words_safe'),
+                                    style: const TextStyle(
                                       fontSize: 12,
                                       color: Colors.orange,
                                       fontWeight: FontWeight.w500,
@@ -695,7 +693,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     child: ElevatedButton.icon(
                                       onPressed: _copySeed,
                                       icon: const Icon(Icons.copy, size: 16),
-                                      label: const Text('Copiar'),
+                                      label: Text(AppLocalizations.of(context).t('copy')),
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: Colors.orange,
                                         foregroundColor: Colors.white,
@@ -714,7 +712,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                         });
                                       },
                                       icon: const Icon(Icons.visibility_off, size: 16),
-                                      label: const Text('Ocultar'),
+                                      label: Text(AppLocalizations.of(context).t('settings_hide')),
                                       style: OutlinedButton.styleFrom(
                                         foregroundColor: Colors.white54,
                                         side: BorderSide(color: Colors.white24),
@@ -734,14 +732,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   color: Colors.blue.withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
-                                child: const Row(
+                                child: Row(
                                   children: [
-                                    Icon(Icons.link, color: Colors.blue, size: 14),
-                                    SizedBox(width: 8),
+                                    const Icon(Icons.link, color: Colors.blue, size: 14),
+                                    const SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
-                                        'Esta seed está vinculada à sua conta Nostr',
-                                        style: TextStyle(fontSize: 11, color: Colors.blue),
+                                        AppLocalizations.of(context).t('settings_seed_linked_nostr'),
+                                        style: const TextStyle(fontSize: 11, color: Colors.blue),
                                       ),
                                     ),
                                   ],
@@ -753,7 +751,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 child: ElevatedButton.icon(
                                   onPressed: _toggleShowSeed,
                                   icon: const Icon(Icons.visibility, size: 16),
-                                  label: const Text('Mostrar Seed'),
+                                  label: Text(AppLocalizations.of(context).t('settings_show_seed')),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.orange,
                                     foregroundColor: Colors.white,
@@ -765,10 +763,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ),
                             ],
                           ] else ...[
-                            const Center(
+                            Center(
                               child: Text(
-                                'Nenhuma seed encontrada',
-                                style: TextStyle(
+                                AppLocalizations.of(context).t('settings_no_seed_found'),
+                                style: const TextStyle(
                                   color: Colors.white38,
                                   fontStyle: FontStyle.italic,
                                 ),
@@ -783,24 +781,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 borderRadius: BorderRadius.circular(10),
                                 border: Border.all(color: Colors.red.withOpacity(0.3)),
                               ),
-                              child: const Column(
+                              child: Column(
                                 children: [
                                   Row(
                                     children: [
-                                      Icon(Icons.warning, color: Colors.red, size: 20),
-                                      SizedBox(width: 8),
+                                      const Icon(Icons.warning, color: Colors.red, size: 20),
+                                      const SizedBox(width: 8),
                                       Expanded(
                                         child: Text(
-                                          'Sua carteira não foi encontrada!',
-                                          style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                                          AppLocalizations.of(context).t('settings_wallet_not_found'),
+                                          style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
                                         ),
                                       ),
                                     ],
                                   ),
-                                  SizedBox(height: 8),
+                                  const SizedBox(height: 8),
                                   Text(
-                                    'Entre em contato com o suporte se você tinha sats nesta carteira.',
-                                    style: TextStyle(color: Colors.red, fontSize: 13),
+                                    AppLocalizations.of(context).t('settings_contact_support'),
+                                    style: const TextStyle(color: Colors.red, fontSize: 13),
                                   ),
                                 ],
                               ),
@@ -814,9 +812,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 30),
 
                   // Carteira Lightning
-                  const Text(
-                    'Carteira Lightning',
-                    style: TextStyle(
+                  Text(
+                    AppLocalizations.of(context).t('settings_lightning_wallet'),
+                    style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                       color: Colors.orange,
@@ -840,8 +838,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         child: const Icon(Icons.account_balance_wallet, color: Colors.orange),
                       ),
-                      title: const Text('Minha Carteira', style: TextStyle(color: Colors.white)),
-                      subtitle: const Text('Ver saldo e transações', style: TextStyle(color: Colors.white54)),
+                      title: Text(AppLocalizations.of(context).t('settings_my_wallet'), style: const TextStyle(color: Colors.white)),
+                      subtitle: Text(AppLocalizations.of(context).t('settings_view_balance'), style: const TextStyle(color: Colors.white54)),
                       trailing: const Icon(Icons.chevron_right, color: Colors.white38),
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 20,
@@ -870,8 +868,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         child: const Icon(Icons.restore, color: Colors.red),
                       ),
-                      title: const Text('Restaurar Carteira', style: TextStyle(color: Colors.white)),
-                      subtitle: const Text('Usar uma seed existente', style: TextStyle(color: Colors.white54)),
+                      title: Text(AppLocalizations.of(context).t('settings_restore_wallet'), style: const TextStyle(color: Colors.white)),
+                      subtitle: Text(AppLocalizations.of(context).t('settings_use_existing_seed'), style: const TextStyle(color: Colors.white54)),
                       trailing: const Icon(Icons.chevron_right, color: Colors.white38),
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 20,
@@ -884,9 +882,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 30),
 
                   // Nostr & Privacidade
-                  const Text(
-                    'Nostr & Privacidade',
-                    style: TextStyle(
+                  Text(
+                    AppLocalizations.of(context).t('settings_nostr_privacy'),
+                    style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                       color: Colors.orange,
@@ -912,8 +910,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                             child: const Icon(Icons.person, color: Colors.purple),
                           ),
-                          title: const Text('Perfil Nostr', style: TextStyle(color: Colors.white)),
-                          subtitle: const Text('Ver suas chaves e npub', style: TextStyle(color: Colors.white54)),
+                          title: Text(AppLocalizations.of(context).t('settings_nostr_profile'), style: const TextStyle(color: Colors.white)),
+                          subtitle: Text(AppLocalizations.of(context).t('settings_view_keys_npub'), style: const TextStyle(color: Colors.white54)),
                           trailing: const Icon(Icons.chevron_right, color: Colors.white38),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20,
@@ -931,8 +929,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                             child: const Icon(Icons.dns, color: Colors.indigo),
                           ),
-                          title: const Text('Gerenciar Relays', style: TextStyle(color: Colors.white)),
-                          subtitle: const Text('Adicionar ou remover relays', style: TextStyle(color: Colors.white54)),
+                          title: Text(AppLocalizations.of(context).t('settings_manage_relays'), style: const TextStyle(color: Colors.white)),
+                          subtitle: Text(AppLocalizations.of(context).t('settings_add_remove_relays'), style: const TextStyle(color: Colors.white54)),
                           trailing: const Icon(Icons.chevron_right, color: Colors.white38),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20,
@@ -950,8 +948,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                             child: const Icon(Icons.shield, color: Colors.teal),
                           ),
-                          title: const Text('Privacidade', style: TextStyle(color: Colors.white)),
-                          subtitle: const Text('Tor, NIP-44 e mais', style: TextStyle(color: Colors.white54)),
+                          title: Text(AppLocalizations.of(context).t('settings_privacy'), style: const TextStyle(color: Colors.white)),
+                          subtitle: Text(AppLocalizations.of(context).t('settings_tor_nip44'), style: const TextStyle(color: Colors.white54)),
                           trailing: const Icon(Icons.chevron_right, color: Colors.white38),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20,
@@ -969,8 +967,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                             child: const Icon(Icons.key, color: Colors.orange),
                           ),
-                          title: const Text('Backup NIP-06', style: TextStyle(color: Colors.white)),
-                          subtitle: const Text('Derivar chaves da seed', style: TextStyle(color: Colors.white54)),
+                          title: Text(AppLocalizations.of(context).t('settings_backup_nip06'), style: const TextStyle(color: Colors.white)),
+                          subtitle: Text(AppLocalizations.of(context).t('settings_derive_keys'), style: const TextStyle(color: Colors.white54)),
                           trailing: const Icon(Icons.chevron_right, color: Colors.white38),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20,
@@ -985,9 +983,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 30),
 
                   // Notificações
-                  const Text(
-                    'Notificações',
-                    style: TextStyle(
+                  Text(
+                    AppLocalizations.of(context).t('settings_notifications'),
+                    style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                       color: Colors.orange,
@@ -1013,8 +1011,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                             child: const Icon(Icons.notifications_active, color: Colors.amber),
                           ),
-                          title: const Text('Ativar Notificações em Segundo Plano', style: TextStyle(color: Colors.white)),
-                          subtitle: const Text('Receba alertas mesmo com o app fechado', style: TextStyle(color: Colors.white54)),
+                          title: Text(AppLocalizations.of(context).t('settings_enable_bg_notifications'), style: const TextStyle(color: Colors.white)),
+                          subtitle: Text(AppLocalizations.of(context).t('settings_receive_alerts'), style: const TextStyle(color: Colors.white54)),
                           trailing: const Icon(Icons.chevron_right, color: Colors.white38),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20,
@@ -1029,9 +1027,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 30),
 
                   // Suporte
-                  const Text(
-                    'Suporte',
-                    style: TextStyle(
+                  Text(
+                    AppLocalizations.of(context).t('settings_support'),
+                    style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                       color: Colors.orange,
@@ -1057,8 +1055,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                             child: const Icon(Icons.help_outline, color: Colors.blue),
                           ),
-                          title: const Text('Central de Ajuda', style: TextStyle(color: Colors.white)),
-                          subtitle: const Text('Enviar email para suporte', style: TextStyle(color: Colors.white54)),
+                          title: Text(AppLocalizations.of(context).t('settings_help_center'), style: const TextStyle(color: Colors.white)),
+                          subtitle: Text(AppLocalizations.of(context).t('settings_send_email'), style: const TextStyle(color: Colors.white54)),
                           trailing: const Icon(Icons.chevron_right, color: Colors.white38),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20,
@@ -1077,8 +1075,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             } else {
                               Clipboard.setData(const ClipboardData(text: 'brostr@proton.me'));
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Email copiado: brostr@proton.me'),
+                                SnackBar(
+                                  content: Text(AppLocalizations.of(context).t('settings_email_copied')),
                                   backgroundColor: Colors.blue,
                                 ),
                               );
@@ -1091,10 +1089,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                   const SizedBox(height: 30),
 
+                  // Idioma
+                  Card(
+                    elevation: 0,
+                    color: const Color(0xFF1A1A1A),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: Colors.orange.withOpacity(0.2)),
+                    ),
+                    child: Theme(
+                      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                      child: ExpansionTile(
+                        leading: Text(
+                          AppLocalizations.localeFlag(context.watch<LocaleProvider>().locale),
+                          style: const TextStyle(fontSize: 22),
+                        ),
+                        title: Text(
+                          AppLocalizations.of(context).t('settings_language'),
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: Text(
+                          AppLocalizations.localeDisplayName(context.watch<LocaleProvider>().locale),
+                          style: const TextStyle(color: Colors.white54, fontSize: 12),
+                        ),
+                        iconColor: Colors.orange,
+                        collapsedIconColor: Colors.white38,
+                        children: [
+                          for (final entry in AppLocalizations.supportedLocales)
+                            ListTile(
+                              leading: Text(
+                                AppLocalizations.localeFlag(entry),
+                                style: const TextStyle(fontSize: 20),
+                              ),
+                              title: Text(
+                                AppLocalizations.localeDisplayName(entry),
+                                style: const TextStyle(color: Colors.white, fontSize: 14),
+                              ),
+                              trailing: context.watch<LocaleProvider>().locale.languageCode == entry.languageCode
+                                  ? const Icon(Icons.check_circle, color: Colors.orange, size: 20)
+                                  : const Icon(Icons.circle_outlined, color: Colors.white24, size: 20),
+                              dense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 0),
+                              onTap: () {
+                                context.read<LocaleProvider>().setLocale(entry);
+                              },
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 30),
+
                   // Sobre
-                  const Text(
-                    'Sobre',
-                    style: TextStyle(
+                  Text(
+                    AppLocalizations.of(context).t('settings_about'),
+                    style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                       color: Colors.orange,
@@ -1113,7 +1163,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       children: [
                         ListTile(
                           leading: const Icon(Icons.info_outline, color: Colors.orange),
-                          title: const Text('Versão', style: TextStyle(color: Colors.white)),
+                          title: Text(AppLocalizations.of(context).t('settings_version'), style: const TextStyle(color: Colors.white)),
                           subtitle: Text(_appVersion, style: const TextStyle(color: Colors.white54)),
                           trailing: const Icon(Icons.system_update, color: Colors.orange, size: 20),
                           contentPadding: const EdgeInsets.symmetric(
@@ -1123,9 +1173,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           onTap: () async {
                             final versionService = VersionCheckService();
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Verificando atualizações...'),
-                                duration: Duration(seconds: 2),
+                              SnackBar(
+                                content: Text(AppLocalizations.of(context).t('settings_checking_updates')),
+                                duration: const Duration(seconds: 2),
                               ),
                             );
                             await versionService.checkForUpdate(force: true);
@@ -1133,11 +1183,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             if (versionService.updateAvailable) {
                               versionService.showUpdateDialog(context);
                             } else {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('✅ Você já está na versão mais recente!'),
-                                  backgroundColor: Colors.green,
-                                  duration: Duration(seconds: 3),
+                              // Show dialog with option to download/reinstall anyway
+                              final loc = AppLocalizations.of(context);
+                              showDialog(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  backgroundColor: const Color(0xFF1A1A2E),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  title: Row(
+                                    children: [
+                                      const Icon(Icons.check_circle, color: Colors.green, size: 28),
+                                      const SizedBox(width: 12),
+                                      Expanded(child: Text(loc.t('settings_latest_version'), style: const TextStyle(color: Colors.white, fontSize: 15))),
+                                    ],
+                                  ),
+                                  content: Text(
+                                    loc.t('settings_download_anyway'),
+                                    style: const TextStyle(color: Colors.white70),
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(ctx),
+                                      child: Text(loc.t('cancel'), style: const TextStyle(color: Colors.white54)),
+                                    ),
+                                    ElevatedButton.icon(
+                                      onPressed: () {
+                                        Navigator.pop(ctx);
+                                        versionService.openDownload();
+                                      },
+                                      icon: const Icon(Icons.download, size: 18),
+                                      label: Text(loc.t('settings_download_apk')),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.orange,
+                                        foregroundColor: Colors.white,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               );
                             }
@@ -1146,7 +1227,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         Divider(height: 1, color: Colors.white12),
                         ListTile(
                           leading: const Icon(Icons.language, color: Colors.orange),
-                          title: const Text('Site', style: TextStyle(color: Colors.white)),
+                          title: Text(AppLocalizations.of(context).t('settings_website'), style: const TextStyle(color: Colors.white)),
                           subtitle: const Text('brostr.app', style: TextStyle(color: Colors.white54)),
                           trailing: const Icon(Icons.open_in_new, size: 18),
                           contentPadding: const EdgeInsets.symmetric(
@@ -1179,23 +1260,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               borderRadius: BorderRadius.circular(12),
                               side: BorderSide(color: Colors.red.withOpacity(0.3)),
                             ),
-                            title: const Text('Sair do App', style: TextStyle(color: Colors.white)),
-                            content: const Text(
-                              'Tem certeza que deseja sair?\n\n'
-                              'Certifique-se de ter sua seed anotada para recuperar sua carteira!',
-                              style: TextStyle(color: Colors.white70),
+                            title: Text(AppLocalizations.of(context).t('settings_logout_title'), style: const TextStyle(color: Colors.white)),
+                            content: Text(
+                              AppLocalizations.of(context).t('settings_logout_confirmation'),
+                              style: const TextStyle(color: Colors.white70),
                             ),
                             actions: [
                               TextButton(
                                 onPressed: () => Navigator.pop(context, false),
-                                child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
+                                child: Text(AppLocalizations.of(context).t('cancel'), style: const TextStyle(color: Colors.white54)),
                               ),
                               ElevatedButton(
                                 onPressed: () => Navigator.pop(context, true),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.red,
                                 ),
-                                child: const Text('Sair'),
+                                child: Text(AppLocalizations.of(context).t('settings_logout')),
                               ),
                             ],
                           ),
@@ -1215,7 +1295,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         }
                       },
                       icon: const Icon(Icons.logout),
-                      label: const Text('Sair do App'),
+                      label: Text(AppLocalizations.of(context).t('settings_logout_title')),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.red,
                         side: const BorderSide(color: Colors.red),

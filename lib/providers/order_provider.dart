@@ -43,6 +43,10 @@ class OrderProvider with ChangeNotifier {
   Timer? _notifyDebounceTimer; // Debounce para notifyListeners
   bool _notifyPending = false; // Flag para notify pendente
 
+  // v132: Callback para auto-pagamento de ordens liquidadas
+  // Setado pelo main.dart com acesso aos providers Lightning
+  Future<bool> Function(String orderId, Order order)? onAutoPayLiquidation;
+
   // Prefixo para salvar no SharedPreferences (serÃÂ¡ combinado com pubkey)
   static const String _ordersKeyPrefix = 'orders_';
 
@@ -1513,13 +1517,16 @@ class OrderProvider with ChangeNotifier {
   }
 
   /// v337: Atualizar apenas metadata local (sem publicar no Nostr)
+  /// MERGE: Mantém metadata existente e adiciona/sobrescreve as chaves passadas
   void updateOrderMetadataLocal(String orderId, Map<String, dynamic> metadata) {
     final index = _orders.indexWhere((o) => o.id == orderId);
     if (index != -1) {
-      _orders[index] = _orders[index].copyWith(metadata: metadata);
+      final existingMeta = Map<String, dynamic>.from(_orders[index].metadata ?? {});
+      existingMeta.addAll(metadata);
+      _orders[index] = _orders[index].copyWith(metadata: existingMeta);
       _debouncedSave();
       _throttledNotify();
-      broLog('v337: updateOrderMetadataLocal: $orderId metadata atualizado');
+      broLog('v337: updateOrderMetadataLocal: $orderId metadata atualizado (merge)');
     }
   }
 
@@ -2237,7 +2244,69 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
-  // Validar boleto
+  /// v132: Verifica ordens 'liquidated' do USUÁRIO que ainda não foram pagas
+  /// e dispara auto-pagamento via callback (setado pelo main.dart)
+  bool _isAutoPayingLiquidations = false;
+  
+  Future<void> _autoPayLiquidatedOrders() async {
+    if (onAutoPayLiquidation == null) return;
+    if (_isAutoPayingLiquidations) return;
+    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return;
+    
+    _isAutoPayingLiquidations = true;
+    
+    try {
+      // Encontrar ordens liquidadas onde EU sou o USUÁRIO (não o provedor)
+      // e que ainda não tiveram auto-pagamento completado
+      final unpaidLiquidated = _orders.where((order) {
+        if (order.status != 'liquidated') return false;
+        // Sou o criador da ordem (usuário que precisa pagar)
+        if (order.userPubkey != _currentUserPubkey) return false;
+        // Sou o provedor? Então não preciso pagar a mim mesmo
+        final providerId = order.providerId ?? order.metadata?['providerId'] ?? order.metadata?['provider_id'] ?? '';
+        if (providerId == _currentUserPubkey) return false;
+        // Já paguei?
+        if (order.metadata?['autoPaymentCompleted'] == true) return false;
+        return true;
+      }).toList();
+      
+      if (unpaidLiquidated.isEmpty) return;
+      
+      broLog('[AutoPay] ${unpaidLiquidated.length} ordens liquidadas pendentes de pagamento');
+      
+      for (final order in unpaidLiquidated) {
+        try {
+          broLog('[AutoPay] Pagando ordem ${order.id.substring(0, 8)}...');
+          final success = await onAutoPayLiquidation!(order.id, order);
+          
+          if (success) {
+            // Marcar como paga localmente
+            final index = _orders.indexWhere((o) => o.id == order.id);
+            if (index != -1) {
+              _orders[index] = _orders[index].copyWith(
+                metadata: {
+                  ...(_orders[index].metadata ?? {}),
+                  'autoPaymentCompleted': true,
+                  'autoPaymentAt': DateTime.now().toIso8601String(),
+                },
+              );
+            }
+            broLog('[AutoPay] ✅ Ordem ${order.id.substring(0, 8)} paga com sucesso');
+          } else {
+            broLog('[AutoPay] ⚠️ Ordem ${order.id.substring(0, 8)} falhou no pagamento');
+          }
+        } catch (e) {
+          broLog('[AutoPay] ❌ Erro ao pagar ${order.id.substring(0, 8)}: $e');
+        }
+      }
+      
+      await _saveOrders();
+    } catch (e) {
+      broLog('[AutoPay] Erro geral: $e');
+    } finally {
+      _isAutoPayingLiquidations = false;
+    }
+  }
   Future<Map<String, dynamic>?> validateBoleto(String code) async {
     _isLoading = true;
     _error = null;
@@ -2878,6 +2947,9 @@ class OrderProvider with ChangeNotifier {
       
       // AUTO-LIQUIDAÇÃO v234: Também verificar no sync do usuário
       await _checkAutoLiquidation();
+      
+      // v132: Auto-pagamento de ordens liquidadas sem pagamento
+      await _autoPayLiquidatedOrders();
       
       // v253: AUTO-REPAIR: Tambem reparar no sync do usuario
       // v259: Timeout global no auto-repair para nao travar sync

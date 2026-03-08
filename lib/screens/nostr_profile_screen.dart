@@ -1,5 +1,6 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../l10n/app_localizations.dart';
 import '../services/storage_service.dart';
 
 class NostrProfileScreen extends StatefulWidget {
@@ -59,7 +60,7 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
     }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('📋 $label copiado!${label.toLowerCase().contains('privad') ? ' Clipboard será limpo em 2min.' : ''}'),
+        content: Text('${AppLocalizations.of(context).tp('profile_copied', {'label': label})}${label.toLowerCase().contains('privad') ? ' ${AppLocalizations.of(context).t('profile_clipboard_cleared')}' : ''}'),
         backgroundColor: const Color(0xFF9C27B0),
         duration: const Duration(seconds: 2),
       ),
@@ -107,7 +108,7 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Fechar', style: TextStyle(color: Colors.grey)),
+            child: Text(AppLocalizations.of(context).t('close'), style: const TextStyle(color: Colors.grey)),
           ),
           ElevatedButton.icon(
             onPressed: () {
@@ -115,7 +116,7 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
               Navigator.pop(context);
             },
             icon: const Icon(Icons.copy, size: 16),
-            label: const Text('Copiar'),
+            label: Text(AppLocalizations.of(context).t('copy')),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF9C27B0),
               foregroundColor: Colors.white,
@@ -135,7 +136,7 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Editar Perfil', style: TextStyle(color: Colors.white)),
+        title: Text(AppLocalizations.of(context).t('profile_edit_title'), style: const TextStyle(color: Colors.white)),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -144,9 +145,9 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
                 controller: nameController,
                 style: const TextStyle(color: Colors.white),
                 decoration: InputDecoration(
-                  labelText: 'Nome de exibição',
+                  labelText: AppLocalizations.of(context).t('profile_display_name_label'),
                   labelStyle: const TextStyle(color: Colors.grey),
-                  hintText: 'Seu nome ou apelido',
+                  hintText: AppLocalizations.of(context).t('profile_display_name_hint'),
                   hintStyle: const TextStyle(color: Colors.grey),
                   filled: true,
                   fillColor: const Color(0xFF2A2A2A),
@@ -163,9 +164,9 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
                 style: const TextStyle(color: Colors.white),
                 maxLines: 3,
                 decoration: InputDecoration(
-                  labelText: 'Sobre você',
+                  labelText: AppLocalizations.of(context).t('profile_about_label'),
                   labelStyle: const TextStyle(color: Colors.grey),
-                  hintText: 'Uma breve descrição...',
+                  hintText: AppLocalizations.of(context).t('profile_about_hint'),
                   hintStyle: const TextStyle(color: Colors.grey),
                   filled: true,
                   fillColor: const Color(0xFF2A2A2A),
@@ -186,14 +187,14 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
                   color: const Color(0x1AFF6B6B),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.info, color: Color(0xFFFF6B6B), size: 16),
-                    SizedBox(width: 8),
+                    const Icon(Icons.info, color: Color(0xFFFF6B6B), size: 16),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'O perfil será publicado nos relays Nostr',
-                        style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 12),
+                        AppLocalizations.of(context).t('profile_publish_info'),
+                        style: const TextStyle(color: Color(0xB3FFFFFF), fontSize: 12),
                       ),
                     ),
                   ],
@@ -205,16 +206,16 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+            child: Text(AppLocalizations.of(context).t('cancel'), style: const TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
             onPressed: () {
               // TODO: Publicar perfil nos relays Nostr
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('⚠️ Publicação de perfil será implementada em breve'),
-                  backgroundColor: Color(0xFFFF6B6B),
+                SnackBar(
+                  content: Text(AppLocalizations.of(context).t('profile_publish_coming_soon')),
+                  backgroundColor: const Color(0xFFFF6B6B),
                 ),
               );
             },
@@ -222,7 +223,7 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
               backgroundColor: const Color(0xFFFF6B6B),
               foregroundColor: Colors.white,
             ),
-            child: const Text('Salvar'),
+            child: Text(AppLocalizations.of(context).t('save')),
           ),
         ],
       ),
@@ -240,15 +241,15 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Meu Perfil Nostr',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+        title: Text(
+          AppLocalizations.of(context).t('profile_title'),
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.edit_outlined, color: Color(0xFFFF6B6B)),
             onPressed: _showEditProfileDialog,
-            tooltip: 'Editar Perfil',
+            tooltip: AppLocalizations.of(context).t('profile_edit_title'),
           ),
         ],
         bottom: PreferredSize(
@@ -268,12 +269,13 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
                   
                   // Public Key
                   _buildKeyCard(
-                    title: 'Chave Pública (npub)',
+                    context: context,
+                    title: AppLocalizations.of(context).t('profile_public_key'),
                     value: _npub ?? '',
                     icon: Icons.public,
                     color: const Color(0xFF9C27B0),
                     onCopy: () => _copyToClipboard(_publicKey ?? '', 'npub'),
-                    onQR: () => _showQRCode(_npub ?? '', 'Meu npub'),
+                    onQR: () => _showQRCode(_npub ?? '', AppLocalizations.of(context).t('profile_my_npub')),
                   ),
                   const SizedBox(height: 24),
                   
@@ -370,9 +372,9 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _buildStat('Verificado', '✓', const Color(0xFF00FF00)),
+              _buildStat(AppLocalizations.of(context).t('profile_verified'), '✓', const Color(0xFF00FF00)),
               _buildStat('NIP-05', '❌', Colors.grey),
-              _buildStat('Relays', '3', const Color(0xFFFF6B6B)),
+              _buildStat(AppLocalizations.of(context).t('profile_relays'), '3', const Color(0xFFFF6B6B)),
             ],
           ),
         ],
@@ -401,6 +403,7 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
   }
 
   Widget _buildKeyCard({
+    required BuildContext context,
     required String title,
     required String value,
     required IconData icon,
@@ -456,7 +459,7 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
                 child: OutlinedButton.icon(
                   onPressed: onCopy,
                   icon: const Icon(Icons.copy, size: 16),
-                  label: const Text('Copiar'),
+                  label: Text(AppLocalizations.of(context).t('copy')),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: color,
                     side: BorderSide(color: color.withOpacity(0.5)),
@@ -469,7 +472,7 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
                 child: OutlinedButton.icon(
                   onPressed: onQR,
                   icon: const Icon(Icons.qr_code, size: 16),
-                  label: const Text('QR Code'),
+                  label: Text(AppLocalizations.of(context).t('qr_code')),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: color,
                     side: BorderSide(color: color.withOpacity(0.5)),
@@ -499,10 +502,10 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
             children: [
               const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 20),
               const SizedBox(width: 8),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'Chave Privada (NUNCA compartilhe!)',
-                  style: TextStyle(
+                  AppLocalizations.of(context).t('profile_private_key_warning'),
+                  style: const TextStyle(
                     color: Colors.orange,
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
@@ -545,9 +548,9 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: () => _copyToClipboard(_privateKey!, 'Chave Privada'),
+                onPressed: () => _copyToClipboard(_privateKey!, AppLocalizations.of(context).t('profile_copy_private_key')),
                 icon: const Icon(Icons.copy, size: 16),
-                label: const Text('Copiar Chave Privada'),
+                label: Text(AppLocalizations.of(context).t('profile_copy_private_key')),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.orange,
                   side: const BorderSide(color: Colors.orange),
@@ -556,9 +559,9 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              '⚠️ Qualquer pessoa com essa chave pode acessar sua conta e seus fundos!',
-              style: TextStyle(color: Color(0xFFFF6B6B), fontSize: 11),
+            Text(
+              AppLocalizations.of(context).t('profile_private_key_danger'),
+              style: const TextStyle(color: Color(0xFFFF6B6B), fontSize: 11),
             ),
           ],
         ],
@@ -572,25 +575,21 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
-            SizedBox(width: 12),
-            Text('ATENÇÃO!', style: TextStyle(color: Colors.red)),
+            const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
+            const SizedBox(width: 12),
+            Text(AppLocalizations.of(context).t('profile_attention_title'), style: const TextStyle(color: Colors.red)),
           ],
         ),
-        content: const Text(
-          'Sua chave privada dá acesso TOTAL à sua identidade Nostr e carteira Lightning.\n\n'
-          '❌ NUNCA compartilhe com ninguém\n'
-          '❌ NUNCA cole em sites suspeitos\n'
-          '❌ NUNCA envie por mensagem\n\n'
-          'Deseja mostrar a chave privada?',
-          style: TextStyle(color: Color(0xB3FFFFFF)),
+        content: Text(
+          AppLocalizations.of(context).t('profile_attention_content'),
+          style: const TextStyle(color: Color(0xB3FFFFFF)),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+            child: Text(AppLocalizations.of(context).t('cancel'), style: const TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -598,7 +597,7 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
               setState(() => _showPrivateKey = true);
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Entendi, mostrar', style: TextStyle(color: Colors.white)),
+            child: Text(AppLocalizations.of(context).t('profile_understood_show'), style: const TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -621,13 +620,13 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.backup, color: Color(0xFFFF6B6B)),
-              SizedBox(width: 8),
+              const Icon(Icons.backup, color: Color(0xFFFF6B6B)),
+              const SizedBox(width: 8),
               Text(
-                'NIP-06: Backup Unificado',
-                style: TextStyle(
+                AppLocalizations.of(context).t('profile_nip06_title'),
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -636,10 +635,9 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          const Text(
-            'Use sua seed Bitcoin (12 ou 24 palavras) para derivar chaves Nostr. '
-            'Um backup para Bitcoin e Nostr!',
-            style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 13),
+          Text(
+            AppLocalizations.of(context).t('profile_nip06_description'),
+            style: const TextStyle(color: Color(0xB3FFFFFF), fontSize: 13),
           ),
           const SizedBox(height: 16),
           SizedBox(
@@ -649,7 +647,7 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
                 Navigator.pushNamed(context, '/nip06-backup');
               },
               icon: const Icon(Icons.key),
-              label: const Text('Configurar Backup NIP-06'),
+              label: Text(AppLocalizations.of(context).t('profile_configure_nip06')),
               style: OutlinedButton.styleFrom(
                 foregroundColor: const Color(0xFFFF6B6B),
                 side: const BorderSide(color: Color(0xFFFF6B6B)),

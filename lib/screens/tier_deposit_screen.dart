@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:bro_app/services/log_utils.dart';
@@ -198,7 +199,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
           });
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('💰 Pagamento detectado! Saldo: $totalBalance sats'),
+              content: Text(AppLocalizations.of(context)!.tp('prov_tier_payment_detected', {'balance': totalBalance.toString()})),
               backgroundColor: Colors.blue,
               duration: const Duration(seconds: 3),
             ),
@@ -293,7 +294,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('✅ Tier ${widget.tier.name} ativado com sucesso!'),
+          content: Text(AppLocalizations.of(context)!.tp('prov_tier_activated', {'name': widget.tier.name})),
           backgroundColor: Colors.green,
         ),
       );
@@ -302,11 +303,12 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: Text('Depositar - ${widget.tier.name}'),
+        title: Text(l.tp('prov_tier_deposit_title', {'name': widget.tier.name})),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context, _depositCompleted),
@@ -323,6 +325,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
   }
 
   Widget _buildErrorView() {
+    final l = AppLocalizations.of(context)!;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -332,7 +335,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
             const Icon(Icons.error_outline, color: Colors.red, size: 64),
             const SizedBox(height: 16),
             Text(
-              'Erro: $_error',
+              l.tp('prov_tier_error', {'msg': _error ?? ''}),
               style: const TextStyle(color: Colors.white70),
               textAlign: TextAlign.center,
             ),
@@ -340,7 +343,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
             ElevatedButton(
               onPressed: _generatePaymentOptions,
               style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-              child: const Text('Tentar Novamente'),
+              child: Text(l.t('prov_tier_try_again')),
             ),
           ],
         ),
@@ -349,6 +352,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
   }
 
   Widget _buildSuccessView() {
+    final l = AppLocalizations.of(context)!;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -365,7 +369,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
             ),
             const SizedBox(height: 24),
             Text(
-              'Tier ${widget.tier.name} Ativado!',
+              l.tp('prov_tier_activated_title', {'name': widget.tier.name}),
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 24,
@@ -374,13 +378,13 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              'Você pode aceitar ordens de até R\$ ${widget.tier.maxOrderValueBrl.toStringAsFixed(0)}',
+              l.tp('prov_tier_accept_up_to', {'max': widget.tier.maxOrderValueBrl.toStringAsFixed(0)}),
               style: const TextStyle(color: Colors.white70, fontSize: 16),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
-              'Saldo atual: $_currentBalance sats',
+              l.tp('prov_tier_current_balance', {'balance': _currentBalance.toString()}),
               style: const TextStyle(color: Colors.orange, fontSize: 14),
             ),
             const SizedBox(height: 32),
@@ -398,7 +402,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
                 backgroundColor: Colors.green,
                 padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
               ),
-              child: const Text('Começar a Aceitar Ordens'),
+              child: Text(l.t('prov_tier_start_accepting')),
             ),
           ],
         ),
@@ -407,6 +411,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
   }
 
   Widget _buildDepositView() {
+    final l = AppLocalizations.of(context)!;
     // Usar o valor já calculado que considera sats comprometidos
     final amountNeeded = _amountNeededSats;
     
@@ -435,7 +440,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Máximo por ordem: R\$ ${widget.tier.maxOrderValueBrl.toStringAsFixed(0)}',
+                  l.tp('prov_tier_max_per_order', {'max': widget.tier.maxOrderValueBrl.toStringAsFixed(0)}),
                   style: const TextStyle(color: Colors.white70),
                 ),
               ],
@@ -455,7 +460,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Saldo total:', style: TextStyle(color: Colors.white70)),
+                    Text(l.t('prov_tier_total_balance'), style: const TextStyle(color: Colors.white70)),
                     Text('$_currentBalance sats', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                   ],
                 ),
@@ -464,7 +469,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Comprometido (ordens):', style: TextStyle(color: Colors.red, fontSize: 12)),
+                      Text(l.t('prov_tier_committed'), style: const TextStyle(color: Colors.red, fontSize: 12)),
                       Text('-$_committedSats sats', style: const TextStyle(color: Colors.red, fontSize: 12)),
                     ],
                   ),
@@ -472,7 +477,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Disponível:', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                      Text(l.t('prov_tier_available'), style: const TextStyle(color: Colors.white70, fontSize: 12)),
                       Text('${(_currentBalance - _committedSats).clamp(0, _currentBalance)} sats', 
                            style: const TextStyle(color: Colors.white54, fontSize: 12)),
                     ],
@@ -482,7 +487,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Garantia necessária:', style: TextStyle(color: Colors.white70)),
+                    Text(l.t('prov_tier_required'), style: const TextStyle(color: Colors.white70)),
                     Text('${widget.tier.requiredCollateralSats} sats', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
                   ],
                 ),
@@ -490,7 +495,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Depositar:', style: TextStyle(color: Colors.white70)),
+                    Text(l.t('prov_tier_to_deposit'), style: const TextStyle(color: Colors.white70)),
                     Text('$amountNeeded sats', style: const TextStyle(color: Colors.green, fontSize: 18, fontWeight: FontWeight.bold)),
                   ],
                 ),
@@ -513,6 +518,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
   }
 
   Widget _buildLightningSection() {
+    final l = AppLocalizations.of(context)!;
     if (_lightningInvoice == null) {
       return Container(
         padding: const EdgeInsets.all(16),
@@ -520,11 +526,11 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
           color: const Color(0xFF1E1E1E),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Column(
+        child: Column(
           children: [
-            Icon(Icons.error_outline, color: Colors.red, size: 48),
-            SizedBox(height: 8),
-            Text('Erro ao gerar invoice', style: TextStyle(color: Colors.red)),
+            const Icon(Icons.error_outline, color: Colors.red, size: 48),
+            const SizedBox(height: 8),
+            Text(l.t('prov_tier_invoice_error'), style: const TextStyle(color: Colors.red)),
           ],
         ),
       );
@@ -545,14 +551,14 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
               color: Colors.orange.withOpacity(0.15),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Row(
+            child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.flash_on, color: Colors.orange),
-                SizedBox(width: 8),
+                const Icon(Icons.flash_on, color: Colors.orange),
+                const SizedBox(width: 8),
                 Text(
-                  '⚡ Lightning Network',
-                  style: TextStyle(
+                  l.t('prov_tier_lightning'),
+                  style: const TextStyle(
                     color: Colors.orange,
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
@@ -578,14 +584,14 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
           ),
           const SizedBox(height: 16),
           
-          const Text(
-            'Pagamento instantâneo',
-            style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+          Text(
+            l.t('prov_tier_instant_payment'),
+            style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 6),
-          const Text(
-            'Escaneie o QR code com sua carteira Lightning',
-            style: TextStyle(color: Colors.white70, fontSize: 12),
+          Text(
+            l.t('prov_tier_scan_qr'),
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
@@ -595,11 +601,11 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
             onPressed: () {
               Clipboard.setData(ClipboardData(text: _lightningInvoice!));
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Invoice copiada!')),
+                SnackBar(content: Text(l.t('prov_tier_invoice_copied'))),
               );
             },
             icon: const Icon(Icons.copy, size: 16),
-            label: const Text('Copiar Invoice'),
+            label: Text(l.t('prov_tier_copy_invoice')),
             style: OutlinedButton.styleFrom(foregroundColor: Colors.orange),
           ),
           const SizedBox(height: 16),
@@ -617,9 +623,9 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-              const Text(
-                'Aguardando pagamento...',
-                style: TextStyle(color: Colors.white54, fontSize: 12),
+              Text(
+                l.t('prov_tier_waiting_payment'),
+                style: const TextStyle(color: Colors.white54, fontSize: 12),
               ),
             ],
           ),

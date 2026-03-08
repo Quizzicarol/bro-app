@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 import 'payment_screen.dart';
 import 'offer_screen.dart';
 
@@ -13,9 +14,9 @@ class NewTradeScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: const Color(0xF70A0A0A),
         elevation: 0,
-        title: const Text(
-          'Pagar Conta',
-          style: TextStyle(
+        title: Text(
+          AppLocalizations.of(context).t('trade_title'),
+          style: const TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.w600,
             color: Colors.white,
@@ -33,9 +34,9 @@ class NewTradeScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Título direto
-              const Text(
-                'O que voce quer fazer?',
-                style: TextStyle(
+              Text(
+                AppLocalizations.of(context).t('trade_what_to_do'),
+                style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
                   color: Colors.white,
@@ -49,8 +50,8 @@ class NewTradeScreen extends StatelessWidget {
                 icon: Icons.sell,
                 iconColor: const Color(0xFF3DE98C),
                 gradientColors: [const Color(0xFF3DE98C), const Color(0xFF00CC7A)],
-                title: 'Oferecer Produto ou Servico',
-                description: 'Anuncie produtos ou servicos e receba em sats!',
+                title: AppLocalizations.of(context).t('trade_offer_product'),
+                description: AppLocalizations.of(context).t('trade_offer_description'),
                 onTap: () {
                   Navigator.push(
                     context,
@@ -66,8 +67,8 @@ class NewTradeScreen extends StatelessWidget {
                 icon: Icons.receipt_long,
                 iconColor: const Color(0xFFFF6B6B),
                 gradientColors: [const Color(0xFFFF6B6B), const Color(0xFFFF8A8A)],
-                title: 'Pagar uma Conta',
-                description: 'Cole um codigo pix ou boleto e pague em Bitcoin.',
+                title: AppLocalizations.of(context).t('trade_pay_bill'),
+                description: AppLocalizations.of(context).t('trade_pay_description'),
                 onTap: () {
                   Navigator.push(
                     context,
@@ -83,7 +84,8 @@ class NewTradeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildQuickGuide() {
+  Widget _buildQuickGuide(BuildContext context) {
+    final t = AppLocalizations.of(context).t;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -104,13 +106,13 @@ class NewTradeScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.lightbulb_outline, color: Color(0xFFBA68C8), size: 24),
-              SizedBox(width: 8),
+              const Icon(Icons.lightbulb_outline, color: Color(0xFFBA68C8), size: 24),
+              const SizedBox(width: 8),
               Text(
-                'Como funciona o Bro?',
-                style: TextStyle(
+                t('trade_how_it_works'),
+                style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                   color: Colors.white,
@@ -119,13 +121,13 @@ class NewTradeScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          _buildGuideItem('🛍️', 'Ofereca produtos ou servicos e receba pagamento em sats via Lightning'),
+          _buildGuideItem('🛍️', t('trade_guide_offer')),
           const SizedBox(height: 8),
-          _buildGuideItem('💬', 'Negocie via Nostr - chat privado e criptografado'),
+          _buildGuideItem('💬', t('trade_guide_chat')),
           const SizedBox(height: 8),
-          _buildGuideItem('📸', 'Envie fotos do produto de forma privada para interessados'),
+          _buildGuideItem('📸', t('trade_guide_photos')),
           const SizedBox(height: 8),
-          _buildGuideItem('💳', 'Cole o codigo de uma conta e um Bro paga pra voce'),
+          _buildGuideItem('💳', t('trade_guide_pay')),
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(12),
@@ -133,14 +135,14 @@ class NewTradeScreen extends StatelessWidget {
               color: const Color(0x1A3DE98C),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                Icon(Icons.verified, color: Color(0xFF3DE98C), size: 20),
-                SizedBox(width: 8),
+                const Icon(Icons.verified, color: Color(0xFF3DE98C), size: 20),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Tudo P2P, sem intermediarios e com privacidade!',
-                    style: TextStyle(
+                    t('trade_p2p_privacy'),
+                    style: const TextStyle(
                       fontSize: 13,
                       color: Color(0xFF3DE98C),
                       fontWeight: FontWeight.w500,
@@ -236,7 +238,7 @@ class NewTradeScreen extends StatelessWidget {
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            'Em breve',
+                            AppLocalizations.of(context).t('trade_coming_soon'),
                             style: TextStyle(
                               fontSize: 10,
                               color: gradientColors[0],

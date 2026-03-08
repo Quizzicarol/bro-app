@@ -2,6 +2,7 @@
 import 'package:flutter/services.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
+import '../l10n/app_localizations.dart';
 import '../services/storage_service.dart';
 import '../services/nip06_service.dart';
 import '../providers/breez_provider_export.dart';
@@ -54,9 +55,9 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
     });
     
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('🔑 Nova seed gerada! Guarde em local seguro.'),
-        backgroundColor: Color(0xFFFF6B6B),
+      SnackBar(
+        content: Text(AppLocalizations.of(context).t('nip06_new_seed_generated')),
+        backgroundColor: const Color(0xFFFF6B6B),
       ),
     );
   }
@@ -70,7 +71,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
     
     if (mnemonic.isEmpty) {
       broLog('❌ [NIP06] Mnemonic vazio!');
-      setState(() => _error = 'Digite ou gere uma seed');
+      setState(() => _error = AppLocalizations.of(context).t('nip06_enter_or_generate'));
       return;
     }
     
@@ -78,7 +79,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
     broLog('🔑 [NIP06] Mnemonic válido: $isValid');
     
     if (!isValid) {
-      setState(() => _error = 'Seed inválida. Verifique as palavras.');
+      setState(() => _error = AppLocalizations.of(context).t('nip06_invalid_seed'));
       return;
     }
     
@@ -100,7 +101,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
     } catch (e) {
       broLog('❌ [NIP06] Erro ao derivar: $e');
       setState(() {
-        _error = 'Erro ao derivar chaves: $e';
+        _error = AppLocalizations.of(context).tp('nip06_error_deriving', {'error': e.toString()});
         _isLoading = false;
       });
     }
@@ -111,24 +112,23 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
     
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Confirmar', style: TextStyle(color: Colors.white)),
-        content: const Text(
-          'Isso substituirá suas chaves Nostr atuais.\n\n'
-          'Certifique-se de ter backup das chaves anteriores antes de continuar.',
-          style: TextStyle(color: Color(0xB3FFFFFF)),
+        title: Text(AppLocalizations.of(ctx).t('confirm'), style: const TextStyle(color: Colors.white)),
+        content: Text(
+          AppLocalizations.of(ctx).t('nip06_replace_keys_warning'),
+          style: const TextStyle(color: Color(0xB3FFFFFF)),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(AppLocalizations.of(ctx).t('cancel'), style: const TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF6B6B)),
-            child: const Text('Confirmar', style: TextStyle(color: Colors.white)),
+            child: Text(AppLocalizations.of(ctx).t('confirm'), style: const TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -157,8 +157,8 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Chaves e carteira restauradas com sucesso!'),
+          SnackBar(
+            content: Text(AppLocalizations.of(context).t('nip06_keys_restored')),
             backgroundColor: Colors.green,
           ),
         );
@@ -171,7 +171,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('📋 $label copiado!'),
+        content: Text(AppLocalizations.of(context).tp('nip06_copied', {'label': label})),
         backgroundColor: const Color(0xFF9C27B0),
       ),
     );
@@ -196,9 +196,9 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'NIP-06: Backup Unificado',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+        title: Text(
+          AppLocalizations.of(context).t('nip06_title'),
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
         ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
@@ -282,13 +282,13 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.info_outline, color: Color(0xFFFF6B6B)),
-              SizedBox(width: 8),
+              const Icon(Icons.info_outline, color: Color(0xFFFF6B6B)),
+              const SizedBox(width: 8),
               Text(
-                'O que é NIP-06?',
-                style: TextStyle(
+                AppLocalizations.of(context).t('nip06_what_is'),
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -297,10 +297,9 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          const Text(
-            'NIP-06 permite derivar suas chaves Nostr a partir de uma seed BIP-39 '
-            '(as mesmas 12 ou 24 palavras usadas em carteiras Bitcoin).',
-            style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 13, height: 1.5),
+          Text(
+            AppLocalizations.of(context).t('nip06_description'),
+            style: const TextStyle(color: Color(0xB3FFFFFF), fontSize: 13, height: 1.5),
           ),
           const SizedBox(height: 16),
           // Esclarecimento importante
@@ -311,16 +310,16 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: const Color(0x33FFC107)),
             ),
-            child: const Column(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    Icon(Icons.lightbulb_outline, color: Color(0xFFFFC107), size: 18),
-                    SizedBox(width: 8),
+                    const Icon(Icons.lightbulb_outline, color: Color(0xFFFFC107), size: 18),
+                    const SizedBox(width: 8),
                     Text(
-                      'Importante entender:',
-                      style: TextStyle(
+                      AppLocalizations.of(context).t('nip06_important'),
+                      style: const TextStyle(
                         color: Color(0xFFFFC107),
                         fontWeight: FontWeight.bold,
                         fontSize: 13,
@@ -328,23 +327,18 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
                     ),
                   ],
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 Text(
-                  '🔐 SEED = Sua frase secreta de 12 ou 24 palavras\n\n'
-                  '🟣 Chaves Nostr = Sua identidade no protocolo Nostr (npub/nsec)\n\n'
-                  '🟠 Chaves Bitcoin = Suas carteiras para guardar/enviar sats\n\n'
-                  '💡 Uma ÚNICA seed pode gerar ambas as chaves, facilitando o backup!',
-                  style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 12, height: 1.5),
+                  AppLocalizations.of(context).t('nip06_seed_explanation'),
+                  style: const TextStyle(color: Color(0xB3FFFFFF), fontSize: 12, height: 1.5),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 16),
-          const Text(
-            '✅ Um único backup para Bitcoin e Nostr\n'
-            '✅ Chaves determinísticas e recuperáveis\n'
-            '✅ Passphrase opcional para maior segurança',
-            style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 13, height: 1.5),
+          Text(
+            AppLocalizations.of(context).t('nip06_benefits'),
+            style: const TextStyle(color: Color(0xB3FFFFFF), fontSize: 13, height: 1.5),
           ),
           const SizedBox(height: 12),
           Container(
@@ -380,9 +374,9 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Seed (12 ou 24 palavras)',
-              style: TextStyle(
+            Text(
+              AppLocalizations.of(context).t('nip06_seed_label'),
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
@@ -406,7 +400,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
             maxLines: 3,
             style: const TextStyle(color: Colors.white, fontFamily: 'monospace'),
             decoration: InputDecoration(
-              hintText: 'Digite ou cole sua seed aqui...',
+              hintText: AppLocalizations.of(context).t('nip06_seed_hint'),
               hintStyle: const TextStyle(color: Color(0x66FFFFFF)),
               filled: true,
               fillColor: const Color(0x0DFFFFFF),
@@ -438,8 +432,8 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
               ),
               child: Text(
                 _mnemonicController.text.isEmpty
-                    ? 'Toque para inserir sua seed...'
-                    : '• ' * (_mnemonicController.text.split(' ').length) + '(${_mnemonicController.text.split(' ').length} palavras)',
+                    ? AppLocalizations.of(context).t('nip06_tap_to_insert')
+                    : '• ' * (_mnemonicController.text.split(' ').length) + '(${_mnemonicController.text.split(' ').length} ${AppLocalizations.of(context).t('nip06_words')})',
                 style: TextStyle(
                   color: _mnemonicController.text.isEmpty
                       ? const Color(0x66FFFFFF)
@@ -460,14 +454,14 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
                 color: const Color(0x1A9C27B0),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.auto_awesome, color: Color(0xFF9C27B0), size: 16),
-                  SizedBox(width: 8),
+                  const Icon(Icons.auto_awesome, color: Color(0xFF9C27B0), size: 16),
+                  const SizedBox(width: 8),
                   Text(
-                    'Usar seed atual da carteira',
-                    style: TextStyle(color: Color(0xFFBA68C8), fontSize: 12),
+                    AppLocalizations.of(context).t('nip06_use_current_seed'),
+                    style: const TextStyle(color: Color(0xFFBA68C8), fontSize: 12),
                   ),
                 ],
               ),
@@ -484,9 +478,9 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
       children: [
         Row(
           children: [
-            const Text(
-              'Passphrase (opcional)',
-              style: TextStyle(
+            Text(
+              AppLocalizations.of(context).t('nip06_passphrase_label'),
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
@@ -499,9 +493,9 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
                 color: const Color(0x1AFF6B35),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Text(
-                'Avançado',
-                style: TextStyle(
+              child: Text(
+                AppLocalizations.of(context).t('nip06_advanced'),
+                style: const TextStyle(
                   color: Color(0xFFFF6B6B),
                   fontSize: 10,
                   fontWeight: FontWeight.w600,
@@ -511,9 +505,9 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
           ],
         ),
         const SizedBox(height: 4),
-        const Text(
-          'Adiciona uma camada extra de segurança. Se usar, lembre-se dela!',
-          style: TextStyle(color: Color(0x99FFFFFF), fontSize: 12),
+        Text(
+          AppLocalizations.of(context).t('nip06_passphrase_hint'),
+          style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 12),
         ),
         const SizedBox(height: 8),
         TextField(
@@ -521,7 +515,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
           obscureText: !_showPassphrase,
           style: const TextStyle(color: Colors.white),
           decoration: InputDecoration(
-            hintText: 'Passphrase opcional...',
+            hintText: AppLocalizations.of(context).t('nip06_passphrase_input_hint'),
             hintStyle: const TextStyle(color: Color(0x66FFFFFF)),
             prefixIcon: const Icon(Icons.lock_outline, color: Color(0x99FFFFFF)),
             suffixIcon: IconButton(
@@ -561,7 +555,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
               child: OutlinedButton.icon(
                 onPressed: _generateNewMnemonic,
                 icon: const Icon(Icons.auto_awesome),
-                label: const Text('Gerar Nova'),
+                label: Text(AppLocalizations.of(context).t('nip06_generate_new')),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: const Color(0xFF9C27B0),
                   side: const BorderSide(color: Color(0xFF9C27B0)),
@@ -579,7 +573,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                       )
                     : const Icon(Icons.key),
-                label: const Text('Derivar Chaves'),
+                label: Text(AppLocalizations.of(context).t('nip06_derive_keys')),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFFF6B6B),
                   foregroundColor: Colors.white,
@@ -601,7 +595,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                   )
                 : const Icon(Icons.account_balance_wallet),
-            label: const Text('💰 RESTAURAR CARTEIRA LIGHTNING'),
+            label: Text(AppLocalizations.of(context).t('nip06_restore_wallet')),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.orange,
               foregroundColor: Colors.white,
@@ -618,12 +612,12 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
     final mnemonic = _mnemonicController.text.trim();
     
     if (mnemonic.isEmpty) {
-      setState(() => _error = 'Digite a seed para restaurar');
+      setState(() => _error = AppLocalizations.of(context).t('nip06_enter_seed_to_restore'));
       return;
     }
     
     if (!_nip06.validateMnemonic(mnemonic)) {
-      setState(() => _error = 'Seed inválida. Verifique as palavras.');
+      setState(() => _error = AppLocalizations.of(context).t('nip06_invalid_seed'));
       return;
     }
     
@@ -632,28 +626,26 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.account_balance_wallet, color: Color(0xFFFF6B6B)),
-            SizedBox(width: 8),
-            Text('Restaurar Carteira', style: TextStyle(color: Colors.white)),
+            const Icon(Icons.account_balance_wallet, color: Color(0xFFFF6B6B)),
+            const SizedBox(width: 8),
+            Text(AppLocalizations.of(context).t('nip06_restore_wallet_title'), style: const TextStyle(color: Colors.white)),
           ],
         ),
-        content: const Text(
-          '⚠️ ATENÇÃO: Isso irá substituir a carteira Lightning atual pela nova seed.\n\n'
-          'O saldo da carteira antiga será PERDIDO se você não tiver backup.\n\n'
-          'Tem certeza que deseja continuar?',
-          style: TextStyle(color: Color(0xB3FFFFFF)),
+        content: Text(
+          AppLocalizations.of(context).t('nip06_restore_warning'),
+          style: const TextStyle(color: Color(0xB3FFFFFF)),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+            child: Text(AppLocalizations.of(context).t('cancel'), style: const TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF6B6B)),
-            child: const Text('Restaurar', style: TextStyle(color: Colors.white)),
+            child: Text(AppLocalizations.of(context).t('nip06_restore_button'), style: const TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -683,8 +675,8 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
           
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('✅ Carteira Lightning restaurada com sucesso!'),
+              SnackBar(
+                content: Text(AppLocalizations.of(context).t('nip06_wallet_restored')),
                 backgroundColor: Colors.green,
               ),
             );
@@ -698,7 +690,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
     } catch (e) {
       broLog('❌ [NIP06] Erro ao restaurar: $e');
       setState(() {
-        _error = 'Erro ao restaurar carteira: $e';
+        _error = AppLocalizations.of(context).tp('nip06_error_restoring', {'error': e.toString()});
         _isLoading = false;
       });
     }
@@ -715,13 +707,13 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.check_circle, color: Colors.green),
-              SizedBox(width: 8),
+              const Icon(Icons.check_circle, color: Colors.green),
+              const SizedBox(width: 8),
               Text(
-                'Chaves Derivadas',
-                style: TextStyle(
+                AppLocalizations.of(context).t('nip06_derived_keys'),
+                style: const TextStyle(
                   color: Colors.green,
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -733,7 +725,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
           
           // Public Key
           _buildKeyDisplay(
-            'Chave Pública',
+            AppLocalizations.of(context).t('nip06_public_key'),
             _derivedPublicKey!,
             const Color(0xFF9C27B0),
           ),
@@ -741,7 +733,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
           
           // Private Key (warning)
           _buildKeyDisplay(
-            'Chave Privada (⚠️ secreta)',
+            AppLocalizations.of(context).t('nip06_private_key'),
             _derivedPrivateKey!,
             Colors.orange,
           ),
@@ -753,7 +745,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
             child: ElevatedButton.icon(
               onPressed: _saveAndUseKeys,
               icon: const Icon(Icons.save),
-              label: const Text('Salvar e Usar Estas Chaves'),
+              label: Text(AppLocalizations.of(context).t('nip06_save_and_use')),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,

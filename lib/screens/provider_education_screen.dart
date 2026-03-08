@@ -1,5 +1,6 @@
 ﻿import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 import '../config.dart';
 import '../services/secure_storage_service.dart';
 import '../services/nostr_service.dart';
@@ -11,38 +12,39 @@ class ProviderEducationScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('Como Ser Provedor'),
+        title: Text(l.t('prov_edu_title')),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildHeroSection(),
+            _buildHeroSection(l),
             const SizedBox(height: 24),
-            _buildSectionTitle('🎯 Como Funciona'),
+            _buildSectionTitle(l.t('prov_edu_how_it_works')),
             _buildInfoCard(
               steps: [
-                '1️⃣ Deposite Bitcoin como garantia',
-                '2️⃣ Escolha ordens disponíveis na plataforma',
-                '3️⃣ Pague a conta no banco com seu dinheiro',
-                '4️⃣ Envie o comprovante de pagamento',
-                '5️⃣ Receba 3% de cada operação por ser um Bro',
-                '6️⃣ Resgate sua garantia ao zerar suas ordens aceitas',
+                l.t('prov_edu_step1'),
+                l.t('prov_edu_step2'),
+                l.t('prov_edu_step3'),
+                l.t('prov_edu_step4'),
+                l.t('prov_edu_step5'),
+                l.t('prov_edu_step6'),
               ],
             ),
             const SizedBox(height: 24),
-            _buildSectionTitle('💰 Sistema de Garantias'),
-            _buildTierTable(),
+            _buildSectionTitle(l.t('prov_edu_collateral_system')),
+            _buildTierTable(l),
             const SizedBox(height: 24),
-            _buildSectionTitle('⚠️ Riscos e Responsabilidades'),
-            _buildRisksCard(),
+            _buildSectionTitle(l.t('prov_edu_risks')),
+            _buildRisksCard(l),
             const SizedBox(height: 32),
-            _buildStartButton(context),
+            _buildStartButton(context, l),
             const SizedBox(height: 100), // Extra padding for nav buttons
           ],
         ),
@@ -50,7 +52,7 @@ class ProviderEducationScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildHeroSection() {
+  Widget _buildHeroSection(AppLocalizations l) {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -66,9 +68,9 @@ class ProviderEducationScreen extends StatelessWidget {
         children: [
           const Icon(Icons.monetization_on, size: 64, color: Colors.orange),
           const SizedBox(height: 16),
-          const Text(
-            'Seja um Bro e facilite trocas',
-            style: TextStyle(
+          Text(
+            l.t('prov_edu_hero_title'),
+            style: const TextStyle(
               color: Colors.white,
               fontSize: 22,
               fontWeight: FontWeight.bold,
@@ -76,9 +78,9 @@ class ProviderEducationScreen extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Como Bro você faz a ponte, ajuda pessoas a pagarem contas e recebe sats como recompensa',
-            style: TextStyle(color: Colors.white70, fontSize: 14),
+          Text(
+            l.t('prov_edu_hero_subtitle'),
+            style: const TextStyle(color: Colors.white70, fontSize: 14),
             textAlign: TextAlign.center,
           ),
         ],
@@ -133,7 +135,7 @@ class ProviderEducationScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildTierTable() {
+  Widget _buildTierTable(AppLocalizations l) {
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF1E1E1E),
@@ -144,7 +146,7 @@ class ProviderEducationScreen extends StatelessWidget {
         children: [
           // 🧪 Tier Trial para testar
           _buildTierRow(
-            tier: '🧪 Trial',
+            tier: l.t('prov_edu_tier_trial'),
             guarantee: 'R\$ 10',
             maxOrder: 'até R\$ 10',
             color: Colors.green,
@@ -152,7 +154,7 @@ class ProviderEducationScreen extends StatelessWidget {
           ),
           const Divider(color: Colors.white12, height: 1),
           _buildTierRow(
-            tier: '🥉 Iniciante',
+            tier: l.t('prov_edu_tier_beginner'),
             guarantee: 'R\$ 50',
             maxOrder: 'até R\$ 50',
             color: Colors.orange,
@@ -160,7 +162,7 @@ class ProviderEducationScreen extends StatelessWidget {
           ),
           const Divider(color: Colors.white12, height: 1),
           _buildTierRow(
-            tier: '🥈 Básico',
+            tier: l.t('prov_edu_tier_basic'),
             guarantee: 'R\$ 200',
             maxOrder: 'até R\$ 200',
             color: Colors.grey,
@@ -168,7 +170,7 @@ class ProviderEducationScreen extends StatelessWidget {
           ),
           const Divider(color: Colors.white12, height: 1),
           _buildTierRow(
-            tier: '🥇 Intermediário',
+            tier: l.t('prov_edu_tier_intermediate'),
             guarantee: 'R\$ 500',
             maxOrder: 'até R\$ 500',
             color: Colors.blue,
@@ -176,7 +178,7 @@ class ProviderEducationScreen extends StatelessWidget {
           ),
           const Divider(color: Colors.white12, height: 1),
           _buildTierRow(
-            tier: '💎 Avançado',
+            tier: l.t('prov_edu_tier_advanced'),
             guarantee: 'R\$ 1.000',
             maxOrder: 'até R\$ 1.000',
             color: Colors.purple,
@@ -240,7 +242,7 @@ class ProviderEducationScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildBenefitsCard() {
+  Widget _buildBenefitsCard(AppLocalizations l) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -251,13 +253,13 @@ class ProviderEducationScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildBenefit('💵', 'Ganhe 3% em cada transação'),
-          _buildBenefit('⚡', 'Receba Bitcoin instantaneamente'),
-          _buildBenefit('🔒', 'Protegido por sistema de escrow'),
-          _buildBenefit('📈', 'Sem limite de ganhos'),
-          _buildBenefit('🏦', 'Use seu banco normalmente'),
-          _buildBenefit('🌐', 'Trabalhe de qualquer lugar'),
-          _buildBenefit('⏰', 'Horário flexível'),
+          _buildBenefit('💵', l.t('prov_edu_benefit_earn')),
+          _buildBenefit('⚡', l.t('prov_edu_benefit_instant')),
+          _buildBenefit('🔒', l.t('prov_edu_benefit_escrow')),
+          _buildBenefit('📈', l.t('prov_edu_benefit_unlimited')),
+          _buildBenefit('🏦', l.t('prov_edu_benefit_bank')),
+          _buildBenefit('🌐', l.t('prov_edu_benefit_anywhere')),
+          _buildBenefit('⏰', l.t('prov_edu_benefit_flexible')),
         ],
       ),
     );
@@ -281,7 +283,7 @@ class ProviderEducationScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildRisksCard() {
+  Widget _buildRisksCard(AppLocalizations l) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -292,17 +294,17 @@ class ProviderEducationScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildRisk('⚠️', 'Garantia bloqueada durante ordem ativa'),
-          _buildRisk('💸', 'Você paga com seu dinheiro primeiro'),
-          _buildRisk('🕐', 'Validação pode levar até 2 horas'),
-          _buildRisk('⚖️', 'Disputas podem resultar em perda de garantia'),
-          _buildRisk('📸', 'Comprovante obrigatório com dados legíveis'),
+          _buildRisk('⚠️', l.t('prov_edu_risk_locked')),
+          _buildRisk('💸', l.t('prov_edu_risk_pay_first')),
+          _buildRisk('🕐', l.t('prov_edu_risk_validation')),
+          _buildRisk('⚖️', l.t('prov_edu_risk_dispute')),
+          _buildRisk('📸', l.t('prov_edu_risk_receipt')),
           const SizedBox(height: 12),
           const Divider(color: Colors.orange),
           const SizedBox(height: 12),
-          const Text(
-            '⚠️ ATENÇÃO: Fraude ou tentativa de golpe resulta em perda total da garantia e banimento permanente.',
-            style: TextStyle(
+          Text(
+            l.t('prov_edu_fraud_warning'),
+            style: const TextStyle(
               color: Colors.red,
               fontSize: 13,
               fontWeight: FontWeight.bold,
@@ -332,7 +334,7 @@ class ProviderEducationScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildEscrowExplanation() {
+  Widget _buildEscrowExplanation(AppLocalizations l) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -343,25 +345,25 @@ class ProviderEducationScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'O que é Escrow?',
-            style: TextStyle(
+          Text(
+            l.t('prov_edu_escrow_title'),
+            style: const TextStyle(
               color: Colors.blue,
               fontSize: 16,
               fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 12),
-          const Text(
-            'Escrow é um sistema de garantia onde o Bitcoin do usuário fica bloqueado até você provar que pagou a conta. Isso protege ambas as partes:',
-            style: TextStyle(color: Colors.white70, fontSize: 14),
+          Text(
+            l.t('prov_edu_escrow_desc'),
+            style: const TextStyle(color: Colors.white70, fontSize: 14),
           ),
           const SizedBox(height: 12),
-          _buildEscrowStep('1', 'Usuário paga Lightning → Bitcoin bloqueado'),
-          _buildEscrowStep('2', 'Você aceita ordem → Garantia bloqueada'),
-          _buildEscrowStep('3', 'Você Bro → Envia comprovante'),
-          _buildEscrowStep('4', 'Validação aprovada → Você recebe Bitcoin + taxa'),
-          _buildEscrowStep('5', 'Garantia desbloqueada → Pode aceitar nova ordem'),
+          _buildEscrowStep('1', l.t('prov_edu_escrow_step1')),
+          _buildEscrowStep('2', l.t('prov_edu_escrow_step2')),
+          _buildEscrowStep('3', l.t('prov_edu_escrow_step3')),
+          _buildEscrowStep('4', l.t('prov_edu_escrow_step4')),
+          _buildEscrowStep('5', l.t('prov_edu_escrow_step5')),
         ],
       ),
     );
@@ -404,7 +406,7 @@ class ProviderEducationScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildExample() {
+  Widget _buildExample(AppLocalizations l) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -415,28 +417,28 @@ class ProviderEducationScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Exemplo: Conta de R\$ 1.000',
-            style: TextStyle(
+          Text(
+            l.t('prov_edu_example_title'),
+            style: const TextStyle(
               color: Colors.purple,
               fontSize: 16,
               fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 16),
-          _buildExampleRow('Você paga no banco:', 'R\$ 1.000,00'),
-          _buildExampleRow('Sua taxa (3%):', 'R\$ 30,00', color: Colors.green),
+          _buildExampleRow(l.t('prov_edu_example_pay'), 'R\$ 1.000,00'),
+          _buildExampleRow(l.t('prov_edu_example_fee'), 'R\$ 30,00', color: Colors.green),
           const Divider(color: Colors.white12),
           _buildExampleRow(
-            'Você recebe:',
-            'R\$ 1.030,00 em Bitcoin',
+            l.t('prov_edu_example_receive'),
+            l.t('prov_edu_example_receive_val'),
             isBold: true,
             color: Colors.orange,
           ),
           const SizedBox(height: 12),
-          const Text(
-            '💡 Se Bitcoin for 1 BTC = R\$ 500.000, você recebe ~206.000 sats',
-            style: TextStyle(
+          Text(
+            l.t('prov_edu_example_tip'),
+            style: const TextStyle(
               color: Colors.white54,
               fontSize: 12,
               fontStyle: FontStyle.italic,
@@ -474,24 +476,24 @@ class ProviderEducationScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildFAQ() {
+  Widget _buildFAQ(AppLocalizations l) {
     return Column(
       children: [
         _buildFAQItem(
-          question: 'Quanto posso ganhar?',
-          answer: '3% de cada transação. Sem limite! Quanto mais ordens aceitar, mais ganha.',
+          question: l.t('prov_edu_faq_earn_q'),
+          answer: l.t('prov_edu_faq_earn_a'),
         ),
         _buildFAQItem(
-          question: 'Quanto tempo leva para receber?',
-          answer: 'Após enviar o comprovante, a validação leva até 2 horas. Aprovado = recebe na hora!',
+          question: l.t('prov_edu_faq_time_q'),
+          answer: l.t('prov_edu_faq_time_a'),
         ),
         _buildFAQItem(
-          question: 'Posso sacar minha garantia?',
-          answer: 'Sim! Quando não houver ordens ativas, pode solicitar o resgate da garantia.',
+          question: l.t('prov_edu_faq_withdraw_q'),
+          answer: l.t('prov_edu_faq_withdraw_a'),
         ),
         _buildFAQItem(
-          question: 'O que acontece em disputa?',
-          answer: 'A plataforma analisa os comprovantes. Se comprovar fraude, perde a garantia. Se for engano do usuário, recebe normalmente.',
+          question: l.t('prov_edu_faq_dispute_q'),
+          answer: l.t('prov_edu_faq_dispute_a'),
         ),
 
       ],
@@ -536,7 +538,7 @@ class ProviderEducationScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildStartButton(BuildContext context) {
+  Widget _buildStartButton(BuildContext context, AppLocalizations l) {
     return Column(
       children: [
         // Botão principal
@@ -553,7 +555,7 @@ class ProviderEducationScreen extends StatelessWidget {
               Navigator.pushNamed(context, '/provider-collateral');
             },
             icon: const Icon(Icons.rocket_launch),
-            label: const Text('Começar Agora'),
+            label: Text(l.t('prov_edu_start_now')),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.orange,
               padding: const EdgeInsets.symmetric(vertical: 16),
@@ -590,9 +592,9 @@ class ProviderEducationScreen extends StatelessWidget {
                 }
               },
               icon: const Icon(Icons.science, color: Colors.cyan),
-              label: const Text(
-                'Modo Teste (Sem Garantias)',
-                style: TextStyle(color: Colors.cyan),
+              label: Text(
+                l.t('prov_edu_test_mode'),
+                style: const TextStyle(color: Colors.cyan),
               ),
               style: OutlinedButton.styleFrom(
                 side: const BorderSide(color: Colors.cyan),
@@ -602,9 +604,9 @@ class ProviderEducationScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
-            '⚠️ Modo teste: não requer garantias (apenas desenvolvimento)',
-            style: TextStyle(color: Colors.cyan, fontSize: 12, fontStyle: FontStyle.italic),
+          Text(
+            l.t('prov_edu_test_warning'),
+            style: const TextStyle(color: Colors.cyan, fontSize: 12, fontStyle: FontStyle.italic),
             textAlign: TextAlign.center,
           ),
         ],

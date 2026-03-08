@@ -1,13 +1,15 @@
 name: bro_app
 description: "Bro - Plataforma P2P para pagamento de contas com Bitcoin via Lightning Network"
 publish_to: 'none'
-version: 1.0.132+351
+version: 1.0.132+352
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
 
 dependencies:
   flutter:
+    sdk: flutter
+  flutter_localizations:
     sdk: flutter
 
   # Lightning Network - Breez SDK Spark (Nodeless, self-custodial)
@@ -54,7 +56,7 @@ dependencies:
   flutter_secure_storage: ^9.2.2
 
   # Utils
-  intl: ^0.19.0
+  intl: ^0.20.2
   uuid: ^4.3.3
 
   # UI Components

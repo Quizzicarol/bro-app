@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
 import '../providers/order_provider.dart';
@@ -65,11 +66,12 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('Minhas Ordens'),
+        title: Text(l.t('prov_my_title')),
         actions: [
           IconButton(
             icon: const Icon(Icons.history),
@@ -80,12 +82,12 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
                 arguments: widget.providerId,
               );
             },
-            tooltip: 'Histórico',
+            tooltip: l.t('prov_tab_history'),
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _refreshOrders,
-            tooltip: 'Atualizar',
+            tooltip: l.t('prov_refresh'),
           ),
         ],
       ),
@@ -96,7 +98,7 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
           broLog('📦 Total de ordens aceitas: ${myOrders.length}');
 
           if (myOrders.isEmpty) {
-            return _buildEmptyView();
+            return _buildEmptyView(l);
           }
 
           return RefreshIndicator(
@@ -107,7 +109,7 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
               itemCount: myOrders.length,
               itemBuilder: (context, index) {
                 final order = myOrders[index];
-                return _buildOrderCard(order);
+                return _buildOrderCard(order, l);
               },
             ),
           );
@@ -116,7 +118,7 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
     );
   }
 
-  Widget _buildEmptyView() {
+  Widget _buildEmptyView(AppLocalizations l) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -125,18 +127,18 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
           children: [
             const Icon(Icons.inbox_outlined, size: 64, color: Colors.white38),
             const SizedBox(height: 16),
-            const Text(
-              'Nenhuma ordem em andamento',
-              style: TextStyle(
+            Text(
+              l.t('prov_my_no_orders'),
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Ordens aceitas aparecerão aqui até você enviar o comprovante e o usuário confirmar.',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
+            Text(
+              l.t('prov_my_orders_hint'),
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
@@ -149,7 +151,7 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
                 );
               },
               icon: const Icon(Icons.search),
-              label: const Text('Ver Ordens Disponíveis'),
+              label: Text(l.t('prov_my_view_available')),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.orange,
               ),
@@ -160,9 +162,9 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
     );
   }
 
-  Widget _buildOrderCard(Order order) {
-    final statusInfo = _getStatusInfo(order.status);
-    final timeAgo = _getTimeAgo(order.createdAt);
+  Widget _buildOrderCard(Order order, AppLocalizations l) {
+    final statusInfo = _getStatusInfo(order.status, l);
+    final timeAgo = _getTimeAgo(order.createdAt, l);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -259,7 +261,7 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Sua taxa: R\$ ${(order.amount * 0.03).toStringAsFixed(2)}',
+                  l.tp('prov_my_fee', {'amount': (order.amount * 0.03).toStringAsFixed(2)}),
                   style: const TextStyle(
                     color: Colors.green,
                     fontSize: 14,
@@ -274,7 +276,7 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
                     const Icon(Icons.access_time, color: Colors.white54, size: 16),
                     const SizedBox(width: 6),
                     Text(
-                      'Aceita $timeAgo',
+                      l.tp('prov_my_accepted_ago', {'time': timeAgo}),
                       style: const TextStyle(color: Colors.white54, fontSize: 12),
                     ),
                   ],
@@ -326,21 +328,21 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
     );
   }
 
-  Map<String, dynamic> _getStatusInfo(String status) {
+  Map<String, dynamic> _getStatusInfo(String status, AppLocalizations l) {
     switch (status) {
       case 'accepted':
         return {
-          'label': 'EM ANDAMENTO',
-          'title': 'Pagar e Enviar Comprovante',
-          'description': 'Pague a conta e envie o comprovante de pagamento',
+          'label': l.t('prov_my_in_progress'),
+          'title': l.t('prov_my_pay_send'),
+          'description': l.t('prov_my_pay_send_desc'),
           'icon': Icons.upload_file,
           'color': Colors.blue,
         };
       case 'awaiting_confirmation':
         return {
-          'label': 'AGUARDANDO',
-          'title': 'Comprovante Enviado',
-          'description': 'Aguardando usuário confirmar o pagamento',
+          'label': l.t('prov_ord_status_waiting'),
+          'title': l.t('prov_my_receipt_sent'),
+          'description': l.t('prov_my_waiting_confirm'),
           'icon': Icons.hourglass_empty,
           'color': Colors.purple,
         };
@@ -366,7 +368,7 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
     }
   }
 
-  String _getTimeAgo(DateTime dateTime) {
+  String _getTimeAgo(DateTime dateTime, AppLocalizations l) {
     final now = DateTime.now();
     final difference = now.difference(dateTime);
 
@@ -377,7 +379,7 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
     } else if (difference.inMinutes > 0) {
       return '${difference.inMinutes}min atrás';
     } else {
-      return 'Agora';
+      return l.t('prov_ord_now');
     }
   }
 }

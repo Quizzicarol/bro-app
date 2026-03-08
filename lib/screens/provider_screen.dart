@@ -16,6 +16,7 @@ import '../widgets/order_card.dart';
 import '../config.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:intl/intl.dart';
+import '../l10n/app_localizations.dart';
 
 class ProviderScreen extends StatefulWidget {
   const ProviderScreen({Key? key}) : super(key: key);
@@ -210,6 +211,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
   }
 
   Future<void> _onAcceptOrder(Map<String, dynamic> order) async {
+    final l = AppLocalizations.of(context)!;
     final orderId = order['_id'] ?? order['id'];
     if (orderId == null) return;
 
@@ -229,11 +231,11 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
               children: [
                 const Icon(Icons.block, color: Colors.orange, size: 28),
                 const SizedBox(width: 12),
-                const Text('Limite de Tier', style: TextStyle(color: Colors.white)),
+                Text(l.t('prov_tier_limit'), style: const TextStyle(color: Colors.white)),
               ],
             ),
             content: Text(
-              reason ?? 'Você não pode aceitar esta ordem com seu tier atual.',
+              reason ?? l.t('prov_tier_limit_msg'),
               style: const TextStyle(color: Color(0xB3FFFFFF)),
             ),
             actions: [
@@ -242,7 +244,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.orange,
                 ),
-                child: const Text('Entendi', style: TextStyle(color: Colors.white)),
+                child: Text(l.t('prov_understood'), style: const TextStyle(color: Colors.white)),
               ),
             ],
           ),
@@ -254,15 +256,14 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Aceitar Ordem'),
+        title: Text(l.t('prov_accept_order')),
         content: Text(
-          'Você deseja aceitar esta ordem de ${_formatCurrency(orderAmount)}?\n\n'
-          'Você será responsável por pagar a conta e receberá 7% de taxa.',
+          l.tp('prov_accept_order_confirm', {'amount': _formatCurrency(orderAmount)}),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
+            child: Text(l.t('cancel')),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
@@ -270,14 +271,14 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
               backgroundColor: Colors.green,
               foregroundColor: Colors.white,
             ),
-            child: const Text('Aceitar'),
+            child: Text(l.t('prov_dash_accept')),
           ),
         ],
       ),
     );
 
     if (confirmed == true) {
-      _showLoadingDialog('Aceitando ordem...');
+      _showLoadingDialog(l.t('prov_accepting_order'));
       
       // Usar OrderProvider que publica no Nostr
       final orderProvider = context.read<OrderProvider>();
@@ -286,15 +287,16 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
       Navigator.pop(context); // Fecha o loading dialog
       
       if (success) {
-        _showSnackBar('Ordem aceita com sucesso!', Colors.green);
+        _showSnackBar(l.t('prov_order_accepted'), Colors.green);
         await _loadAll(); // Recarrega todas as listas
       } else {
-        _showSnackBar('Erro ao aceitar ordem', Colors.red);
+        _showSnackBar(l.t('prov_error_accept_order'), Colors.red);
       }
     }
   }
 
   Future<void> _onRejectOrder(Map<String, dynamic> order) async {
+    final l = AppLocalizations.of(context)!;
     final orderId = order['_id'] ?? order['id'];
     if (orderId == null) return;
 
@@ -303,16 +305,16 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
       builder: (context) {
         final controller = TextEditingController();
         return AlertDialog(
-          title: const Text('Rejeitar Ordem'),
+          title: Text(l.t('prov_reject_order')),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Por que você está rejeitando esta ordem?'),
+              Text(l.t('prov_reject_reason')),
               const SizedBox(height: 16),
               TextField(
                 controller: controller,
-                decoration: const InputDecoration(
-                  hintText: 'Motivo (opcional)',
+                decoration: InputDecoration(
+                  hintText: l.t('prov_reason_optional'),
                   border: OutlineInputBorder(),
                 ),
                 maxLines: 3,
@@ -322,7 +324,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancelar'),
+              child: Text(l.t('cancel')),
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(context, controller.text),
@@ -330,7 +332,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
                 backgroundColor: Colors.red,
                 foregroundColor: Colors.white,
               ),
-              child: const Text('Rejeitar'),
+              child: Text(l.t('prov_reject')),
             ),
           ],
         );
@@ -338,22 +340,23 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
     );
 
     if (reason != null) {
-      _showLoadingDialog('Rejeitando ordem...');
+      _showLoadingDialog(l.t('prov_rejecting'));
       
       final success = await _providerService.rejectOrder(orderId, reason);
       
       Navigator.pop(context); // Fecha o loading dialog
       
       if (success) {
-        _showSnackBar('Ordem rejeitada', Colors.orange);
+        _showSnackBar(l.t('prov_order_rejected'), Colors.orange);
         await _loadAvailableOrders();
       } else {
-        _showSnackBar('Erro ao rejeitar ordem', Colors.red);
+        _showSnackBar(l.t('prov_error_reject_order'), Colors.red);
       }
     }
   }
 
   Future<void> _onUploadProof(Map<String, dynamic> order) async {
+    final l = AppLocalizations.of(context)!;
     final orderId = order['_id'] ?? order['id'];
     if (orderId == null) return;
 
@@ -364,7 +367,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
 
     if (image == null) return;
 
-    _showLoadingDialog('Enviando comprovante...');
+    _showLoadingDialog(l.t('prov_sending_receipt'));
 
     try {
       final bytes = await File(image.path).readAsBytes();
@@ -373,14 +376,14 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
       Navigator.pop(context); // Fecha o loading dialog
       
       if (success) {
-        _showSnackBar('Comprovante enviado com sucesso!', Colors.green);
+        _showSnackBar(l.t('prov_receipt_sent'), Colors.green);
         await _loadMyOrders();
       } else {
-        _showSnackBar('Erro ao enviar comprovante', Colors.red);
+        _showSnackBar(l.t('prov_error_send_receipt'), Colors.red);
       }
     } catch (e) {
       Navigator.pop(context);
-      _showSnackBar('Erro ao processar imagem: $e', Colors.red);
+      _showSnackBar(l.tp('prov_error_process_image', {'error': e.toString()}), Colors.red);
     }
   }
 
@@ -418,12 +421,13 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Modo Bro'),
+            Text(l.t('prov_bro_mode')),
             const SizedBox(width: 8),
             _buildTierBadge(),
           ],
@@ -439,7 +443,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
               orderProvider.exitProviderMode();
               Navigator.pop(context);
             },
-            tooltip: 'Voltar ao Dashboard',
+            tooltip: l.t('prov_back_dashboard'),
           ),
           // Botão da Carteira Lightning (ícone preenchido como antes)
           IconButton(
@@ -447,22 +451,22 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
             onPressed: () {
               Navigator.pushNamed(context, '/wallet');
             },
-            tooltip: 'Carteira',
+            tooltip: l.t('prov_wallet'),
           ),
           if (_tierWarning)
             IconButton(
               icon: const Icon(Icons.warning_amber, color: Colors.orange),
               onPressed: _showTierWarningDialog,
-              tooltip: 'Atenção: Garantia',
+              tooltip: l.t('prov_attention_collateral'),
             ),
           // Removido botão refresh - pull-to-refresh já funciona
         ],
         bottom: TabBar(
           controller: _tabController,
-          tabs: const [
-            Tab(text: 'Disponíveis', icon: Icon(Icons.list_alt)),
-            Tab(text: 'Minhas Ordens', icon: Icon(Icons.assignment_ind)),
-            Tab(text: 'Histórico', icon: Icon(Icons.history)),
+          tabs: [
+            Tab(text: l.t('prov_tab_available'), icon: const Icon(Icons.list_alt)),
+            Tab(text: l.t('prov_tab_my_orders'), icon: const Icon(Icons.assignment_ind)),
+            Tab(text: l.t('prov_tab_history'), icon: const Icon(Icons.history)),
           ],
         ),
       ),
@@ -491,6 +495,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
 
   /// Badge compacto do tier - TEXTO CLARO: Ativo ou Inativo
   Widget _buildTierBadge() {
+    final l = AppLocalizations.of(context)!;
     broLog('🏷️ _buildTierBadge chamado: _currentTier=${_currentTier?.tierName ?? "null"}, warning=$_tierWarning');
     
     // Se não tem tier, mostra "Sem Tier"
@@ -505,8 +510,8 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: Colors.grey, width: 1),
           ),
-          child: const Text(
-            'Sem Tier',
+          child: Text(
+            l.t('prov_no_tier'),
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.bold,
@@ -528,7 +533,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
     
     // Tier ativo ou inativo baseado no warning
     final isActive = !_tierWarning;
-    final statusText = isActive ? 'Tier Ativo' : 'Tier Inativo';
+    final statusText = isActive ? l.t('prov_tier_active') : l.t('prov_tier_inactive');
     final statusColor = isActive ? Colors.green : Colors.orange;
     
     broLog('🏷️ Mostrando badge: $statusText (deficit=$deficit)');
@@ -556,7 +561,8 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
   
   /// Dialog explicando status do tier de forma clara
   void _showTierStatusExplanation(bool isActive, int? deficit) {
-    final tierName = _currentTier?.tierName ?? 'Nenhum';
+    final l = AppLocalizations.of(context)!;
+    final tierName = _currentTier?.tierName ?? l.t('prov_current_tier_none');
     
     showDialog(
       context: context,
@@ -572,7 +578,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
             ),
             const SizedBox(width: 12),
             Text(
-              isActive ? 'Tier Ativo' : 'Tier Inativo',
+              isActive ? l.t('prov_tier_active') : l.t('prov_tier_inactive'),
               style: const TextStyle(color: Colors.white),
             ),
           ],
@@ -582,7 +588,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Tier: $tierName',
+              l.tp('prov_tier_label', {'name': tierName}),
               style: const TextStyle(color: Colors.white70, fontSize: 14),
             ),
             const SizedBox(height: 12),
@@ -597,8 +603,8 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      '⚠️ Bitcoin oscilou de preço',
+                    Text(
+                      l.t('prov_btc_price_changed'),
                       style: TextStyle(
                         color: Colors.orange,
                         fontWeight: FontWeight.bold,
@@ -607,23 +613,23 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Deposite $deficit sats para reativar seu tier.',
+                      l.tp('prov_deposit_deficit', {'deficit': deficit.toString()}),
                       style: const TextStyle(color: Colors.white70, fontSize: 13),
                     ),
                   ],
                 ),
               ),
             ] else
-              const Text(
-                '✅ Seu tier está ativo e você pode aceitar ordens normalmente.',
-                style: TextStyle(color: Colors.white70, fontSize: 13),
+              Text(
+                l.t('prov_tier_active_msg'),
+                style: const TextStyle(color: Colors.white70, fontSize: 13),
               ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Fechar', style: TextStyle(color: Colors.white70)),
+            child: Text(l.t('close'), style: const TextStyle(color: Colors.white70)),
           ),
           if (!isActive)
             ElevatedButton(
@@ -632,7 +638,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
                 Navigator.pushNamed(context, '/provider-collateral');
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-              child: const Text('Depositar'),
+              child: Text(l.t('prov_deposit')),
             ),
         ],
       ),
@@ -641,9 +647,10 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
   
   /// Dialog com detalhes completos do tier
   void _showTierDetailsDialog() {
+    final l = AppLocalizations.of(context)!;
     // Calcular valores detalhados
     final lockedSats = _currentTier?.lockedSats ?? 0;
-    final tierName = _currentTier?.tierName ?? 'Nenhum';
+    final tierName = _currentTier?.tierName ?? l.t('prov_current_tier_none');
     final maxTransaction = _currentTier?.maxOrderBrl ?? 0;
     
     // Calcular déficit se houver
@@ -698,7 +705,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    _tierWarning ? 'Tier em risco!' : 'Tier ativo',
+                    _tierWarning ? l.t('prov_tier_at_risk') : l.t('prov_tier_active'),
                     style: TextStyle(
                       color: _tierWarning ? Colors.orange : Colors.green,
                       fontWeight: FontWeight.bold,
@@ -711,14 +718,14 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
             
             // Garantia bloqueada
             _buildDetailRow(
-              'Garantia bloqueada',
+              l.t('prov_collateral_locked'),
               '$lockedSats sats',
               Icons.lock,
             ),
             
             // Limite de transação
             _buildDetailRow(
-              'Limite por transação',
+              l.t('prov_limit_per_tx'),
               'R\$ ${maxTransaction.toStringAsFixed(0)}',
               Icons.attach_money,
             ),
@@ -740,8 +747,8 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Faltam para reativar:',
+                          Text(
+                            l.t('prov_missing_reactivate'),
                             style: TextStyle(color: Colors.white70, fontSize: 12),
                           ),
                           Text(
@@ -769,14 +776,14 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
                 // Navegar para depositar mais
                 Navigator.pushNamed(context, '/collateral');
               },
-              child: const Text(
-                'Depositar mais',
-                style: TextStyle(color: Colors.orange),
+              child: Text(
+                l.t('prov_deposit_more'),
+                style: const TextStyle(color: Colors.orange),
               ),
             ),
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Fechar'),
+            child: Text(l.t('close')),
           ),
         ],
       ),
@@ -811,6 +818,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
 
   /// Banner de aviso quando tier está em risco
   Widget _buildTierWarningBanner() {
+    final l = AppLocalizations.of(context)!;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -825,7 +833,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              _tierWarningMessage ?? 'Sua garantia precisa de atenção',
+              _tierWarningMessage ?? l.t('prov_collateral_attention'),
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 12,
@@ -835,9 +843,9 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
           ),
           TextButton(
             onPressed: _showTierWarningDialog,
-            child: const Text(
-              'Ver',
-              style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+            child: Text(
+              l.t('prov_view'),
+              style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
             ),
           ),
         ],
@@ -847,6 +855,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
 
   /// Dialog com detalhes do aviso de tier
   void _showTierWarningDialog() {
+    final l = AppLocalizations.of(context)!;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -856,16 +865,16 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
           children: [
             const Icon(Icons.warning_amber, color: Colors.orange, size: 28),
             const SizedBox(width: 12),
-            const Text('Garantia em Risco', style: TextStyle(color: Colors.white)),
+            Text(l.t('prov_collateral_at_risk'), style: const TextStyle(color: Colors.white)),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'O preço do Bitcoin caiu e sua garantia atual não cobre mais o requisito mínimo do seu tier.',
-              style: TextStyle(color: Color(0xB3FFFFFF)),
+            Text(
+              l.t('prov_btc_drop_msg'),
+              style: const TextStyle(color: Color(0xB3FFFFFF)),
             ),
             const SizedBox(height: 16),
             Container(
@@ -879,7 +888,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Tier atual: ${_currentTier?.tierName ?? "Nenhum"}',
+                    l.tp('prov_current_tier', {'name': _currentTier?.tierName ?? l.t('prov_current_tier_none')}),
                     style: const TextStyle(color: Colors.white70),
                   ),
                   if (_tierWarningMessage != null)
@@ -891,16 +900,16 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Se você não aumentar a garantia, poderá perder acesso a ordens de valores mais altos.',
-              style: TextStyle(color: Color(0x99FFFFFF), fontSize: 12),
+            Text(
+              l.t('prov_increase_warning'),
+              style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 12),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Depois', style: TextStyle(color: Colors.white54)),
+            child: Text(l.t('prov_later'), style: const TextStyle(color: Colors.white54)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -908,7 +917,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
               Navigator.pushNamed(context, '/provider-collateral');
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-            child: const Text('Aumentar Garantia', style: TextStyle(color: Colors.white)),
+            child: Text(l.t('prov_increase_collateral'), style: const TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -938,6 +947,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
   }
 
   Widget _buildStatsCard() {
+    final l = AppLocalizations.of(context)!;
     if (_isLoadingStats) {
       return const Card(
         margin: EdgeInsets.all(16),
@@ -966,8 +976,8 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
               children: [
                 Icon(Icons.analytics, color: Colors.blue[700]),
                 const SizedBox(width: 8),
-                const Text(
-                  'Estatísticas',
+                Text(
+                  l.t('prov_statistics'),
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -980,7 +990,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
               children: [
                 Expanded(
                   child: _buildStatItem(
-                    'Ganhos Hoje',
+                    l.t('prov_earnings_today'),
                     _formatCurrency(earningsToday),
                     Icons.today,
                     Colors.green,
@@ -988,7 +998,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
                 ),
                 Expanded(
                   child: _buildStatItem(
-                    'Ganhos Totais',
+                    l.t('prov_earnings_total'),
                     _formatCurrency(totalEarnings),
                     Icons.account_balance_wallet,
                     Colors.blue,
@@ -1001,7 +1011,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
               children: [
                 Expanded(
                   child: _buildStatItem(
-                    'Pagas Hoje',
+                    l.t('prov_paid_today'),
                     billsPaidToday.toString(),
                     Icons.check_circle,
                     Colors.orange,
@@ -1009,7 +1019,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
                 ),
                 Expanded(
                   child: _buildStatItem(
-                    'Ordens Ativas',
+                    l.t('prov_active_orders'),
                     activeOrders.toString(),
                     Icons.pending_actions,
                     Colors.purple,
@@ -1075,6 +1085,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
   }
 
   Widget _buildAvailableOrdersList() {
+    final l = AppLocalizations.of(context)!;
     if (_isLoadingAvailable) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -1087,14 +1098,14 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
             Icon(Icons.inbox, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
             Text(
-              'Nenhuma ordem disponível no momento',
+              l.t('prov_no_orders_available'),
               style: TextStyle(fontSize: 16, color: Colors.grey[600]),
             ),
             const SizedBox(height: 8),
             ElevatedButton.icon(
               onPressed: _loadAvailableOrders,
               icon: const Icon(Icons.refresh),
-              label: const Text('Atualizar'),
+              label: Text(l.t('prov_refresh')),
             ),
           ],
         ),
@@ -1121,6 +1132,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
   }
 
   Widget _buildMyOrdersList() {
+    final l = AppLocalizations.of(context)!;
     if (_isLoadingMyOrders) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -1133,14 +1145,14 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
             Icon(Icons.assignment, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
             Text(
-              'Você ainda não aceitou nenhuma ordem',
+              l.t('prov_no_accepted_orders'),
               style: TextStyle(fontSize: 16, color: Colors.grey[600]),
             ),
             const SizedBox(height: 8),
             ElevatedButton.icon(
               onPressed: _loadMyOrders,
               icon: const Icon(Icons.refresh),
-              label: const Text('Atualizar'),
+              label: Text(l.t('prov_refresh')),
             ),
           ],
         ),
@@ -1166,6 +1178,7 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
   }
 
   Widget _buildHistoryList() {
+    final l = AppLocalizations.of(context)!;
     if (_isLoadingHistory) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -1178,14 +1191,14 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
             Icon(Icons.history, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
             Text(
-              'Nenhuma ordem concluída ainda',
+              l.t('prov_no_completed_orders'),
               style: TextStyle(fontSize: 16, color: Colors.grey[600]),
             ),
             const SizedBox(height: 8),
             ElevatedButton.icon(
               onPressed: _loadHistory,
               icon: const Icon(Icons.refresh),
-              label: const Text('Atualizar'),
+              label: Text(l.t('prov_refresh')),
             ),
           ],
         ),

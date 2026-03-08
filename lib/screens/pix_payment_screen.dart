@@ -2,6 +2,7 @@
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/order_provider.dart';
 import '../services/api_service.dart';
 import '../widgets/gradient_button.dart';
@@ -62,7 +63,7 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
       final pixInfo = await _apiService.decodePixCode(code);
       
       if (pixInfo == null) {
-        throw Exception('Não foi possível decodificar o código PIX');
+        throw Exception(AppLocalizations.of(context).t('pix_decode_error'));
       }
 
       setState(() {
@@ -89,7 +90,7 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro ao processar PIX: $e'),
+            content: Text(AppLocalizations.of(context).tp('pix_processing_error', {'error': e.toString()})),
             backgroundColor: Colors.red,
           ),
         );
@@ -108,35 +109,39 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
     return await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
+      builder: (context) {
+        final t = AppLocalizations.of(context).t;
+        final tp = AppLocalizations.of(context).tp;
+        return AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: const Text('Confirmar Pagamento PIX', style: TextStyle(color: Colors.orange)),
+        title: Text(t('pix_confirm_title'), style: const TextStyle(color: Colors.orange)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Destinatário: ${pixInfo['recipient'] ?? 'N/A'}', style: const TextStyle(color: Colors.white70)),
+            Text(tp('pix_recipient', {'name': pixInfo['recipient'] ?? 'N/A'}), style: const TextStyle(color: Colors.white70)),
             const SizedBox(height: 8),
             if (amount > 0)
-              Text('Valor: R\$ ${amount.toStringAsFixed(2)}', style: const TextStyle(color: Colors.white)),
+              Text(tp('pix_value', {'value': amount.toStringAsFixed(2)}), style: const TextStyle(color: Colors.white)),
             const SizedBox(height: 8),
             if (pixInfo['description'] != null)
-              Text('Descrição: ${pixInfo['description']}', style: const TextStyle(color: Colors.white70)),
+              Text(tp('pix_description', {'desc': pixInfo['description']}), style: const TextStyle(color: Colors.white70)),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
+            child: Text(t('cancel'), style: const TextStyle(color: Colors.white54)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-            child: const Text('Confirmar'),
+            child: Text(t('confirm')),
           ),
         ],
-      ),
+      );
+      },
     ) ?? false;
   }
 
@@ -176,7 +181,7 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
           );
         }
       } else {
-        throw Exception(result['error'] ?? 'Pagamento não autorizado');
+        throw Exception(result['error'] ?? AppLocalizations.of(context).t('pix_payment_not_authorized'));
       }
     } catch (e) {
       broLog('❌ Erro ao processar pagamento: $e');
@@ -189,7 +194,7 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
-        title: const Text('Pagamento PIX'),
+        title: Text(AppLocalizations.of(context).t('pix_title')),
         backgroundColor: const Color(0xFF1A1A1A),
         foregroundColor: Colors.orange,
       ),
@@ -207,9 +212,9 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
                     child: const Icon(Icons.check_circle, color: Colors.green, size: 64),
                   ),
                   const SizedBox(height: 16),
-                  const Text(
-                    'Pagamento Realizado!',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colors.white),
+                  Text(
+                    AppLocalizations.of(context).t('pix_payment_done'),
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colors.white),
                   ),
                 ],
               ),
@@ -231,9 +236,9 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
                         child: const Icon(Icons.qr_code_scanner, size: 32, color: Colors.orange),
                       ),
                       const SizedBox(height: 8),
-                      const Text(
-                        'Escaneie o QR Code PIX',
-                        style: TextStyle(
+                      Text(
+                        AppLocalizations.of(context).t('pix_scan_qr'),
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                           color: Colors.white,
@@ -265,15 +270,15 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
                       if (_isProcessing)
                         Container(
                           color: Colors.black54,
-                          child: const Center(
+                          child: Center(
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                CircularProgressIndicator(color: Colors.white),
-                                SizedBox(height: 16),
+                                const CircularProgressIndicator(color: Colors.white),
+                                const SizedBox(height: 16),
                                 Text(
-                                  'Processando pagamento...',
-                                  style: TextStyle(color: Colors.white, fontSize: 16),
+                                  AppLocalizations.of(context).t('pix_processing'),
+                                  style: const TextStyle(color: Colors.white, fontSize: 16),
                                 ),
                               ],
                             ),
@@ -300,14 +305,14 @@ class _PixPaymentScreenState extends State<PixPaymentScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
-                                  'Dados do PIX:',
-                                  style: TextStyle(fontWeight: FontWeight.w600, color: Colors.orange),
+                                Text(
+                                  AppLocalizations.of(context).t('pix_data'),
+                                  style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.orange),
                                 ),
                                 const SizedBox(height: 8),
-                                Text('Destinatário: ${_pixData!['recipient'] ?? 'N/A'}', style: const TextStyle(color: Colors.white70)),
+                                Text(AppLocalizations.of(context).tp('pix_recipient', {'name': _pixData!['recipient'] ?? 'N/A'}), style: const TextStyle(color: Colors.white70)),
                                 if (_pixData!['description'] != null)
-                                  Text('Descrição: ${_pixData!['description']}', style: const TextStyle(color: Colors.white70)),
+                                  Text(AppLocalizations.of(context).tp('pix_description', {'desc': _pixData!['description']}), style: const TextStyle(color: Colors.white70)),
                               ],
                             ),
                           ),

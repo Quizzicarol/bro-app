@@ -1,6 +1,9 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
+import 'l10n/app_localizations.dart';
+import 'providers/locale_provider.dart';
 import 'screens/login_screen.dart'; // Login original com chave privada
 import 'screens/onboarding_screen.dart';
 import 'screens/home_screen.dart';
@@ -40,6 +43,8 @@ import 'widgets/alfa_banner.dart';
 
 import 'services/nostr_service.dart';
 import 'services/background_notification_service.dart';
+import 'services/nostr_order_service.dart';
+import 'config.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -78,9 +83,13 @@ void main() async {
   // Verificar se já viu onboarding
   final hasSeenOnboarding = await storage.getData('has_seen_onboarding') == 'true';
 
+  // Inicializar LocaleProvider (idioma salvo ou auto-detectar)
+  final localeProvider = LocaleProvider();
+  await localeProvider.initialize();
+
   // Breez SDK sera inicializado no provider (lazy initialization)
 
-  runApp(BroApp(isLoggedIn: isLoggedIn, userPubkey: userPubkey, hasSeenOnboarding: hasSeenOnboarding));
+  runApp(BroApp(isLoggedIn: isLoggedIn, userPubkey: userPubkey, hasSeenOnboarding: hasSeenOnboarding, localeProvider: localeProvider));
 }
 
 /// Restaurar chaves Nostr do armazenamento seguro
@@ -155,13 +164,15 @@ class BroApp extends StatelessWidget {
   final bool isLoggedIn;
   final String? userPubkey;
   final bool hasSeenOnboarding;
+  final LocaleProvider localeProvider;
 
-  const BroApp({Key? key, required this.isLoggedIn, this.userPubkey, required this.hasSeenOnboarding}) : super(key: key);
+  const BroApp({Key? key, required this.isLoggedIn, this.userPubkey, required this.hasSeenOnboarding, required this.localeProvider}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider.value(value: localeProvider),
         Provider(create: (_) => ApiService()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => BreezProvider()),
@@ -222,17 +233,100 @@ class BroApp extends StatelessWidget {
             );
           };
 
+          // v132: Callback para auto-pagamento de ordens liquidadas
+          final liquidProvider = context.read<BreezLiquidProvider>();
+          orderProvider.onAutoPayLiquidation = (String orderId, order) async {
+            broLog('⚡ [AutoPay-Main] Auto-pagamento para ordem ${orderId.substring(0, 8)}');
+            
+            // Buscar providerInvoice do metadata ou Nostr
+            String? providerInvoice;
+            providerInvoice = order.metadata?['providerInvoice'] as String?;
+            
+            if (providerInvoice == null || providerInvoice.isEmpty) {
+              try {
+                final nostrService = NostrOrderService();
+                final completeData = await nostrService.fetchOrderCompleteEvent(orderId);
+                if (completeData != null) {
+                  providerInvoice = completeData['providerInvoice'] as String?;
+                }
+              } catch (e) {
+                broLog('⚠️ [AutoPay-Main] Erro ao buscar invoice do Nostr: $e');
+              }
+            }
+            
+            if (providerInvoice == null || providerInvoice.isEmpty) {
+              broLog('❌ [AutoPay-Main] Sem providerInvoice para ${orderId.substring(0, 8)}');
+              return false;
+            }
+            
+            // Tentar pagar via Spark ou Liquid (3 tentativas)
+            for (int attempt = 1; attempt <= 3; attempt++) {
+              try {
+                Map<String, dynamic>? payResult;
+                
+                if (breezProvider.isInitialized) {
+                  payResult = await breezProvider.payInvoice(providerInvoice).timeout(
+                    const Duration(seconds: 30),
+                    onTimeout: () => {'success': false, 'error': 'timeout'},
+                  );
+                } else if (liquidProvider.isInitialized) {
+                  payResult = await liquidProvider.payInvoice(providerInvoice).timeout(
+                    const Duration(seconds: 30),
+                    onTimeout: () => {'success': false, 'error': 'timeout'},
+                  );
+                } else {
+                  broLog('⚠️ [AutoPay-Main] Nenhuma carteira inicializada');
+                  return false;
+                }
+                
+                if (payResult != null && payResult['success'] == true) {
+                  broLog('✅ [AutoPay-Main] Pagamento OK na tentativa $attempt');
+                  // Pagar taxa da plataforma
+                  final amountSats = (order.metadata?['amountSats'] as num?)?.toInt()
+                      ?? (order.btcAmount * 100000000).round();
+                  if (AppConfig.platformLightningAddress.isNotEmpty && amountSats > 0) {
+                    await PlatformFeeService.sendPlatformFee(
+                      orderId: orderId,
+                      totalSats: amountSats,
+                    );
+                  }
+                  return true;
+                }
+                
+                broLog('⚠️ [AutoPay-Main] Tentativa $attempt falhou: ${payResult?['error']}');
+              } catch (e) {
+                broLog('⚠️ [AutoPay-Main] Tentativa $attempt erro: $e');
+              }
+              
+              if (attempt < 3) {
+                await Future.delayed(const Duration(seconds: 2));
+              }
+            }
+            
+            broLog('❌ [AutoPay-Main] 3 tentativas falharam para ${orderId.substring(0, 8)}');
+            return false;
+          };
+
           // Verificar reconciliacao na inicializacao (quando SDK estiver pronto)
           _scheduleReconciliationOnStartup(breezProvider, orderProvider);
 
           return Consumer<ThemeProvider>(
             builder: (context, themeProvider, _) {
+              final locProv = context.watch<LocaleProvider>();
               return MaterialApp(
                 title: 'Bro',
                 debugShowCheckedModeBanner: false,
                 theme: BroThemes.lightTheme,
                 darkTheme: BroThemes.darkTheme,
                 themeMode: themeProvider.themeMode,
+                locale: locProv.locale,
+                supportedLocales: AppLocalizations.supportedLocales,
+                localizationsDelegates: const [
+                  AppLocalizationsDelegate(),
+                  GlobalMaterialLocalizations.delegate,
+                  GlobalWidgetsLocalizations.delegate,
+                  GlobalCupertinoLocalizations.delegate,
+                ],
                 // Banner ALFA em todas as telas
                 builder: (context, child) {
                   return Column(

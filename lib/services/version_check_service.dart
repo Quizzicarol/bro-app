@@ -243,4 +243,9 @@ class VersionCheckService {
   bool get isCriticalUpdate => _isCritical;
   String? get latestVersion => _latestVersion;
   String? get downloadUrl => _downloadUrl;
+
+  /// Abrir download diretamente (para reinstalação)
+  Future<void> openDownload() async {
+    await _openDownloadUrl();
+  }
 }

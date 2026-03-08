@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 import '../providers/order_provider.dart';
 import '../models/order.dart';
@@ -43,16 +44,17 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('Histórico de Ordens'),
+        title: Text(l.t('prov_hist_title')),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _refreshOrders,
-            tooltip: 'Atualizar',
+            tooltip: l.t('prov_refresh'),
           ),
         ],
       ),
@@ -61,7 +63,7 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
           final completedOrders = _getCompletedOrders(orderProvider);
 
           if (completedOrders.isEmpty) {
-            return _buildEmptyView();
+            return _buildEmptyView(l);
           }
 
           // Calcular estatísticas
@@ -76,7 +78,7 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
 
           return Column(
             children: [
-              _buildStatsCard(completedOrders.length, totalEarned, totalVolume),
+              _buildStatsCard(completedOrders.length, totalEarned, totalVolume, l),
               Expanded(
                 child: RefreshIndicator(
                   onRefresh: _refreshOrders,
@@ -86,7 +88,7 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
                     itemCount: completedOrders.length,
                     itemBuilder: (context, index) {
                       final order = completedOrders[index];
-                      return _buildOrderCard(order);
+                      return _buildOrderCard(order, l);
                     },
                   ),
                 ),
@@ -98,7 +100,7 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
     );
   }
 
-  Widget _buildStatsCard(int count, double earned, double volume) {
+  Widget _buildStatsCard(int count, double earned, double volume, AppLocalizations l) {
     return Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(20),
@@ -116,13 +118,13 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
       ),
       child: Column(
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.analytics, color: Colors.green, size: 24),
-              SizedBox(width: 8),
+              const Icon(Icons.analytics, color: Colors.green, size: 24),
+              const SizedBox(width: 8),
               Text(
-                'Estatísticas',
-                style: TextStyle(
+                l.t('prov_statistics'),
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -135,7 +137,7 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
             children: [
               Expanded(
                 child: _buildStatItem(
-                  'Ordens Completadas',
+                  l.t('prov_hist_completed'),
                   count.toString(),
                   Icons.check_circle,
                 ),
@@ -147,7 +149,7 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
               ),
               Expanded(
                 child: _buildStatItem(
-                  'Total Ganho',
+                  l.t('prov_hist_total_earned'),
                   'R\$ ${earned.toStringAsFixed(2)}',
                   Icons.monetization_on,
                 ),
@@ -158,7 +160,7 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
           const Divider(color: Colors.white12),
           const SizedBox(height: 12),
           _buildStatItem(
-            'Volume Total Processado',
+            l.t('prov_hist_total_volume'),
             'R\$ ${volume.toStringAsFixed(2)}',
             Icons.account_balance_wallet,
             large: true,
@@ -194,7 +196,7 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
     );
   }
 
-  Widget _buildEmptyView() {
+  Widget _buildEmptyView(AppLocalizations l) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -203,18 +205,18 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
           children: [
             const Icon(Icons.history, size: 64, color: Colors.white38),
             const SizedBox(height: 16),
-            const Text(
-              'Nenhuma ordem completada',
-              style: TextStyle(
+            Text(
+              l.t('prov_hist_no_completed'),
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Ordens completadas aparecerão aqui para verificação futura ou em caso de disputas.',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
+            Text(
+              l.t('prov_hist_completed_hint'),
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
@@ -227,7 +229,7 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
                 );
               },
               icon: const Icon(Icons.search),
-              label: const Text('Ver Ordens Disponíveis'),
+              label: Text(l.t('prov_my_view_available')),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.orange,
               ),
@@ -238,7 +240,7 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
     );
   }
 
-  Widget _buildOrderCard(Order order) {
+  Widget _buildOrderCard(Order order, AppLocalizations l) {
     final earnedAmount = order.amount * 0.03;
     final completedDate = _formatDate(order.createdAt);
     final isLiquidated = order.status == 'liquidated';
@@ -307,9 +309,9 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Valor da Conta',
-                      style: TextStyle(color: Colors.white54, fontSize: 11),
+                    Text(
+                      l.t('prov_hist_bill_value'),
+                      style: const TextStyle(color: Colors.white54, fontSize: 11),
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -333,7 +335,7 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        isLiquidated ? 'Auto ⚡' : 'Ganho',
+                        isLiquidated ? 'Auto ⚡' : l.t('prov_hist_earning'),
                         style: TextStyle(color: statusColor, fontSize: 10),
                       ),
                       Text(

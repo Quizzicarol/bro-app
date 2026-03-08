@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 
 class PrivacySettingsScreen extends StatefulWidget {
   const PrivacySettingsScreen({Key? key}) : super(key: key);
@@ -29,7 +30,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
     // TODO: Save to storage
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('✅ Configuração salva'),
+        content: Text(AppLocalizations.of(context).t('privacy_setting_saved')),
         backgroundColor: Colors.green,
         duration: const Duration(seconds: 1),
       ),
@@ -47,9 +48,9 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Privacidade & Segurança',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+        title: Text(
+          AppLocalizations.of(context).t('privacy_title'),
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
         ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
@@ -68,19 +69,19 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                   const SizedBox(height: 24),
                   
                   // Network section
-                  _buildSectionTitle('Rede', Icons.wifi),
+                  _buildSectionTitle(AppLocalizations.of(context).t('privacy_network'), Icons.wifi),
                   const SizedBox(height: 12),
                   _buildTorSetting(),
                   const SizedBox(height: 24),
                   
                   // Encryption section
-                  _buildSectionTitle('Criptografia', Icons.lock),
+                  _buildSectionTitle(AppLocalizations.of(context).t('privacy_encryption'), Icons.lock),
                   const SizedBox(height: 12),
                   _buildNip44Setting(),
                   const SizedBox(height: 24),
                   
                   // Display section
-                  _buildSectionTitle('Exibição', Icons.visibility),
+                  _buildSectionTitle(AppLocalizations.of(context).t('privacy_display'), Icons.visibility),
                   const SizedBox(height: 12),
                   _buildHideBalanceSetting(),
                   const SizedBox(height: 24),
@@ -105,15 +106,16 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
     
     Color scoreColor;
     String scoreLabel;
+    final t = AppLocalizations.of(context).t;
     if (score >= 80) {
       scoreColor = Colors.green;
-      scoreLabel = 'Excelente';
+      scoreLabel = t('privacy_excellent');
     } else if (score >= 60) {
       scoreColor = const Color(0xFFFF6B6B);
-      scoreLabel = 'Bom';
+      scoreLabel = t('privacy_good');
     } else {
       scoreColor = Colors.orange;
-      scoreLabel = 'Pode melhorar';
+      scoreLabel = t('privacy_can_improve');
     }
     
     return Container(
@@ -168,9 +170,9 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Pontuação de Privacidade',
-                  style: TextStyle(
+                Text(
+                  t('privacy_score'),
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
@@ -188,8 +190,8 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                 const SizedBox(height: 8),
                 Text(
                   _torEnabled 
-                      ? '🧅 Tor ativo - IP oculto'
-                      : '💡 Ative o Tor para maior privacidade',
+                      ? t('privacy_tor_active')
+                      : t('privacy_enable_tor_hint'),
                   style: const TextStyle(
                     color: Color(0x99FFFFFF),
                     fontSize: 12,
@@ -253,9 +255,9 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Conexão via Tor',
-                      style: TextStyle(
+                    Text(
+                      AppLocalizations.of(context).t('privacy_tor_connection'),
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -264,8 +266,8 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                     const SizedBox(height: 4),
                     Text(
                       _torEnabled 
-                          ? 'Seu IP está oculto'
-                          : 'Oculta seu endereço IP real',
+                          ? AppLocalizations.of(context).t('privacy_ip_hidden')
+                          : AppLocalizations.of(context).t('privacy_hides_real_ip'),
                       style: TextStyle(
                         color: _torEnabled ? Colors.green : const Color(0x99FFFFFF),
                         fontSize: 13,
@@ -296,14 +298,14 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                 color: const Color(0x1A9C27B0),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  Icon(Icons.info_outline, color: Color(0xFF9C27B0), size: 16),
-                  SizedBox(width: 8),
+                  const Icon(Icons.info_outline, color: Color(0xFF9C27B0), size: 16),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Conexões serão mais lentas mas muito mais privadas',
-                      style: TextStyle(color: Color(0xFFBA68C8), fontSize: 12),
+                      AppLocalizations.of(context).t('privacy_tor_slower'),
+                      style: const TextStyle(color: Color(0xFFBA68C8), fontSize: 12),
                     ),
                   ),
                 ],
@@ -321,21 +323,16 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        title: Row(
           children: [
-            Text('🧅', style: TextStyle(fontSize: 28)),
-            SizedBox(width: 12),
-            Text('Tor Ativado', style: TextStyle(color: Colors.white)),
+            const Text('🧅', style: TextStyle(fontSize: 28)),
+            const SizedBox(width: 12),
+            Text(AppLocalizations.of(context).t('privacy_tor_enabled'), style: const TextStyle(color: Colors.white)),
           ],
         ),
-        content: const Text(
-          'A conexão Tor roteia seu tráfego através de múltiplos servidores '
-          'ao redor do mundo, tornando muito difícil rastrear sua atividade.\n\n'
-          '✅ IP real oculto\n'
-          '✅ Localização protegida\n'
-          '✅ Resistente a censura\n\n'
-          '⚠️ A conexão será mais lenta',
-          style: TextStyle(color: Color(0xB3FFFFFF)),
+        content: Text(
+          AppLocalizations.of(context).t('privacy_tor_info'),
+          style: const TextStyle(color: Color(0xB3FFFFFF)),
         ),
         actions: [
           ElevatedButton(
@@ -343,7 +340,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF9C27B0),
             ),
-            child: const Text('Entendi', style: TextStyle(color: Colors.white)),
+            child: Text(AppLocalizations.of(context).t('ok'), style: const TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -376,9 +373,9 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                 Row(
                   children: [
                     Flexible(
-                      child: const Text(
-                        'NIP-44 (Criptografia v2)',
-                        style: TextStyle(
+                      child: Text(
+                        AppLocalizations.of(context).t('privacy_nip44_title'),
+                        style: const TextStyle(
                           color: Colors.white,
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
@@ -393,17 +390,17 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                         color: Colors.green.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(4),
                       ),
-                      child: const Text(
-                        'Recomendado',
-                        style: TextStyle(color: Colors.green, fontSize: 9),
+                      child: Text(
+                        AppLocalizations.of(context).t('privacy_recommended'),
+                        style: const TextStyle(color: Colors.green, fontSize: 9),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 4),
-                const Text(
-                  'Criptografia mais segura para mensagens diretas',
-                  style: TextStyle(color: Color(0x99FFFFFF), fontSize: 13),
+                Text(
+                  AppLocalizations.of(context).t('privacy_nip44_description'),
+                  style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 13),
                 ),
               ],
             ),
@@ -443,22 +440,22 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
             ),
           ),
           const SizedBox(width: 12),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Ocultar Saldo',
-                  style: TextStyle(
+                  AppLocalizations.of(context).t('privacy_hide_balance'),
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                SizedBox(height: 4),
+                const SizedBox(height: 4),
                 Text(
-                  'Esconde valores na tela inicial',
-                  style: TextStyle(color: Color(0x99FFFFFF), fontSize: 13),
+                  AppLocalizations.of(context).t('privacy_hide_balance_desc'),
+                  style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 13),
                 ),
               ],
             ),
@@ -497,22 +494,22 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                 child: const Icon(Icons.receipt_long, color: Color(0xFF9C27B0)),
               ),
               const SizedBox(width: 12),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Publicar Recibos no Nostr',
-                      style: TextStyle(
+                      AppLocalizations.of(context).t('privacy_publish_receipts'),
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Text(
-                      'Compartilha comprovantes como notas públicas',
-                      style: TextStyle(color: Color(0x99FFFFFF), fontSize: 13),
+                      AppLocalizations.of(context).t('privacy_publish_receipts_desc'),
+                      style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 13),
                     ),
                   ],
                 ),
@@ -535,14 +532,14 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                 color: const Color(0x1A9C27B0),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  Icon(Icons.public, color: Color(0xFF9C27B0), size: 16),
-                  SizedBox(width: 8),
+                  const Icon(Icons.public, color: Color(0xFF9C27B0), size: 16),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Seus pagamentos serão visíveis para seus seguidores',
-                      style: TextStyle(color: Color(0xFFBA68C8), fontSize: 12),
+                      AppLocalizations.of(context).t('privacy_payments_visible'),
+                      style: const TextStyle(color: Color(0xFFBA68C8), fontSize: 12),
                     ),
                   ),
                 ],
@@ -580,22 +577,22 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
               child: const Icon(Icons.cloud_queue, color: Color(0xFFFF6B6B)),
             ),
             const SizedBox(width: 12),
-            const Expanded(
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Gerenciar Relays',
-                    style: TextStyle(
+                    AppLocalizations.of(context).t('privacy_manage_relays'),
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  SizedBox(height: 4),
+                  const SizedBox(height: 4),
                   Text(
-                    'Escolha quais servidores Nostr usar',
-                    style: TextStyle(color: Color(0x99FFFFFF), fontSize: 13),
+                    AppLocalizations.of(context).t('privacy_choose_relays'),
+                    style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 13),
                   ),
                 ],
               ),

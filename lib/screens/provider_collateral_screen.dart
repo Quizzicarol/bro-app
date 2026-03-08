@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
 import '../providers/breez_provider_export.dart';
@@ -89,11 +90,12 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('Níveis de Garantia'),
+        title: Text(l.t('prov_coll_title')),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
@@ -108,6 +110,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
   }
 
   Widget _buildErrorView() {
+    final l = AppLocalizations.of(context)!;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -125,7 +128,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
             ElevatedButton(
               onPressed: _loadData,
               style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-              child: const Text('Tentar Novamente'),
+              child: Text(l.t('prov_coll_try_again')),
             ),
           ],
         ),
@@ -134,6 +137,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
   }
 
   Widget _buildContent() {
+    final l = AppLocalizations.of(context)!;
     // 🔐 SEGURANÇA: Se saldo é 0, NÃO mostrar valores comprometidos
     // Isso evita mostrar dados inconsistentes de sessões anteriores
     final effectiveWalletBalance = _walletBalance;
@@ -172,8 +176,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Saldo zerado! Tier "${_currentCollateral!.tierName}" INATIVO.\n'
-                    'Deposite sats para reativar a garantia.',
+                    l.tp('prov_coll_zero_balance', {'name': _currentCollateral!.tierName}),
                     style: TextStyle(color: Colors.red.shade300, fontSize: 12),
                   ),
                 ),
@@ -201,9 +204,9 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                 children: [
                   const Icon(Icons.account_balance_wallet, color: Colors.orange, size: 28),
                   const SizedBox(width: 12),
-                  const Text(
-                    'Saldo Total',
-                    style: TextStyle(color: Colors.white60, fontSize: 12),
+                  Text(
+                    l.t('prov_coll_total_balance'),
+                    style: const TextStyle(color: Colors.white60, fontSize: 12),
                   ),
                   const Spacer(),
                   Text(
@@ -222,9 +225,9 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
               const SizedBox(height: 12),
               
               // Breakdown detalhado
-              const Text(
-                'DISTRIBUIÇÃO',
-                style: TextStyle(
+              Text(
+                l.t('prov_coll_distribution'),
+                style: const TextStyle(
                   color: Colors.white54, 
                   fontSize: 10,
                   fontWeight: FontWeight.bold,
@@ -237,11 +240,11 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
               _buildBreakdownRow(
                 icon: Icons.lock,
                 iconColor: effectiveTierLocked > 0 ? Colors.purple : Colors.grey,
-                label: 'Garantia (Tier)',
+                label: l.t('prov_coll_guarantee_tier'),
                 value: effectiveTierLocked,
                 subtitle: effectiveTierLocked > 0 
-                    ? _currentCollateral?.tierName ?? 'Nenhum'
-                    : (_currentCollateral != null ? '⚠️ INATIVO' : 'Nenhum'),
+                    ? _currentCollateral?.tierName ?? l.t('prov_coll_none')
+                    : (_currentCollateral != null ? l.t('prov_coll_inactive_label') : l.t('prov_coll_none')),
               ),
               
               const SizedBox(height: 8),
@@ -250,9 +253,9 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
               _buildBreakdownRow(
                 icon: Icons.pending_actions,
                 iconColor: effectiveCommittedSats > 0 ? Colors.blue : Colors.grey,
-                label: 'Ordens Pendentes',
+                label: l.t('prov_coll_pending_orders'),
                 value: effectiveCommittedSats,
-                subtitle: effectiveCommittedSats > 0 ? 'Em processamento' : 'Nenhuma',
+                subtitle: effectiveCommittedSats > 0 ? l.t('prov_coll_processing') : l.t('prov_coll_none_pending'),
               ),
               
               const SizedBox(height: 8),
@@ -261,9 +264,9 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
               _buildBreakdownRow(
                 icon: Icons.check_circle,
                 iconColor: freeBalance > 0 ? Colors.green : Colors.grey,
-                label: 'Disponível',
+                label: l.t('prov_coll_available'),
                 value: freeBalance,
-                subtitle: 'Para uso livre',
+                subtitle: l.t('prov_coll_free_use'),
                 highlight: true,
               ),
               
@@ -283,8 +286,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Garantia e ordens usam o mesmo saldo. '
-                          'O tier permanece ativo enquanto você tiver saldo suficiente.',
+                          l.t('prov_coll_same_balance_note'),
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.7),
                             fontSize: 11,
@@ -336,14 +338,13 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            '⚠️ SALDO INSUFICIENTE!',
-                            style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 14),
+                          Text(
+                            l.t('prov_coll_insufficient'),
+                            style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 14),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Seu tier requer $requiredSatsNow sats (mínimo com tolerância: $minRequiredWithTolerance sats), mas você só tem $_walletBalance sats.\n'
-                            'O tier será desativado automaticamente se você não depositar mais saldo.',
+                            l.tp('prov_coll_insufficient_msg', {'required': requiredSatsNow.toString(), 'min': minRequiredWithTolerance.toString(), 'balance': _walletBalance.toString()}),
                             style: const TextStyle(color: Colors.white70, fontSize: 12),
                           ),
                         ],
@@ -412,10 +413,10 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                         children: [
                           Text(
                             isTierActive 
-                                ? 'Tier Ativo' 
+                                ? l.t('prov_coll_tier_active') 
                                 : isTierAtRisk 
-                                    ? 'Tier em Risco'
-                                    : 'Tier INATIVO',
+                                    ? l.t('prov_coll_tier_at_risk')
+                                    : l.t('prov_coll_tier_inactive_label'),
                             style: TextStyle(
                               color: isTierActive 
                                   ? Colors.green 
@@ -427,8 +428,8 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                           ),
                           Text(
                             isTierInactive 
-                                ? 'Deposite sats para reativar'
-                                : 'Máximo R\$ ${_currentCollateral!.maxOrderBrl.toStringAsFixed(0)}/ordem',
+                                ? l.t('prov_coll_deposit_reactivate')
+                                : l.tp('prov_coll_max_order_brl', {'max': _currentCollateral!.maxOrderBrl.toStringAsFixed(0)}),
                             style: const TextStyle(color: Colors.white70, fontSize: 12),
                           ),
                         ],
@@ -436,7 +437,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                     ),
                     TextButton(
                       onPressed: _removeTier,
-                      child: const Text('Remover', style: TextStyle(color: Colors.red)),
+                      child: Text(l.t('prov_coll_remove'), style: const TextStyle(color: Colors.red)),
                     ),
                   ],
                 ),
@@ -452,9 +453,9 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
             children: [
-              const Text(
-                'Selecione um Tier',
-                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+              Text(
+                l.t('prov_coll_select_tier'),
+                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const Spacer(),
               Text(
@@ -488,6 +489,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
   }
 
   Widget _buildTierCard(CollateralTier tier, bool isCurrentTier, bool hasEnoughBalance) {
+    final l = AppLocalizations.of(context)!;
     return GestureDetector(
       onTap: isCurrentTier ? null : () => _openDepositScreen(tier),
       child: Container(
@@ -536,9 +538,9 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                                 color: Colors.green,
                                 borderRadius: BorderRadius.circular(4),
                               ),
-                              child: const Text(
-                                'ATIVO',
-                                style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                              child: Text(
+                                l.t('prov_coll_active_label'),
+                                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                               ),
                             ),
                           ],
@@ -564,7 +566,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Garantia', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                    Text(l.t('prov_coll_guarantee'), style: const TextStyle(color: Colors.white38, fontSize: 11)),
                     Text(
                       '${tier.requiredCollateralSats} sats',
                       style: TextStyle(
@@ -582,7 +584,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    const Text('Máx. por Ordem', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                    Text(l.t('prov_coll_max_per_order'), style: const TextStyle(color: Colors.white38, fontSize: 11)),
                     Text(
                       'R\$ ${tier.maxOrderValueBrl.toStringAsFixed(0)}',
                       style: const TextStyle(
@@ -604,7 +606,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  'Deposite ${tier.requiredCollateralSats - _walletBalance} sats a mais',
+                  l.tp('prov_coll_deposit_more_sats', {'amount': (tier.requiredCollateralSats - _walletBalance).toString()}),
                   style: const TextStyle(color: Colors.orange, fontSize: 11),
                 ),
               ),
@@ -698,24 +700,25 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
   }
 
   void _removeTier() async {
+    final l = AppLocalizations.of(context)!;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('Remover Tier?', style: TextStyle(color: Colors.white)),
-        content: const Text(
-          'Você poderá selecionar outro tier depois.',
-          style: TextStyle(color: Colors.white70),
+        title: Text(l.t('prov_coll_remove_tier_title'), style: const TextStyle(color: Colors.white)),
+        content: Text(
+          l.t('prov_coll_remove_tier_msg'),
+          style: const TextStyle(color: Colors.white70),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
+            child: Text(l.t('cancel')),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Remover'),
+            child: Text(l.t('prov_coll_remove')),
           ),
         ],
       ),

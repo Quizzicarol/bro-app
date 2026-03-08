@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:image_picker/image_picker.dart';
+import '../l10n/app_localizations.dart';
 import '../services/bitcoin_price_service.dart';
 import '../services/nostr_service.dart';
 import '../services/nostr_order_service.dart';
@@ -55,9 +56,9 @@ class _OfferScreenState extends State<OfferScreen> {
   }
 
   final List<Map<String, dynamic>> _categories = [
-    {'id': 'produto', 'name': 'Produto', 'icon': Icons.shopping_bag},
-    {'id': 'servico', 'name': 'Serviço', 'icon': Icons.business_center}, // Maleta
-    {'id': 'outro', 'name': 'Outro', 'icon': Icons.more_horiz},
+    {'id': 'produto', 'name': 'offer_category_product', 'icon': Icons.shopping_bag},
+    {'id': 'servico', 'name': 'offer_category_service', 'icon': Icons.business_center}, // Maleta
+    {'id': 'outro', 'name': 'offer_category_other', 'icon': Icons.more_horiz},
   ];
 
   @override
@@ -79,9 +80,9 @@ class _OfferScreenState extends State<OfferScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF0A0A0A),
         elevation: 0,
-        title: const Text(
-          'Nova Oferta',
-          style: TextStyle(
+        title: Text(
+          AppLocalizations.of(context).t('offer_title'),
+          style: const TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.w600,
             color: Colors.white,
@@ -105,9 +106,9 @@ class _OfferScreenState extends State<OfferScreen> {
                 const SizedBox(height: 24),
 
                 // Categoria
-                const Text(
-                  'Categoria',
-                  style: TextStyle(
+                Text(
+                  AppLocalizations.of(context).t('offer_category'),
+                  style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: Colors.white,
@@ -118,9 +119,9 @@ class _OfferScreenState extends State<OfferScreen> {
               const SizedBox(height: 24),
 
               // Titulo
-              const Text(
-                'Titulo da Oferta',
-                style: TextStyle(
+              Text(
+                AppLocalizations.of(context).t('offer_title_label'),
+                style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: Colors.white,
@@ -131,12 +132,12 @@ class _OfferScreenState extends State<OfferScreen> {
                 controller: _titleController,
                 style: const TextStyle(color: Colors.white),
                 decoration: _buildInputDecoration(
-                  hint: 'Ex: iPhone 14 Pro Max 256GB',
+                  hint: AppLocalizations.of(context).t('offer_title_hint'),
                   icon: Icons.title,
                 ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'Digite um titulo';
+                    return AppLocalizations.of(context).t('offer_title_validator');
                   }
                   return null;
                 },
@@ -144,9 +145,9 @@ class _OfferScreenState extends State<OfferScreen> {
               const SizedBox(height: 24),
 
               // Descricao
-              const Text(
-                'Descricao',
-                style: TextStyle(
+              Text(
+                AppLocalizations.of(context).t('offer_description_label'),
+                style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: Colors.white,
@@ -158,12 +159,12 @@ class _OfferScreenState extends State<OfferScreen> {
                 style: const TextStyle(color: Colors.white),
                 maxLines: 5,
                 decoration: _buildInputDecoration(
-                  hint: 'Descreva seu produto ou servico em detalhes...\n\n- Estado de conservacao\n- O que esta incluso\n- Formas de entrega',
+                  hint: AppLocalizations.of(context).t('offer_description_hint'),
                   icon: Icons.description,
                 ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'Digite uma descricao';
+                    return AppLocalizations.of(context).t('offer_description_validator');
                   }
                   return null;
                 },
@@ -171,9 +172,9 @@ class _OfferScreenState extends State<OfferScreen> {
               const SizedBox(height: 24),
 
               // Preco
-              const Text(
-                'Preco em Sats',
-                style: TextStyle(
+              Text(
+                AppLocalizations.of(context).t('offer_price_label'),
+                style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: Colors.white,
@@ -191,10 +192,10 @@ class _OfferScreenState extends State<OfferScreen> {
                 ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'Digite o preco';
+                    return AppLocalizations.of(context).t('offer_price_validator');
                   }
                   if (int.tryParse(value) == null) {
-                    return 'Digite apenas numeros';
+                    return AppLocalizations.of(context).t('offer_price_numbers_only');
                   }
                   return null;
                 },
@@ -204,9 +205,9 @@ class _OfferScreenState extends State<OfferScreen> {
               const SizedBox(height: 24),
 
               // Cidade
-              const Text(
-                'Cidade (onde você atende)',
-                style: TextStyle(
+              Text(
+                AppLocalizations.of(context).t('offer_city_label'),
+                style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: Colors.white,
@@ -217,16 +218,16 @@ class _OfferScreenState extends State<OfferScreen> {
                 controller: _cityController,
                 style: const TextStyle(color: Colors.white),
                 decoration: _buildInputDecoration(
-                  hint: 'Ex: São Paulo, SP ou Brasil inteiro',
+                  hint: AppLocalizations.of(context).t('offer_city_hint'),
                   icon: Icons.location_city,
                 ),
               ),
               const SizedBox(height: 24),
 
               // Quantidade (para produtos)
-              if (_selectedCategory == 'produto') ...[              const Text(
-                'Quantidade disponível',
-                style: TextStyle(
+              if (_selectedCategory == 'produto') ...[              Text(
+                AppLocalizations.of(context).t('offer_quantity_label'),
+                style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: Colors.white,
@@ -238,25 +239,25 @@ class _OfferScreenState extends State<OfferScreen> {
                 style: const TextStyle(color: Colors.white),
                 keyboardType: TextInputType.number,
                 decoration: _buildInputDecoration(
-                  hint: 'Ex: 10 (deixe vazio para ilimitado)',
+                  hint: AppLocalizations.of(context).t('offer_quantity_hint'),
                   icon: Icons.inventory_2,
                 ),
               ),
               const SizedBox(height: 4),
-              const Padding(
-                padding: EdgeInsets.only(left: 4),
+              Padding(
+                padding: const EdgeInsets.only(left: 4),
                 child: Text(
-                  'O estoque diminui conforme você confirma vendas. Deixe vazio para serviços ou itens sem limite.',
-                  style: TextStyle(color: Color(0x66FFFFFF), fontSize: 11),
+                  AppLocalizations.of(context).t('offer_quantity_helper'),
+                  style: const TextStyle(color: Color(0x66FFFFFF), fontSize: 11),
                 ),
               ),
               const SizedBox(height: 24),
               ],
 
               // Site ou Referências
-              const Text(
-                'Site ou Referências (opcional)',
-                style: TextStyle(
+              Text(
+                AppLocalizations.of(context).t('offer_site_label'),
+                style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: Colors.white,
@@ -267,16 +268,16 @@ class _OfferScreenState extends State<OfferScreen> {
                 controller: _siteController,
                 style: const TextStyle(color: Colors.white),
                 decoration: _buildInputDecoration(
-                  hint: 'Ex: https://meusite.com ou @meunostr',
+                  hint: AppLocalizations.of(context).t('offer_site_hint'),
                   icon: Icons.link,
                 ),
               ),
               const SizedBox(height: 24),
 
               // Fotos do Produto
-              const Text(
-                'Fotos do Produto (opcional)',
-                style: TextStyle(
+              Text(
+                AppLocalizations.of(context).t('offer_photos_label'),
+                style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: Colors.white,
@@ -311,14 +312,14 @@ class _OfferScreenState extends State<OfferScreen> {
                             strokeWidth: 2,
                           ),
                         )
-                      : const Row(
+                      : Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.rocket_launch, size: 22),
-                            SizedBox(width: 8),
+                            const Icon(Icons.rocket_launch, size: 22),
+                            const SizedBox(width: 8),
                             Text(
-                              'Publicar Oferta',
-                              style: TextStyle(
+                              AppLocalizations.of(context).t('offer_publish'),
+                              style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -357,14 +358,14 @@ class _OfferScreenState extends State<OfferScreen> {
           color: const Color(0xFF3DE98C).withOpacity(0.3),
         ),
       ),
-      child: const Row(
+      child: Row(
         children: [
-          Icon(Icons.info_outline, color: Color(0xFF3DE98C), size: 24),
-          SizedBox(width: 12),
+          const Icon(Icons.info_outline, color: Color(0xFF3DE98C), size: 24),
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
-              'Sua oferta sera publicada no Nostr. Interessados podem entrar em contato via chat privado.',
-              style: TextStyle(
+              AppLocalizations.of(context).t('offer_info_nostr'),
+              style: const TextStyle(
                 fontSize: 13,
                 color: Color(0xB3FFFFFF),
                 height: 1.4,
@@ -407,7 +408,7 @@ class _OfferScreenState extends State<OfferScreen> {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  category['name'] as String,
+                  AppLocalizations.of(context).t(category['name'] as String),
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
@@ -577,7 +578,7 @@ class _OfferScreenState extends State<OfferScreen> {
                 child: OutlinedButton.icon(
                   onPressed: _pickPhotoFromGallery,
                   icon: const Icon(Icons.photo_library, color: Color(0xFF9C27B0)),
-                  label: const Text('Galeria', style: TextStyle(color: Color(0xFF9C27B0))),
+                  label: Text(AppLocalizations.of(context).t('offer_gallery'), style: const TextStyle(color: Color(0xFF9C27B0))),
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: Color(0xFF9C27B0)),
                     padding: const EdgeInsets.symmetric(vertical: 12),
@@ -590,7 +591,7 @@ class _OfferScreenState extends State<OfferScreen> {
                 child: OutlinedButton.icon(
                   onPressed: _pickPhotoFromCamera,
                   icon: const Icon(Icons.camera_alt, color: Color(0xFF9C27B0)),
-                  label: const Text('Câmera', style: TextStyle(color: Color(0xFF9C27B0))),
+                  label: Text(AppLocalizations.of(context).t('offer_camera'), style: const TextStyle(color: Color(0xFF9C27B0))),
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: Color(0xFF9C27B0)),
                     padding: const EdgeInsets.symmetric(vertical: 12),
@@ -602,7 +603,7 @@ class _OfferScreenState extends State<OfferScreen> {
           ),
         const SizedBox(height: 8),
         Text(
-          '${_selectedPhotos.length}/$_maxPhotos fotos • Máx. 200KB cada (comprimida automaticamente)',
+          '${_selectedPhotos.length}/$_maxPhotos ${AppLocalizations.of(context).t('offer_photos_count')}',
           style: const TextStyle(fontSize: 11, color: Color(0x66FFFFFF)),
         ),
       ],
@@ -621,8 +622,8 @@ class _OfferScreenState extends State<OfferScreen> {
         // Verificar nome do arquivo
         if (ContentModerationService.hasProhibitedFileName(image.name)) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('❌ Nome de arquivo suspeito. Imagem rejeitada.'),
+            SnackBar(
+              content: Text(AppLocalizations.of(context).t('offer_suspicious_file')),
               backgroundColor: Colors.red,
             ),
           );
@@ -633,7 +634,7 @@ class _OfferScreenState extends State<OfferScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao selecionar foto: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text(AppLocalizations.of(context).tp('offer_photo_select_error', {'error': e.toString()})), backgroundColor: Colors.red),
         );
       }
     }
@@ -653,7 +654,7 @@ class _OfferScreenState extends State<OfferScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao tirar foto: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text(AppLocalizations.of(context).tp('offer_photo_capture_error', {'error': e.toString()})), backgroundColor: Colors.red),
         );
       }
     }
@@ -685,15 +686,15 @@ class _OfferScreenState extends State<OfferScreen> {
         color: const Color(0x0DFFFFFF),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: const Column(
+      child: Column(
         children: [
           Row(
             children: [
-              Icon(Icons.public, color: Color(0xFF9C27B0), size: 20),
-              SizedBox(width: 8),
+              const Icon(Icons.public, color: Color(0xFF9C27B0), size: 20),
+              const SizedBox(width: 8),
               Text(
-                'Publicado no Nostr',
-                style: TextStyle(
+                AppLocalizations.of(context).t('offer_published_nostr'),
+                style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: Color(0xFFBA68C8),
@@ -701,10 +702,10 @@ class _OfferScreenState extends State<OfferScreen> {
               ),
             ],
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Text(
-            'Sua oferta ficara visivel em todos os clientes Nostr compativeis. Voce pode deletar a qualquer momento.',
-            style: TextStyle(
+            AppLocalizations.of(context).t('offer_nostr_visibility'),
+            style: const TextStyle(
               fontSize: 12,
               color: Color(0x66FFFFFF),
               height: 1.4,
@@ -727,7 +728,7 @@ class _OfferScreenState extends State<OfferScreen> {
       
       final privateKey = nostrService.privateKey;
       if (privateKey == null) {
-        throw Exception('Faça login para publicar ofertas');
+        throw Exception(AppLocalizations.of(context).t('offer_login_required'));
       }
 
       // Monta descrição com cidade
@@ -798,10 +799,10 @@ class _OfferScreenState extends State<OfferScreen> {
         setState(() => _isPublishing = false);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('❌ Conteúdo proibido detectado. Revise o título e descrição.'),
+            SnackBar(
+              content: Text(AppLocalizations.of(context).t('offer_prohibited_content')),
               backgroundColor: Colors.red,
-              duration: Duration(seconds: 4),
+              duration: const Duration(seconds: 4),
             ),
           );
         }
@@ -822,7 +823,7 @@ class _OfferScreenState extends State<OfferScreen> {
       );
 
       if (offerId == null) {
-        throw Exception('Falha ao publicar nos relays');
+        throw Exception(AppLocalizations.of(context).t('offer_publish_failed'));
       }
 
       setState(() => _isPublishing = false);
@@ -831,7 +832,7 @@ class _OfferScreenState extends State<OfferScreen> {
         // Mostra sucesso
         showDialog(
           context: context,
-          builder: (context) => AlertDialog(
+          builder: (ctx) => AlertDialog(
             backgroundColor: const Color(0xFF1A1A1A),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
@@ -848,19 +849,19 @@ class _OfferScreenState extends State<OfferScreen> {
                   child: const Icon(Icons.check, color: Colors.black, size: 32),
                 ),
                 const SizedBox(height: 16),
-                const Text(
-                  'Oferta Publicada!',
-                  style: TextStyle(
+                Text(
+                  AppLocalizations.of(ctx).t('offer_published_title'),
+                  style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
                     color: Colors.white,
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'Sua oferta esta visivel no Nostr. Aguarde interessados entrarem em contato!',
+                Text(
+                  AppLocalizations.of(ctx).t('offer_published_message'),
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 13,
                     color: Color(0x99FFFFFF),
                   ),
@@ -870,7 +871,7 @@ class _OfferScreenState extends State<OfferScreen> {
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: () {
-                      Navigator.pop(context); // Fecha dialog
+                      Navigator.pop(ctx); // Fecha dialog
                       Navigator.pop(context); // Volta para tela anterior
                     },
                     style: ElevatedButton.styleFrom(
@@ -880,7 +881,7 @@ class _OfferScreenState extends State<OfferScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: const Text('Fechar'),
+                    child: Text(AppLocalizations.of(ctx).t('close')),
                   ),
                 ),
               ],

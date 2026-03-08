@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:intl/intl.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/breez_provider_export.dart';
 import '../providers/order_provider.dart';
 import '../services/api_service.dart';
@@ -81,25 +82,24 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (context) => AlertDialog(
           backgroundColor: Colors.red.shade900,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.error, color: Colors.white, size: 32),
-              SizedBox(width: 12),
+              const Icon(Icons.error, color: Colors.white, size: 32),
+              const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  '⚠️ RECUPERAÇÃO NECESSÁRIA',
-                  style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                  AppLocalizations.of(context).t('home_recovery_needed'),
+                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                 ),
               ),
             ],
           ),
-          content: const Column(
+          content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Houve um problema ao recuperar sua carteira.\n\n'
-                'Se você tinha sats nesta carteira, vá em Configurações e use "Restaurar Carteira" com suas 12 palavras de backup.',
-                style: TextStyle(color: Colors.white, fontSize: 14),
+                AppLocalizations.of(context).t('home_recovery_message'),
+                style: const TextStyle(color: Colors.white, fontSize: 14),
               ),
             ],
           ),
@@ -110,7 +110,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Navigator.pushNamed(context, '/settings');
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.white),
-              child: const Text('Ir para Configurações', style: TextStyle(color: Colors.red)),
+              child: Text(AppLocalizations.of(context).t('home_go_to_settings'), style: const TextStyle(color: Colors.red)),
             ),
           ],
         ),
@@ -163,10 +163,10 @@ class _HomeScreenState extends State<HomeScreen> {
               child: const Icon(Icons.key, color: Colors.orange, size: 28),
             ),
             const SizedBox(width: 12),
-            const Expanded(
+            Expanded(
               child: Text(
-                'Proteja seus Sats!',
-                style: TextStyle(color: Colors.white, fontSize: 18),
+                AppLocalizations.of(context).t('home_protect_sats'),
+                style: const TextStyle(color: Colors.white, fontSize: 18),
               ),
             ),
           ],
@@ -183,30 +183,28 @@ class _HomeScreenState extends State<HomeScreen> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: Colors.red.withOpacity(0.3)),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.warning, color: Colors.red, size: 20),
-                    SizedBox(width: 8),
+                    const Icon(Icons.warning, color: Colors.red, size: 20),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Sem backup = sem acesso aos fundos!',
-                        style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 13),
+                        AppLocalizations.of(context).t('home_no_backup_no_funds'),
+                        style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 13),
                       ),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 16),
-              const Text(
-                '🔑 Sua Seed (12 palavras) é a chave da sua carteira Lightning.',
-                style: TextStyle(color: Colors.white, fontSize: 14),
+              Text(
+                AppLocalizations.of(context).t('home_seed_is_key'),
+                style: const TextStyle(color: Colors.white, fontSize: 14),
               ),
               const SizedBox(height: 12),
-              const Text(
-                '• Anote em papel e guarde em local seguro\n'
-                '• NUNCA compartilhe com ninguém\n'
-                '• Se perder o celular, só a seed recupera seus sats',
-                style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 13),
+              Text(
+                AppLocalizations.of(context).t('home_seed_instructions'),
+                style: const TextStyle(color: Color(0xB3FFFFFF), fontSize: 13),
               ),
               const SizedBox(height: 16),
               Container(
@@ -216,14 +214,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: Colors.green.withOpacity(0.3)),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.check_circle, color: Colors.green, size: 20),
-                    SizedBox(width: 8),
+                    const Icon(Icons.check_circle, color: Colors.green, size: 20),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Faça backup agora em Configurações > Backup',
-                        style: TextStyle(color: Colors.green, fontSize: 13),
+                        AppLocalizations.of(context).t('home_backup_now_hint'),
+                        style: const TextStyle(color: Colors.green, fontSize: 13),
                       ),
                     ),
                   ],
@@ -235,12 +233,12 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, 'later'),
-            child: const Text('Depois', style: TextStyle(color: Color(0x99FFFFFF))),
+            child: Text(AppLocalizations.of(context).t('later'), style: const TextStyle(color: Color(0x99FFFFFF))),
           ),
           ElevatedButton.icon(
             onPressed: () => Navigator.pop(context, 'backup'),
             icon: const Icon(Icons.key, size: 18),
-            label: const Text('Ver minha Seed'),
+            label: Text(AppLocalizations.of(context).t('home_view_my_seed')),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.orange,
               foregroundColor: Colors.white,
@@ -285,7 +283,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (!success && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Breez SDK nao inicializou completamente.'),
+              content: Text('Breez SDK did not fully initialize.'),
               backgroundColor: Colors.orange,
               duration: Duration(seconds: 5),
             ),
@@ -296,7 +294,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Erro ao inicializar carteira: $e'),
+              content: Text(AppLocalizations.of(context).tp('home_wallet_init_error', {'error': e})),
               backgroundColor: Colors.red,
             ),
           );
@@ -365,7 +363,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       // Mostrar mensagem de progresso
-      _showSyncSnackbar('🔄 Conectando com a rede Nostr...');
+      _showSyncSnackbar(AppLocalizations.of(context).t('home_connecting_nostr'));
       
       await Future.wait([
         breezProvider.refresh(),
@@ -378,13 +376,13 @@ class _HomeScreenState extends State<HomeScreen> {
       // Mostrar conclusão
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        _showSyncSnackbar('✅ Dados atualizados!', duration: const Duration(seconds: 3));
+        _showSyncSnackbar(AppLocalizations.of(context).t('home_data_updated'), duration: const Duration(seconds: 3));
       }
     } catch (e) {
       broLog('❌ Erro no _loadData: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        _showSyncSnackbar('⚠️ Falha ao atualizar dados', duration: const Duration(seconds: 2));
+        _showSyncSnackbar(AppLocalizations.of(context).t('home_data_update_failed'), duration: const Duration(seconds: 2));
       }
     }
   }
@@ -488,10 +486,10 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(width: 10),
           // Descricao
-          const Expanded(
+          Expanded(
             child: Text(
-              'Escambo digital via Nostr',
-              style: TextStyle(
+              AppLocalizations.of(context).t('home_digital_barter'),
+              style: const TextStyle(
                 fontSize: 12,
                 color: Color(0xB3FFFFFF),
                 fontWeight: FontWeight.w500,
@@ -507,7 +505,7 @@ class _HomeScreenState extends State<HomeScreen> {
         IconButton(
           icon: const Icon(Icons.account_balance_wallet, color: Colors.orange),
           onPressed: () => Navigator.pushNamed(context, '/wallet'),
-          tooltip: 'Minha Carteira',
+          tooltip: AppLocalizations.of(context).t('home_my_wallet'),
         ),
         // Mensagens com badge de não lidas
         Stack(
@@ -515,7 +513,7 @@ class _HomeScreenState extends State<HomeScreen> {
             IconButton(
               icon: const Icon(Icons.chat_bubble_outline, color: Colors.white),
               onPressed: _openMessages,
-              tooltip: 'Mensagens',
+              tooltip: AppLocalizations.of(context).t('home_messages'),
             ),
             if (_unreadMessages > 0)
               Positioned(
@@ -540,7 +538,7 @@ class _HomeScreenState extends State<HomeScreen> {
         IconButton(
           icon: const Icon(Icons.settings_outlined, color: Colors.white),
           onPressed: _showUserSettings,
-          tooltip: 'Configuracoes',
+          tooltip: AppLocalizations.of(context).t('home_settings'),
         ),
       ],
     );
@@ -581,7 +579,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Expanded(
               child: _buildGridButton(
                 icon: Icons.receipt_long,
-                label: 'Pagar Conta',
+                label: AppLocalizations.of(context).t('home_pay_bill'),
                 gradient: const [Color(0xFFFF6B6B), Color(0xFFFF8A8A)],
                 onTap: () {
                   Navigator.push(
@@ -611,7 +609,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Expanded(
               child: _buildGridButton(
                 icon: Icons.volunteer_activism,
-                label: 'Modo Bro',
+                label: AppLocalizations.of(context).t('home_bro_mode'),
                 gradient: const [Color(0xFF3DE98C), Color(0xFF00CC7A)],
                 onTap: () async {
                   final pubkey = await StorageService().getNostrPublicKey();
@@ -684,7 +682,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // Só mostrar preço se tiver valor real da API
     final btcPriceFormatted = _btcPrice > 0 
         ? _currencyFormat.format(_btcPrice) 
-        : 'Carregando...';
+        : AppLocalizations.of(context).t('loading');
 
     return Container(
       height: 90,
@@ -750,14 +748,14 @@ class _HomeScreenState extends State<HomeScreen> {
             color: const Color(0xFFFF6B6B).withOpacity(0.4),
           ),
         ),
-        child: const Column(
+        child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.storefront, color: Color(0xFFFF8A8A), size: 28),
-            SizedBox(height: 6),
+            const Icon(Icons.storefront, color: Color(0xFFFF8A8A), size: 28),
+            const SizedBox(height: 6),
             Text(
-              'Marketplace',
-              style: TextStyle(
+              AppLocalizations.of(context).t('home_marketplace'),
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
@@ -788,11 +786,11 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       child: Row(
         children: [
-          _buildMetricItem('📋', '$totalBills', 'Criadas'),
+          _buildMetricItem('📋', '$totalBills', AppLocalizations.of(context).t('home_created')),
           _buildMetricDivider(),
-          _buildMetricItem('⏳', '$pendingBills', 'Pendentes'),
+          _buildMetricItem('⏳', '$pendingBills', AppLocalizations.of(context).t('home_pending')),
           _buildMetricDivider(),
-          _buildMetricItem('✅', '$completedOrders', 'Finalizadas'),
+          _buildMetricItem('✅', '$completedOrders', AppLocalizations.of(context).t('home_completed')),
         ],
       ),
     );
@@ -896,17 +894,17 @@ class _HomeScreenState extends State<HomeScreen> {
         StatCard(
           emoji: '📋',
           value: '$totalBills',
-          label: 'Ordens Criadas',
+          label: AppLocalizations.of(context).t('home_orders_created'),
         ),
         StatCard(
           emoji: '⏳',
           value: '$pendingBills',
-          label: 'Aguardando Bro',
+          label: AppLocalizations.of(context).t('home_awaiting_bro'),
         ),
         StatCard(
           emoji: '✅',
           value: '$completedToday',
-          label: 'Finalizadas Hoje',
+          label: AppLocalizations.of(context).t('home_completed_today'),
         ),
         StatCard(
           iconWidget: Image.asset(
@@ -915,7 +913,7 @@ class _HomeScreenState extends State<HomeScreen> {
             width: 28,
           ),
           value: btcPriceFormatted,
-          label: 'Preco do Bitcoin',
+          label: AppLocalizations.of(context).t('home_bitcoin_price'),
         ),
       ],
     );
@@ -926,7 +924,7 @@ class _HomeScreenState extends State<HomeScreen> {
       width: double.infinity,
       height: 60,
       child: GradientButton(
-        text: 'Pagar Conta',
+        text: AppLocalizations.of(context).t('home_pay_bill'),
         icon: Icons.receipt_long,
         onPressed: () {
           Navigator.push(
@@ -967,10 +965,10 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             child: Row(
               children: [
-                Icon(Icons.receipt_long, color: Colors.white, size: 20),
+                const Icon(Icons.receipt_long, color: Colors.white, size: 20),
                 const SizedBox(width: 12),
-                const Text(
-                  'Minhas Trocas',
+                Text(
+                  AppLocalizations.of(context).t('home_my_trades'),
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
@@ -1065,8 +1063,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     const Icon(Icons.storefront, color: Colors.white, size: 20),
                     const SizedBox(width: 12),
-                    const Text(
-                      '🛒 Marketplace',
+                    Text(
+                      AppLocalizations.of(context).t('home_marketplace_section'),
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
@@ -1140,8 +1138,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             children: [
                               Text(
                                 isReceived 
-                                    ? 'Venda: ${product.isEmpty ? 'Produto' : product}' 
-                                    : 'Compra: ${product.isEmpty ? 'Produto' : product}',
+                                    ? AppLocalizations.of(context).tp('home_sale_label', {'product': product.isEmpty ? AppLocalizations.of(context).t('home_product') : product}) 
+                                    : AppLocalizations.of(context).tp('home_purchase_label', {'product': product.isEmpty ? AppLocalizations.of(context).t('home_product') : product}),
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w600,
@@ -1184,11 +1182,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildFooter() {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12),
-      child: const Column(
+      child: Column(
         children: [
           Text(
-            '🔐 Privacidade first • Lightning fast',
-            style: TextStyle(
+            AppLocalizations.of(context).t('home_privacy_tagline'),
+            style: const TextStyle(
               color: Color(0xFFFF6B6B),
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -1200,26 +1198,27 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String _getStatusLabel(String status) {
+    final t = AppLocalizations.of(context);
     switch (status.toLowerCase()) {
       case 'pending':
       case 'payment_received':
       case 'confirmed':
-        return 'Aguardando Bro';
+        return t.t('home_status_awaiting_bro');
       case 'accepted':
-        return 'Bro Encontrado';
+        return t.t('home_status_bro_found');
       case 'awaiting_confirmation':
       case 'payment_submitted':
       case 'processing':
-        return 'Confirme Pagamento';  // Bro já fez o pagamento, usuário precisa confirmar
+        return t.t('home_status_confirm_payment');
       case 'completed':
       case 'paid':
-        return 'Concluída';
+        return t.t('home_status_completed');
       case 'cancelled':
-        return 'Cancelada';
+        return t.t('home_status_cancelled');
       case 'disputed':
-        return 'Em Disputa';
+        return t.t('home_status_in_dispute');
       case 'failed':
-        return 'Falhou';
+        return t.t('home_status_failed');
       default:
         return status;
     }
@@ -1255,7 +1254,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro ao abrir ordem: $e'),
+            content: Text(AppLocalizations.of(context).tp('home_order_open_error', {'error': e})),
             backgroundColor: Colors.red,
           ),
         );
@@ -1478,8 +1477,8 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             const Icon(Icons.warning_amber, color: Colors.orange, size: 28),
             const SizedBox(width: 12),
-            const Expanded(
-              child: Text('Antes de sair...', style: TextStyle(color: Colors.white, fontSize: 18)),
+            Expanded(
+              child: Text(AppLocalizations.of(context).t('home_before_logout'), style: const TextStyle(color: Colors.white, fontSize: 18)),
             ),
           ],
         ),
@@ -1495,38 +1494,38 @@ class _HomeScreenState extends State<HomeScreen> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: Colors.red.withOpacity(0.3)),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.warning, color: Colors.red, size: 24),
-                    SizedBox(width: 8),
+                    const Icon(Icons.warning, color: Colors.red, size: 24),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Você tem sats na carteira?',
-                        style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                        AppLocalizations.of(context).t('home_have_sats'),
+                        style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 16),
-              const Text(
-                '🔑 Salve sua Seed (12 palavras)',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+              Text(
+                AppLocalizations.of(context).t('home_save_seed'),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
               ),
               const SizedBox(height: 4),
-              const Text(
-                'Sua seed é a ÚNICA forma de recuperar seus sats. Sem ela, você perde acesso aos fundos para sempre.',
-                style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 13),
+              Text(
+                AppLocalizations.of(context).t('home_seed_only_way'),
+                style: const TextStyle(color: Color(0xB3FFFFFF), fontSize: 13),
               ),
               const SizedBox(height: 12),
-              const Text(
-                '💸 Ou saque seus sats',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+              Text(
+                AppLocalizations.of(context).t('home_or_withdraw'),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
               ),
               const SizedBox(height: 4),
-              const Text(
-                'Transfira seus sats para outra carteira Lightning antes de sair.',
-                style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 13),
+              Text(
+                AppLocalizations.of(context).t('home_transfer_before_logout'),
+                style: const TextStyle(color: Color(0xB3FFFFFF), fontSize: 13),
               ),
               const SizedBox(height: 16),
               Container(
@@ -1536,14 +1535,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: Colors.orange.withOpacity(0.3)),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.history, color: Colors.orange, size: 20),
-                    SizedBox(width: 8),
+                    const Icon(Icons.history, color: Colors.orange, size: 20),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'O histórico de ordens será perdido (salvo apenas neste dispositivo).',
-                        style: TextStyle(color: Colors.orange, fontSize: 12),
+                        AppLocalizations.of(context).t('home_history_lost'),
+                        style: const TextStyle(color: Colors.orange, fontSize: 12),
                       ),
                     ),
                   ],
@@ -1556,7 +1555,7 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, 'cancel'),
-            child: const Text('Cancelar', style: TextStyle(color: Color(0x99FFFFFF))),
+            child: Text(AppLocalizations.of(context).t('cancel'), style: const TextStyle(color: Color(0x99FFFFFF))),
           ),
           Row(
             mainAxisSize: MainAxisSize.min,
@@ -1564,7 +1563,7 @@ class _HomeScreenState extends State<HomeScreen> {
               TextButton.icon(
                 onPressed: () => Navigator.pop(context, 'backup'),
                 icon: const Icon(Icons.key, color: Colors.green, size: 18),
-                label: const Text('Ver Seed', style: TextStyle(color: Colors.green)),
+                label: Text(AppLocalizations.of(context).t('home_view_seed'), style: const TextStyle(color: Colors.green)),
               ),
               const SizedBox(width: 8),
               ElevatedButton(
@@ -1572,7 +1571,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFFF6B6B),
                 ),
-                child: const Text('Sair', style: TextStyle(color: Colors.white)),
+                child: Text(AppLocalizations.of(context).t('home_logout'), style: const TextStyle(color: Colors.white)),
               ),
             ],
           ),
@@ -1611,29 +1610,29 @@ class EmptyTransactionState extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(32),
       width: double.infinity,
-      child: const Column(
+      child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Icon(
+          const Icon(
             Icons.receipt_long_outlined,
             size: 64,
             color: Color(0x4DFFFFFF),
           ),
-          SizedBox(height: 16),
+          const SizedBox(height: 16),
           Text(
-            'Nenhuma troca ainda',
-            style: TextStyle(
+            AppLocalizations.of(context).t('home_no_trades_yet'),
+            style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
               color: Color(0x99FFFFFF),
             ),
             textAlign: TextAlign.center,
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Text(
-            'Suas trocas aparecerao aqui',
-            style: TextStyle(
+            AppLocalizations.of(context).t('home_trades_will_appear'),
+            style: const TextStyle(
               fontSize: 14,
               color: Color(0x66FFFFFF),
             ),

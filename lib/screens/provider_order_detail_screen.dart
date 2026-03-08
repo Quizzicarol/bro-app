@@ -16,6 +16,7 @@ import '../services/dispute_service.dart';
 import '../services/notification_service.dart';
 import '../services/nostr_order_service.dart';
 import '../config.dart';
+import '../l10n/app_localizations.dart';
 
 /// Tela de detalhes da ordem para o provedor
 /// Mostra dados de pagamento (PIX/boleto) e permite aceitar e enviar comprovante
@@ -168,8 +169,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(newStatus == 'completed' 
-                    ? '🎉 Pagamento confirmado pelo usuário!' 
-                    : '⚡ Ordem liquidada automaticamente!'),
+                    ? AppLocalizations.of(context)!.t('prov_det_user_confirmed') 
+                    : AppLocalizations.of(context)!.t('prov_det_auto_settled')),
                 backgroundColor: Colors.green,
                 duration: const Duration(seconds: 5),
               ),
@@ -285,7 +286,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       broLog('🚫 BLOQUEIO DE SEGURANÇA: Tentativa de aceitar ordem com status=$currentStatus');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('❌ Esta ordem já está em status "$currentStatus" e não pode ser aceita novamente'),
+          content: Text(AppLocalizations.of(context)!.tp('prov_det_already_status', {'status': currentStatus})),
           backgroundColor: Colors.red,
         ),
       );
@@ -295,8 +296,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     if (_orderAccepted) {
       broLog('🚫 BLOQUEIO DE SEGURANÇA: Ordem já marcada como aceita localmente');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('❌ Esta ordem já foi aceita'),
+        SnackBar(
+          content: Text(AppLocalizations.of(context)!.t('prov_det_already_accepted')),
           backgroundColor: Colors.red,
         ),
       );
@@ -306,8 +307,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     if (currentProviderId != null && currentProviderId.isNotEmpty) {
       broLog('🚫 BLOQUEIO DE SEGURANÇA: Ordem já tem providerId=$currentProviderId');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('❌ Esta ordem já foi aceita por outro provedor'),
+        SnackBar(
+          content: Text(AppLocalizations.of(context)!.t('prov_det_accepted_other')),
           backgroundColor: Colors.red,
         ),
       );
@@ -329,25 +330,25 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             builder: (ctx) => AlertDialog(
               backgroundColor: const Color(0xFF1A1A1A),
               title: Row(
-                children: const [
-                  Icon(Icons.warning_amber, color: Colors.orange),
-                  SizedBox(width: 8),
-                  Text('Ordem Antiga', style: TextStyle(color: Colors.white)),
+                children: [
+                  const Icon(Icons.warning_amber, color: Colors.orange),
+                  const SizedBox(width: 8),
+                  Text(AppLocalizations.of(context)!.t('prov_det_old_order'), style: TextStyle(color: Colors.white)),
                 ],
               ),
               content: Text(
-                'Esta ordem foi criada há ${orderAge.inHours} horas. O código PIX pode ter expirado.\n\nDeseja continuar mesmo assim?',
+                AppLocalizations.of(context)!.tp('prov_det_old_order_msg', {'hours': orderAge.inHours.toString()}),
                 style: const TextStyle(color: Colors.white70),
               ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Cancelar'),
+                  child: Text(AppLocalizations.of(context)!.t('cancel')),
                 ),
                 ElevatedButton(
                   onPressed: () => Navigator.pop(ctx, true),
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-                  child: const Text('Aceitar Mesmo Assim'),
+                  child: Text(AppLocalizations.of(context)!.t('prov_det_accept_anyway')),
                 ),
               ],
             ),
@@ -364,7 +365,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       
       // Verificar se pode aceitar
       if (!collateralProvider.canAcceptOrder(orderAmount)) {
-        _showError('Garantia insuficiente para aceitar esta ordem');
+        _showError(AppLocalizations.of(context)!.t('prov_det_insufficient_collateral'));
         return;
       }
     }
@@ -437,7 +438,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     broLog('🔵 [ACCEPT] Resultado final: success=$success');
     
     if (!success) {
-      _showError('Falha ao publicar aceitação no Nostr');
+      _showError(AppLocalizations.of(context)!.t('prov_det_publish_fail'));
       return;
     }
 
@@ -450,8 +451,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✅ Ordem aceita! Pague a conta e envie o comprovante.'),
+        SnackBar(
+          content: Text(AppLocalizations.of(context)!.t('prov_det_accepted_pay')),
           backgroundColor: Colors.green,
         ),
       );
@@ -477,7 +478,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         });
       }
     } catch (e) {
-      _showError('Erro ao selecionar imagem: $e');
+      _showError(AppLocalizations.of(context)!.tp('prov_det_error_select_image', {'error': e.toString()}));
     }
   }
 
@@ -496,14 +497,14 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         });
       }
     } catch (e) {
-      _showError('Erro ao tirar foto: $e');
+      _showError(AppLocalizations.of(context)!.tp('prov_det_error_take_photo', {'error': e.toString()}));
     }
   }
 
   Future<void> _uploadReceipt() async {
     // Verificar se tem imagem OU código
     if (_receiptImage == null && _confirmationCodeController.text.trim().isEmpty) {
-      _showError('Selecione um comprovante ou digite um código de confirmação');
+      _showError(AppLocalizations.of(context)!.t('prov_det_select_receipt'));
       return;
     }
 
@@ -523,7 +524,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       setState(() {
         _isUploading = false;
       });
-      _showError('Erro ao enviar comprovante: $e');
+      _showError(AppLocalizations.of(context)!.tp('prov_det_error_send_receipt', {'error': e.toString()}));
     }
   }
 
@@ -626,8 +627,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         broLog('🚨 BLOQUEANDO: Sem invoice gerado para receber $providerReceiveSats sats!');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('❌ Carteira não conectada. Conecte sua carteira para receber pagamento.'),
+            SnackBar(
+              content: Text(AppLocalizations.of(context)!.t('prov_det_wallet_not_connected')),
               backgroundColor: Colors.red,
               duration: Duration(seconds: 5),
             ),
@@ -657,7 +658,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       }
       
       if (!success) {
-        _showError('Falha ao publicar comprovante no Nostr');
+        _showError(AppLocalizations.of(context)!.t('prov_det_publish_receipt_fail'));
         setState(() {
           _isUploading = false;
         });
@@ -672,15 +673,15 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         if (generatedInvoice != null) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('✅ Comprovante enviado! Você receberá $providerReceiveSats sats quando o usuário confirmar.'),
+              content: Text(AppLocalizations.of(context)!.tp('prov_det_receipt_sent_sats', {'sats': providerReceiveSats.toString()})),
               backgroundColor: Colors.green,
               duration: const Duration(seconds: 4),
             ),
           );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('⚠️ Comprovante enviado mas carteira não conectada! Configure sua carteira para receber sats automaticamente.'),
+            SnackBar(
+              content: Text(AppLocalizations.of(context)!.t('prov_det_receipt_no_wallet')),
               backgroundColor: Colors.orange,
               duration: Duration(seconds: 6),
             ),
@@ -693,7 +694,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       setState(() {
         _isUploading = false;
       });
-      _showError('Erro ao enviar comprovante: $e');
+      _showError(AppLocalizations.of(context)!.tp('prov_det_error_send_receipt', {'error': e.toString()}));
     }
   }
 
@@ -714,7 +715,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('Detalhes da Ordem'),
+        title: Text(AppLocalizations.of(context)!.t('prov_det_title')),
       ),
       body: SafeArea(
         child: _isLoading
@@ -722,7 +723,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             : _error != null
                 ? _buildErrorView()
                 : _orderDetails == null
-                    ? const Center(child: Text('Ordem não encontrada', style: TextStyle(color: Colors.white70)))
+                    ? Center(child: Text(AppLocalizations.of(context)!.t('prov_det_order_not_found'), style: const TextStyle(color: Colors.white70)))
                     : RefreshIndicator(
                         onRefresh: _loadOrderDetails,
                         color: Colors.orange,
@@ -749,7 +750,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: _loadOrderDetails,
-              child: const Text('Tentar Novamente'),
+              child: Text(AppLocalizations.of(context)!.t('prov_det_try_again')),
             ),
           ],
         ),
@@ -888,7 +889,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                           const Icon(Icons.message, color: Colors.purple, size: 18),
                           const SizedBox(width: 8),
                           Text(
-                            'Mensagens do Mediador (${_providerMediatorMessages.length})',
+                            AppLocalizations.of(context)!.tp('prov_det_mediator_msgs', {'count': _providerMediatorMessages.length.toString()}),
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 14,
@@ -922,7 +923,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                                 children: [
                                   const Icon(Icons.admin_panel_settings, color: Colors.purple, size: 14),
                                   const SizedBox(width: 6),
-                                  const Text('Mediador', style: TextStyle(color: Colors.purple, fontSize: 11, fontWeight: FontWeight.bold)),
+                                  Text(AppLocalizations.of(context)!.t('prov_det_mediator'), style: const TextStyle(color: Colors.purple, fontSize: 11, fontWeight: FontWeight.bold)),
                                   const Spacer(),
                                   if (dateStr.isNotEmpty)
                                     Text(dateStr, style: const TextStyle(color: Colors.white38, fontSize: 10)),
@@ -950,12 +951,12 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: Colors.purple.withOpacity(0.2)),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purple)),
-                      SizedBox(width: 10),
-                      Text('Buscando mensagens do mediador...', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                      const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purple)),
+                      const SizedBox(width: 10),
+                      Text(AppLocalizations.of(context)!.t('prov_det_fetching_msgs'), style: TextStyle(color: Colors.white38, fontSize: 12)),
                     ],
                   ),
                 ),
@@ -968,7 +969,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                   child: OutlinedButton.icon(
                     onPressed: () => _showSendEvidenceDialog(),
                     icon: const Icon(Icons.reply, size: 18),
-                    label: const Text('Responder ao Mediador'),
+                    label: Text(AppLocalizations.of(context)!.t('prov_det_reply_mediator')),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.purple,
                       side: const BorderSide(color: Colors.purple),
@@ -984,7 +985,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                 child: OutlinedButton.icon(
                   onPressed: () => _showSendEvidenceDialog(),
                   icon: const Icon(Icons.add_photo_alternate, size: 20),
-                  label: const Text('Enviar Evidência / Comprovante'),
+                  label: Text(AppLocalizations.of(context)!.t('prov_det_send_evidence')),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.blue,
                     side: const BorderSide(color: Colors.blue),
@@ -1038,7 +1039,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               ),
               const SizedBox(height: 16),
               Text(
-                isLiquidated ? '⚡ Liquidada Automaticamente' : '🎉 Ordem Concluída!',
+                isLiquidated ? AppLocalizations.of(context)!.t('prov_det_auto_settled_title') : AppLocalizations.of(context)!.t('prov_det_completed_title'),
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 24,
@@ -1048,8 +1049,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               const SizedBox(height: 8),
               Text(
                 isLiquidated 
-                    ? 'Usuário não confirmou em 36h. Valores liberados para você.'
-                    : 'O usuário confirmou o recebimento',
+                    ? AppLocalizations.of(context)!.t('prov_det_no_confirm_36h')
+                    : AppLocalizations.of(context)!.t('prov_det_user_confirmed_msg'),
                 style: const TextStyle(color: Colors.white70, fontSize: 14),
               ),
               const SizedBox(height: 24),
@@ -1061,7 +1062,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                   const Icon(Icons.tag, color: Colors.white38, size: 16),
                   const SizedBox(width: 6),
                   Text(
-                    'Ordem #${widget.orderId.length > 8 ? widget.orderId.substring(0, 8) : widget.orderId}',
+                    AppLocalizations.of(context)!.tp('prov_det_order_id', {'id': widget.orderId.length > 8 ? widget.orderId.substring(0, 8) : widget.orderId}),
                     style: const TextStyle(color: Colors.white54, fontSize: 13, fontFamily: 'monospace'),
                   ),
                 ],
@@ -1082,23 +1083,23 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                '💰 Resumo Financeiro',
-                style: TextStyle(
+              Text(
+                AppLocalizations.of(context)!.t('prov_det_financial_summary'),
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                 ),
               ),
               const SizedBox(height: 16),
-              _buildFinancialRow('Valor da conta', 'R\$ ${amount.toStringAsFixed(2)}', Colors.white70),
+              _buildFinancialRow(AppLocalizations.of(context)!.t('prov_det_bill_value'), 'R\$ ${amount.toStringAsFixed(2)}', Colors.white70),
               const SizedBox(height: 8),
-              _buildFinancialRow('Tipo', billType.toUpperCase(), Colors.orange),
+              _buildFinancialRow(AppLocalizations.of(context)!.t('prov_det_type'), billType.toUpperCase(), Colors.orange),
               const SizedBox(height: 8),
               const Divider(color: Colors.white24),
               const SizedBox(height: 8),
               _buildFinancialRow(
-                'Seu Ganho (${EscrowService.providerFeePercent}%)', 
+                AppLocalizations.of(context)!.tp('prov_det_your_earning', {'percent': EscrowService.providerFeePercent.toString()}), 
                 '+ R\$ ${totalGanho.toStringAsFixed(2)}', 
                 Colors.green,
                 bold: true,
@@ -1149,20 +1150,20 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '📋 Etapas Concluídas',
-            style: TextStyle(
+          Text(
+            AppLocalizations.of(context)!.t('prov_det_steps_completed'),
+            style: const TextStyle(
               color: Colors.white,
               fontSize: 18,
               fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 16),
-          _buildTimelineStep('Ordem criada pelo usuário', true, isFirst: true),
-          _buildTimelineStep('Você aceitou a ordem', true),
-          _buildTimelineStep('Conta paga por você', true),
-          _buildTimelineStep('Comprovante enviado', true),
-          _buildTimelineStep('Usuário confirmou recebimento', true, isLast: true),
+          _buildTimelineStep(AppLocalizations.of(context)!.t('prov_det_step_created'), true, isFirst: true),
+          _buildTimelineStep(AppLocalizations.of(context)!.t('prov_det_step_accepted'), true),
+          _buildTimelineStep(AppLocalizations.of(context)!.t('prov_det_step_paid'), true),
+          _buildTimelineStep(AppLocalizations.of(context)!.t('prov_det_step_receipt'), true),
+          _buildTimelineStep(AppLocalizations.of(context)!.t('prov_det_step_confirmed'), true, isLast: true),
         ],
       ),
     );
@@ -1218,7 +1219,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       child: OutlinedButton.icon(
         onPressed: () => _showProofImage(proofImage),
         icon: const Icon(Icons.receipt_long),
-        label: const Text('Ver Comprovante Enviado'),
+        label: Text(AppLocalizations.of(context)!.t('prov_det_view_receipt')),
         style: OutlinedButton.styleFrom(
           foregroundColor: Colors.orange,
           side: const BorderSide(color: Colors.orange),
@@ -1240,7 +1241,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             children: [
               AppBar(
                 backgroundColor: Colors.transparent,
-                title: const Text('Comprovante Enviado'),
+                title: Text(AppLocalizations.of(context)!.t('prov_det_receipt_title')),
                 leading: IconButton(
                   icon: const Icon(Icons.close),
                   onPressed: () => Navigator.pop(context),
@@ -1253,8 +1254,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                   child: Image.memory(
                     imageBytes,
                     fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => const Center(
-                      child: Text('Não foi possível carregar a imagem',
+                    errorBuilder: (_, __, ___) => Center(
+                      child: Text(AppLocalizations.of(context)!.t('prov_det_image_error'),
                           style: TextStyle(color: Colors.white70)),
                     ),
                   ),
@@ -1266,7 +1267,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Erro ao carregar comprovante')),
+        SnackBar(content: Text(AppLocalizations.of(context)!.t('prov_det_error_load_receipt'))),
       );
     }
   }
@@ -1296,8 +1297,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Valor da Conta',
+              Text(
+                AppLocalizations.of(context)!.t('prov_det_bill_value2'),
                 style: TextStyle(color: Colors.white60, fontSize: 14),
               ),
               Row(
@@ -1342,8 +1343,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Sua Taxa (3%)',
+                  Text(
+                    AppLocalizations.of(context)!.t('prov_det_your_fee'),
                     style: TextStyle(color: Colors.white54, fontSize: 12),
                   ),
                   const SizedBox(height: 4),
@@ -1360,8 +1361,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  const Text(
-                    'Você Recebe',
+                  Text(
+                    AppLocalizations.of(context)!.t('prov_det_you_receive'),
                     style: TextStyle(color: Colors.white54, fontSize: 12),
                   ),
                   const SizedBox(height: 4),
@@ -1436,13 +1437,13 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     // Se for um código PIX copia-e-cola longo, tentar extrair a chave
     if (pixCode.startsWith('00020126')) {
       // Código PIX EMV - retornar "Ver código abaixo"
-      return 'Ver código abaixo';
+      return AppLocalizations.of(context)!.t('prov_det_see_code_below');
     }
     // Se for curto, provavelmente é a própria chave
     if (pixCode.length < 50) {
       return pixCode;
     }
-    return 'Ver código abaixo';
+    return AppLocalizations.of(context)!.t('prov_det_see_code_below');
   }
 
   /// Card mostrando resultado da resolução do mediador
@@ -1479,7 +1480,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '⚖️ Decisão do Mediador',
+                      AppLocalizations.of(context)!.t('prov_det_mediator_decision'),
                       style: TextStyle(
                         fontSize: 15, fontWeight: FontWeight.bold,
                         color: isProviderFavor ? Colors.green : Colors.orange,
@@ -1488,8 +1489,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                     const SizedBox(height: 2),
                     Text(
                       isProviderFavor
-                          ? 'Resolvida a seu favor — aguardando pagamento do usuário'
-                          : 'Resolvida a favor do usuário — ordem cancelada',
+                          ? AppLocalizations.of(context)!.t('prov_det_resolved_your_favor')
+                          : AppLocalizations.of(context)!.t('prov_det_resolved_user_favor'),
                       style: const TextStyle(color: Colors.white70, fontSize: 12),
                     ),
                   ],
@@ -1510,7 +1511,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Mensagem do mediador:', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                  Text(AppLocalizations.of(context)!.t('prov_det_mediator_msg'), style: TextStyle(color: Colors.white54, fontSize: 11)),
                   const SizedBox(height: 6),
                   Text(notes, style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.4)),
                 ],
@@ -1538,7 +1539,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         icon: _isRegeneratingInvoice
             ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
             : const Icon(Icons.refresh),
-        label: Text(_isRegeneratingInvoice ? 'Gerando novo invoice...' : '🔄 Gerar Novo Invoice (se expirou)'),
+        label: Text(_isRegeneratingInvoice ? AppLocalizations.of(context)!.t('prov_det_generating_invoice') : AppLocalizations.of(context)!.t('prov_det_generate_invoice')),
         style: ElevatedButton.styleFrom(
           backgroundColor: _isRegeneratingInvoice ? Colors.grey : Colors.green,
           foregroundColor: Colors.white,
@@ -1565,7 +1566,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       if (totalSats <= 0) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('❌ Valor da ordem inválido'), backgroundColor: Colors.red),
+            SnackBar(content: Text(AppLocalizations.of(context)!.t('prov_det_invalid_amount')), backgroundColor: Colors.red),
           );
         }
         setState(() => _isRegeneratingInvoice = false);
@@ -1597,7 +1598,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       if (newInvoice == null || newInvoice.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('❌ Carteira não conectada. Abra a carteira e tente novamente.'), backgroundColor: Colors.red),
+            SnackBar(content: Text(AppLocalizations.of(context)!.t('prov_det_wallet_not_connected2')), backgroundColor: Colors.red),
           );
         }
         setState(() => _isRegeneratingInvoice = false);
@@ -1615,22 +1616,22 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
 
       if (success && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Novo invoice publicado! O usuário pagará automaticamente.'),
+          SnackBar(
+            content: Text(AppLocalizations.of(context)!.t('prov_det_new_invoice_published')),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 5),
+            duration: const Duration(seconds: 5),
           ),
         );
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('⚠️ Invoice gerado mas falha ao publicar no Nostr. Tente novamente.'), backgroundColor: Colors.orange),
+          SnackBar(content: Text(AppLocalizations.of(context)!.t('prov_det_invoice_publish_fail')), backgroundColor: Colors.orange),
         );
       }
     } catch (e) {
       broLog('❌ [RegenInvoice] Erro: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text(AppLocalizations.of(context)!.tp('prov_det_error_generic', {'error': e.toString()})), backgroundColor: Colors.red),
         );
       }
     }
@@ -1642,23 +1643,23 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     switch (status) {
       case 'pending':
         return {
-          'title': 'Aguardando Aceitação',
-          'description': 'Ordem disponível para aceitar',
+          'title': AppLocalizations.of(context)!.t('prov_det_status_waiting'),
+          'description': AppLocalizations.of(context)!.t('prov_det_status_waiting_desc'),
           'icon': Icons.pending_outlined,
           'color': Colors.orange,
         };
       case 'accepted':
         return {
-          'title': 'Ordem Aceita',
-          'description': 'Pague a conta e envie o comprovante',
+          'title': AppLocalizations.of(context)!.t('prov_det_status_accepted'),
+          'description': AppLocalizations.of(context)!.t('prov_det_status_accepted_desc'),
           'icon': Icons.check_circle_outline,
           'color': Colors.blue,
         };
       case 'payment_submitted':
       case 'awaiting_confirmation':
         return {
-          'title': 'Comprovante Enviado',
-          'description': 'Aguardando confirmação do usuário',
+          'title': AppLocalizations.of(context)!.t('prov_det_status_receipt_sent'),
+          'description': AppLocalizations.of(context)!.t('prov_det_status_receipt_desc'),
           'icon': Icons.hourglass_empty,
           'color': Colors.purple,
         };
@@ -1667,24 +1668,24 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         if (_disputeResolution != null) {
           final isProviderFavor = _disputeResolution!['resolution'] == 'resolved_provider';
           return {
-            'title': 'Resolvida por Mediação',
+            'title': AppLocalizations.of(context)!.t('prov_det_status_mediated'),
             'description': isProviderFavor
-                ? 'Mediador decidiu a seu favor — pagamento mantido'
-                : 'Mediador decidiu a favor do usuário',
+                ? AppLocalizations.of(context)!.t('prov_det_status_mediated_favor')
+                : AppLocalizations.of(context)!.t('prov_det_status_mediated_user'),
             'icon': Icons.gavel,
             'color': isProviderFavor ? Colors.green : Colors.orange,
           };
         }
         return {
-          'title': 'Em Disputa',
-          'description': 'Aguardando mediação',
+          'title': AppLocalizations.of(context)!.t('prov_det_status_dispute'),
+          'description': AppLocalizations.of(context)!.t('prov_det_status_dispute_desc'),
           'icon': Icons.gavel,
           'color': Colors.orange,
         };
       case 'liquidated':
         return {
-          'title': 'Liquidada Automaticamente ⚡',
-          'description': 'Usuário não confirmou em 36h. Valores liberados para você.',
+          'title': AppLocalizations.of(context)!.t('prov_det_status_settled'),
+          'description': AppLocalizations.of(context)!.t('prov_det_status_settled_desc'),
           'icon': Icons.electric_bolt,
           'color': Colors.purple,
         };
@@ -1693,17 +1694,17 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         if (_disputeResolution != null) {
           final isProviderFavor = _disputeResolution!['resolution'] == 'resolved_provider';
           return {
-            'title': 'Resolvida por Mediação',
+            'title': AppLocalizations.of(context)!.t('prov_det_status_mediated'),
             'description': isProviderFavor
-                ? 'Mediador decidiu a seu favor — pagamento mantido'
-                : 'Mediador decidiu a favor do usuário',
+                ? AppLocalizations.of(context)!.t('prov_det_status_mediated_favor')
+                : AppLocalizations.of(context)!.t('prov_det_status_mediated_user'),
             'icon': Icons.gavel,
             'color': isProviderFavor ? Colors.green : Colors.orange,
           };
         }
         return {
-          'title': 'Confirmado',
-          'description': 'Pagamento recebido!',
+          'title': AppLocalizations.of(context)!.t('prov_det_status_confirmed'),
+          'description': AppLocalizations.of(context)!.t('prov_det_status_confirmed_desc'),
           'icon': Icons.check_circle,
           'color': Colors.green,
         };
@@ -1738,7 +1739,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  '⚡ PAGAR ESTA CONTA',
+                  AppLocalizations.of(context)!.t('prov_det_pay_bill'),
                   style: const TextStyle(
                     color: Colors.orange,
                     fontSize: 18,
@@ -1750,8 +1751,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            isPix ? 'Copie o código PIX abaixo e pague no seu banco' 
-                  : 'Copie o código de barras abaixo e pague',
+            isPix ? AppLocalizations.of(context)!.t('prov_det_copy_pix') 
+                  : AppLocalizations.of(context)!.t('prov_det_copy_barcode'),
             style: TextStyle(color: Colors.white70, fontSize: 13),
           ),
           const SizedBox(height: 16),
@@ -1761,22 +1762,22 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           if (isPix) ...[
             // Mostrar chave PIX se não for "Ver código abaixo"
             if (data['pix_key'] != null && data['pix_key'] != 'Ver código abaixo')
-              _buildPaymentField('Chave PIX', data['pix_key'] as String),
+              _buildPaymentField(AppLocalizations.of(context)!.t('prov_det_pix_key'), data['pix_key'] as String),
             if (data['pix_name'] != null)
-              _buildPaymentField('Nome', data['pix_name'] as String),
+              _buildPaymentField(AppLocalizations.of(context)!.t('prov_det_name'), data['pix_name'] as String),
             // SEMPRE mostrar o código PIX se existir
             if (data['pix_code'] != null) ...[
               const SizedBox(height: 12),
-              _buildCopyableField('📋 Código PIX (Copia e Cola)', data['pix_code'] as String),
+              _buildCopyableField(AppLocalizations.of(context)!.t('prov_det_pix_code'), data['pix_code'] as String),
             ],
           ] else ...[
             // Boleto
             if (data['bank'] != null)
-              _buildPaymentField('Banco', data['bank'] as String),
+              _buildPaymentField(AppLocalizations.of(context)!.t('prov_det_bank'), data['bank'] as String),
             // SEMPRE mostrar o código de barras se existir
             if (data['barcode'] != null) ...[
               const SizedBox(height: 12),
-              _buildCopyableField('📋 Código de Barras', data['barcode'] as String),
+              _buildCopyableField(AppLocalizations.of(context)!.t('prov_det_barcode'), data['barcode'] as String),
             ],
           ],
         ],
@@ -1839,10 +1840,10 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                 onPressed: () {
                   Clipboard.setData(ClipboardData(text: value));
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('📋 Copiado!')),
+                    SnackBar(content: Text(AppLocalizations.of(context)!.t('prov_det_copied'))),
                   );
                 },
-                tooltip: 'Copiar',
+                tooltip: AppLocalizations.of(context)!.t('prov_det_copy'),
               ),
             ],
           ),
@@ -1863,12 +1864,12 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           border: Border.all(color: Colors.orange.withOpacity(0.3)),
         ),
         child: Row(
-          children: const [
-            Icon(Icons.check_circle, color: Colors.orange),
-            SizedBox(width: 12),
+          children: [
+            const Icon(Icons.check_circle, color: Colors.orange),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
-                'Esta ordem já foi aceita',
+                AppLocalizations.of(context)!.t('prov_det_already_accepted_msg'),
                 style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
               ),
             ),
@@ -1888,7 +1889,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                 child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
               )
             : const Icon(Icons.check_circle),
-        label: Text(_isAccepting ? 'Aceitando...' : 'Aceitar Ordem'),
+        label: Text(_isAccepting ? AppLocalizations.of(context)!.t('prov_det_accepting') : AppLocalizations.of(context)!.t('prov_det_accept_order')),
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.orange,
           padding: const EdgeInsets.symmetric(vertical: 16),
@@ -1945,7 +1946,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                '⏳ Aguardando Usuário',
+                AppLocalizations.of(context)!.t('prov_det_waiting_user'),
                 style: TextStyle(
                   color: isExpiringSoon ? Colors.red : Colors.white,
                   fontSize: 20,
@@ -1954,7 +1955,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'O usuário precisa confirmar que recebeu o pagamento para liberar seus ganhos',
+                AppLocalizations.of(context)!.t('prov_det_user_confirm_msg'),
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.white70, fontSize: 14),
               ),
@@ -1967,7 +1968,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                   const Icon(Icons.tag, color: Colors.white38, size: 16),
                   const SizedBox(width: 6),
                   Text(
-                    'Ordem #${widget.orderId.length > 8 ? widget.orderId.substring(0, 8) : widget.orderId}',
+                    AppLocalizations.of(context)!.tp('prov_det_order_id', {'id': widget.orderId.length > 8 ? widget.orderId.substring(0, 8) : widget.orderId}),
                     style: const TextStyle(color: Colors.white54, fontSize: 13, fontFamily: 'monospace'),
                   ),
                 ],
@@ -1988,8 +1989,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                '💰 Você vai receber',
+              Text(
+                AppLocalizations.of(context)!.t('prov_det_you_will_receive'),
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 16,
@@ -2000,7 +2001,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Valor da conta', style: TextStyle(color: Colors.white60, fontSize: 14)),
+                  Text(AppLocalizations.of(context)!.t('prov_det_bill_value'), style: const TextStyle(color: Colors.white60, fontSize: 14)),
                   Text('R\$ ${amount.toStringAsFixed(2)}', style: const TextStyle(color: Colors.white70, fontSize: 14)),
                 ],
               ),
@@ -2008,7 +2009,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Seu ganho (${EscrowService.providerFeePercent}%)', style: const TextStyle(color: Colors.white60, fontSize: 14)),
+                  Text(AppLocalizations.of(context)!.tp('prov_det_your_earning2', {'percent': EscrowService.providerFeePercent.toString()}), style: const TextStyle(color: Colors.white60, fontSize: 14)),
                   Text(
                     '+ R\$ ${providerFee.toStringAsFixed(2)}',
                     style: const TextStyle(color: Colors.green, fontSize: 16, fontWeight: FontWeight.bold),
@@ -2034,8 +2035,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               const SizedBox(width: 8),
               Text(
                 isExpired
-                    ? '🔄 Auto-liquidação em andamento...'
-                    : 'Tempo restante: ${hoursRemaining}h ${minutesRemaining}min',
+                    ? AppLocalizations.of(context)!.t('prov_det_auto_settling')
+                    : AppLocalizations.of(context)!.tp('prov_det_time_remaining', {'hours': hoursRemaining.toString(), 'minutes': minutesRemaining.toString()}),
                 style: TextStyle(
                   color: isExpiringSoon ? Colors.red : Colors.white,
                   fontWeight: FontWeight.w600,
@@ -2054,7 +2055,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             child: OutlinedButton.icon(
               onPressed: () => _showProofImage(proofImage),
               icon: const Icon(Icons.receipt_long),
-              label: const Text('Ver Comprovante Enviado'),
+              label: Text(AppLocalizations.of(context)!.t('prov_det_view_receipt')),
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.orange,
                 side: const BorderSide(color: Colors.orange),
@@ -2075,12 +2076,12 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              Icon(Icons.info_outline, color: Color(0xFF4CAF50), size: 20),
-              SizedBox(width: 8),
+            children: [
+              const Icon(Icons.info_outline, color: Color(0xFF4CAF50), size: 20),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  '💡 Se o usuário não confirmar em 36 horas, a auto-liquidação libera seu pagamento automaticamente.',
+                  AppLocalizations.of(context)!.t('prov_det_auto_settle_tip'),
                   style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
                 ),
               ),
@@ -2095,7 +2096,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           child: OutlinedButton.icon(
             onPressed: _showProviderDisputeDialog,
             icon: const Icon(Icons.gavel),
-            label: const Text('Abrir Disputa'),
+            label: Text(AppLocalizations.of(context)!.t('prov_det_open_dispute')),
             style: OutlinedButton.styleFrom(
               foregroundColor: const Color(0xFFFF6B6B),
               side: const BorderSide(color: Color(0xFFFF6B6B)),
@@ -2140,15 +2141,15 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           );
           
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('✅ Auto-liquidação concluída! Seus ganhos foram liberados.'),
+            SnackBar(
+              content: Text(AppLocalizations.of(context)!.t('prov_det_auto_settle_done')),
               backgroundColor: Colors.green,
             ),
           );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('⚠️ Erro ao processar auto-liquidação'),
+            SnackBar(
+              content: Text(AppLocalizations.of(context)!.t('prov_det_auto_settle_error')),
               backgroundColor: Colors.orange,
             ),
           );
@@ -2161,7 +2162,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       broLog('❌ Erro na auto-liquidação: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro na auto-liquidação: $e')),
+          SnackBar(content: Text(AppLocalizations.of(context)!.tp('prov_det_auto_settle_error2', {'error': e.toString()}))),
         );
       }
     } finally {
@@ -2179,11 +2180,11 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.gavel, color: Color(0xFFFF6B6B)),
-            SizedBox(width: 12),
-            Text('Abrir Disputa', style: TextStyle(color: Colors.white)),
+            const Icon(Icons.gavel, color: Color(0xFFFF6B6B)),
+            const SizedBox(width: 12),
+            Text(AppLocalizations.of(context)!.t('prov_det_open_dispute'), style: TextStyle(color: Colors.white)),
           ],
         ),
         content: SingleChildScrollView(
@@ -2197,11 +2198,11 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                   color: const Color(0x1AFF6B35),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Column(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '⚖️ Quando abrir uma disputa?',
+                      AppLocalizations.of(context)!.t('prov_det_when_dispute'),
                       style: TextStyle(
                         color: Color(0xFFFF6B6B),
                         fontWeight: FontWeight.bold,
@@ -2210,11 +2211,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                     ),
                     SizedBox(height: 8),
                     Text(
-                      'Você pode abrir uma disputa se:\n\n'
-                      '• O usuário não confirma mesmo após receber\n'
-                      '• Houve algum problema com o pagamento\n'
-                      '• O usuário alega não ter recebido\n'
-                      '• Precisa de mediação para resolver o caso',
+                      AppLocalizations.of(context)!.t('prov_det_dispute_reasons'),
                       style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 13, height: 1.4),
                     ),
                   ],
@@ -2228,13 +2225,13 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: const Color(0x334CAF50)),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.info_outline, color: Color(0xFF4CAF50), size: 20),
-                    SizedBox(width: 8),
+                    const Icon(Icons.info_outline, color: Color(0xFF4CAF50), size: 20),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Lembre-se: após 36h sem confirmação, a auto-liquidação ocorre automaticamente.',
+                        AppLocalizations.of(context)!.t('prov_det_auto_settle_reminder'),
                         style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 12),
                       ),
                     ),
@@ -2247,7 +2244,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+            child: Text(AppLocalizations.of(context)!.t('cancel'), style: const TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -2257,7 +2254,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFFF6B6B),
             ),
-            child: const Text('Continuar', style: TextStyle(color: Colors.white)),
+            child: Text(AppLocalizations.of(context)!.t('prov_det_continue'), style: const TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -2299,8 +2296,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                const Text(
-                  '📋 Formulário de Disputa (Provedor)',
+                Text(
+                  AppLocalizations.of(context)!.t('prov_det_dispute_form'),
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 20,
@@ -2309,21 +2306,21 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Ordem: ${widget.orderId.substring(0, 8)}...',
+                  AppLocalizations.of(context)!.tp('prov_det_order_label', {'id': widget.orderId.substring(0, 8)}),
                   style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 14),
                 ),
                 const SizedBox(height: 20),
-                const Text(
-                  'Motivo da disputa *',
+                Text(
+                  AppLocalizations.of(context)!.t('prov_det_dispute_reason'),
                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
                 ...[
-                  'Usuário não confirma o recebimento',
-                  'Usuário alega não ter recebido',
-                  'Problema com o pagamento',
-                  'Usuário não responde',
-                  'Outro'
+                  AppLocalizations.of(context)!.t('prov_det_reason_no_confirm'),
+                  AppLocalizations.of(context)!.t('prov_det_reason_not_received'),
+                  AppLocalizations.of(context)!.t('prov_det_reason_payment_issue'),
+                  AppLocalizations.of(context)!.t('prov_det_reason_no_response'),
+                  AppLocalizations.of(context)!.t('prov_det_reason_other')
                 ].map((reason) => RadioListTile<String>(
                   title: Text(reason, style: const TextStyle(color: Colors.white)),
                   value: reason,
@@ -2334,8 +2331,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                   },
                 )),
                 const SizedBox(height: 16),
-                const Text(
-                  'Descreva o problema *',
+                Text(
+                  AppLocalizations.of(context)!.t('prov_det_describe_problem'),
                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
@@ -2348,7 +2345,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                     setModalState(() {});
                   },
                   decoration: InputDecoration(
-                    hintText: 'Explique com detalhes o que aconteceu...',
+                    hintText: AppLocalizations.of(context)!.t('prov_det_explain_detail'),
                     hintStyle: const TextStyle(color: Color(0x66FFFFFF)),
                     filled: true,
                     fillColor: const Color(0x0DFFFFFF),
@@ -2381,8 +2378,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                       disabledBackgroundColor: Colors.grey[700],
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
-                    child: const Text(
-                      'Enviar Disputa',
+                    child: Text(
+                      AppLocalizations.of(context)!.t('prov_det_send_dispute'),
                       style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                     ),
                   ),
@@ -2400,13 +2397,13 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const AlertDialog(
-        backgroundColor: Color(0xFF1A1A1A),
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
         content: Row(
           children: [
-            CircularProgressIndicator(color: Color(0xFFFF6B6B)),
-            SizedBox(width: 16),
-            Text('Enviando disputa...', style: TextStyle(color: Colors.white)),
+            const CircularProgressIndicator(color: Color(0xFFFF6B6B)),
+            const SizedBox(width: 16),
+            Text(AppLocalizations.of(context)!.t('prov_det_sending_dispute'), style: const TextStyle(color: Colors.white)),
           ],
         ),
       ),
@@ -2463,10 +2460,10 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         Navigator.pop(context); // Fechar loading
         
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('⚖️ Disputa aberta com sucesso! O suporte foi notificado e irá analisar o caso.'),
-            backgroundColor: Color(0xFFFF6B6B),
-            duration: Duration(seconds: 4),
+          SnackBar(
+            content: Text(AppLocalizations.of(context)!.t('prov_det_dispute_opened')),
+            backgroundColor: const Color(0xFFFF6B6B),
+            duration: const Duration(seconds: 4),
           ),
         );
         
@@ -2478,7 +2475,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         Navigator.pop(context); // Fechar loading
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro ao abrir disputa: $e'),
+            content: Text(AppLocalizations.of(context)!.tp('prov_det_error_open_dispute', {'error': e.toString()})),
             backgroundColor: Colors.red,
           ),
         );
@@ -2497,17 +2494,17 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Enviar Comprovante',
-            style: TextStyle(
+          Text(
+            AppLocalizations.of(context)!.t('prov_det_send_receipt_title'),
+            style: const TextStyle(
               color: Colors.white,
               fontSize: 18,
               fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Após pagar a conta, envie foto/arquivo do comprovante OU digite o código de confirmação.',
+          Text(
+            AppLocalizations.of(context)!.t('prov_det_receipt_instructions'),
             style: TextStyle(color: Colors.white70, fontSize: 13),
           ),
           const SizedBox(height: 16),
@@ -2516,8 +2513,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           TextField(
             controller: _confirmationCodeController,
             decoration: InputDecoration(
-              labelText: 'Código de Confirmação',
-              hintText: 'Ex: 123456789 ou ID da transação',
+              labelText: AppLocalizations.of(context)!.t('prov_det_confirm_code'),
+              hintText: AppLocalizations.of(context)!.t('prov_det_confirm_code_hint'),
               prefixIcon: const Icon(Icons.confirmation_number, color: Colors.orange),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -2540,9 +2537,9 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           TextField(
             controller: _e2eIdController,
             decoration: InputDecoration(
-              labelText: 'Código E2E do PIX (opcional)',
-              hintText: 'Ex: E09089356202602251806...',
-              helperText: 'Encontre nos detalhes do comprovante no app do banco',
+              labelText: AppLocalizations.of(context)!.t('prov_det_e2e_code'),
+              hintText: AppLocalizations.of(context)!.t('prov_det_e2e_hint'),
+              helperText: AppLocalizations.of(context)!.t('prov_det_e2e_helper'),
               helperStyle: const TextStyle(color: Colors.white38, fontSize: 11),
               prefixIcon: const Icon(Icons.fingerprint, color: Colors.cyan),
               border: OutlineInputBorder(
@@ -2567,8 +2564,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           
           // Seção de imagem
           if (_receiptImage != null) ...[
-            const Text(
-              'Comprovante Anexado:',
+            Text(
+              AppLocalizations.of(context)!.t('prov_det_receipt_attached'),
               style: TextStyle(color: Colors.white70, fontSize: 12),
             ),
             const SizedBox(height: 8),
@@ -2588,7 +2585,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                   child: OutlinedButton.icon(
                     onPressed: _pickReceipt,
                     icon: const Icon(Icons.image, color: Colors.orange),
-                    label: const Text('Trocar Foto'),
+                    label: Text(AppLocalizations.of(context)!.t('prov_det_change_photo')),
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: Colors.orange),
                     ),
@@ -2603,7 +2600,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                       });
                     },
                     icon: const Icon(Icons.delete, color: Colors.red),
-                    label: const Text('Remover'),
+                    label: Text(AppLocalizations.of(context)!.t('prov_det_remove')),
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: Colors.red),
                     ),
@@ -2623,12 +2620,12 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Icon(Icons.privacy_tip, color: Colors.orange, size: 20),
-                SizedBox(width: 8),
+              children: [
+                const Icon(Icons.privacy_tip, color: Colors.orange, size: 20),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '⚠️ ATENÇÃO: Oculte dados sensíveis (CPF, nome completo) na imagem do comprovante. Esta imagem é apenas para comprovar o pagamento ao usuário. Criptografia NIP-17 em breve.',
+                    AppLocalizations.of(context)!.t('prov_det_privacy_warning'),
                     style: TextStyle(color: Colors.orange, fontSize: 12, height: 1.4),
                   ),
                 ),
@@ -2636,8 +2633,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             ),
           ),
           
-          const Text(
-              'Anexar Comprovante:',
+          Text(
+              AppLocalizations.of(context)!.t('prov_det_attach_receipt'),
               style: TextStyle(color: Colors.white70, fontSize: 12),
             ),
             const SizedBox(height: 8),
@@ -2647,7 +2644,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                   child: OutlinedButton.icon(
                     onPressed: _pickReceipt,
                     icon: const Icon(Icons.photo_library, color: Colors.orange),
-                    label: const Text('Galeria'),
+                    label: Text(AppLocalizations.of(context)!.t('prov_det_gallery')),
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: Colors.orange),
                       padding: const EdgeInsets.symmetric(vertical: 12),
@@ -2659,7 +2656,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                   child: OutlinedButton.icon(
                     onPressed: _takePhoto,
                     icon: const Icon(Icons.camera_alt, color: Colors.orange),
-                    label: const Text('Câmera'),
+                    label: Text(AppLocalizations.of(context)!.t('prov_det_camera')),
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: Colors.orange),
                       padding: const EdgeInsets.symmetric(vertical: 12),
@@ -2684,7 +2681,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                     )
                   : const Icon(Icons.send),
-              label: Text(_isUploading ? 'Enviando...' : 'Enviar Comprovante'),
+              label: Text(_isUploading ? AppLocalizations.of(context)!.t('prov_det_sending') : AppLocalizations.of(context)!.t('prov_det_send_receipt')),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -2738,9 +2735,9 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                     decoration: BoxDecoration(color: Colors.grey[600], borderRadius: BorderRadius.circular(2))),
                 ),
                 const SizedBox(height: 20),
-                const Text('📎 Enviar Evidência', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                Text(AppLocalizations.of(context)!.t('prov_det_evidence_title'), style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                Text('Ordem: ${widget.orderId.substring(0, 8)}...', style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 14)),
+                Text(AppLocalizations.of(context)!.tp('prov_det_order_label', {'id': widget.orderId.substring(0, 8)}), style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 14)),
                 const SizedBox(height: 16),
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -2749,30 +2746,30 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: Colors.green.withOpacity(0.2)),
                   ),
-                  child: const Column(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('💡 Evidências aceitas:', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13)),
+                      Text(AppLocalizations.of(context)!.t('prov_det_accepted_evidence'), style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13)),
                       SizedBox(height: 6),
-                      Text('• Comprovante completo do PIX com código E2E (endToEndId)', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                      Text(AppLocalizations.of(context)!.t('prov_det_evidence_e2e'), style: TextStyle(color: Colors.white70, fontSize: 12)),
                       SizedBox(height: 3),
-                      Text('• Print do Registrato (registrato.bcb.gov.br) mostrando PIX enviados', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                      Text(AppLocalizations.of(context)!.t('prov_det_evidence_registrato'), style: TextStyle(color: Colors.white70, fontSize: 12)),
                       SizedBox(height: 3),
-                      Text('• Print do site do beneficiário mostrando conta paga', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                      Text(AppLocalizations.of(context)!.t('prov_det_evidence_site'), style: TextStyle(color: Colors.white70, fontSize: 12)),
                       SizedBox(height: 3),
-                      Text('• Qualquer documento que comprove o pagamento', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                      Text(AppLocalizations.of(context)!.t('prov_det_evidence_any'), style: TextStyle(color: Colors.white70, fontSize: 12)),
                     ],
                   ),
                 ),
                 const SizedBox(height: 16),
-                const Text('Descrição (opcional)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                Text(AppLocalizations.of(context)!.t('prov_det_evidence_desc'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
                 TextField(
                   controller: descController,
                   maxLines: 3,
                   style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
-                    hintText: 'Explique o que esta evidência comprova...',
+                    hintText: AppLocalizations.of(context)!.t('prov_det_explain_evidence'),
                     hintStyle: const TextStyle(color: Color(0x66FFFFFF)),
                     filled: true, fillColor: const Color(0x0DFFFFFF),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0x33FFFFFF))),
@@ -2781,7 +2778,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                const Text('📸 Foto / Print (opcional)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                Text(AppLocalizations.of(context)!.t('prov_det_evidence_photo'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
                 if (evidencePhoto != null) ...[
                   ClipRRect(
@@ -2819,7 +2816,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                             }
                           },
                           icon: const Icon(Icons.photo_library, size: 18),
-                          label: const Text('Galeria'),
+                          label: Text(AppLocalizations.of(context)!.t('prov_det_gallery')),
                           style: OutlinedButton.styleFrom(foregroundColor: Colors.green, side: const BorderSide(color: Colors.green)),
                         ),
                       ),
@@ -2837,7 +2834,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                             }
                           },
                           icon: const Icon(Icons.camera_alt, size: 18),
-                          label: const Text('Câmera'),
+                          label: Text(AppLocalizations.of(context)!.t('prov_det_camera')),
                           style: OutlinedButton.styleFrom(foregroundColor: Colors.green, side: const BorderSide(color: Colors.green)),
                         ),
                       ),
@@ -2866,21 +2863,21 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                         if (mounted) {
                           Navigator.pop(context);
                           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                            content: Text(success ? '✅ Evidência enviada! O mediador irá analisar.' : '❌ Erro ao enviar'),
+                            content: Text(success ? AppLocalizations.of(context)!.t('prov_det_evidence_sent') : AppLocalizations.of(context)!.t('prov_det_evidence_error')),
                             backgroundColor: success ? Colors.green : Colors.red,
                           ));
                         }
                       } catch (e) {
                         setModalState(() => sending = false);
                         if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.tp('prov_det_error_generic', {'error': e.toString()})), backgroundColor: Colors.red));
                         }
                       }
                     },
                     icon: sending
                         ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                         : const Icon(Icons.send),
-                    label: Text(sending ? 'Enviando...' : (evidenceBase64 != null ? 'Enviar Evidência' : 'Enviar Mensagem')),
+                    label: Text(sending ? AppLocalizations.of(context)!.t('prov_det_sending') : (evidenceBase64 != null ? AppLocalizations.of(context)!.t('prov_det_send_evidence_btn') : AppLocalizations.of(context)!.t('prov_det_send_message'))),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
                       disabledBackgroundColor: Colors.grey[700],

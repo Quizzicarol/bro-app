@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../l10n/app_localizations.dart';
 import '../services/relay_service.dart';
 
 class RelayManagementScreen extends StatefulWidget {
@@ -37,7 +38,7 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
     if (url.isEmpty) return;
     
     if (!url.startsWith('wss://')) {
-      _showError('URL deve começar com wss:// (conexão segura)');
+      _showError(AppLocalizations.of(context).t('relay_url_must_start_wss'));
       return;
     }
     
@@ -50,13 +51,13 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✅ Relay $url adicionado'),
+            content: Text(AppLocalizations.of(context).tp('relay_added', {'url': url})),
             backgroundColor: Colors.green,
           ),
         );
       }
     } catch (e) {
-      _showError('Erro ao adicionar relay: $e');
+      _showError(AppLocalizations.of(context).tp('relay_error_adding', {'error': e.toString()}));
     } finally {
       setState(() => _isLoading = false);
     }
@@ -65,26 +66,29 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
   Future<void> _removeRelay(String url) async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) {
+        final t = AppLocalizations.of(context).t;
+        return AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Remover Relay', style: TextStyle(color: Colors.white)),
+        title: Text(t('relay_remove_title'), style: const TextStyle(color: Colors.white)),
         content: Text(
-          'Deseja remover o relay $url?',
+          AppLocalizations.of(context).tp('relay_confirm_remove', {'url': url}),
           style: const TextStyle(color: Color(0xB3FFFFFF)),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+            child: Text(t('cancel'), style: const TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Remover', style: TextStyle(color: Colors.white)),
+            child: Text(t('relay_remove'), style: const TextStyle(color: Colors.white)),
           ),
         ],
-      ),
+      );
+      },
     );
     
     if (confirm == true) {
@@ -103,7 +107,7 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(success ? '✅ Relay conectado!' : '❌ Falha na conexão'),
+          content: Text(success ? AppLocalizations.of(context).t('relay_connected_success') : AppLocalizations.of(context).t('relay_connection_failed')),
           backgroundColor: success ? Colors.green : Colors.red,
         ),
       );
@@ -134,9 +138,9 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Gerenciar Relays',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+        title: Text(
+          AppLocalizations.of(context).t('relay_title'),
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
         ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
@@ -194,23 +198,22 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
             child: const Icon(Icons.info_outline, color: Color(0xFF9C27B0)),
           ),
           const SizedBox(width: 16),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'O que são Relays?',
-                  style: TextStyle(
+                  AppLocalizations.of(context).t('relay_what_are_relays'),
+                  style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
                     fontSize: 16,
                   ),
                 ),
-                SizedBox(height: 4),
+                const SizedBox(height: 4),
                 Text(
-                  'Relays são servidores que transmitem eventos Nostr. '
-                  'Use múltiplos relays para maior resiliência e privacidade.',
-                  style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 13),
+                  AppLocalizations.of(context).t('relay_description'),
+                  style: const TextStyle(color: Color(0xB3FFFFFF), fontSize: 13),
                 ),
               ],
             ),
@@ -224,9 +227,9 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Adicionar Relay',
-          style: TextStyle(
+        Text(
+          AppLocalizations.of(context).t('relay_add_relay'),
+          style: const TextStyle(
             color: Colors.white,
             fontSize: 18,
             fontWeight: FontWeight.w600,
@@ -282,9 +285,9 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Relays Populares',
-          style: TextStyle(
+        Text(
+          AppLocalizations.of(context).t('relay_popular'),
+          style: const TextStyle(
             color: Colors.white,
             fontSize: 18,
             fontWeight: FontWeight.w600,
@@ -331,9 +334,9 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
           }).toList(),
         ),
         const SizedBox(height: 16),
-        const Text(
-          'Relays Pagos (mais privacidade)',
-          style: TextStyle(
+        Text(
+          AppLocalizations.of(context).t('relay_paid'),
+          style: const TextStyle(
             color: Color(0xB3FFFFFF),
             fontSize: 14,
             fontWeight: FontWeight.w500,
@@ -382,9 +385,9 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Relays Ativos',
-              style: TextStyle(
+            Text(
+              AppLocalizations.of(context).t('relay_active'),
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
@@ -397,7 +400,7 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
-                '${activeRelays.length} conectados',
+                AppLocalizations.of(context).tp('relay_connected_count', {'count': activeRelays.length.toString()}),
                 style: const TextStyle(
                   color: Color(0xFFFF6B6B),
                   fontSize: 12,
@@ -416,14 +419,14 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: const Color(0x33FFFFFF)),
             ),
-            child: const Center(
+            child: Center(
               child: Column(
                 children: [
-                  Icon(Icons.cloud_off, color: Color(0x66FFFFFF), size: 48),
-                  SizedBox(height: 12),
+                  const Icon(Icons.cloud_off, color: Color(0x66FFFFFF), size: 48),
+                  const SizedBox(height: 12),
                   Text(
-                    'Nenhum relay conectado',
-                    style: TextStyle(color: Color(0x99FFFFFF)),
+                    AppLocalizations.of(context).t('relay_no_relay_connected'),
+                    style: const TextStyle(color: Color(0x99FFFFFF)),
                   ),
                 ],
               ),
@@ -469,7 +472,7 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          isConnected ? 'Conectado' : 'Desconectado',
+                          isConnected ? AppLocalizations.of(context).t('relay_connected') : AppLocalizations.of(context).t('relay_disconnected'),
                           style: TextStyle(
                             color: isConnected 
                                 ? Colors.green.withOpacity(0.8)
@@ -483,12 +486,12 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
                   IconButton(
                     icon: const Icon(Icons.refresh, color: Color(0xFFFF6B6B)),
                     onPressed: () => _testRelay(url),
-                    tooltip: 'Reconectar',
+                    tooltip: AppLocalizations.of(context).t('relay_reconnect'),
                   ),
                   IconButton(
                     icon: const Icon(Icons.delete_outline, color: Colors.red),
                     onPressed: () => _removeRelay(url),
-                    tooltip: 'Remover',
+                    tooltip: AppLocalizations.of(context).t('relay_remove'),
                   ),
                 ],
               ),

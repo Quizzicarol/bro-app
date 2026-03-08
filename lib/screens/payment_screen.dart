@@ -13,6 +13,7 @@ import '../providers/breez_provider_export.dart';
 import '../providers/lightning_provider.dart';
 import '../services/local_collateral_service.dart';
 import '../services/platform_fee_service.dart';
+import '../l10n/app_localizations.dart';
 import '../widgets/fee_breakdown_card.dart';
 import 'onchain_payment_screen.dart';
 import 'lightning_payment_screen.dart';
@@ -126,7 +127,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         billType = result != null ? (result['type'] as String? ?? 'boleto') : 'boleto';
       } else {
         if (!mounted) return;
-        _showError('Código inválido. Use um código PIX ou linha digitável de boleto.');
+        _showError(AppLocalizations.of(context).t('payment_invalid_code'));
         return;
       }
 
@@ -156,7 +157,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         
         if (amount < minOrderBrl) {
           if (!mounted) return;
-          _showError('Valor muito baixo. Mínimo: R\$ ${minOrderBrl.toStringAsFixed(2)}');
+          _showError(AppLocalizations.of(context).tp('payment_value_too_low', {'min': minOrderBrl.toStringAsFixed(2)}));
           setState(() {
             _isProcessing = false;
           });
@@ -165,7 +166,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         
         if (amount > maxOrderBrl) {
           if (!mounted) return;
-          _showError('Valor muito alto. Máximo: R\$ ${maxOrderBrl.toStringAsFixed(2)}');
+          _showError(AppLocalizations.of(context).tp('payment_value_too_high', {'max': maxOrderBrl.toStringAsFixed(2)}));
           setState(() {
             _isProcessing = false;
           });
@@ -186,11 +187,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
           broLog('💎 Conversion data: $conversion');
         } else {
           broLog('❌ Falha na conversão: ${conversion?['error']}');
-          _showError('Erro ao calcular conversão: ${conversion?['error'] ?? 'Desconhecido'}');
+          _showError(AppLocalizations.of(context).tp('payment_conversion_error', {'error': conversion?['error'] ?? 'Unknown'}));
         }
       } else {
         broLog('❌ Resultado inválido: $result');
-        _showError('Código inválido ou não reconhecido');
+        _showError(AppLocalizations.of(context).t('payment_invalid_or_unrecognized'));
       }
     } catch (e) {
       if (!mounted) return;
@@ -265,23 +266,23 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   showDialog(
                     context: context,
                     barrierDismissible: false,
-                    builder: (context) => AlertDialog(
+                    builder: (ctx) => AlertDialog(
                       backgroundColor: const Color(0xFF121212),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       title: Row(
                         children: [
                           const Icon(Icons.check_circle, color: Colors.green, size: 32),
                           const SizedBox(width: 12),
-                          const Text('Pagamento Confirmado!', style: TextStyle(color: Colors.white)),
+                          Text(AppLocalizations.of(ctx).t('payment_confirmed'), style: const TextStyle(color: Colors.white)),
                         ],
                       ),
                       content: Column(
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            '✅ Seu pagamento Lightning foi recebido com sucesso!',
-                            style: TextStyle(color: Colors.white, fontSize: 16),
+                          Text(
+                            AppLocalizations.of(ctx).t('payment_lightning_received'),
+                            style: const TextStyle(color: Colors.white, fontSize: 16),
                           ),
                           const SizedBox(height: 16),
                           Container(
@@ -295,7 +296,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Valor: $amountSats sats',
+                                  AppLocalizations.of(ctx).tp('payment_amount_sats', {'amount': amountSats}),
                                   style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
                                 ),
                                 Text(
@@ -305,7 +306,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                                 if (receiver != null) ...[
                                   const SizedBox(height: 8),
                                   Text(
-                                    'Recebedor: $receiver',
+                                    AppLocalizations.of(ctx).tp('payment_receiver', {'receiver': receiver}),
                                     style: const TextStyle(color: Colors.white60, fontSize: 12),
                                   ),
                                 ],
@@ -326,7 +327,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                             eventSub?.cancel();
                             broLog('🔌 EventSub cancelado');
                             // Navegar para Detalhes da Ordem
-                            Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(
+                            Navigator.of(ctx, rootNavigator: true).pushNamedAndRemoveUntil(
                               '/order-status',
                               (route) => route.isFirst,
                               arguments: {
@@ -341,9 +342,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
                             backgroundColor: Colors.green,
                             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                           ),
-                          child: const Text(
-                            'Ver Detalhes da Ordem',
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                          child: Text(
+                            AppLocalizations.of(ctx).t('payment_view_order_details'),
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                           ),
                         ),
                       ],
@@ -374,7 +375,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             child: AlertDialog(
               backgroundColor: const Color(0xFF121212),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: const Text('Pagar via Lightning', style: TextStyle(color: Colors.white)),
+              title: Text(AppLocalizations.of(ctx).t('payment_pay_via_lightning'), style: const TextStyle(color: Colors.white)),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -403,7 +404,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     Text('R\$ ${totalBrl.toStringAsFixed(2)}', style: const TextStyle(color: Colors.white70)),
                     if (receiver != null) ...[
                       const SizedBox(height: 8),
-                      Text('Recebedor: $receiver', style: const TextStyle(color: Colors.white60, fontSize: 12))
+                      Text(AppLocalizations.of(ctx).tp('payment_receiver', {'receiver': receiver}), style: const TextStyle(color: Colors.white60, fontSize: 12))
                     ],
                     const SizedBox(height: 8),
                     TextButton.icon(
@@ -411,12 +412,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
                         await Clipboard.setData(ClipboardData(text: invoice));
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Invoice copiada')),
+                            SnackBar(content: Text(AppLocalizations.of(context).t('payment_invoice_copied'))),
                           );
                         }
                       },
                       icon: const Icon(Icons.copy, size: 16, color: Colors.orange),
-                      label: const Text('Copiar invoice'),
+                      label: Text(AppLocalizations.of(ctx).t('payment_copy_invoice')),
                     ),
                     const SizedBox(height: 8),
                     isPaid
@@ -427,7 +428,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFFF6B6B)),
                           ),
                     const SizedBox(height: 4),
-                    Text(isPaid ? 'Pago' : 'Aguardando pagamento...', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                    Text(isPaid ? AppLocalizations.of(ctx).t('payment_paid') : AppLocalizations.of(ctx).t('payment_awaiting'), style: const TextStyle(color: Colors.white70, fontSize: 12)),
                   ],
                 ),
               ),
@@ -440,7 +441,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   Navigator.of(ctx).pop();
                   broLog('✅ Dialog fechado');
                 },
-                child: const Text('Fechar'),
+                child: Text(AppLocalizations.of(ctx).t('close')),
               ),
             ],
           ),
@@ -482,9 +483,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Como deseja pagar?',
-                style: TextStyle(
+              Text(
+                AppLocalizations.of(ctx).t('payment_how_to_pay'),
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -500,8 +501,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
               _buildPaymentOptionTile(
                 icon: Icons.flash_on,
                 iconColor: const Color(0xFFFFD700),
-                title: 'Lightning Invoice',
-                subtitle: 'Gere um QR code e pague de qualquer carteira',
+                title: AppLocalizations.of(ctx).t('payment_lightning_invoice_title'),
+                subtitle: AppLocalizations.of(ctx).t('payment_lightning_subtitle'),
                 onTap: () {
                   Navigator.pop(ctx);
                   _createPayment(paymentType: 'lightning', totalBrl: totalBrl, sats: sats, btcAmount: btcAmount);
@@ -512,8 +513,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
               _buildPaymentOptionTile(
                 icon: Icons.account_balance_wallet,
                 iconColor: const Color(0xFF4CAF50),
-                title: 'Saldo da Carteira',
-                subtitle: 'Pague diretamente com seu saldo disponível',
+                title: AppLocalizations.of(ctx).t('payment_wallet_balance_label'),
+                subtitle: AppLocalizations.of(ctx).t('payment_wallet_subtitle'),
                 onTap: () {
                   Navigator.pop(ctx);
                   _payWithWalletBalance(totalBrl: totalBrl, sats: sats, btcAmount: btcAmount);
@@ -588,7 +589,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     try {
       walletBalance = await lightningProvider.getBalance();
     } catch (e) {
-      _showError('Erro ao verificar saldo: $e');
+      _showError(AppLocalizations.of(context).tp('payment_error_check_balance', {'error': e.toString()}));
       return;
     }
 
@@ -598,8 +599,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
     if (availableBalance < amountSats) {
       final msg = lockedSats > 0 
-          ? 'Saldo insuficiente. Total: $walletBalance sats, travado em ordens: $lockedSats sats, disponível: $availableBalance sats, necessário: $amountSats sats'
-          : 'Saldo insuficiente. Disponível: $walletBalance sats, necessário: $amountSats sats';
+          ? AppLocalizations.of(context).tp('payment_insufficient_balance_detailed', {'total': walletBalance.toString(), 'locked': lockedSats.toString(), 'available': availableBalance.toString(), 'needed': amountSats.toString()})
+          : AppLocalizations.of(context).tp('payment_insufficient_balance_simple', {'available': walletBalance.toString(), 'needed': amountSats.toString()});
       _showError(msg);
       return;
     }
@@ -638,16 +639,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
-            children: const [
-              CircularProgressIndicator(color: Color(0xFF4CAF50)),
-              SizedBox(height: 20),
+            children: [
+              const CircularProgressIndicator(color: Color(0xFF4CAF50)),
+              const SizedBox(height: 20),
               Text(
-                '💰 Pagando com saldo da carteira...',
-                style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
+                AppLocalizations.of(ctx).t('payment_paying_with_wallet'),
+                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
                 textAlign: TextAlign.center,
               ),
-              SizedBox(height: 8),
-              Text('Aguarde um momento...', style: TextStyle(color: Colors.white70, fontSize: 14)),
+              const SizedBox(height: 8),
+              Text(AppLocalizations.of(ctx).t('payment_please_wait'), style: const TextStyle(color: Colors.white70, fontSize: 14)),
             ],
           ),
         ),
@@ -657,7 +658,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     try {
       if (_billData == null || _conversionData == null) {
         if (mounted) Navigator.of(context).pop();
-        _showError('Dados da conta não encontrados');
+        _showError(AppLocalizations.of(context).t('payment_bill_data_not_found'));
         return;
       }
 
@@ -686,7 +687,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
       if (order == null) {
         if (mounted) Navigator.of(context).pop();
-        _showError('Erro ao criar ordem. Tente novamente.');
+        _showError(AppLocalizations.of(context).t('payment_error_creating_order'));
         return;
       }
 
@@ -697,10 +698,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Pagamento realizado com saldo da carteira!'),
+          SnackBar(
+            content: Text(AppLocalizations.of(context).t('payment_wallet_success')),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 3),
+            duration: const Duration(seconds: 3),
           ),
         );
         
@@ -728,7 +729,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     } catch (e) {
       broLog('❌ Erro em _payWithWalletBalance: $e');
       if (mounted) Navigator.of(context).pop();
-      _showError('Erro ao pagar com saldo: $e');
+      _showError(AppLocalizations.of(context).tp('payment_error_wallet_pay', {'error': e.toString()}));
     } finally {
       if (mounted) {
         setState(() => _isProcessing = false);
@@ -796,10 +797,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
         backgroundColor: const Color(0xFF1A1A1A),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
-          children: const [
-            Icon(Icons.warning_amber_rounded, color: Color(0xFFFF9800), size: 28),
-            SizedBox(width: 10),
-            Text('Aviso de Garantia', style: TextStyle(color: Colors.white, fontSize: 18)),
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Color(0xFFFF9800), size: 28),
+            const SizedBox(width: 10),
+            Text(AppLocalizations.of(ctx).t('payment_tier_warning_title'), style: const TextStyle(color: Colors.white, fontSize: 18)),
           ],
         ),
         content: Column(
@@ -807,24 +808,24 @@ class _PaymentScreenState extends State<PaymentScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Ao pagar com saldo da carteira, seu saldo ficará abaixo do necessário para manter o tier "$tierName" no modo Bro.',
+              AppLocalizations.of(ctx).tp('payment_tier_warning_body', {'tierName': tierName}),
               style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.4),
             ),
             const SizedBox(height: 16),
-            _buildTierInfoRow('Garantia necessária', '$requiredSats sats'),
-            _buildTierInfoRow('Saldo atual', '$currentBalance sats'),
-            _buildTierInfoRow('Saldo após pagamento', '$afterPayment sats', isNegative: afterPayment < requiredSats),
+            _buildTierInfoRow(AppLocalizations.of(ctx).t('payment_required_collateral'), '$requiredSats sats'),
+            _buildTierInfoRow(AppLocalizations.of(ctx).t('payment_current_balance'), '$currentBalance sats'),
+            _buildTierInfoRow(AppLocalizations.of(ctx).t('payment_balance_after'), '$afterPayment sats', isNegative: afterPayment < requiredSats),
             const SizedBox(height: 16),
-            const Text(
-              'Você poderá perder sua garantia e não conseguirá aceitar ordens no modo Bro até repor o saldo.',
-              style: TextStyle(color: Color(0xFFFF9800), fontSize: 13, fontStyle: FontStyle.italic),
+            Text(
+              AppLocalizations.of(ctx).t('payment_tier_warning_detail'),
+              style: const TextStyle(color: Color(0xFFFF9800), fontSize: 13, fontStyle: FontStyle.italic),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
+            child: Text(AppLocalizations.of(ctx).t('cancel'), style: const TextStyle(color: Colors.white54)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -832,7 +833,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Pagar mesmo assim', style: TextStyle(color: Colors.white)),
+            child: Text(AppLocalizations.of(ctx).t('payment_pay_anyway'), style: const TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -872,7 +873,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     
     if (_billData == null || _conversionData == null) {
       broLog('❌ Dados da conta ausentes');
-      _showError('Dados da conta não encontrados');
+      _showError(AppLocalizations.of(context).t('payment_bill_data_not_found'));
       return;
     }
 
@@ -896,7 +897,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               const CircularProgressIndicator(color: Color(0xFFFF6B6B)),
               const SizedBox(height: 20),
               Text(
-                paymentType == 'lightning' ? '⚡ Criando Invoice Lightning...' : '₿ Gerando Endereço Bitcoin...',
+                paymentType == 'lightning' ? AppLocalizations.of(ctx).t('payment_creating_lightning') : AppLocalizations.of(ctx).t('payment_generating_btc'),
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 16,
@@ -905,9 +906,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Aguarde um momento...',
-                style: TextStyle(color: Colors.white70, fontSize: 14),
+              Text(
+                AppLocalizations.of(ctx).t('payment_please_wait'),
+                style: const TextStyle(color: Colors.white70, fontSize: 14),
               ),
             ],
           ),
@@ -959,7 +960,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           // Fechar popup de loading
           if (mounted) Navigator.of(context).pop();
           broLog('❌ Erro ao criar invoice');
-          _showError('Erro ao criar Lightning invoice: ${invoiceData?['error'] ?? 'desconhecido'}');
+          _showError(AppLocalizations.of(context).tp('payment_error_creating_invoice', {'error': invoiceData?['error'] ?? 'unknown'}));
           return;
         }
         
@@ -967,7 +968,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         if (inv.isEmpty || !(inv.startsWith('lnbc') || inv.startsWith('lntb') || inv.startsWith('lnbcrt'))) {
           if (mounted) Navigator.of(context).pop();
           broLog('❌ Invoice inválida: $inv');
-          _showError('Invoice inválida recebida');
+          _showError(AppLocalizations.of(context).t('payment_invalid_invoice'));
           return;
         }
         
@@ -1017,7 +1018,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         if (addressData == null || addressData['success'] != true) {
           if (mounted) Navigator.of(context).pop();
           broLog('❌ Erro ao criar endereço onchain');
-          _showError('Erro ao criar endereço Bitcoin: ${addressData?['error'] ?? 'desconhecido'}');
+          _showError(AppLocalizations.of(context).tp('payment_error_btc_address', {'error': addressData?['error'] ?? 'unknown'}));
           return;
         }
         
@@ -1026,7 +1027,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         if (address.isEmpty) {
           if (mounted) Navigator.of(context).pop();
           broLog('❌ Endereço vazio');
-          _showError('Erro ao criar endereço Bitcoin');
+          _showError(AppLocalizations.of(context).t('payment_error_btc_address_generic'));
           return;
         }
         
@@ -1061,7 +1062,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       broLog('❌ Exception em _createPayment: $e');
       // Fechar popup de loading em caso de erro
       if (mounted) Navigator.of(context).pop();
-      _showError('Erro ao criar pagamento: $e');
+      _showError(AppLocalizations.of(context).tp('payment_error_creating_payment', {'error': e.toString()}));
     } finally {
       broLog('🔓 _createPayment finally - mounted: $mounted');
       if (mounted) {
@@ -1124,7 +1125,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Pagar Conta'),
+          title: Text(AppLocalizations.of(context).t('payment_title')),
 
         ),
         body: _isScanning ? _buildScanner() : _buildForm(),
@@ -1164,14 +1165,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
             child: const Icon(Icons.close),
           ),
         ),
-        const Positioned(
+        Positioned(
           bottom: 32,
           left: 0,
           right: 0,
           child: Text(
-            'Aponte para o código de barras ou QR Code',
+            AppLocalizations.of(context).t('payment_point_to_barcode'),
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               color: Colors.white,
               fontSize: 16,
               backgroundColor: Colors.black54,
@@ -1194,10 +1195,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
               Expanded(
                 child: TextField(
                   controller: _codeController,
-                  decoration: const InputDecoration(
-                    labelText: 'Código PIX ou Boleto',
-                    hintText: 'Cole ou escaneie o código',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: AppLocalizations.of(context).t('payment_code_label'),
+                    hintText: AppLocalizations.of(context).t('payment_code_hint'),
+                    border: const OutlineInputBorder(),
                   ),
                   maxLines: 3,
                 ),
@@ -1243,13 +1244,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.help_outline, color: Color(0xFFFF6B6B), size: 24),
-              SizedBox(width: 8),
+              const Icon(Icons.help_outline, color: Color(0xFFFF6B6B), size: 24),
+              const SizedBox(width: 8),
               Text(
-                'Como funciona?',
-                style: TextStyle(
+                AppLocalizations.of(context).t('payment_how_it_works'),
+                style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                   color: Colors.white,
@@ -1258,17 +1259,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          _buildInstructionStep('1', 'Cole acima o código PIX ou boleto'),
+          _buildInstructionStep('1', AppLocalizations.of(context).t('payment_step1')),
           const SizedBox(height: 12),
-          _buildInstructionStep('2', 'Confira o valor e as taxas'),
+          _buildInstructionStep('2', AppLocalizations.of(context).t('payment_step2')),
           const SizedBox(height: 12),
-          _buildInstructionStep('3', 'Pague em Bitcoin on-chain ou Lightning'),
+          _buildInstructionStep('3', AppLocalizations.of(context).t('payment_step3')),
           const SizedBox(height: 12),
-          _buildInstructionStep('4', 'Aguarde um Bro aceitar sua ordem e pagar sua conta'),
+          _buildInstructionStep('4', AppLocalizations.of(context).t('payment_step4')),
           const SizedBox(height: 12),
-          _buildInstructionStep('5', 'Confirme que o pagamento foi feito e libere o valor para o Bro'),
+          _buildInstructionStep('5', AppLocalizations.of(context).t('payment_step5')),
           const SizedBox(height: 12),
-          _buildInstructionStep('6', 'Pronto, conta paga de Bro para Bro! 🤝'),
+          _buildInstructionStep('6', AppLocalizations.of(context).t('payment_step6')),
           const SizedBox(height: 16),
           // v237: Aviso sobre vencimento de contas
           Container(
@@ -1278,15 +1279,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: const Color(0x33FF9800)),
             ),
-            child: const Row(
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.warning_amber_rounded, color: Color(0xFFFF9800), size: 20),
-                SizedBox(width: 8),
+                const Icon(Icons.warning_amber_rounded, color: Color(0xFFFF9800), size: 20),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '⚠️ Evite contas próximas ao vencimento! Um Bro pode não aceitar sua ordem imediatamente. Planeje-se com antecedência para garantir que o pagamento seja feito a tempo.',
-                    style: TextStyle(
+                    AppLocalizations.of(context).t('payment_expiration_warning'),
+                    style: const TextStyle(
                       fontSize: 12,
                       color: Color(0xFFFF9800),
                     ),
@@ -1302,17 +1303,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
               color: const Color(0x1A3DE98C),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Column(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    Icon(Icons.security, color: Color(0xFF3DE98C), size: 20),
-                    SizedBox(width: 8),
+                    const Icon(Icons.security, color: Color(0xFF3DE98C), size: 20),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Seu pagamento fica em um endereço aguardando até que um Bro confirme que pagou sua conta.',
-                        style: TextStyle(
+                        AppLocalizations.of(context).t('payment_escrow_explanation'),
+                        style: const TextStyle(
                           fontSize: 12,
                           color: Color(0xFF3DE98C),
                         ),
@@ -1320,10 +1321,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     ),
                   ],
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 Text(
-                  'Obs: Se você não confirmar em 36h o pagamento da conta, sua garantia depositada em bitcoin é liberada automaticamente para o Bro que enviou o comprovante.',
-                  style: TextStyle(
+                  AppLocalizations.of(context).t('payment_auto_release_warning'),
+                  style: const TextStyle(
                     fontSize: 11,
                     color: Color(0xB3FFFFFF),
                     fontStyle: FontStyle.italic,
@@ -1391,13 +1392,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
-          children: const [
-            Icon(Icons.check_circle, color: Color(0xFF4CAF50), size: 20),
-            SizedBox(width: 12),
+          children: [
+            const Icon(Icons.check_circle, color: Color(0xFF4CAF50), size: 20),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
-                '✅ Valor detectado automaticamente',
-                style: TextStyle(
+                AppLocalizations.of(context).t('payment_value_auto_detected'),
+                style: const TextStyle(
                   color: Color(0xFF4CAF50),
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
@@ -1440,11 +1441,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 ],
               ),
               const Divider(height: 24, color: Color(0x33FF6B35)),
-              _InfoRow(label: 'Valor', value: 'R\$ $valueStr', labelColor: const Color(0xB3FFFFFF), valueColor: Colors.white),
+              _InfoRow(label: AppLocalizations.of(context).t('payment_value_label'), value: 'R\$ $valueStr', labelColor: const Color(0xB3FFFFFF), valueColor: Colors.white),
               if (_billData!['merchantName'] != null)
-                _InfoRow(label: 'Beneficiario', value: _maskBeneficiaryName(_billData!['merchantName'] as String), labelColor: const Color(0xB3FFFFFF), valueColor: Colors.white),
+                _InfoRow(label: AppLocalizations.of(context).t('payment_beneficiary'), value: _maskBeneficiaryName(_billData!['merchantName'] as String), labelColor: const Color(0xB3FFFFFF), valueColor: Colors.white),
               if (_billData!['type'] != null)
-                _InfoRow(label: 'Tipo', value: _billData!['type'] as String, labelColor: const Color(0xB3FFFFFF), valueColor: Colors.white),
+                _InfoRow(label: AppLocalizations.of(context).t('payment_type'), value: _billData!['type'] as String, labelColor: const Color(0xB3FFFFFF), valueColor: Colors.white),
             ],
           ),
         ),
@@ -1492,13 +1493,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
-          children: const [
-            Icon(Icons.info_outline, color: Color(0xFF64B5F6), size: 18),
-            SizedBox(width: 10),
+          children: [
+            const Icon(Icons.info_outline, color: Color(0xFF64B5F6), size: 18),
+            const SizedBox(width: 10),
             Expanded(
               child: Text(
-                '💡 Confira abaixo o detalhamento completo das taxas',
-                style: TextStyle(
+                AppLocalizations.of(context).t('payment_fee_breakdown_hint'),
+                style: const TextStyle(
                   color: Color(0xFF64B5F6),
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
@@ -1533,7 +1534,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   Icon(Icons.currency_bitcoin, color: Colors.orange.shade900),
                   const SizedBox(width: 8),
                   Text(
-                    'Pagamento em Bitcoin',
+                    AppLocalizations.of(context).t('payment_bitcoin_payment'),
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -1544,16 +1545,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
               ),
               Divider(height: 24, color: Colors.orange.shade300),
               _InfoRow(
-                label: 'Valor em Bitcoin',
+                label: AppLocalizations.of(context).t('payment_value_in_bitcoin'),
                 value: '$totalSats sats',
                 valueColor: Colors.orange.shade900,
               ),
               _InfoRow(
-                label: 'Cotação BTC',
+                label: AppLocalizations.of(context).t('payment_btc_quote'),
                 value: '${NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$').format(btcPrice)}/BTC',
               ),
               _InfoRow(
-                label: 'Total a Pagar',
+                label: AppLocalizations.of(context).t('payment_total_to_pay'),
                 value: 'R\$ ${totalBrl.toStringAsFixed(2)}',
                 valueColor: Colors.orange.shade900,
               ),
@@ -1565,10 +1566,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
       _isProcessing
           ? Container(
               padding: const EdgeInsets.symmetric(vertical: 16),
-              child: const Row(
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  SizedBox(
+                  const SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(
@@ -1576,10 +1577,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       color: Color(0xFFFF6B6B),
                     ),
                   ),
-                  SizedBox(width: 12),
+                  const SizedBox(width: 12),
                   Text(
-                    'Criando invoice...',
-                    style: TextStyle(
+                    AppLocalizations.of(context).t('payment_creating_invoice'),
+                    style: const TextStyle(
                       fontSize: 16,
                       color: Color(0xFFFF6B6B),
                       fontWeight: FontWeight.w500,
@@ -1591,7 +1592,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           : ElevatedButton.icon(
               onPressed: () => _showBitcoinPaymentOptions(totalBrl, totalSats.toString()),
               icon: const Icon(Icons.currency_bitcoin),
-              label: const Text('Pagar com Bitcoin', style: TextStyle(fontSize: 16)),
+              label: Text(AppLocalizations.of(context).t('payment_pay_with_bitcoin'), style: const TextStyle(fontSize: 16)),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 backgroundColor: const Color(0xFFFF6B6B),

@@ -19,6 +19,7 @@ import '../providers/order_provider.dart';
 import '../providers/provider_balance_provider.dart';
 import '../providers/platform_balance_provider.dart';
 import '../config.dart';
+import '../l10n/app_localizations.dart';
 import '../services/notification_service.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:bro_app/services/log_utils.dart';
@@ -133,6 +134,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         if (_currentStatus == 'awaiting_confirmation' && _expiresAt != null) {
           _startCountdownTimer();
         }
+        // Auto-pagamento de ordens liquidadas é feito pelo OrderProvider no sync
       } else {
         if (!mounted) return;
         setState(() {
@@ -257,6 +259,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           orderId: widget.orderId,
           amountBrl: widget.amountBrl,
         );
+        // Auto-pagamento é feito pelo OrderProvider._autoPayLiquidatedOrders() no sync
         break;
       case 'disputed':
         _notificationService.notifyDisputeOpened(orderId: widget.orderId);
@@ -348,9 +351,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           _startCountdownTimer();
         }
 
-        // CORREÇÃO: Parar polling em estados FINAIS (completed, cancelled, disputed)
+        // CORREÇÃO: Parar polling em estados FINAIS (completed, cancelled, disputed, liquidated)
         // disputed não precisa de polling — a resolução vem via Nostr events
-        if (status == 'completed' || status == 'cancelled' || status == 'disputed') {
+        if (status == 'completed' || status == 'cancelled' || status == 'disputed' || status == 'liquidated') {
           timer.cancel();
           _countdownTimer?.cancel();
         }
@@ -369,22 +372,19 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   void _showExpiredDialog() {
+    final l = AppLocalizations.of(context)!;
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text('⏰ Tempo Esgotado'),
-        content: const Text(
-          'O comprovante não foi confirmado em 36 horas.\n\n'
-          'A ordem será liquidada automaticamente.\n'
-          'Os sats do colateral serão liberados para o Bro.\n\n'
-          'Se o pagamento foi feito corretamente, '
-          'abra uma disputa antes da liquidação.',
+        title: Text(l.t('order_time_expired')),
+        content: Text(
+          l.t('order_time_expired_content'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Aguardar'),
+            child: Text(l.t('order_wait')),
           ),
           ElevatedButton(
             onPressed: () {
@@ -394,7 +394,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
             ),
-            child: const Text('Cancelar Ordem'),
+            child: Text(l.t('order_cancel')),
           ),
         ],
       ),
@@ -402,25 +402,25 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   Future<void> _handleCancelOrder() async {
+    final l = AppLocalizations.of(context)!;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Cancelar Ordem?'),
-        content: const Text(
-          'Tem certeza que deseja cancelar esta ordem?\n\n'
-          'Seus sats permanecerão na sua carteira do app.',
+        title: Text(l.t('order_cancel_confirm_title')),
+        content: Text(
+          l.t('order_cancel_confirm_content'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Não'),
+            child: Text(l.t('no')),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
             ),
-            child: const Text('Sim, Cancelar'),
+            child: Text(l.t('order_yes_cancel')),
           ),
         ],
       ),
@@ -448,7 +448,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           success = await _orderService.cancelOrder(
             orderId: widget.orderId,
             userId: widget.userId ?? '',
-            reason: 'Cancelado pelo usuário',
+            reason: l.t('order_cancelled_by_user'),
           ).timeout(
             const Duration(seconds: 5),
             onTimeout: () {
@@ -488,16 +488,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         
         // Mostrar confirmação simples
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Ordem cancelada com sucesso'),
+          SnackBar(
+            content: Text(l.t('order_cancelled_success')),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
+            duration: const Duration(seconds: 2),
           ),
         );
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('❌ Erro ao cancelar ordem'),
+          SnackBar(
+            content: Text(l.t('order_cancel_error')),
             backgroundColor: Colors.red,
           ),
         );
@@ -512,6 +512,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   // ==================== MODAL DE SAQUE COMPLETO ====================
   void _showWithdrawModal() async {
+    final l = AppLocalizations.of(context)!;
     // Obter saldo real da carteira
     final breezProvider = Provider.of<BreezProvider>(context, listen: false);
     final balanceInfo = await breezProvider.getBalance();
@@ -566,8 +567,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              'Sacar Sats',
+                            Text(
+                              l.t('order_withdraw_sats'),
                               style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 20,
@@ -575,7 +576,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                               ),
                             ),
                             Text(
-                              'Saldo na carteira: $realBalance sats',
+                              l.tp('order_wallet_balance', {'balance': realBalance.toString()}),
                               style: TextStyle(
                                 color: realBalance > 0 ? Colors.green : Colors.red,
                                 fontSize: 14,
@@ -593,9 +594,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   const SizedBox(height: 24),
                   
                   // Campo de valor
-                  const Text(
-                    'Valor a sacar (sats)',
-                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  Text(
+                    l.t('order_withdraw_amount'),
+                    style: const TextStyle(color: Colors.white70, fontSize: 14),
                   ),
                   const SizedBox(height: 8),
                   TextField(
@@ -604,7 +605,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     keyboardType: TextInputType.number,
                     enabled: !isSending && !isResolvingLnAddress,
                     decoration: InputDecoration(
-                      hintText: 'Ex: 1000',
+                      hintText: l.t('order_amount_hint'),
                       hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
                       prefixIcon: const Icon(Icons.bolt, color: Colors.orange),
                       suffixText: 'sats',
@@ -632,7 +633,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         amountController.text = realBalance.toString();
                       },
                       child: Text(
-                        'MAX ($realBalance)',
+                        l.tp('order_max_balance', {'balance': realBalance.toString()}),
                         style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
                       ),
                     ),
@@ -666,9 +667,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   const SizedBox(height: 4),
                   
                   // Campo de destino
-                  const Text(
-                    'Destino (Invoice ou Lightning Address)',
-                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  Text(
+                    l.t('order_destination_label'),
+                    style: const TextStyle(color: Colors.white70, fontSize: 14),
                   ),
                   const SizedBox(height: 8),
                   TextField(
@@ -677,7 +678,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     maxLines: 3,
                     enabled: !isSending && !isResolvingLnAddress,
                     decoration: InputDecoration(
-                      hintText: 'lnbc... ou usuario@wallet.com',
+                      hintText: l.t('order_destination_hint'),
                       hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -707,7 +708,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                             }
                           },
                           icon: const Icon(Icons.paste, size: 18),
-                          label: const Text('Colar'),
+                          label: Text(l.t('order_paste')),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.orange,
                             side: const BorderSide(color: Colors.orange),
@@ -727,7 +728,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                             }
                           },
                           icon: const Icon(Icons.qr_code_scanner, size: 18),
-                          label: const Text('Escanear'),
+                          label: Text(l.t('order_scan')),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.green,
                             side: const BorderSide(color: Colors.green),
@@ -776,18 +777,18 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         // Validar valor
                         final amount = int.tryParse(amountText);
                         if (amount == null || amount <= 0) {
-                          setModalState(() => errorMessage = 'Digite um valor válido');
+                          setModalState(() => errorMessage = l.t('order_enter_valid_amount'));
                           return;
                         }
                         
                         if (amount > realBalance) {
-                          setModalState(() => errorMessage = 'Saldo insuficiente! Você tem $realBalance sats na carteira');
+                          setModalState(() => errorMessage = l.tp('order_insufficient_balance', {'balance': realBalance.toString()}));
                           return;
                         }
                         
                         // Validar destino
                         if (destination.isEmpty) {
-                          setModalState(() => errorMessage = 'Cole ou escaneie um destino');
+                          setModalState(() => errorMessage = l.t('order_paste_or_scan'));
                           return;
                         }
                         
@@ -803,7 +804,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                             LnAddressService.isLnurl(destination)) {
                           setModalState(() {
                             isResolvingLnAddress = true;
-                            infoMessage = 'Verificando limites do destino...';
+                            infoMessage = l.t('order_checking_limits');
                           });
                           
                           final lnService = LnAddressService();
@@ -820,7 +821,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                             setModalState(() {
                               isResolvingLnAddress = false;
                               infoMessage = null;
-                              errorMessage = resolved['error'] ?? 'Erro ao resolver destino';
+                              errorMessage = resolved['error'] ?? l.t('order_resolve_error');
                             });
                             return;
                           }
@@ -832,8 +833,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           if (minSats != null && amount < minSats!) {
                             setModalState(() {
                               isResolvingLnAddress = false;
-                              infoMessage = 'Destino aceita: mín $minSats sats, máx $maxSats sats';
-                              errorMessage = 'Valor mínimo do destino: $minSats sats. Seu valor: $amount sats';
+                              infoMessage = l.tp('order_destination_range', {'min': minSats.toString(), 'max': maxSats.toString()});
+                              errorMessage = l.tp('order_min_amount', {'min': minSats.toString(), 'amount': amount.toString()});
                             });
                             return;
                           }
@@ -841,14 +842,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           if (maxSats != null && amount > maxSats!) {
                             setModalState(() {
                               isResolvingLnAddress = false;
-                              infoMessage = 'Destino aceita: mín $minSats sats, máx $maxSats sats';
-                              errorMessage = 'Valor máximo do destino: $maxSats sats. Seu valor: $amount sats';
+                              infoMessage = l.tp('order_destination_range', {'min': minSats.toString(), 'max': maxSats.toString()});
+                              errorMessage = l.tp('order_max_amount', {'max': maxSats.toString(), 'amount': amount.toString()});
                             });
                             return;
                           }
                           
                           setModalState(() {
-                            infoMessage = 'Obtendo invoice para $amount sats...';
+                            infoMessage = l.tp('order_getting_invoice', {'amount': amount.toString()});
                           });
                           
                           final result = await lnService.getInvoice(
@@ -861,7 +862,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                             setModalState(() {
                               isResolvingLnAddress = false;
                               infoMessage = null;
-                              errorMessage = result['error'] ?? 'Erro ao obter invoice';
+                              errorMessage = result['error'] ?? l.t('order_error_get_invoice');
                             });
                             return;
                           }
@@ -873,7 +874,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           });
                         } else if (!destination.toLowerCase().startsWith('lnbc') && 
                                    !destination.toLowerCase().startsWith('lntb')) {
-                          setModalState(() => errorMessage = 'Destino inválido. Use invoice (lnbc...), LNURL ou user@wallet.com');
+                          setModalState(() => errorMessage = l.t('order_invalid_destination'));
                           return;
                         }
                         
@@ -888,7 +889,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         // Enviar pagamento
                         setModalState(() {
                           isSending = true;
-                          infoMessage = 'Enviando $amount sats...';
+                          infoMessage = l.tp('order_sending_amount', {'amount': amount.toString()});
                         });
                         
                         try {
@@ -912,7 +913,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                               Navigator.pop(context); // Fechar modal
                               ScaffoldMessenger.of(this.context).showSnackBar(
                                 SnackBar(
-                                  content: Text('✅ Saque de $amount sats enviado com sucesso!'),
+                                  content: Text(l.tp('order_withdraw_success', {'amount': amount.toString()})),
                                   backgroundColor: Colors.green,
                                 ),
                               );
@@ -920,7 +921,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                               setState(() {});
                             }
                           } else {
-                            final errMsg = result?['error'] ?? 'Falha ao enviar pagamento';
+                            final errMsg = result?['error'] ?? l.t('order_payment_failed_msg');
                             
                             // Registrar saque que falhou
                             final withdrawalService = WithdrawalService();
@@ -954,7 +955,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           
                           setModalState(() {
                             isSending = false;
-                            errorMessage = 'Erro: $e';
+                            errorMessage = l.tp('order_error_generic', {'error': e.toString()});
                           });
                         }
                       },
@@ -970,8 +971,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           : const Icon(Icons.bolt),
                       label: Text(
                         isResolvingLnAddress 
-                            ? 'Resolvendo endereço...' 
-                            : (isSending ? 'Enviando...' : 'Enviar Sats'),
+                            ? l.t('order_resolving_address') 
+                            : (isSending ? l.t('order_sending') : l.t('order_send_sats')),
                       ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.orange,
@@ -994,9 +995,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         // Voltar para home para criar nova ordem
                         Navigator.popUntil(context, (route) => route.isFirst);
                       },
-                      child: const Text(
-                        'Criar nova ordem com esses sats',
-                        style: TextStyle(color: Colors.white54),
+                      child: Text(
+                        l.t('order_create_new_order'),
+                        style: const TextStyle(color: Colors.white54),
                       ),
                     ),
                   ),
@@ -1011,6 +1012,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   // QR Scanner Modal
   Future<String?> _showQRScannerModal() async {
+    final l = AppLocalizations.of(context)!;
     String? scannedCode;
     
     await showModalBottomSheet(
@@ -1035,12 +1037,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 children: [
                   const Icon(Icons.qr_code_scanner, color: Colors.green, size: 28),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Escanear Destino',
+                          l.t('order_scan_destination'),
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: 18,
@@ -1048,7 +1050,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           ),
                         ),
                         Text(
-                          'Invoice Lightning ou Lightning Address',
+                          l.t('order_scan_subtitle'),
                           style: TextStyle(
                             color: Colors.white54,
                             fontSize: 12,
@@ -1137,12 +1139,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             Container(
               padding: const EdgeInsets.all(20),
               color: const Color(0xFF1A1A1A),
-              child: const Column(
+              child: Column(
                 children: [
-                  Icon(Icons.lightbulb_outline, color: Colors.amber, size: 24),
-                  SizedBox(height: 8),
+                  const Icon(Icons.lightbulb_outline, color: Colors.amber, size: 24),
+                  const SizedBox(height: 8),
                   Text(
-                    'Escaneie uma invoice Lightning (lnbc...) ou Lightning Address (user@wallet.com)',
+                    l.t('order_scan_instruction'),
                     style: TextStyle(
                       color: Colors.white54,
                       fontSize: 12,
@@ -1252,11 +1254,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     if (_isLoading) {
       return Scaffold(
         backgroundColor: const Color(0xFF121212),
         appBar: AppBar(
-          title: const Text('Status da Ordem'),
+          title: Text(l.t('order_status_title')),
           backgroundColor: const Color(0xFF1A1A1A),
           foregroundColor: Colors.orange,
         ),
@@ -1268,7 +1271,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       return Scaffold(
         backgroundColor: const Color(0xFF121212),
         appBar: AppBar(
-          title: const Text('Erro'),
+          title: Text(l.t('error')),
           backgroundColor: const Color(0xFF1A1A1A),
           foregroundColor: Colors.orange,
         ),
@@ -1283,7 +1286,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               ElevatedButton(
                 onPressed: () => Navigator.pop(context),
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-                child: const Text('Voltar'),
+                child: Text(l.t('back')),
               ),
             ],
           ),
@@ -1294,7 +1297,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
-        title: Text(_currentStatus == 'pending' ? 'Aguardando Bro' : 'Status da Ordem'),
+        title: Text(_currentStatus == 'pending' ? l.t('order_status_pending_title') : l.t('order_status_title')),
         backgroundColor: const Color(0xFF1A1A1A),
         foregroundColor: Colors.orange,
       ),
@@ -1368,7 +1371,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   Widget _buildStatusCard() {
-    final statusInfo = _getStatusInfo();
+    final l = AppLocalizations.of(context)!;
+    final statusInfo = _getStatusInfo(l);
     
     return Card(
       color: const Color(0xFF1A1A1A),
@@ -1426,7 +1430,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     const Icon(Icons.calendar_today, color: Colors.white, size: 18),
                     const SizedBox(width: 8),
                     Text(
-                      'Criada em: ${_formatCreatedAt(_orderDetails!['createdAt'])}',
+                      l.tp('order_created_at', {'date': _formatCreatedAt(_orderDetails!['createdAt'], l)}),
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w600,
@@ -1465,7 +1469,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       await Clipboard.setData(ClipboardData(text: widget.orderId));
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('ID copiado!'), duration: Duration(seconds: 1)),
+                          SnackBar(content: Text(l.t('order_id_copied')), duration: const Duration(seconds: 1)),
                         );
                       }
                     },
@@ -1505,7 +1509,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     );
   }
   
-  String _formatCreatedAt(dynamic createdAt) {
+  String _formatCreatedAt(dynamic createdAt, AppLocalizations l) {
     try {
       DateTime date;
       if (createdAt is DateTime) {
@@ -1513,91 +1517,91 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       } else if (createdAt is String) {
         date = DateTime.parse(createdAt);
       } else {
-        return 'Data desconhecida';
+        return l.t('order_unknown_date');
       }
       
       final now = DateTime.now();
       final diff = now.difference(date);
       
       if (diff.inMinutes < 1) {
-        return 'agora';
+        return l.t('order_now');
       } else if (diff.inMinutes < 60) {
-        return 'há ${diff.inMinutes} min';
+        return l.tp('order_minutes_ago', {'min': diff.inMinutes.toString()});
       } else if (diff.inHours < 24) {
-        return 'há ${diff.inHours}h';
+        return l.tp('order_hours_ago', {'hours': diff.inHours.toString()});
       } else {
         return '${date.day}/${date.month}/${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
       }
     } catch (e) {
-      return 'Data desconhecida';
+      return l.t('order_unknown_date');
     }
   }
 
-  Map<String, dynamic> _getStatusInfo() {
+  Map<String, dynamic> _getStatusInfo(AppLocalizations l) {
     switch (_currentStatus) {
       case 'pending':
       case 'payment_received':
       case 'confirmed':
         return {
           'icon': Icons.hourglass_empty,
-          'title': 'Aguardando Bro',
-          'subtitle': 'Sua ordem está disponível para Bros',
+          'title': l.t('order_status_pending_title'),
+          'subtitle': l.t('order_status_pending_subtitle'),
           'color': Colors.orange,
         };
       case 'accepted':
         return {
           'icon': Icons.check_circle_outline,
-          'title': 'Bro Encontrado!',
-          'subtitle': 'Um Bro aceitou sua ordem',
+          'title': l.t('order_status_accepted_title'),
+          'subtitle': l.t('order_status_accepted_subtitle'),
           'color': Colors.green,
         };
       case 'awaiting_confirmation':
       case 'payment_submitted':
         return {
           'icon': Icons.payment,
-          'title': 'Bro Pagou!',
-          'subtitle': 'O Bro já pagou sua conta, confirme o recebimento',
+          'title': l.t('order_status_paid_title'),
+          'subtitle': l.t('order_status_paid_subtitle'),
           'color': const Color(0xFFFF6B6B),
         };
       case 'completed':
         if (_disputeResolution != null) {
           return {
             'icon': Icons.gavel,
-            'title': 'Resolvida por Mediação',
+            'title': l.t('order_resolved_mediation'),
             'subtitle': _disputeResolution!['resolution'] == 'resolved_provider'
-                ? 'Mediador decidiu a favor do provedor'
-                : 'Mediador decidiu - ordem concluída',
+                ? l.t('order_mediator_decided_provider')
+                : l.t('order_mediator_decided_completed'),
             'color': Colors.green,
           };
         }
         return {
           'icon': Icons.celebration,
-          'title': 'Concluída!',
-          'subtitle': 'Sua conta foi paga com sucesso',
+          'title': l.t('order_completed_title'),
+          'subtitle': l.t('order_completed_subtitle'),
           'color': Colors.green,
         };
       case 'liquidated':
         return {
           'icon': Icons.auto_fix_high,
-          'title': 'Liquidada Automaticamente',
-          'subtitle': 'Você não confirmou em 36h. Valores liberados para o Bro que comprovou o pagamento. Se houver discrepância, abra disputa.',
+          'title': l.t('order_liquidated_title'),
+          'subtitle': l.t('order_liquidated_subtitle'),
           'color': Colors.purple,
         };
       case 'cancelled':
         if (_disputeResolution != null) {
           return {
             'icon': Icons.gavel,
-            'title': 'Resolvida por Mediação',
+            'title': l.t('order_resolved_mediation'),
             'subtitle': _disputeResolution!['resolution'] == 'resolved_user'
-                ? 'Mediador decidiu a seu favor — sats devolvidos'
-                : 'Mediador decidiu — ordem cancelada',
+                ? l.t('order_mediator_decided_user_refund')
+                : l.t('order_mediator_decided_cancelled'),
             'color': Colors.orange,
           };
         }
         return {
           'icon': Icons.cancel_outlined,
-          'title': 'Cancelada',
-          'subtitle': 'Seus sats permanecem na sua carteira',
+          'title': l.t('order_cancelled_title'),
+          'subtitle': l.t('order_cancelled_subtitle'),
           'color': Colors.red,
         };
       case 'disputed':
@@ -1606,30 +1610,30 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           final isUserFavor = _disputeResolution!['resolution'] == 'resolved_user';
           return {
             'icon': Icons.gavel,
-            'title': 'Resolvida por Mediação',
+            'title': l.t('order_resolved_mediation'),
             'subtitle': isUserFavor
-                ? 'Mediador decidiu a seu favor'
-                : 'Mediador decidiu a favor do provedor',
+                ? l.t('order_mediator_decided_user')
+                : l.t('order_mediator_decided_provider'),
             'color': isUserFavor ? Colors.green : Colors.orange,
           };
         }
         return {
           'icon': Icons.gavel,
-          'title': 'Em Disputa',
-          'subtitle': 'Aguardando mediação',
+          'title': l.t('order_disputed_title'),
+          'subtitle': l.t('order_disputed_subtitle'),
           'color': Colors.orange,
         };
       case 'completing':
         return {
           'icon': Icons.hourglass_top,
-          'title': 'Processando...',
-          'subtitle': 'Finalizando confirmação',
+          'title': l.t('order_processing_title'),
+          'subtitle': l.t('order_processing_subtitle'),
           'color': Colors.orange,
         };
       default:
         return {
           'icon': Icons.help_outline,
-          'title': 'Status Desconhecido',
+          'title': l.t('order_unknown_status'),
           'subtitle': _currentStatus,
           'color': Colors.grey,
         };
@@ -1637,6 +1641,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   Widget _buildOrderDetailsCard() {
+    final l = AppLocalizations.of(context)!;
     return Card(
       color: const Color(0xFF1A1A1A),
       shape: RoundedRectangleBorder(
@@ -1648,8 +1653,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Detalhes da Ordem',
+            Text(
+              l.t('order_details_title'),
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
@@ -1657,20 +1662,20 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               ),
             ),
             Divider(height: 20, color: Colors.grey.withOpacity(0.2)),
-            _buildDetailRow('ID da Ordem', widget.orderId.substring(0, 8)),
+            _buildDetailRow(l.t('order_detail_id'), widget.orderId.substring(0, 8)),
             const SizedBox(height: 12),
-            _buildDetailRow('Valor', 'R\$ ${widget.amountBrl.toStringAsFixed(2)}'),
+            _buildDetailRow(l.t('order_detail_value'), 'R\$ ${widget.amountBrl.toStringAsFixed(2)}'),
             const SizedBox(height: 12),
-            _buildDetailRow('Bitcoin', '${widget.amountSats} sats'),
+            _buildDetailRow(l.t('order_detail_bitcoin'), '${widget.amountSats} sats'),
             const SizedBox(height: 12),
             _buildDetailRow(
-              'Tipo de Pagamento',
+              l.t('order_detail_payment_type'),
               _orderDetails?['billType'] == 'pix' ? 'PIX' : 'Boleto',
             ),
             if (_orderDetails?['provider_id'] != null) ...[
               const SizedBox(height: 12),
               _buildDetailRow(
-                'Provedor',
+                l.t('order_detail_provider'),
                 _orderDetails!['provider_id'].substring(0, 8),
               ),
             ],
@@ -1704,6 +1709,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   Widget _buildTimelineCard() {
+    final l = AppLocalizations.of(context)!;
     return Card(
       color: const Color(0xFF1A1A1A),
       shape: RoundedRectangleBorder(
@@ -1715,8 +1721,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Próximos Passos',
+            Text(
+              l.t('order_next_steps'),
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
@@ -1726,29 +1732,29 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             Divider(height: 20, color: Colors.grey.withOpacity(0.2)),
             _buildTimelineStep(
               number: '1',
-              title: 'Ordem Criada',
-              subtitle: 'Sua ordem está pronta',
+              title: l.t('order_step_created'),
+              subtitle: l.t('order_step_created_sub'),
               isActive: false,
               isCompleted: true,
             ),
             _buildTimelineStep(
               number: '2',
-              title: 'Aguardando Bro',
-              subtitle: 'Um Bro irá aceitar sua ordem',
+              title: l.t('order_step_awaiting'),
+              subtitle: l.t('order_step_awaiting_sub'),
               isActive: _currentStatus == 'pending' || _currentStatus == 'confirmed' || _currentStatus == 'payment_received',
               isCompleted: ['accepted', 'awaiting_confirmation', 'payment_submitted', 'completed'].contains(_currentStatus),
             ),
             _buildTimelineStep(
               number: '3',
-              title: 'Bro Paga a Conta',
-              subtitle: 'O Bro paga sua conta com PIX/Boleto',
+              title: l.t('order_step_bro_pays'),
+              subtitle: l.t('order_step_bro_pays_sub'),
               isActive: _currentStatus == 'accepted',
               isCompleted: ['awaiting_confirmation', 'payment_submitted', 'completed'].contains(_currentStatus),
             ),
             _buildTimelineStep(
               number: '4',
-              title: 'Concluído',
-              subtitle: 'Conta paga com sucesso!',
+              title: l.t('order_step_completed'),
+              subtitle: l.t('order_step_completed_sub'),
               isActive: _currentStatus == 'awaiting_confirmation' || _currentStatus == 'payment_submitted',
               isCompleted: _currentStatus == 'completed',
               isLast: true,
@@ -1834,6 +1840,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   Widget _buildInfoCard() {
+    final l = AppLocalizations.of(context)!;
     return Card(
       color: const Color(0xFF1A1A1A),
       shape: RoundedRectangleBorder(
@@ -1850,7 +1857,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 Icon(Icons.info_outline, color: Colors.blue[300], size: 18),
                 const SizedBox(width: 8),
                 Text(
-                  'Informações',
+                  l.t('order_info_title'),
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
@@ -1860,13 +1867,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            _buildInfoItem('⏰', 'O Bro tem até 36 horas para aceitar e pagar sua conta'),
+            _buildInfoItem('⏰', l.t('order_info_36h')),
             const SizedBox(height: 12),
-            _buildInfoItem('🔒', 'Seus Bitcoin estão seguros no escrow até a conclusão'),
+            _buildInfoItem('🔒', l.t('order_info_escrow')),
             const SizedBox(height: 12),
-            _buildInfoItem('📱', 'Você receberá notificações sobre o andamento'),
+            _buildInfoItem('📱', l.t('order_info_notifications')),
             const SizedBox(height: 12),
-            _buildInfoItem('🚫', 'Você pode cancelar a ordem se nenhum Bro aceitar'),
+            _buildInfoItem('🚫', l.t('order_info_can_cancel')),
           ],
         ),
       ),
@@ -1893,6 +1900,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   Widget _buildReceiptCard() {
+    final l = AppLocalizations.of(context)!;
     // Tentar pegar metadata da ordem
     Map<String, dynamic>? metadata;
     
@@ -1950,8 +1958,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               children: [
                 const Icon(Icons.receipt_long, color: Colors.orange, size: 18),
                 const SizedBox(width: 8),
-                const Text(
-                  'Comprovante do Bro',
+                Text(
+                  l.t('order_bro_proof'),
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
@@ -1975,10 +1983,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.confirmation_number, color: Colors.orange, size: 20),
+                        Icon(Icons.confirmation_number, color: Colors.orange, size: 20),
                         const SizedBox(width: 8),
-                        const Text(
-                          'Código de Confirmação:',
+                        Text(
+                          l.t('order_confirmation_code'),
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
@@ -2015,15 +2023,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   children: [
                     Icon(Icons.image, color: Colors.blue[700]),
                     const SizedBox(width: 12),
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'Comprovante em imagem anexado',
-                        style: TextStyle(fontSize: 14),
+                        l.t('order_proof_image_attached'),
+                        style: const TextStyle(fontSize: 14),
                       ),
                     ),
                     TextButton(
                       onPressed: () => _showReceiptImage(receiptUrl),
-                      child: const Text('Ver'),
+                      child: Text(l.t('order_view')),
                     ),
                   ],
                 ),
@@ -2037,7 +2045,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   Icon(Icons.access_time, size: 16, color: Colors.grey[600]),
                   const SizedBox(width: 6),
                   Text(
-                    'Enviado em: ${_formatDateTime(submittedAt)}',
+                    l.tp('order_sent_at', {'date': _formatDateTime(submittedAt, l)}),
                     style: TextStyle(
                       fontSize: 12,
                       color: Colors.grey[600],
@@ -2058,10 +2066,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 children: [
                   Icon(Icons.info_outline, color: Colors.green[700], size: 20),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Verifique o comprovante e confirme se o pagamento foi recebido corretamente.',
-                      style: TextStyle(fontSize: 13),
+                      l.t('order_verify_proof'),
+                      style: const TextStyle(fontSize: 13),
                     ),
                   ),
                 ],
@@ -2073,7 +2081,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     );
   }
 
-  String _formatDateTime(String isoString) {
+  String _formatDateTime(String isoString, AppLocalizations l) {
     try {
       final dt = DateTime.parse(isoString);
       final day = dt.day.toString().padLeft(2, '0');
@@ -2081,7 +2089,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       final year = dt.year;
       final hour = dt.hour.toString().padLeft(2, '0');
       final minute = dt.minute.toString().padLeft(2, '0');
-      return '$day/$month/$year às $hour:$minute';
+      return '$day/$month/$year ${l.t('order_date_at')} $hour:$minute';
     } catch (e) {
       return isoString;
     }
@@ -2089,6 +2097,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   /// Exibe o Comprovante do Bro em tela cheia
   void _showReceiptImage(String imageUrl) {
+    final l = AppLocalizations.of(context)!;
     showDialog(
       context: context,
       builder: (context) => Dialog(
@@ -2134,9 +2143,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     color: Colors.black54,
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Text(
-                    'Pinça para zoom • Arraste para mover',
-                    style: TextStyle(color: Colors.white, fontSize: 13),
+                  child: Text(
+                    l.t('order_pinch_to_zoom'),
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
                   ),
                 ),
               ),
@@ -2148,6 +2157,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   Widget _buildReceiptImageWidget(String imageUrl) {
+    final l = AppLocalizations.of(context)!;
     broLog('🖼️ _buildReceiptImageWidget chamado');
     broLog('   imageUrl length: ${imageUrl.length}');
     broLog('   imageUrl starts with: ${imageUrl.substring(0, imageUrl.length > 20 ? 20 : imageUrl.length)}');
@@ -2162,10 +2172,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return Image.memory(
           bytes,
           fit: BoxFit.contain,
-          errorBuilder: (context, error, stackTrace) => _buildImageError('Erro ao decodificar base64: $error'),
+          errorBuilder: (context, error, stackTrace) => _buildImageError(l.tp('order_error_decode_base64', {'error': error.toString()})),
         );
       } catch (e) {
-        return _buildImageError('Erro ao processar imagem base64: $e');
+        return _buildImageError(l.tp('order_error_process_base64', {'error': e.toString()}));
       }
     } else if (_isBase64Image(imageUrl)) {
       // Base64 puro (sem prefixo data:) - pode ser JPEG (/9j/), PNG (iVBOR), etc
@@ -2176,11 +2186,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return Image.memory(
           bytes,
           fit: BoxFit.contain,
-          errorBuilder: (context, error, stackTrace) => _buildImageError('Erro ao decodificar: $error'),
+          errorBuilder: (context, error, stackTrace) => _buildImageError(l.tp('order_error_decode', {'error': error.toString()})),
         );
       } catch (e) {
         broLog('   Erro ao decodificar base64: $e');
-        return _buildImageError('Erro ao processar imagem: $e');
+        return _buildImageError(l.tp('order_error_process_image', {'error': e.toString()}));
       }
     } else if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
       // URL HTTP/HTTPS
@@ -2207,10 +2217,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return Image.file(
           file,
           fit: BoxFit.contain,
-          errorBuilder: (context, error, stackTrace) => _buildImageError('Erro ao carregar arquivo: $error'),
+          errorBuilder: (context, error, stackTrace) => _buildImageError(l.tp('order_error_load_file', {'error': error.toString()})),
         );
       } else {
-        return _buildImageError('Arquivo não encontrado: $imageUrl');
+        return _buildImageError(l.tp('order_error_file_not_found', {'path': imageUrl}));
       }
     }
   }
@@ -2243,14 +2253,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   Widget _buildImageError(String error) {
+    final l = AppLocalizations.of(context)!;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         const Icon(Icons.broken_image, color: Colors.white54, size: 64),
         const SizedBox(height: 16),
-        const Text(
-          'Erro ao carregar comprovante',
-          style: TextStyle(color: Colors.white54, fontSize: 16),
+        Text(
+          l.t('order_error_load_receipt'),
+          style: const TextStyle(color: Colors.white54, fontSize: 16),
         ),
         const SizedBox(height: 8),
         Padding(
@@ -2267,16 +2278,17 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   /// Abre disputa para a ordem atual
   void _showDisputeDialog() {
+    final l = AppLocalizations.of(context)!;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.gavel, color: Color(0xFFFF6B6B)),
-            SizedBox(width: 12),
-            Text('Abrir Disputa', style: TextStyle(color: Colors.white)),
+            const Icon(Icons.gavel, color: Color(0xFFFF6B6B)),
+            const SizedBox(width: 12),
+            Text(l.t('order_open_dispute'), style: const TextStyle(color: Colors.white)),
           ],
         ),
         content: SingleChildScrollView(
@@ -2290,11 +2302,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   color: const Color(0x1AFF6B35),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Column(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '⚖️ O que é uma disputa?',
+                      l.t('order_what_is_dispute'),
                       style: TextStyle(
                         color: Color(0xFFFF6B6B),
                         fontWeight: FontWeight.bold,
@@ -2303,24 +2315,23 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     ),
                     SizedBox(height: 8),
                     Text(
-                      'Uma disputa é aberta quando há um desacordo entre você e o provedor sobre o pagamento. '
-                      'Um mediador irá analisar as evidências de ambas as partes para resolver o problema.',
-                      style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 13, height: 1.4),
+                      l.t('order_dispute_explanation'),
+                      style: const TextStyle(color: Color(0xB3FFFFFF), fontSize: 13, height: 1.4),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 16),
-              const Text(
-                'Motivos comuns para disputa:',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
+              Text(
+                l.t('order_dispute_common_reasons'),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
               ),
               const SizedBox(height: 8),
-              _buildDisputeReason('💸', 'Pagamento não recebido pelo provedor'),
-              _buildDisputeReason('📄', 'Comprovante inválido ou falsificado'),
-              _buildDisputeReason('💰', 'Valor pago diferente do combinado'),
-              _buildDisputeReason('🚫', 'Provedor não enviou o comprovante'),
-              _buildDisputeReason('❓', 'Outro motivo'),
+              _buildDisputeReason('💸', l.t('order_dispute_not_received')),
+              _buildDisputeReason('📄', l.t('order_dispute_invalid_proof')),
+              _buildDisputeReason('💰', l.t('order_dispute_wrong_amount')),
+              _buildDisputeReason('🚫', l.t('order_dispute_no_proof')),
+              _buildDisputeReason('❓', l.t('order_dispute_other_reason')),
               const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(12),
@@ -2329,14 +2340,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: const Color(0x33FFC107)),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.warning_amber, color: Color(0xFFFFC107), size: 20),
-                    SizedBox(width: 8),
+                    const Icon(Icons.warning_amber, color: Color(0xFFFFC107), size: 20),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Os Bitcoin ficam retidos no escrow até a resolução da disputa.',
-                        style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 12),
+                        l.t('order_dispute_escrow_held'),
+                        style: const TextStyle(color: Color(0xB3FFFFFF), fontSize: 12),
                       ),
                     ),
                   ],
@@ -2348,7 +2359,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+            child: Text(l.t('cancel'), style: const TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -2358,7 +2369,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFFF6B6B),
             ),
-            child: const Text('Continuar', style: TextStyle(color: Colors.white)),
+            child: Text(l.t('order_dispute_continue'), style: const TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -2384,6 +2395,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   void _openDisputeForm() {
+    final l = AppLocalizations.of(context)!;
     final TextEditingController reasonController = TextEditingController();
     String? selectedReason;
     File? _evidencePhoto; // v236: foto de evidência
@@ -2420,8 +2432,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                const Text(
-                  '📋 Formulário de Disputa',
+                Text(
+                  l.t('order_dispute_form_title'),
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 20,
@@ -2430,21 +2442,21 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Ordem: ${widget.orderId.substring(0, 8)}...',
+                  l.tp('order_order_id_short', {'id': widget.orderId.substring(0, 8)}),
                   style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 14),
                 ),
                 const SizedBox(height: 20),
-                const Text(
-                  'Motivo da disputa *',
+                Text(
+                  l.t('order_dispute_reason_label'),
                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
-                ...[
-                  'Pagamento não recebido',
-                  'Comprovante inválido',
-                  'Valor incorreto',
-                  'Provedor não respondeu',
-                  'Outro'
+                ...<String>[
+                  l.t('order_dispute_opt_not_received'),
+                  l.t('order_dispute_opt_invalid'),
+                  l.t('order_dispute_opt_wrong_amount'),
+                  l.t('order_dispute_opt_no_response'),
+                  l.t('order_dispute_opt_other'),
                 ].map((reason) => RadioListTile<String>(
                   title: Text(reason, style: const TextStyle(color: Colors.white)),
                   value: reason,
@@ -2455,8 +2467,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   },
                 )),
                 const SizedBox(height: 16),
-                const Text(
-                  'Descreva o problema *',
+                Text(
+                  l.t('order_dispute_describe_label'),
                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
@@ -2469,7 +2481,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     setModalState(() {});
                   },
                   decoration: InputDecoration(
-                    hintText: 'Explique com detalhes o que aconteceu...',
+                    hintText: l.t('order_dispute_description_hint'),
                     hintStyle: const TextStyle(color: Color(0x66FFFFFF)),
                     filled: true,
                     fillColor: const Color(0x0DFFFFFF),
@@ -2496,40 +2508,40 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: Colors.blue.withOpacity(0.2)),
                   ),
-                  child: const Column(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '💡 Dicas para resolver mais rápido:',
-                        style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 13),
+                        l.t('order_dispute_tips_title'),
+                        style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 13),
                       ),
-                      SizedBox(height: 8),
+                      const SizedBox(height: 8),
                       Text(
-                        '• Se a conta não foi paga, acesse o site da empresa (SANEPAR, CEMIG, etc.) e tire um print mostrando que está em aberto',
-                        style: TextStyle(color: Colors.white70, fontSize: 12),
+                        l.t('order_dispute_tip_check'),
+                        style: const TextStyle(color: Colors.white70, fontSize: 12),
                       ),
-                      SizedBox(height: 4),
+                      const SizedBox(height: 4),
                       Text(
-                        '• Acesse registrato.bcb.gov.br (login gov.br) e tire um print da lista de PIX recebidos na data',
-                        style: TextStyle(color: Colors.white70, fontSize: 12),
+                        l.t('order_dispute_tip_registrato'),
+                        style: const TextStyle(color: Colors.white70, fontSize: 12),
                       ),
-                      SizedBox(height: 4),
+                      const SizedBox(height: 4),
                       Text(
-                        '• Quanto mais evidências, mais rápida a resolução',
-                        style: TextStyle(color: Colors.white70, fontSize: 12),
+                        l.t('order_dispute_tip_evidence'),
+                        style: const TextStyle(color: Colors.white70, fontSize: 12),
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 16),
-                const Text(
-                  '📸 Foto de Evidência (opcional)',
+                Text(
+                  l.t('order_dispute_evidence_photo'),
                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 4),
-                const Text(
-                  'Anexe um print do site do beneficiário, do Registrato, ou outra prova',
-                  style: TextStyle(color: Color(0x99FFFFFF), fontSize: 12),
+                Text(
+                  l.t('order_dispute_evidence_hint'),
+                  style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 12),
                 ),
                 const SizedBox(height: 8),
                 if (_evidencePhoto != null) ...[                  
@@ -2590,7 +2602,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                             }
                           },
                           icon: const Icon(Icons.photo_library, size: 18),
-                          label: const Text('Galeria'),
+                          label: Text(l.t('order_gallery')),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.orange,
                             side: const BorderSide(color: Colors.orange),
@@ -2618,7 +2630,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                             }
                           },
                           icon: const Icon(Icons.camera_alt, size: 18),
-                          label: const Text('Câmera'),
+                          label: Text(l.t('order_camera')),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.orange,
                             side: const BorderSide(color: Colors.orange),
@@ -2642,9 +2654,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       disabledBackgroundColor: Colors.grey[700],
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
-                    child: const Text(
-                      'Enviar Disputa',
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                    child: Text(
+                      l.t('order_submit_dispute'),
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                     ),
                   ),
                 ),
@@ -2657,17 +2669,18 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   Future<void> _submitDispute(String reason, String description, {String? userEvidence}) async {
+    final l = AppLocalizations.of(context)!;
     // Mostrar loading
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const AlertDialog(
-        backgroundColor: Color(0xFF1A1A1A),
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
         content: Row(
           children: [
-            CircularProgressIndicator(color: Color(0xFFFF6B6B)),
-            SizedBox(width: 16),
-            Text('Enviando disputa...', style: TextStyle(color: Colors.white)),
+            const CircularProgressIndicator(color: Color(0xFFFF6B6B)),
+            const SizedBox(width: 16),
+            Text(l.t('order_sending_dispute'), style: const TextStyle(color: Colors.white)),
           ],
         ),
       ),
@@ -2736,10 +2749,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('⚖️ Disputa aberta com sucesso! O suporte foi notificado e irá analisar o caso.'),
-            backgroundColor: Color(0xFFFF6B6B),
-            duration: Duration(seconds: 4),
+          SnackBar(
+            content: Text(l.t('order_dispute_opened_success')),
+            backgroundColor: const Color(0xFFFF6B6B),
+            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -2748,7 +2761,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         Navigator.pop(context); // Fechar loading
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro ao abrir disputa: $e'),
+            content: Text(l.tp('order_dispute_open_error', {'error': e.toString()})),
             backgroundColor: Colors.red,
           ),
         );
@@ -2757,12 +2770,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   Widget _buildDisputeButton() {
+    final l = AppLocalizations.of(context)!;
     return SizedBox(
       width: double.infinity,
       child: OutlinedButton.icon(
         onPressed: _showDisputeDialog,
         icon: const Icon(Icons.gavel),
-        label: const Text('Abrir Disputa'),
+        label: Text(l.t('order_open_dispute')),
         style: OutlinedButton.styleFrom(
           foregroundColor: const Color(0xFFFF6B6B),
           side: const BorderSide(color: Color(0xFFFF6B6B)),
@@ -2773,6 +2787,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   Widget _buildTalkToBroButton() {
+    final l = AppLocalizations.of(context)!;
     final providerId = _orderDetails?['provider_id'] ?? '';
     final broName = providerId.isNotEmpty && providerId.length >= 8 ? providerId.substring(0, 8) : (providerId.isNotEmpty ? providerId : 'Bro');
     
@@ -2788,15 +2803,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             );
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('ID do Bro não disponível'),
+              SnackBar(
+                content: Text(l.t('order_bro_id_unavailable')),
                 backgroundColor: Colors.orange,
               ),
             );
           }
         },
         icon: const Icon(Icons.chat),
-        label: Text('Falar com $broName'),
+        label: Text(l.tp('order_chat_with_bro', {'name': broName})),
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF9C27B0),
           foregroundColor: Colors.white,
@@ -2807,12 +2822,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   Widget _buildPayButton() {
+    final l = AppLocalizations.of(context)!;
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
         onPressed: _showPaymentMethodsSheet,
         icon: const Icon(Icons.currency_bitcoin),
-        label: const Text('Pagar com Bitcoin'),
+        label: Text(l.t('order_pay_with_bitcoin')),
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFFFF6B6B),
           foregroundColor: Colors.white,
@@ -2824,6 +2840,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   /// Mostra o bottom sheet com opções de pagamento (Lightning ou On-Chain)
   void _showPaymentMethodsSheet() {
+    final l = AppLocalizations.of(context)!;
     broLog('🔵 _showPaymentMethodsSheet chamado');
     showModalBottomSheet(
       context: context,
@@ -2848,8 +2865,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              const Text(
-                'Escolha o método de pagamento',
+              Text(
+                l.t('order_choose_payment'),
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -2904,16 +2921,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           color: Colors.green,
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Text(
-                          '⚡ Rápido',
+                        child: Text(
+                          l.t('order_fast_badge'),
                           style: TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.w600),
                         ),
                       ),
                     ],
                   ),
-                  subtitle: const Text(
-                    'Instantâneo • Taxas baixas',
-                    style: TextStyle(color: Color(0x99FFFFFF), fontSize: 12),
+                  subtitle: Text(
+                    l.t('order_lightning_subtitle'),
+                    style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 12),
                   ),
                   trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
                 ),
@@ -2947,9 +2964,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       color: Colors.white,
                     ),
                   ),
-                  subtitle: const Text(
-                    '~10 min • Blockchain',
-                    style: TextStyle(color: Color(0x99FFFFFF), fontSize: 12),
+                  subtitle: Text(
+                    l.t('order_onchain_subtitle'),
+                    style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 12),
                   ),
                   trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
                 ),
@@ -2960,9 +2977,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               // Botão cancelar
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text(
-                  'Cancelar',
-                  style: TextStyle(color: Color(0x99FFFFFF), fontSize: 16),
+                child: Text(
+                  l.t('cancel'),
+                  style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 16),
                 ),
               ),
               const SizedBox(height: 8),
@@ -2975,6 +2992,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   /// Cria o invoice Lightning e mostra o dialog com QR Code
   Future<void> _createLightningInvoiceAndShow() async {
+    final l = AppLocalizations.of(context)!;
     broLog('🔵 _createLightningInvoiceAndShow chamado');
     
     // Mostrar loading com feedback progressivo
@@ -2985,11 +3003,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     feedbackTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
       final elapsed = stopwatch.elapsed.inSeconds;
       if (elapsed >= 30) {
-        statusNotifier.value = 'Tentando via Liquid... (${elapsed}s)';
+        statusNotifier.value = l.tp('order_trying_liquid', {'elapsed': elapsed.toString()});
       } else if (elapsed >= 15) {
-        statusNotifier.value = 'Aguardando resposta... (${elapsed}s)';
+        statusNotifier.value = l.tp('order_waiting_response', {'elapsed': elapsed.toString()});
       } else {
-        statusNotifier.value = 'Conectando ao Spark... (${elapsed}s)';
+        statusNotifier.value = l.tp('order_connecting_spark', {'elapsed': elapsed.toString()});
       }
     });
     
@@ -3006,7 +3024,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               const CircularProgressIndicator(color: Color(0xFFFF6B6B)),
               const SizedBox(height: 16),
               Text(
-                'Gerando Invoice Lightning...',
+                l.t('order_generating_invoice'),
                 style: const TextStyle(color: Colors.white),
               ),
               const SizedBox(height: 8),
@@ -3063,7 +3081,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         }
       } else {
         broLog('❌ Falha ao criar invoice: ${invoiceData?['error']}');
-        _showError('Erro ao criar invoice: ${invoiceData?['error'] ?? 'Desconhecido'}');
+        _showError(l.tp('order_error_create_invoice', {'error': invoiceData?['error']?.toString() ?? 'Unknown'}));
       }
     } catch (e) {
       // Fechar loading e limpar timer
@@ -3071,7 +3089,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       stopwatch.stop();
       if (mounted) Navigator.pop(context);
       broLog('❌ Erro ao criar invoice: $e');
-      _showError('Erro ao criar invoice: $e');
+      _showError(l.tp('order_error_create_invoice', {'error': e.toString()}));
     }
   }
 
@@ -3094,6 +3112,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   void _showLightningPaymentDialog(String invoice, String paymentHash, {bool isLiquid = false}) {
+    final l = AppLocalizations.of(context)!;
     // Registrar callback para pagamento recebido
     final breezProvider = context.read<BreezProvider>();
     breezProvider.onPaymentReceived = (paymentId, amountSats, pHash) {
@@ -3124,10 +3143,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             children: [
               const Icon(Icons.bolt, color: Color(0xFFFF6B6B), size: 28),
               const SizedBox(width: 8),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'Pagar com Lightning',
-                  style: TextStyle(color: Colors.white, fontSize: 18),
+                  l.t('order_pay_lightning'),
+                  style: const TextStyle(color: Colors.white, fontSize: 18),
                 ),
               ),
             ],
@@ -3145,10 +3164,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       color: Colors.orange.withAlpha(40),
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        SizedBox(
+                        const SizedBox(
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(
@@ -3156,10 +3175,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                             color: Color(0xFFFF6B6B),
                           ),
                         ),
-                        SizedBox(width: 8),
+                      const SizedBox(width: 8),
                         Text(
-                          'Aguardando pagamento...',
-                          style: TextStyle(color: Colors.orange, fontSize: 13, fontWeight: FontWeight.w500),
+                          l.t('order_waiting_payment'),
+                          style: const TextStyle(color: Colors.orange, fontSize: 13, fontWeight: FontWeight.w500),
                         ),
                       ],
                     ),
@@ -3223,8 +3242,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           onPressed: () {
                             Clipboard.setData(ClipboardData(text: invoice));
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('✅ Invoice copiado!'),
+                              SnackBar(
+                                content: Text(l.t('order_invoice_copied')),
                                 backgroundColor: Colors.green,
                               ),
                             );
@@ -3234,9 +3253,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  const Text(
-                    'Escaneie o QR Code com sua\ncarteira Lightning para pagar',
-                    style: TextStyle(
+                  Text(
+                    l.t('order_qr_scan_instruction'),
+                    style: const TextStyle(
                       color: Color(0x99FFFFFF),
                       fontSize: 13,
                     ),
@@ -3252,7 +3271,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 _stopPaymentMonitoring();
                 Navigator.pop(context);
               },
-              child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+              child: Text(l.t('cancel'), style: const TextStyle(color: Colors.grey)),
             ),
           ],
         ),
@@ -3297,6 +3316,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
   
   void _onPaymentReceived() {
+    final l = AppLocalizations.of(context)!;
     broLog('✅ PAGAMENTO RECEBIDO!');
     
     // Fechar dialog atual
@@ -3330,8 +3350,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               child: const Icon(Icons.check_circle, color: Colors.green, size: 60),
             ),
             const SizedBox(height: 20),
-            const Text(
-              'Pagamento Recebido!',
+            Text(
+              l.t('order_payment_received'),
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
@@ -3348,9 +3368,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Seu pagamento via Lightning foi\nconfirmado com sucesso!\n\nAguardando um Bro aceitar sua ordem.',
-              style: TextStyle(color: Color(0x99FFFFFF), fontSize: 14),
+            Text(
+              l.t('order_payment_received_desc'),
+              style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 14),
               textAlign: TextAlign.center,
             ),
           ],
@@ -3373,7 +3393,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
-              child: const Text('OK', style: TextStyle(color: Colors.white, fontSize: 16)),
+              child: Text(l.t('order_ok'), style: const TextStyle(color: Colors.white, fontSize: 16)),
             ),
           ),
         ],
@@ -3382,18 +3402,19 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   void _showOnChainPaymentDialog() async {
+    final l = AppLocalizations.of(context)!;
     // Mostrar loading enquanto obtém o endereço
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const AlertDialog(
-        backgroundColor: Color(0xFF1E1E1E),
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
         content: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(color: Color(0xFFFF6B6B)),
-            SizedBox(width: 16),
-            Text('Gerando endereço...', style: TextStyle(color: Colors.white)),
+            const CircularProgressIndicator(color: Color(0xFFFF6B6B)),
+            const SizedBox(width: 16),
+            Text(l.t('order_generating_address'), style: const TextStyle(color: Colors.white)),
           ],
         ),
       ),
@@ -3418,9 +3439,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           builder: (context) => AlertDialog(
             backgroundColor: const Color(0xFF1E1E1E),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Text(
-              'Pagar com Bitcoin',
-              style: TextStyle(color: Colors.white),
+            title: Text(
+              l.t('order_pay_bitcoin_title'),
+              style: const TextStyle(color: Colors.white),
             ),
             content: SizedBox(
               width: 300,
@@ -3486,7 +3507,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                             onPressed: () {
                               Clipboard.setData(ClipboardData(text: address));
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Endereço copiado!')),
+                                SnackBar(content: Text(l.t('order_address_copied'))),
                               );
                             },
                           ),
@@ -3501,14 +3522,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: Colors.orange.withOpacity(0.5)),
                       ),
-                      child: const Row(
+                      child: Row(
                         children: [
-                          Icon(Icons.info_outline, color: Colors.orange, size: 20),
-                          SizedBox(width: 8),
+                          const Icon(Icons.info_outline, color: Colors.orange, size: 20),
+                          const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              'Transações on-chain podem levar ~10-60 minutos para confirmar.',
-                              style: TextStyle(
+                              l.t('order_onchain_time_warning'),
+                              style: const TextStyle(
                                 color: Colors.orange,
                                 fontSize: 12,
                               ),
@@ -3524,18 +3545,18 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('Fechar'),
+                child: Text(l.t('close')),
               ),
             ],
           ),
         );
       } else {
-        _showError('Erro ao gerar endereço Bitcoin');
+        _showError(l.t('order_address_gen_error'));
       }
     } catch (e) {
       if (mounted) {
         Navigator.pop(context); // Fechar loading
-        _showError('Erro ao gerar endereço: $e');
+        _showError(l.tp('order_error_address', {'error': e.toString()}));
       }
     }
   }
@@ -3544,12 +3565,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   // O usuário não paga a ordem, ele RESERVA garantia. O Bro é quem paga a conta.
 
   Widget _buildCancelButton() {
+    final l = AppLocalizations.of(context)!;
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
         onPressed: _handleCancelOrder,
         icon: const Icon(Icons.cancel),
-        label: const Text('Cancelar Ordem'),
+        label: Text(l.t('order_cancel_order')),
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.red,
           foregroundColor: Colors.white,
@@ -3560,6 +3582,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   Widget _buildWithdrawSatsButton() {
+    final l = AppLocalizations.of(context)!;
     return Column(
       children: [
         // Info card
@@ -3576,7 +3599,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Seus ${widget.amountSats} sats ainda estão na sua carteira. Você pode sacar para outra carteira Lightning.',
+                  l.tp('order_sats_in_wallet', {'sats': widget.amountSats.toString()}),
                   style: const TextStyle(
                     color: Colors.blue,
                     fontSize: 14,
@@ -3593,7 +3616,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           child: ElevatedButton.icon(
             onPressed: () => _showWithdrawInstructions(),
             icon: const Icon(Icons.send),
-            label: const Text('Sacar Sats'),
+            label: Text(l.t('order_withdraw_sats')),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.orange,
               foregroundColor: Colors.white,
@@ -3609,6 +3632,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
   
   Widget _buildWithdrawalHistory() {
+    final l = AppLocalizations.of(context)!;
     return FutureBuilder<List<Withdrawal>>(
       future: WithdrawalService().getWithdrawalsByOrder(
         orderId: widget.orderId,
@@ -3627,8 +3651,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Histórico de Saques desta Ordem',
+            Text(
+              l.t('order_withdrawal_history'),
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 16,
@@ -3644,6 +3668,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
   
   Widget _buildWithdrawalItem(Withdrawal withdrawal) {
+    final l = AppLocalizations.of(context)!;
     final isSuccess = withdrawal.status == 'success';
     final statusColor = isSuccess ? Colors.green : Colors.red;
     final statusIcon = isSuccess ? Icons.check_circle : Icons.error;
@@ -3665,7 +3690,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${withdrawal.amountSats} sats - ${withdrawal.statusText}',
+                  l.tp('order_withdrawal_item', {'amount': withdrawal.amountSats.toString(), 'status': withdrawal.statusText}),
                   style: TextStyle(
                     color: statusColor,
                     fontWeight: FontWeight.bold,
@@ -3674,14 +3699,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Destino: ${withdrawal.destinationShort}',
+                  l.tp('order_withdrawal_destination', {'dest': withdrawal.destinationShort}),
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.7),
                     fontSize: 12,
                   ),
                 ),
                 Text(
-                  _formatDateTime(withdrawal.createdAt.toIso8601String()),
+                  _formatDateTime(withdrawal.createdAt.toIso8601String(), l),
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.5),
                     fontSize: 11,
@@ -3690,7 +3715,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 if (withdrawal.error != null) ...[
                   const SizedBox(height: 4),
                   Text(
-                    'Erro: ${withdrawal.error}',
+                    l.tp('order_withdrawal_error', {'error': withdrawal.error!}),
                     style: const TextStyle(
                       color: Colors.red,
                       fontSize: 11,
@@ -3706,6 +3731,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   Widget _buildConfirmPaymentButton() {
+    final l = AppLocalizations.of(context)!;
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
@@ -3717,7 +3743,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)
               )
             : const Icon(Icons.check_circle),
-        label: Text(_isConfirming ? 'Processando...' : 'Confirmar Pagamento Recebido'),
+        label: Text(_isConfirming ? l.t('order_processing') : l.t('order_confirm_payment_received')),
         style: ElevatedButton.styleFrom(
           backgroundColor: _isConfirming ? Colors.grey : Colors.green,
           foregroundColor: Colors.white,
@@ -3730,28 +3756,28 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   bool _isConfirming = false; // Prevenir duplo clique
   
   Future<void> _handleConfirmPayment() async {
-    if (_isConfirming) return; // Prevenir duplo clique
+    if (_isConfirming) return;
+    final l = AppLocalizations.of(context)!; // Prevenir duplo clique
     
     // Confirmar com o usuário
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Confirmar Pagamento'),
-        content: const Text(
-          'Você confirma que recebeu o pagamento conforme o comprovante enviado pelo provedor?\n\n'
-          'Ao confirmar, o valor será liberado para o provedor.',
+        title: Text(l.t('order_confirm_payment_title')),
+        content: Text(
+          l.t('order_confirm_payment_content'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
+            child: Text(l.t('cancel')),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
             ),
-            child: const Text('Confirmar'),
+            child: Text(l.t('confirm')),
           ),
         ],
       ),
@@ -3767,16 +3793,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     
     // Mostrar snackbar de feedback imediato
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
+      SnackBar(
         content: Row(
           children: [
-            SizedBox(
+            const SizedBox(
               width: 20,
               height: 20,
               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
             ),
-            SizedBox(width: 12),
-            Text('Processando confirmação...'),
+            const SizedBox(width: 12),
+            Text(l.t('order_processing_confirmation')),
           ],
         ),
         backgroundColor: const Color(0xFFFF6B6B),
@@ -3854,10 +3880,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         // NOVO: Mostrar aviso ao usuário mas continuar
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('⚠️ Aviso: Bro pode não receber a notificação automaticamente'),
-              backgroundColor: Color(0xFFFF6B6B),
-              duration: Duration(seconds: 3),
+            SnackBar(
+              content: Text(l.t('order_notification_warning')),
+              backgroundColor: const Color(0xFFFF6B6B),
+              duration: const Duration(seconds: 3),
             ),
           );
         }
@@ -3898,10 +3924,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('❌ Invoice do provedor não encontrado. Tente novamente em alguns segundos.'),
+            SnackBar(
+              content: Text(l.t('order_provider_invoice_not_found')),
               backgroundColor: Colors.red,
-              duration: Duration(seconds: 5),
+              duration: const Duration(seconds: 5),
             ),
           );
           setState(() {
@@ -3926,7 +3952,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         broLog('   liquidProvider.isInitialized: ${liquidProvider.isInitialized}');
         
         if (!breezProvider.isInitialized && !liquidProvider.isInitialized) {
-          paymentError = 'Carteira não inicializada. Abra sua carteira e tente novamente.';
+          paymentError = l.t('order_wallet_not_initialized');
         } else {
           // Retry: tentar até 3 vezes com intervalo de 2s
           for (int attempt = 1; attempt <= 3; attempt++) {
@@ -3955,7 +3981,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 paymentSuccess = true;
                 break;
               } else {
-                paymentError = payResult?['error']?.toString() ?? 'Falha desconhecida';
+                paymentError = payResult?['error']?.toString() ?? l.t('order_unknown_failure');
                 broLog('⚠️ Tentativa $attempt falhou: $paymentError');
               }
             } catch (e) {
@@ -3981,7 +4007,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('❌ Pagamento ao Bro falhou: $paymentError\nA ordem NÃO foi finalizada. Tente novamente.'),
+              content: Text(l.tp('order_payment_failure_detail', {'error': paymentError})),
               backgroundColor: Colors.red,
               duration: const Duration(seconds: 8),
             ),
@@ -4022,10 +4048,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('⚡ Pagamento enviado para o Bro!'),
+          SnackBar(
+            content: Text(l.t('order_payment_sent_to_bro')),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 3),
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -4085,8 +4111,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Pagamento confirmado!'),
+          SnackBar(
+            content: Text(l.t('order_payment_confirmed')),
             backgroundColor: Colors.green,
           ),
         );
@@ -4108,7 +4134,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro ao confirmar: $e'),
+            content: Text(l.tp('order_confirm_error', {'error': e.toString()})),
             backgroundColor: Colors.red,
           ),
         );
@@ -4122,6 +4148,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   /// v337: Botão para pagar o provedor após resolução de disputa a seu favor
   Widget _buildDisputePaymentButton() {
+    final l = AppLocalizations.of(context)!;
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
@@ -4134,8 +4161,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               )
             : const Icon(Icons.bolt),
         label: Text(_isPayingDisputeResolution
-            ? 'Enviando pagamento...'
-            : '⚡ Pagar Provedor (Decisão do Mediador)'),
+            ? l.t('order_sending_payment')
+            : l.t('order_pay_provider_mediation')),
         style: ElevatedButton.styleFrom(
           backgroundColor: _isPayingDisputeResolution ? Colors.grey : const Color(0xFFFF6B6B),
           foregroundColor: Colors.white,
@@ -4149,27 +4176,26 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   /// v338: autoMode=true pula diálogo de confirmação (auto-pay após resolução)
   Future<void> _handleDisputePayment({bool autoMode = false}) async {
     if (_isPayingDisputeResolution) return;
+    final l = AppLocalizations.of(context)!;
 
     // Confirmar com o usuário antes de pagar (skip em autoMode)
     if (!autoMode) {
       final confirm = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('⚖️ Pagamento por Mediação'),
+          title: Text(l.t('order_mediation_payment_title')),
           content: Text(
-            'O mediador decidiu a favor do provedor.\n\n'
-            'Valor: ${widget.amountSats} sats\n\n'
-            'Ao confirmar, o pagamento será enviado ao provedor via Lightning.',
+            l.tp('order_mediation_payment_content', {'sats': widget.amountSats.toString()}),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancelar'),
+              child: Text(l.t('cancel')),
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(context, true),
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF6B6B)),
-              child: const Text('Confirmar Pagamento'),
+              child: Text(l.t('order_mediation_confirm')),
             ),
           ],
         ),
@@ -4241,8 +4267,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
                 const SizedBox(width: 12),
                 Text(paymentTarget == 'provedor'
-                  ? 'Processando pagamento ao provedor...'
-                  : 'Processando reembolso ao admin...'),
+                  ? l.t('order_processing_provider_payment')
+                  : l.t('order_processing_admin_refund')),
               ],
             ),
             backgroundColor: const Color(0xFFFF6B6B),
@@ -4256,10 +4282,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('❌ Invoice do provedor não encontrado. O provedor precisa gerar um novo invoice.'),
+            SnackBar(
+              content: Text(l.t('order_provider_needs_new_invoice')),
               backgroundColor: Colors.red,
-              duration: Duration(seconds: 5),
+              duration: const Duration(seconds: 5),
             ),
           );
           setState(() => _isPayingDisputeResolution = false);
@@ -4277,7 +4303,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       final liquidProvider = context.read<BreezLiquidProvider>();
 
       if (!breezProvider.isInitialized && !liquidProvider.isInitialized) {
-        paymentError = 'Carteira não inicializada. Abra sua carteira e tente novamente.';
+        paymentError = l.t('order_wallet_not_initialized');
       } else {
         for (int attempt = 1; attempt <= 3; attempt++) {
           try {
@@ -4305,7 +4331,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               paymentSuccess = true;
               break;
             } else {
-              paymentError = payResult?['error']?.toString() ?? 'Falha desconhecida';
+              paymentError = payResult?['error']?.toString() ?? l.t('order_unknown_failure');
               broLog('⚠️ [DisputePay] Tentativa $attempt falhou: $paymentError');
             }
           } catch (e) {
@@ -4325,7 +4351,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('❌ Pagamento falhou: $paymentError\nTente novamente.'),
+              content: Text(l.tp('order_payment_failed_detail', {'error': paymentError})),
               backgroundColor: Colors.red,
               duration: const Duration(seconds: 8),
             ),
@@ -4377,8 +4403,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(paymentTarget == 'provedor'
-              ? '✅ Pagamento enviado ao provedor com sucesso!'
-              : '✅ Reembolso ao admin processado com sucesso!'),
+              ? l.t('order_payment_to_provider_success')
+              : l.t('order_refund_admin_success')),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 4),
           ),
@@ -4394,7 +4420,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro ao pagar provedor: $e'),
+            content: Text(l.tp('order_error_pay_provider', {'error': e.toString()})),
             backgroundColor: Colors.red,
           ),
         );
@@ -4405,6 +4431,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   /// Card mostrando resultado da resolução do mediador
   Widget _buildDisputeResolutionCard() {
+    final l = AppLocalizations.of(context)!;
     final resolution = _disputeResolution!;
     final isUserFavor = resolution['resolution'] == 'resolved_user';
     final notes = resolution['notes'] as String? ?? '';
@@ -4445,7 +4472,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '⚖️ Decisão do Mediador',
+                        l.t('order_mediator_decision'),
                         style: TextStyle(
                           fontSize: 15, fontWeight: FontWeight.bold,
                           color: isUserFavor ? Colors.blue : Colors.green,
@@ -4454,10 +4481,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       const SizedBox(height: 2),
                       Text(
                         isUserFavor
-                            ? 'Resolvida a seu favor'
+                            ? l.t('order_resolved_in_your_favor')
                             : _disputePaymentPending
-                                ? 'Resolvida a favor do provedor — pagamento pendente'
-                                : 'Resolvida a favor do provedor — pago',
+                                ? l.t('order_resolved_provider_pending')
+                                : l.t('order_resolved_provider_paid'),
                         style: const TextStyle(color: Colors.white70, fontSize: 12),
                       ),
                     ],
@@ -4478,7 +4505,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Mensagem do mediador:', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                    Text(l.t('order_mediator_message'), style: const TextStyle(color: Colors.white54, fontSize: 11)),
                     const SizedBox(height: 6),
                     Text(notes, style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.4)),
                   ],
@@ -4499,10 +4526,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   Widget _buildDisputedCard() {
+    final l = AppLocalizations.of(context)!;
     // Carregar dados da disputa se não tivermos
     final disputeService = DisputeService();
     final dispute = disputeService.getDisputeByOrderId(widget.orderId);
-    final reason = _disputeReason ?? dispute?.reason ?? 'Não informado';
+    final reason = _disputeReason ?? dispute?.reason ?? l.t('order_not_informed');
     final desc = _disputeDescription ?? dispute?.description ?? '';
     final createdAt = _disputeCreatedAt ?? dispute?.createdAt ?? DateTime.now();
     final providerId = _orderDetails?['providerId'] ?? _orderDetails?['provider_id'] ?? '';
@@ -4544,7 +4572,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        dispute?.status == 'in_review' ? 'Disputa em Análise' : 'Disputa Aberta',
+                        dispute?.status == 'in_review' ? l.t('order_dispute_in_review') : l.t('order_dispute_open'),
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -4554,8 +4582,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       const SizedBox(height: 4),
                       Text(
                         dispute?.status == 'in_review'
-                            ? 'Um mediador está analisando seu caso'
-                            : 'Aguardando revisão do mediador',
+                            ? l.t('order_mediator_reviewing')
+                            : l.t('order_awaiting_mediator'),
                         style: const TextStyle(fontSize: 14, color: Colors.white70),
                       ),
                     ],
@@ -4577,8 +4605,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    '📋 Relatório da Disputa',
+                  Text(
+                    l.t('order_dispute_report'),
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 15,
@@ -4588,40 +4616,40 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   const SizedBox(height: 12),
                   
                   // ID da Ordem
-                  _disputeReportRow('🆔 Ordem', widget.orderId.length > 16 
+                  _disputeReportRow(l.t('order_dispute_order_label'), widget.orderId.length > 16 
                       ? '${widget.orderId.substring(0, 16)}...' 
                       : widget.orderId, isMonospace: true),
                   const SizedBox(height: 6),
                   
                   // Data e hora
-                  _disputeReportRow('📅 Data', dateStr),
+                  _disputeReportRow(l.t('order_dispute_date_label'), dateStr),
                   const SizedBox(height: 6),
                   
                   // Valor
-                  _disputeReportRow('💰 Valor', 'R\$ ${widget.amountBrl.toStringAsFixed(2)}'),
+                  _disputeReportRow(l.t('order_dispute_value_label'), 'R\$ ${widget.amountBrl.toStringAsFixed(2)}'),
                   const SizedBox(height: 6),
-                  _disputeReportRow('₿ Sats', '${widget.amountSats}'),
+                  _disputeReportRow(l.t('order_dispute_sats_label'), '${widget.amountSats}'),
                   const SizedBox(height: 6),
                   
                   // Usuários
                   if (userPubkey.isNotEmpty) ...[
-                    _disputeReportRow('👤 Usuário', '${userPubkey.toString().substring(0, 16)}...', isMonospace: true),
+                    _disputeReportRow(l.t('order_dispute_user_label'), '${userPubkey.toString().substring(0, 16)}...', isMonospace: true),
                     const SizedBox(height: 6),
                   ],
                   if (providerId.isNotEmpty) ...[
-                    _disputeReportRow('🏪 Provedor', '${providerId.toString().substring(0, 16)}...', isMonospace: true),
+                    _disputeReportRow(l.t('order_dispute_provider_label'), '${providerId.toString().substring(0, 16)}...', isMonospace: true),
                     const SizedBox(height: 6),
                   ],
                   
                   const Divider(color: Colors.white24, height: 20),
                   
                   // Motivo
-                  _disputeReportRow('📌 Motivo', reason),
+                  _disputeReportRow(l.t('order_dispute_motive_label'), reason),
                   const SizedBox(height: 6),
                   
                   // Descrição
                   if (desc.isNotEmpty) ...[
-                    const Text('📝 Descrição:', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                    Text(l.t('order_dispute_description'), style: const TextStyle(color: Colors.white54, fontSize: 12)),
                     const SizedBox(height: 4),
                     Container(
                       width: double.infinity,
@@ -4641,8 +4669,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   // Foto do comprovante (se disponível)
                   if (proofImage != null && proofImage.isNotEmpty) ...[
                     const Divider(color: Colors.white24, height: 20),
-                    const Text(
-                      '📸 Comprovante do Provedor',
+                    Text(
+                      l.t('order_provider_receipt'),
                       style: TextStyle(color: Colors.white54, fontSize: 12),
                     ),
                     const SizedBox(height: 8),
@@ -4657,16 +4685,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                               errorBuilder: (_, __, ___) => Container(
                                 height: 100,
                                 color: Colors.black26,
-                                child: const Center(
-                                  child: Text('Imagem indisponível', style: TextStyle(color: Colors.white38)),
+                                child: Center(
+                                  child: Text(l.t('order_image_unavailable'), style: const TextStyle(color: Colors.white38)),
                                 ),
                               ),
                             )
                           : Container(
                               height: 100,
                               color: Colors.black26,
-                              child: const Center(
-                                child: Text('Comprovante anexado', style: TextStyle(color: Colors.white38)),
+                              child: Center(
+                                child: Text(l.t('order_proof_attached'), style: const TextStyle(color: Colors.white38)),
                               ),
                             ),
                     ),
@@ -4688,8 +4716,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      '📎 Sua Evidência Anexada',
+                    Text(
+                      l.t('order_your_evidence_attached'),
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
@@ -4707,8 +4735,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         errorBuilder: (_, __, ___) => Container(
                           height: 60,
                           color: Colors.black26,
-                          child: const Center(
-                            child: Text('Imagem anexada ✓', style: TextStyle(color: Colors.blue)),
+                          child: Center(
+                            child: Text(l.t('order_image_attached'), style: const TextStyle(color: Colors.blue)),
                           ),
                         ),
                       ),
@@ -4726,14 +4754,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 color: Colors.orange.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  Icon(Icons.access_time, color: Colors.orange, size: 20),
-                  SizedBox(width: 8),
+                  const Icon(Icons.access_time, color: Colors.orange, size: 20),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Tempo estimado: 24-72 horas',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.white70),
+                      l.t('order_estimated_time'),
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.white70),
                     ),
                   ),
                 ],
@@ -4759,7 +4787,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         const Icon(Icons.message, color: Colors.purple, size: 18),
                         const SizedBox(width: 8),
                         Text(
-                          'Mensagens do Mediador (${_mediatorMessages.length})',
+                          l.tp('order_mediator_messages', {'count': _mediatorMessages.length.toString()}),
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
@@ -4793,7 +4821,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                               children: [
                                 const Icon(Icons.admin_panel_settings, color: Colors.purple, size: 14),
                                 const SizedBox(width: 6),
-                                const Text('Mediador', style: TextStyle(color: Colors.purple, fontSize: 11, fontWeight: FontWeight.bold)),
+                                Text(l.t('order_mediator'), style: const TextStyle(color: Colors.purple, fontSize: 11, fontWeight: FontWeight.bold)),
                                 const Spacer(),
                                 if (dateStr.isNotEmpty)
                                   Text(dateStr, style: const TextStyle(color: Colors.white38, fontSize: 10)),
@@ -4817,7 +4845,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 child: OutlinedButton.icon(
                   onPressed: () => _showSendEvidenceDialog('user'),
                   icon: const Icon(Icons.reply, size: 18),
-                  label: const Text('Responder ao Mediador'),
+                  label: Text(l.t('order_reply_to_mediator')),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.purple,
                     side: const BorderSide(color: Colors.purple),
@@ -4836,12 +4864,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Colors.purple.withOpacity(0.2)),
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purple)),
-                    SizedBox(width: 10),
-                    Text('Buscando mensagens do mediador...', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                    const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purple)),
+                    const SizedBox(width: 10),
+                    Text(l.t('order_fetching_messages'), style: const TextStyle(color: Colors.white38, fontSize: 12)),
                   ],
                 ),
               ),
@@ -4854,7 +4882,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               child: OutlinedButton.icon(
                 onPressed: () => _showSendEvidenceDialog('user'),
                 icon: const Icon(Icons.add_photo_alternate, size: 20),
-                label: const Text('Enviar Evidência / Comprovante'),
+                label: Text(l.t('order_send_evidence')),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.blue,
                   side: const BorderSide(color: Colors.blue),
@@ -4895,6 +4923,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   /// v236: Dialog para enviar evidência adicional na disputa
   void _showSendEvidenceDialog(String role) {
+    final l = AppLocalizations.of(context)!;
     final descController = TextEditingController();
     File? evidencePhoto;
     String? evidenceBase64;
@@ -4923,9 +4952,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     decoration: BoxDecoration(color: Colors.grey[600], borderRadius: BorderRadius.circular(2))),
                 ),
                 const SizedBox(height: 20),
-                const Text('📎 Enviar Evidência', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                Text(l.t('order_send_evidence_title'), style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                Text('Ordem: ${widget.orderId.substring(0, 8)}...', style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 14)),
+                Text(l.tp('order_order_id_short', {'id': widget.orderId.substring(0, 8)}), style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 14)),
                 const SizedBox(height: 16),
                 
                 // Dicas
@@ -4936,32 +4965,32 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: Colors.blue.withOpacity(0.2)),
                   ),
-                  child: const Column(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('💡 Evidências aceitas:', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 13)),
-                      SizedBox(height: 6),
-                      Text('• Print do site do beneficiário (SANEPAR, CEMIG, etc.) mostrando status da conta', style: TextStyle(color: Colors.white70, fontSize: 12)),
-                      SizedBox(height: 3),
-                      Text('• Print do Registrato (registrato.bcb.gov.br) mostrando PIX enviados/recebidos', style: TextStyle(color: Colors.white70, fontSize: 12)),
-                      SizedBox(height: 3),
-                      Text('• Comprovante completo com código E2E do PIX', style: TextStyle(color: Colors.white70, fontSize: 12)),
-                      SizedBox(height: 3),
-                      Text('• Qualquer documento que comprove seu lado', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                      Text(l.t('order_accepted_evidence'), style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 13)),
+                      const SizedBox(height: 6),
+                      Text(l.t('order_evidence_tip_site'), style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                      const SizedBox(height: 3),
+                      Text(l.t('order_evidence_tip_registrato'), style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                      const SizedBox(height: 3),
+                      Text(l.t('order_evidence_tip_e2e'), style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                      const SizedBox(height: 3),
+                      Text(l.t('order_evidence_tip_any'), style: const TextStyle(color: Colors.white70, fontSize: 12)),
                     ],
                   ),
                 ),
                 const SizedBox(height: 16),
                 
                 // Descrição
-                const Text('Descrição (opcional)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                Text(l.t('order_evidence_description'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
                 TextField(
                   controller: descController,
                   maxLines: 3,
                   style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
-                    hintText: 'Explique o que esta evidência comprova...',
+                    hintText: l.t('order_evidence_description_hint'),
                     hintStyle: const TextStyle(color: Color(0x66FFFFFF)),
                     filled: true, fillColor: const Color(0x0DFFFFFF),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0x33FFFFFF))),
@@ -4972,7 +5001,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 const SizedBox(height: 16),
                 
                 // Foto
-                const Text('📸 Foto / Print (opcional)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                Text(l.t('order_evidence_photo'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
                 if (evidencePhoto != null) ...[
                   ClipRRect(
@@ -5010,7 +5039,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                             }
                           },
                           icon: const Icon(Icons.photo_library, size: 18),
-                          label: const Text('Galeria'),
+                          label: Text(l.t('order_gallery')),
                           style: OutlinedButton.styleFrom(foregroundColor: Colors.blue, side: const BorderSide(color: Colors.blue)),
                         ),
                       ),
@@ -5028,7 +5057,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                             }
                           },
                           icon: const Icon(Icons.camera_alt, size: 18),
-                          label: const Text('Câmera'),
+                          label: Text(l.t('order_camera')),
                           style: OutlinedButton.styleFrom(foregroundColor: Colors.blue, side: const BorderSide(color: Colors.blue)),
                         ),
                       ),
@@ -5059,21 +5088,21 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         if (mounted) {
                           Navigator.pop(context);
                           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                            content: Text(success ? '✅ Evidência enviada! O mediador irá analisar.' : '❌ Erro ao enviar'),
+                            content: Text(success ? l.t('order_evidence_sent') : l.t('order_evidence_error')),
                             backgroundColor: success ? Colors.green : Colors.red,
                           ));
                         }
                       } catch (e) {
                         setModalState(() => sending = false);
                         if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l.tp('order_error_generic', {'error': e.toString()})), backgroundColor: Colors.red));
                         }
                       }
                     },
                     icon: sending
                         ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                         : const Icon(Icons.send),
-                    label: Text(sending ? 'Enviando...' : (evidenceBase64 != null ? 'Enviar Evidência' : 'Enviar Mensagem')),
+                    label: Text(sending ? l.t('order_evidence_sending') : (evidenceBase64 != null ? l.t('order_submit_evidence') : l.t('order_submit_message'))),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue,
                       disabledBackgroundColor: Colors.grey[700],

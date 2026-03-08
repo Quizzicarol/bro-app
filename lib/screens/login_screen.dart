@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:nostr/nostr.dart';
+import '../l10n/app_localizations.dart';
 import '../services/nostr_service.dart';
 import '../services/nostr_profile_service.dart';
 import '../services/storage_service.dart';
@@ -146,14 +147,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: Colors.red.withOpacity(0.3)),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.warning, color: Colors.red, size: 20),
-                    SizedBox(width: 8),
+                    const Icon(Icons.warning, color: Colors.red, size: 20),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'GUARDE ESTAS 12 PALAVRAS!\nSem elas você PERDE acesso à conta e aos fundos.',
-                        style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
+                        AppLocalizations.of(context).t('login_save_12_words'),
+                        style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ],
@@ -168,14 +169,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: const Color(0xFF3DE98C).withOpacity(0.3)),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.info_outline, color: Color(0xFF3DE98C), size: 18),
-                    SizedBox(width: 8),
+                    const Icon(Icons.info_outline, color: Color(0xFF3DE98C), size: 18),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Esta seed controla sua identidade Nostr E sua carteira Lightning!',
-                        style: TextStyle(color: Color(0xFF3DE98C), fontSize: 12),
+                        AppLocalizations.of(context).t('login_seed_controls_identity'),
+                        style: const TextStyle(color: Color(0xFF3DE98C), fontSize: 12),
                       ),
                     ),
                   ],
@@ -183,8 +184,8 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               
               const SizedBox(height: 16),
-              const Text('🌱 Sua Seed (12 palavras):', 
-                style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+              Text(AppLocalizations.of(context).t('login_your_seed_label'), 
+                style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.all(12),
@@ -199,9 +200,9 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               
               const SizedBox(height: 16),
-              const Text(
-                '💡 Dica: Anote em papel e guarde em local seguro. Nunca compartilhe!',
-                style: TextStyle(color: Colors.white54, fontSize: 11),
+              Text(
+                AppLocalizations.of(context).t('login_tip_write_down'),
+                style: const TextStyle(color: Colors.white54, fontSize: 11),
               ),
             ],
           ),
@@ -226,7 +227,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 );
               }
             },
-            child: const Text('📋 Copiar', style: TextStyle(color: Color(0xFFFF9800))),
+            child: Text(AppLocalizations.of(context).t('login_copy_button'), style: const TextStyle(color: Color(0xFFFF9800))),
           ),
           ElevatedButton(
             onPressed: () {
@@ -235,7 +236,7 @@ class _LoginScreenState extends State<LoginScreen> {
               _login();
             },
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF3DE98C)),
-            child: const Text('Entendi, Guardei!', style: TextStyle(color: Colors.black)),
+            child: Text(AppLocalizations.of(context).t('login_understood_saved'), style: const TextStyle(color: Colors.black)),
           ),
         ],
       ),
@@ -250,11 +251,11 @@ class _LoginScreenState extends State<LoginScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.key, color: Color(0xFF3DE98C), size: 24),
-            SizedBox(width: 12),
-            Text('Nova Conta Criada!', style: TextStyle(color: Colors.white)),
+            const Icon(Icons.key, color: Color(0xFF3DE98C), size: 24),
+            const SizedBox(width: 12),
+            Text(AppLocalizations.of(context).t('login_new_account_created'), style: const TextStyle(color: Colors.white)),
           ],
         ),
         content: SingleChildScrollView(
@@ -269,14 +270,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: Colors.red.withOpacity(0.3)),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.warning, color: Colors.red, size: 20),
-                    SizedBox(width: 8),
+                    const Icon(Icons.warning, color: Colors.red, size: 20),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'GUARDE ESTAS INFORMAÇÕES!\nSem elas você PERDE acesso à conta e aos fundos.',
-                        style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
+                        AppLocalizations.of(context).t('login_save_info_warning'),
+                        style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ],
@@ -284,8 +285,8 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 16),
               
-              const Text('🔑 Chave Privada Nostr:', 
-                style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+              Text(AppLocalizations.of(context).t('login_nostr_private_key_label'), 
+                style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
               const SizedBox(height: 4),
               Container(
                 padding: const EdgeInsets.all(8),
@@ -300,8 +301,8 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               
               const SizedBox(height: 16),
-              const Text('💰 Seed da Carteira Bitcoin:', 
-                style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+              Text(AppLocalizations.of(context).t('login_bitcoin_seed_label'), 
+                style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
               const SizedBox(height: 4),
               Container(
                 padding: const EdgeInsets.all(8),
@@ -316,9 +317,9 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               
               const SizedBox(height: 16),
-              const Text(
-                '💡 Dica: Use a chave Nostr para login e a seed da carteira para recuperar seus fundos Bitcoin se necessário.',
-                style: TextStyle(color: Colors.white54, fontSize: 11),
+              Text(
+                AppLocalizations.of(context).t('login_tip_key_and_seed'),
+                style: const TextStyle(color: Colors.white54, fontSize: 11),
               ),
             ],
           ),
@@ -345,12 +346,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 );
               }
             },
-            child: const Text('📋 Copiar Tudo', style: TextStyle(color: Color(0xFFFF9800))),
+            child: Text(AppLocalizations.of(context).t('login_copy_all'), style: const TextStyle(color: Color(0xFFFF9800))),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context),
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF3DE98C)),
-            child: const Text('Entendi, Guardei!', style: TextStyle(color: Colors.black)),
+            child: Text(AppLocalizations.of(context).t('login_understood_saved'), style: const TextStyle(color: Colors.black)),
           ),
         ],
       ),
@@ -368,11 +369,11 @@ class _LoginScreenState extends State<LoginScreen> {
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: const Color(0xFF1A1A1A),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.spa, color: Color(0xFF3DE98C), size: 24),
-              SizedBox(width: 12),
-              Text('Login via Seed (NIP-06)', style: TextStyle(color: Colors.white, fontSize: 18)),
+              const Icon(Icons.spa, color: Color(0xFF3DE98C), size: 24),
+              const SizedBox(width: 12),
+              Text(AppLocalizations.of(context).t('login_via_seed_nip06'), style: const TextStyle(color: Colors.white, fontSize: 18)),
             ],
           ),
           content: SingleChildScrollView(
@@ -387,14 +388,14 @@ class _LoginScreenState extends State<LoginScreen> {
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: const Color(0xFF3DE98C).withOpacity(0.3)),
                   ),
-                  child: const Row(
+                  child: Row(
                     children: [
-                      Icon(Icons.info_outline, color: Color(0xFF3DE98C), size: 18),
-                      SizedBox(width: 8),
+                      const Icon(Icons.info_outline, color: Color(0xFF3DE98C), size: 18),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'A seed BIP-39 deriva sua chave Nostr E sua carteira Lightning!',
-                          style: TextStyle(color: Color(0xFF3DE98C), fontSize: 12),
+                          AppLocalizations.of(context).t('login_seed_derives_keys'),
+                          style: const TextStyle(color: Color(0xFF3DE98C), fontSize: 12),
                         ),
                       ),
                     ],
@@ -407,7 +408,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   maxLines: showSeed ? 3 : 1,
                   style: const TextStyle(color: Colors.white, fontSize: 14),
                   decoration: InputDecoration(
-                    labelText: 'Seed de 12 ou 24 palavras',
+                    labelText: AppLocalizations.of(context).t('login_seed_12_or_24'),
                     labelStyle: const TextStyle(color: Color(0x99FFFFFF)),
                     hintText: 'abandon ability able about...',
                     hintStyle: const TextStyle(color: Color(0x66FFFFFF)),
@@ -438,7 +439,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         seedController.text = newSeed;
                         setDialogState(() => showSeed = true);
                       },
-                      child: const Text('Gerar nova seed', style: TextStyle(color: Color(0xFF3DE98C))),
+                      child: Text(AppLocalizations.of(context).t('login_generate_new_seed'), style: const TextStyle(color: Color(0xFF3DE98C))),
                     ),
                   ],
                 ),
@@ -448,7 +449,7 @@ class _LoginScreenState extends State<LoginScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancelar', style: TextStyle(color: Color(0x99FFFFFF))),
+              child: Text(AppLocalizations.of(context).t('cancel'), style: const TextStyle(color: Color(0x99FFFFFF))),
             ),
             ElevatedButton(
               onPressed: () {
@@ -459,15 +460,15 @@ class _LoginScreenState extends State<LoginScreen> {
                   _detectInputType(seed);
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Seed inválida! Verifique as 12 ou 24 palavras.'),
+                    SnackBar(
+                      content: Text(AppLocalizations.of(context).t('login_invalid_seed')),
                       backgroundColor: Colors.red,
                     ),
                   );
                 }
               },
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF3DE98C)),
-              child: const Text('Usar Seed', style: TextStyle(color: Colors.black)),
+              child: Text(AppLocalizations.of(context).t('login_use_seed'), style: const TextStyle(color: Colors.black)),
             ),
           ],
         ),
@@ -516,13 +517,13 @@ class _LoginScreenState extends State<LoginScreen> {
         builder: (dialogContext, setDialogState) => AlertDialog(
           backgroundColor: const Color(0xFF1C1C1E),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.settings, color: Color(0xFFFF6B6B)),
-              SizedBox(width: 10),
+              const Icon(Icons.settings, color: Color(0xFFFF6B6B)),
+              const SizedBox(width: 10),
               Text(
-                'Login Avançado',
-                style: TextStyle(color: Colors.white, fontSize: 18),
+                AppLocalizations.of(context).t('login_advanced'),
+                style: const TextStyle(color: Colors.white, fontSize: 18),
               ),
             ],
           ),
@@ -539,30 +540,29 @@ class _LoginScreenState extends State<LoginScreen> {
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: const Color(0x33FF6B6B)),
                   ),
-                  child: const Text(
-                    'Use este login se sua conta Nostr foi criada SEPARADAMENTE da sua carteira Bitcoin.\n\n'
-                    'Isso vinculará sua identidade Nostr à sua carteira Lightning permanentemente.',
-                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  child: Text(
+                    AppLocalizations.of(context).t('login_advanced_explanation'),
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
                   ),
                 ),
                 const SizedBox(height: 16),
 
                 // Campo 1: Chave Nostr
-                const Text(
-                  '1. Chave Privada Nostr',
-                  style: TextStyle(color: Color(0xFF9C27B0), fontWeight: FontWeight.bold, fontSize: 14),
+                Text(
+                  AppLocalizations.of(context).t('login_nostr_key_section'),
+                  style: const TextStyle(color: Color(0xFF9C27B0), fontWeight: FontWeight.bold, fontSize: 14),
                 ),
                 const SizedBox(height: 4),
-                const Text(
-                  'Sua chave privada (nsec ou hex)',
-                  style: TextStyle(color: Colors.white54, fontSize: 11),
+                Text(
+                  AppLocalizations.of(context).t('login_your_private_key_hint'),
+                  style: const TextStyle(color: Colors.white54, fontSize: 11),
                 ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: nostrKeyController,
                   style: const TextStyle(color: Colors.white, fontSize: 13),
                   decoration: InputDecoration(
-                    hintText: 'nsec1... ou hex de 64 caracteres',
+                    hintText: AppLocalizations.of(context).t('login_nsec_or_hex_hint'),
                     hintStyle: const TextStyle(color: Colors.white24, fontSize: 12),
                     filled: true,
                     fillColor: const Color(0xFF2C2C2E),
@@ -577,21 +577,21 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 16),
 
                 // Campo 2: Seed Bitcoin
-                const Text(
-                  '2. Seed da Carteira Bitcoin',
-                  style: TextStyle(color: Color(0xFF3DE98C), fontWeight: FontWeight.bold, fontSize: 14),
+                Text(
+                  AppLocalizations.of(context).t('login_bitcoin_seed_section'),
+                  style: const TextStyle(color: Color(0xFF3DE98C), fontWeight: FontWeight.bold, fontSize: 14),
                 ),
                 const SizedBox(height: 4),
-                const Text(
-                  '12 palavras da sua carteira Lightning',
-                  style: TextStyle(color: Colors.white54, fontSize: 11),
+                Text(
+                  AppLocalizations.of(context).t('login_12_words_lightning'),
+                  style: const TextStyle(color: Colors.white54, fontSize: 11),
                 ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: seedController,
                   style: const TextStyle(color: Colors.white, fontSize: 13),
                   decoration: InputDecoration(
-                    hintText: 'palavra1 palavra2 palavra3...',
+                    hintText: AppLocalizations.of(context).t('login_words_placeholder'),
                     hintStyle: const TextStyle(color: Colors.white24, fontSize: 12),
                     filled: true,
                     fillColor: const Color(0xFF2C2C2E),
@@ -625,7 +625,7 @@ class _LoginScreenState extends State<LoginScreen> {
           actions: [
             TextButton(
               onPressed: dialogLoading ? null : () => Navigator.pop(dialogContext),
-              child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
+              child: Text(AppLocalizations.of(dialogContext).t('cancel'), style: const TextStyle(color: Colors.white54)),
             ),
             ElevatedButton(
               onPressed: dialogLoading ? null : () async {
@@ -634,19 +634,19 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 // Validações
                 if (nostrKey.isEmpty) {
-                  setDialogState(() => dialogError = 'Digite sua chave privada Nostr');
+                  setDialogState(() => dialogError = AppLocalizations.of(dialogContext).t('login_enter_nostr_key_error'));
                   return;
                 }
                 if (seed.isEmpty) {
-                  setDialogState(() => dialogError = 'Digite a seed da carteira');
+                  setDialogState(() => dialogError = AppLocalizations.of(dialogContext).t('login_enter_wallet_seed_error'));
                   return;
                 }
                 if (!_nostrService.isValidPrivateKey(nostrKey)) {
-                  setDialogState(() => dialogError = 'Chave Nostr inválida');
+                  setDialogState(() => dialogError = AppLocalizations.of(dialogContext).t('login_invalid_nostr_key'));
                   return;
                 }
                 if (!_nip06Service.validateMnemonic(seed)) {
-                  setDialogState(() => dialogError = 'Seed inválida (use 12 ou 24 palavras BIP-39)');
+                  setDialogState(() => dialogError = AppLocalizations.of(dialogContext).t('login_invalid_seed_bip39'));
                   return;
                 }
 
@@ -718,7 +718,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                     )
-                  : const Text('Vincular e Entrar', style: TextStyle(color: Colors.white)),
+                  : Text(AppLocalizations.of(dialogContext).t('login_link_and_enter'), style: const TextStyle(color: Colors.white)),
             ),
           ],
         ),
@@ -741,14 +741,14 @@ class _LoginScreenState extends State<LoginScreen> {
     final input = _privateKeyController.text.trim();
 
     if (input.isEmpty) {
-      setState(() => _error = 'Digite sua chave privada Nostr (nsec ou hex)');
+      setState(() => _error = AppLocalizations.of(context).t('login_enter_key_error'));
       return;
     }
 
     setState(() {
       _isLoading = true;
       _error = null;
-      _statusMessage = 'Validando...';
+      _statusMessage = AppLocalizations.of(context).t('login_validating');
     });
 
     try {
@@ -768,7 +768,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (isSeed) {
         // LOGIN VIA NIP-06 (SEED)
         broLog('🌱 Login via NIP-06 (seed de ${words.length} palavras)');
-        setState(() => _statusMessage = 'Derivando chaves da seed...');
+        setState(() => _statusMessage = AppLocalizations.of(context).t('login_deriving_keys'));
         
         mnemonic = input.toLowerCase();
         final keys = _nip06Service.deriveNostrKeys(mnemonic);
@@ -844,7 +844,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // Buscar perfil Nostr dos relays (com timeout)
       if (mounted) {
-        setState(() => _statusMessage = 'Buscando perfil Nostr...');
+        setState(() => _statusMessage = AppLocalizations.of(context).t('login_fetching_profile'));
       }
       
       try {
@@ -868,7 +868,7 @@ class _LoginScreenState extends State<LoginScreen> {
           if (mounted && profile.name != null) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Bem-vindo, ${profile.preferredName}!'),
+                content: Text(AppLocalizations.of(context).tp('login_welcome_user', {'name': profile.preferredName})),
                 backgroundColor: const Color(0xFF3DE98C),
                 duration: const Duration(seconds: 2),
               ),
@@ -885,7 +885,7 @@ class _LoginScreenState extends State<LoginScreen> {
       // Inicializar Breez SDK
       if (!kIsWeb) {
         if (mounted) {
-          setState(() => _statusMessage = 'Inicializando carteira Lightning...');
+          setState(() => _statusMessage = AppLocalizations.of(context).t('login_initializing_wallet'));
         }
         try {
           final breezProvider = context.read<BreezProvider>();
@@ -931,7 +931,7 @@ class _LoginScreenState extends State<LoginScreen> {
             if (!success && mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('Carteira inicializará em background'),
+                  content: Text('Wallet will initialize in background'),
                   backgroundColor: Colors.orange,
                   duration: Duration(seconds: 2),
                 ),
@@ -945,7 +945,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // Carregar ordens do usuário
       if (mounted) {
-        setState(() => _statusMessage = 'Carregando histórico...');
+        setState(() => _statusMessage = AppLocalizations.of(context).t('login_loading_history'));
         final orderProvider = context.read<OrderProvider>();
         await orderProvider.loadOrdersForUser(publicKey);
         broLog('✅ Ordens carregadas para ${publicKey.substring(0, 8)}...');
@@ -958,7 +958,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } catch (e) {
       broLog('Erro no login: $e');
-      setState(() => _error = 'Erro no login: ${e.toString()}');
+      setState(() => _error = AppLocalizations.of(context).tp('login_error', {'error': e.toString()}));
     } finally {
       if (mounted) {
         setState(() {
@@ -1023,9 +1023,9 @@ class _LoginScreenState extends State<LoginScreen> {
         const SizedBox(height: 12),
         
         // Slogan minimalista
-        const Text(
-          'Escambo digital via Nostr',
-          style: TextStyle(
+        Text(
+          AppLocalizations.of(context).t('login_slogan'),
+          style: const TextStyle(
             fontSize: 15,
             color: Color(0x99FFFFFF),
             fontWeight: FontWeight.w400,
@@ -1105,14 +1105,14 @@ class _LoginScreenState extends State<LoginScreen> {
                       color: Colors.white,
                     ),
                   )
-                : const Row(
+                : Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.add_circle_outline, color: Colors.white, size: 20),
-                      SizedBox(width: 10),
+                      const Icon(Icons.add_circle_outline, color: Colors.white, size: 20),
+                      const SizedBox(width: 10),
                       Text(
-                        'Nova Conta',
-                        style: TextStyle(
+                        AppLocalizations.of(context).t('login_new_account_button'),
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                           color: Colors.white,
@@ -1130,9 +1130,9 @@ class _LoginScreenState extends State<LoginScreen> {
           onPressed: () {
             setState(() => _showWelcomeScreen = false);
           },
-          child: const Text(
-            'Já tenho conta',
-            style: TextStyle(
+          child: Text(
+            AppLocalizations.of(context).t('login_already_have_account'),
+            style: const TextStyle(
               color: Color(0xFF3DE98C),
               fontSize: 14,
               fontWeight: FontWeight.w500,
@@ -1206,9 +1206,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      'Entre com chave privada Nostr (nsec/hex) ou seed NIP-06',
-                      style: TextStyle(
+                    Text(
+                      AppLocalizations.of(context).t('login_enter_key_subtitle'),
+                      style: const TextStyle(
                         fontSize: 11,
                         color: Color(0x99FFFFFF),
                       ),
@@ -1225,12 +1225,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       onChanged: _detectInputType,
                       decoration: InputDecoration(
                         labelText: _isSeedPhrase 
-                            ? '🌱 Seed NIP-06 detectada!' 
-                            : 'Chave Privada ou Seed',
+                            ? AppLocalizations.of(context).t('login_seed_detected') 
+                            : AppLocalizations.of(context).t('login_private_key_or_seed'),
                         labelStyle: TextStyle(
                           color: _isSeedPhrase ? const Color(0xFF3DE98C) : const Color(0xB3FFFFFF),
                         ),
-                        hintText: 'nsec1... ou 12 palavras da seed',
+                        hintText: AppLocalizations.of(context).t('login_nsec_or_seed_hint'),
                         hintStyle: const TextStyle(color: Color(0x66FFFFFF)),
                         prefixIcon: Icon(
                           _isSeedPhrase ? Icons.spa : Icons.vpn_key,
@@ -1350,14 +1350,14 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ],
                                 ],
                               )
-                            : const Row(
+                            : Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(Icons.login, color: Colors.white),
-                                  SizedBox(width: 8),
+                                  const Icon(Icons.login, color: Colors.white),
+                                  const SizedBox(width: 8),
                                   Text(
-                                    'Entrar',
-                                    style: TextStyle(
+                                    AppLocalizations.of(context).t('login_enter_button'),
+                                    style: const TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w600,
                                       color: Colors.white,
@@ -1375,14 +1375,14 @@ class _LoginScreenState extends State<LoginScreen> {
                       style: TextButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 10),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.settings, color: Colors.white54, size: 16),
-                          SizedBox(width: 6),
+                          const Icon(Icons.settings, color: Colors.white54, size: 16),
+                          const SizedBox(width: 6),
                           Text(
-                            'Login Avançado (Nostr + Seed separados)',
-                            style: TextStyle(
+                            AppLocalizations.of(context).t('login_advanced_separate'),
+                            style: const TextStyle(
                               color: Colors.white54,
                               fontSize: 12,
                             ),

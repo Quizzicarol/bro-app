@@ -1,5 +1,6 @@
 ﻿import 'dart:math';
 import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter/services.dart';
 import '../services/provider_service.dart';
@@ -61,16 +62,17 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: Row(
-          children: const [
-            Icon(Icons.store, color: Color(0xFF4CAF50)),
-            SizedBox(width: 8),
-            Text('Modo Provedor', style: TextStyle(fontWeight: FontWeight.bold)),
+          children: [
+            const Icon(Icons.store, color: Color(0xFF4CAF50)),
+            const SizedBox(width: 8),
+            Text(l.t('prov_dash_title'), style: const TextStyle(fontWeight: FontWeight.bold)),
           ],
         ),
         actions: [
@@ -117,6 +119,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
   }
 
   Widget _buildProviderBanner() {
+    final l = AppLocalizations.of(context)!;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -128,22 +131,22 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
-        children: const [
-          Icon(Icons.construction, size: 48, color: Colors.white),
-          SizedBox(height: 12),
+        children: [
+          const Icon(Icons.construction, size: 48, color: Colors.white),
+          const SizedBox(height: 12),
           Text(
-            '🔧 Modo Provedor Ativo',
-            style: TextStyle(
+            l.t('prov_dash_active'),
+            style: const TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
               color: Colors.white,
             ),
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Text(
-            'Aceite ordens e ajude usuários a pagar contas em troca de Bitcoin',
+            l.t('prov_dash_desc'),
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white70, fontSize: 14),
+            style: const TextStyle(color: Colors.white70, fontSize: 14),
           ),
         ],
       ),
@@ -151,6 +154,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
   }
 
   Widget _buildStatsGrid() {
+    final l = AppLocalizations.of(context)!;
     final stats = _stats ?? {};
     final availableCount = _availableOrders.length;
     final acceptedCount = _myOrders.where((o) => o['status'] != 'completed').length;
@@ -165,10 +169,10 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
       crossAxisSpacing: 16,
       childAspectRatio: 1.2,
       children: [
-        _buildStatCard('📦', '$availableCount', 'Ordens Disponíveis'),
-        _buildStatCard('🤝', '$acceptedCount', 'Ordens Aceitas'),
-        _buildStatCard('✅', '$completedCount', 'Ordens Completas'),
-        _buildStatCard('💰', 'R\$ ${totalEarned.toStringAsFixed(2)}', 'Total Ganho'),
+        _buildStatCard('📦', '$availableCount', l.t('prov_dash_available_orders')),
+        _buildStatCard('🤝', '$acceptedCount', l.t('prov_dash_accepted_orders')),
+        _buildStatCard('✅', '$completedCount', l.t('prov_dash_completed_orders')),
+        _buildStatCard('💰', 'R\$ ${totalEarned.toStringAsFixed(2)}', l.t('prov_dash_total_earned')),
       ],
     );
   }
@@ -210,16 +214,17 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
   }
 
   Widget _buildActionButtons() {
+    final l = AppLocalizations.of(context)!;
     return Column(
       children: [
         GradientButton(
-          text: 'Atualizar Ordens',
+          text: l.t('prov_dash_refresh_orders'),
           onPressed: _loadProviderData,
           icon: Icons.refresh,
         ),
         const SizedBox(height: 12),
         CustomOutlineButton(
-          text: 'Ver Ganhos',
+          text: l.t('prov_dash_view_earnings'),
           onPressed: _showEarningsDialog,
           icon: Icons.trending_up,
         ),
@@ -228,15 +233,16 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
   }
 
   Widget _buildAvailableOrdersSection() {
+    final l = AppLocalizations.of(context)!;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              '📝 Ordens Disponíveis',
-              style: TextStyle(
+            Text(
+              l.t('prov_dash_available_title'),
+              style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
                 color: Colors.white,
@@ -249,7 +255,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
-                '${_availableOrders.length} ordens',
+                l.tp('prov_dash_count_orders', {'count': _availableOrders.length.toString()}),
                 style: const TextStyle(color: Colors.white70, fontSize: 12),
               ),
             ),
@@ -257,7 +263,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
         ),
         const SizedBox(height: 16),
         _availableOrders.isEmpty
-            ? _buildEmptyState('Nenhuma ordem disponível no momento')
+            ? _buildEmptyState(l.t('prov_dash_no_orders'))
             : ListView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
@@ -272,12 +278,13 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
   }
 
   Widget _buildMyOrdersSection() {
+    final l = AppLocalizations.of(context)!;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          '✓ Minhas Ordens Aceitas',
-          style: TextStyle(
+        Text(
+          l.t('prov_dash_my_accepted'),
+          style: const TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
             color: Colors.white,
@@ -285,7 +292,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
         ),
         const SizedBox(height: 16),
         _myOrders.isEmpty
-            ? _buildEmptyState('Você ainda não aceitou nenhuma ordem')
+            ? _buildEmptyState(l.t('prov_dash_no_accepted'))
             : ListView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
@@ -322,6 +329,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
   }
 
   Widget _buildOrderCard(Map<String, dynamic> order, {required bool isAvailable}) {
+    final l = AppLocalizations.of(context)!;
     final orderId = order['id'] ?? 'N/A';
     final amount = (order['amount'] ?? 0.0).toDouble();
     final billType = order['billType'] ?? 'PIX';
@@ -345,7 +353,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
             children: [
               Expanded(
                 child: Text(
-                  'Ordem #${orderId.substring(0, 8)}',
+                  l.tp('prov_dash_order_num', {'id': orderId.substring(0, 8)}),
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
@@ -404,7 +412,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                   child: ElevatedButton.icon(
                     onPressed: () => _acceptOrder(orderId),
                     icon: const Icon(Icons.check_circle, size: 18),
-                    label: const Text('Aceitar'),
+                    label: Text(l.t('prov_dash_accept')),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF4CAF50),
                       foregroundColor: Colors.white,
@@ -420,7 +428,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                   child: OutlinedButton.icon(
                     onPressed: () => _showOrderDetails(order),
                     icon: const Icon(Icons.visibility, size: 18),
-                    label: const Text('Detalhes'),
+                    label: Text(l.t('prov_dash_details')),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFFFF6B6B),
                       side: const BorderSide(color: Color(0xFFFF6B6B)),
@@ -439,7 +447,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
               child: ElevatedButton.icon(
                 onPressed: () => _completeOrder(orderId),
                 icon: const Icon(Icons.upload_file, size: 18),
-                label: const Text('Enviar Comprovante'),
+                label: Text(l.t('prov_dash_send_receipt')),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFFF6B6B),
                   foregroundColor: Colors.white,
@@ -456,6 +464,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
   }
 
   Widget _buildStatusBadge(String status) {
+    final l = AppLocalizations.of(context)!;
     Color color;
     String text;
     IconData icon;
@@ -463,43 +472,43 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
     switch (status) {
       case 'pending':
         color = const Color(0xFFFFC107);
-        text = 'Aguardando Pgto';
+        text = l.t('prov_dash_waiting_pmt');
         icon = Icons.payment;
         break;
       case 'payment_received':
         color = const Color(0xFF009688);
-        text = 'Pago ✓';
+        text = l.t('prov_dash_paid');
         icon = Icons.check;
         break;
       case 'confirmed':
         color = const Color(0xFF1E88E5);
-        text = 'Disponível';
+        text = l.t('prov_dash_available_status');
         icon = Icons.hourglass_empty;
         break;
       case 'accepted':
       case 'processing':
         color = const Color(0xFF1E88E5);
-        text = 'Processando';
+        text = l.t('prov_dash_processing');
         icon = Icons.sync;
         break;
       case 'awaiting_confirmation':
         color = const Color(0xFF9C27B0);
-        text = 'Aguard. Confirm.';
+        text = l.t('prov_dash_wait_confirm');
         icon = Icons.receipt_long;
         break;
       case 'completed':
         color = const Color(0xFF4CAF50);
-        text = 'Completo ✓';
+        text = l.t('prov_dash_complete');
         icon = Icons.check_circle;
         break;
       case 'cancelled':
         color = Colors.red;
-        text = 'Cancelado';
+        text = l.t('prov_dash_cancelled');
         icon = Icons.cancel;
         break;
       case 'disputed':
         color = Colors.deepOrange;
-        text = 'Disputa';
+        text = l.t('prov_dash_dispute');
         icon = Icons.gavel;
         break;
       default:
@@ -534,38 +543,40 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
   }
 
   String _formatTimeAgo(dynamic timestamp) {
+    final l = AppLocalizations.of(context)!;
     try {
       final date = timestamp is DateTime ? timestamp : DateTime.parse(timestamp.toString());
       final diff = DateTime.now().difference(date);
 
-      if (diff.inDays > 0) return '${diff.inDays}d atrás';
-      if (diff.inHours > 0) return '${diff.inHours}h atrás';
-      if (diff.inMinutes > 0) return '${diff.inMinutes}min atrás';
-      return 'agora';
+      if (diff.inDays > 0) return l.tp('prov_dash_days_ago', {'n': diff.inDays.toString()});
+      if (diff.inHours > 0) return l.tp('prov_dash_hours_ago', {'n': diff.inHours.toString()});
+      if (diff.inMinutes > 0) return l.tp('prov_dash_minutes_ago', {'n': diff.inMinutes.toString()});
+      return l.t('prov_dash_now');
     } catch (e) {
       return '';
     }
   }
 
   Future<void> _acceptOrder(String orderId) async {
+    final l = AppLocalizations.of(context)!;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('Aceitar Ordem', style: TextStyle(color: Colors.white)),
-        content: const Text(
-          'Você confirma que vai processar esta ordem e realizar o pagamento PIX/Boleto?',
-          style: TextStyle(color: Colors.white70),
+        title: Text(l.t('prov_dash_accept_order'), style: const TextStyle(color: Colors.white)),
+        content: Text(
+          l.t('prov_dash_accept_confirm'),
+          style: const TextStyle(color: Colors.white70),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
+            child: Text(l.t('cancel')),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF4CAF50)),
-            child: const Text('Aceitar'),
+            child: Text(l.t('prov_dash_accept')),
           ),
         ],
       ),
@@ -575,8 +586,8 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
       final success = await _providerService.acceptOrder(orderId, _providerId!);
       if (success && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Ordem aceita com sucesso!'),
+          SnackBar(
+            content: Text(l.t('prov_dash_order_accepted')),
             backgroundColor: Color(0xFF4CAF50),
           ),
         );
@@ -586,15 +597,17 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
   }
 
   Future<void> _completeOrder(String orderId) async {
+    final l = AppLocalizations.of(context)!;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('🚧 Funcionalidade de upload de comprovante em desenvolvimento'),
+      SnackBar(
+        content: Text(l.t('prov_dash_receipt_dev')),
         backgroundColor: Color(0xFFFF6B6B),
       ),
     );
   }
 
   void _showOrderDetails(Map<String, dynamic> order) {
+    final l = AppLocalizations.of(context)!;
     // Debug: mostrar todos os campos da ordem
     broLog('📦 Order data: $order');
     broLog('📦 Order keys: ${order.keys.toList()}');
@@ -635,17 +648,17 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildDetailRow('Valor', 'R\$ ${(order['amount'] ?? 0).toStringAsFixed(2)}'),
-              _buildDetailRow('Tipo', order['billType'] ?? 'N/A'),
-              _buildDetailRow('Status', status),
-              _buildDetailRow('Bitcoin', '${order['btcAmount'] ?? 0} BTC'),
+              _buildDetailRow(l.t('prov_dash_value_label'), 'R\$ ${(order['amount'] ?? 0).toStringAsFixed(2)}'),
+              _buildDetailRow(l.t('prov_dash_type_label'), order['billType'] ?? 'N/A'),
+              _buildDetailRow(l.t('prov_dash_status_label'), status),
+              _buildDetailRow(l.t('prov_dash_btc_label'), '${order['btcAmount'] ?? 0} BTC'),
               
               // Código da conta - CRÍTICO para o provedor
               if (billCode.isNotEmpty) ...[  
                 const SizedBox(height: 16),
-                const Text(
-                  '📋 Código da Conta (copie para pagar):',
-                  style: TextStyle(
+                Text(
+                  l.t('prov_dash_bill_code'),
+                  style: const TextStyle(
                     color: Color(0xFFFF6B35),
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
@@ -677,14 +690,14 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                           onPressed: () {
                             Clipboard.setData(ClipboardData(text: billCode));
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('✅ Código copiado!'),
+                              SnackBar(
+                                content: Text(l.t('prov_dash_code_copied')),
                                 backgroundColor: Color(0xFF4CAF50),
                               ),
                             );
                           },
                           icon: const Icon(Icons.copy, size: 18),
-                          label: const Text('Copiar Código'),
+                          label: Text(l.t('prov_dash_copy_code')),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFFF6B35),
                             foregroundColor: Colors.white,
@@ -705,9 +718,9 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: Colors.orange.withOpacity(0.3)),
                   ),
-                  child: const Text(
-                    '⚠️ Código da conta não disponível para esta ordem',
-                    style: TextStyle(
+                  child: Text(
+                    l.t('prov_dash_code_unavailable'),
+                    style: const TextStyle(
                       color: Colors.orange,
                       fontSize: 12,
                     ),
@@ -731,7 +744,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                       );
                     },
                     icon: const Icon(Icons.chat, size: 18),
-                    label: const Text('Falar com Usuário'),
+                    label: Text(l.t('prov_dash_talk_user')),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF2196F3),
                       foregroundColor: Colors.white,
@@ -745,7 +758,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Fechar'),
+            child: Text(l.t('close')),
           ),
         ],
       ),
@@ -780,6 +793,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
   }
 
   void _showEarningsDialog() {
+    final l = AppLocalizations.of(context)!;
     final stats = _stats ?? {};
     final totalEarned = stats['totalEarned'] ?? 0.0;
     final completedOrders = stats['completedOrders'] ?? 0;
@@ -788,7 +802,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('💰 Ganhos Totais', style: TextStyle(color: Colors.white)),
+        title: Text(l.t('prov_dash_total_earnings'), style: const TextStyle(color: Colors.white)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -802,7 +816,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              'De $completedOrders ordens completadas',
+              l.tp('prov_dash_from_orders', {'count': completedOrders.toString()}),
               style: TextStyle(color: Colors.white.withOpacity(0.7)),
             ),
           ],
@@ -810,7 +824,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Fechar'),
+            child: Text(l.t('close')),
           ),
         ],
       ),

@@ -17,8 +17,8 @@ Thank you for your interest in contributing to Bro! This document provides guide
 
 ```bash
 # 1. Fork and clone the repository
-git clone https://github.com/YOUR_USERNAME/Bro.git
-cd bro_app
+git clone https://github.com/YOUR_USERNAME/bro.git
+cd bro
 
 # 2. Install Flutter dependencies
 flutter pub get
@@ -55,7 +55,7 @@ node server.js
 
 ### Reporting Bugs
 
-1. Check [existing issues](https://github.com/Quizzicarol/Bro/issues) first
+1. Check [existing issues](https://github.com/Brostr/bro/issues) first
 2. Create a new issue with:
    - Clear description of the bug
    - Steps to reproduce

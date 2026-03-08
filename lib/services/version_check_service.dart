@@ -17,8 +17,8 @@ class VersionCheckService {
   VersionCheckService._internal();
 
   /// Repo público de releases
-  static const String _repoOwner = 'Quizzicarol';
-  static const String _repoName = 'bro-releases';
+  static const String _repoOwner = 'Brostr';
+  static const String _repoName = 'bro';
   static const String _githubApiUrl = 
       'https://api.github.com/repos/$_repoOwner/$_repoName/releases/latest';
 

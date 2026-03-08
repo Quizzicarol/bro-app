@@ -7,7 +7,7 @@ If you discover a security vulnerability in Bro, please report it responsibly.
 **Do NOT open a public GitHub issue for security vulnerabilities.**
 
 Instead, open a **private security advisory** on GitHub:
-https://github.com/Quizzicarol/Bro/security/advisories/new
+https://github.com/Brostr/bro/security/advisories/new
 
 Or contact via Nostr DM to the project maintainer.
 

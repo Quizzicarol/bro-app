@@ -11,7 +11,7 @@
   <a href="https://testflight.apple.com/join/rkHbPQ94">
     <img src="https://img.shields.io/badge/TestFlight_Beta-0D96F6?style=for-the-badge&logo=apple&logoColor=white" alt="TestFlight">
   </a>
-  <a href="https://github.com/Quizzicarol/bro-releases/releases">
+  <a href="https://github.com/Brostr/bro/releases">
     <img src="https://img.shields.io/badge/Android_APK-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android APK">
   </a>
 </p>
@@ -101,7 +101,7 @@ All communication is encrypted (NIP-44) and relayed through decentralized Nostr 
 | Platform | Link | Status |
 |----------|------|--------|
 | 🍎 iOS Beta | [TestFlight](https://testflight.apple.com/join/rkHbPQ94) | ✅ Available |
-| 🤖 Android | [Releases](https://github.com/Quizzicarol/bro-releases/releases) | ✅ Available |
+| 🤖 Android | [Releases](https://github.com/Brostr/bro/releases) | ✅ Available |
 | 🤖 Google Play | Coming soon | 🔜 |
 | 🍎 App Store | Coming soon | 🔜 |
 
@@ -207,8 +207,8 @@ Full protocol specification: [`specs/`](specs/)
 
 ```bash
 # Clone the repository
-git clone https://github.com/Quizzicarol/Bro.git
-cd bro_app
+git clone https://github.com/Brostr/bro.git
+cd bro
 
 # Install dependencies
 flutter pub get
@@ -343,7 +343,7 @@ Distributed under the MIT License. See [LICENSE](LICENSE) for details.
 ## Contact
 
 - 🌐 Website: [brostr.app](https://www.brostr.app)
-- 🐙 GitHub: [@Quizzicarol](https://github.com/Quizzicarol)
+- 🐙 GitHub: [@Brostr](https://github.com/Brostr)
 - ⚡ Nostr: Follow us on Nostr for updates
 
 ---

@@ -110,7 +110,7 @@ FeeBreakdownCard({
 Request:
 {
   "amountSats": 10000,
-  "description": "Depósito Paga Conta - R$ 100.00"
+  "description": "Depósito Bro - R$ 100.00"
 }
 
 Response:
@@ -199,7 +199,7 @@ double _brlToSatsRate = 100.0;  // Mock: 1 BRL = 100 sats
 
 ### 1. Adicionar ao Router
 ```dart
-import 'package:paga_conta_mobile/screens/deposit_screen.dart';
+import 'package:bro_app/screens/deposit_screen.dart';
 
 // No router
 '/deposit': (context) => const DepositScreen(),

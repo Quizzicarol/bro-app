@@ -144,7 +144,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: ElevatedButton.icon(
                     onPressed: () async {
                       try {
-                        const platform = MethodChannel('com.pagaconta.mobile/settings');
+                        const platform = MethodChannel('app.bro.mobile/settings');
                         await platform.invokeMethod('openBatterySettings');
                       } catch (_) {
                         // If method channel fails, show fallback message

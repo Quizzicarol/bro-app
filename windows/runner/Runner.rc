@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "paga_conta_clean" "\0"
+            VALUE "CompanyName", "app.bro" "\0"
+            VALUE "FileDescription", "Bro" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "paga_conta_clean" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2025 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "paga_conta_clean.exe" "\0"
-            VALUE "ProductName", "paga_conta_clean" "\0"
+            VALUE "InternalName", "bro" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2025 app.bro. All rights reserved." "\0"
+            VALUE "OriginalFilename", "bro.exe" "\0"
+            VALUE "ProductName", "Bro" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

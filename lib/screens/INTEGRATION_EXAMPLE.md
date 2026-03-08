@@ -12,7 +12,7 @@ Se estiver usando rotas nomeadas:
 
 ```dart
 MaterialApp(
-  title: 'Paga Conta',
+  title: 'Bro',
   routes: {
     '/': (context) => const LoginScreen(),
     '/home': (context) => const HomeScreen(),
@@ -148,7 +148,7 @@ Drawer(
       DrawerHeader(
         decoration: BoxDecoration(color: Colors.orange),
         child: Text(
-          'Paga Conta',
+          'Bro',
           style: TextStyle(
             color: Colors.white,
             fontSize: 24,

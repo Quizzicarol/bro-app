@@ -62,16 +62,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
     broLog('💳 PaymentScreen inicializado - _isProcessing: $_isProcessing');
   }
 
-  // Método para forçar reset do estado de processamento
-  void _forceResetProcessing() {
-    broLog('🔄 Forçando reset de _isProcessing');
-    if (mounted) {
-      setState(() {
-        _isProcessing = false;
-      });
-    }
-  }
-
   void _onCodeChanged() {
     if (!_autoDetectionEnabled || _isProcessing) return;
     
@@ -1135,15 +1125,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Pagar Conta'),
-          actions: [
-            // Botão de debug para resetar estado
-            if (_isProcessing)
-              IconButton(
-                icon: const Icon(Icons.refresh, color: Colors.orange),
-                tooltip: 'Reset (Debug)',
-                onPressed: _forceResetProcessing,
-              ),
-          ],
+
         ),
         body: _isScanning ? _buildScanner() : _buildForm(),
       ),

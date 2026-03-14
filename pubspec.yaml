@@ -52,6 +52,7 @@ dependencies:
 
   # Storage
   shared_preferences: ^2.5.4
+  share_plus: ^10.1.4
   path_provider: ^2.1.2
   flutter_secure_storage: ^9.2.2
 

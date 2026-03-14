@@ -13,6 +13,7 @@ import '../services/secure_storage_service.dart';
 import '../services/local_collateral_service.dart';
 import '../services/platform_fee_service.dart';
 import '../services/version_check_service.dart';
+import '../services/brix_relay_service.dart';
 import '../widgets/stat_card.dart';
 import '../widgets/gradient_button.dart';
 import '../widgets/transaction_card.dart';
@@ -54,6 +55,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _checkSeedRecoveryStatus();
       _checkAndShowBackupReminder();
       _checkForAppUpdate();
+      // Start BRIX invoice relay service (global, any screen)
+      BrixRelayService().start(context);
     });
   }
   
@@ -507,33 +510,10 @@ class _HomeScreenState extends State<HomeScreen> {
           onPressed: () => Navigator.pushNamed(context, '/wallet'),
           tooltip: AppLocalizations.of(context).t('home_my_wallet'),
         ),
-        // Mensagens com badge de não lidas
-        Stack(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.chat_bubble_outline, color: Colors.white),
-              onPressed: _openMessages,
-              tooltip: AppLocalizations.of(context).t('home_messages'),
-            ),
-            if (_unreadMessages > 0)
-              Positioned(
-                right: 6,
-                top: 6,
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: const BoxDecoration(
-                    color: Colors.red,
-                    shape: BoxShape.circle,
-                  ),
-                  constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-                  child: Text(
-                    _unreadMessages > 99 ? '99+' : '$_unreadMessages',
-                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ),
-          ],
+        IconButton(
+          icon: const Icon(Icons.flash_on, color: Colors.amber),
+          onPressed: () => Navigator.pushNamed(context, '/brix'),
+          tooltip: 'BRIX',
         ),
         IconButton(
           icon: const Icon(Icons.settings_outlined, color: Colors.white),
@@ -550,10 +530,6 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         // Grade de Botões de Ação (3 botões)
         _buildActionButtonsGrid(),
-        const SizedBox(height: 14),
-
-        // Métricas em linha horizontal
-        _buildMetricsRow(orderProvider),
         const SizedBox(height: 16),
 
         // Lista de Ordens

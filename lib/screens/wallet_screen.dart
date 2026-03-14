@@ -17,6 +17,7 @@ import '../services/platform_fee_service.dart';
 import '../services/bitcoin_price_service.dart';
 import '../config.dart';
 import '../l10n/app_localizations.dart';
+import '../services/brix_service.dart';
 
 /// Tela de Carteira Lightning - Apenas BOLT11 (invoice)
 /// Funções: Ver saldo, Enviar pagamento, Receber (gerar invoice)
@@ -756,11 +757,13 @@ class _WalletScreenState extends State<WalletScreen> {
                   maxLines: 2,
                   enabled: !isSending,
                   onChanged: (value) {
-                    // Se for Lightning Address ou LNURL-pay, mostrar campo de valor
+                    // Se for Lightning Address, LNURL-pay, phone, email ou username BRIX, mostrar campo de valor
                     final trimmed = value.trim().toLowerCase();
                     final isLnAddress = trimmed.contains('@') && trimmed.contains('.');
                     final isLnurl = trimmed.startsWith('lnurl');
-                    final needsAmount = isLnAddress || isLnurl;
+                    final isPhone = RegExp(r'^\+?\d[\d\s\-()]{7,}$').hasMatch(trimmed);
+                    final isBrixUser = RegExp(r'^[a-z0-9_]{3,20}$').hasMatch(trimmed) && !trimmed.startsWith('lnbc') && !trimmed.startsWith('lntb');
+                    final needsAmount = isLnAddress || isLnurl || isPhone || isBrixUser;
                     
                     if (needsAmount != showAmountField) {
                       setModalState(() {
@@ -772,9 +775,9 @@ class _WalletScreenState extends State<WalletScreen> {
                   decoration: InputDecoration(
                     labelText: AppLocalizations.of(context).t('wallet_destination_label'),
                     labelStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
-                    hintText: AppLocalizations.of(context).t('wallet_destination_hint'),
+                    hintText: 'Invoice, celular, email, username BRIX',
                     hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
-                    helperText: AppLocalizations.of(context).t('wallet_destination_helper'),
+                    helperText: 'Invoice, Lightning Address, LNURL, BRIX ou celular',
                     helperStyle: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -863,7 +866,9 @@ class _WalletScreenState extends State<WalletScreen> {
                         final trimmed = data.text!.trim().toLowerCase();
                         final isLnAddr = trimmed.contains('@') && trimmed.contains('.');
                         final isLnurl = trimmed.startsWith('lnurl');
-                        final needsAmount = isLnAddr || isLnurl;
+                        final isPhone = RegExp(r'^\+?\d[\d\s\-()]{7,}$').hasMatch(trimmed);
+                        final isBrixUser = RegExp(r'^[a-z0-9_]{3,20}$').hasMatch(trimmed) && !trimmed.startsWith('lnbc') && !trimmed.startsWith('lntb');
+                        final needsAmount = isLnAddr || isLnurl || isPhone || isBrixUser;
                         
                         setModalState(() {
                           showAmountField = needsAmount;
@@ -944,7 +949,12 @@ class _WalletScreenState extends State<WalletScreen> {
                       // Verificar se é Lightning Address ou LNURL (precisa de valor)
                       final isLnAddress = destination.contains('@') && destination.contains('.');
                       final isLnurl = lowerDest.startsWith('lnurl');
-                      final needsAmountInput = isLnAddress || isLnurl;
+                      final isPhone = RegExp(r'^\+?\d[\d\s\-()]{7,}$').hasMatch(destination.trim());
+                      final isBrixUser = RegExp(r'^[a-z0-9_]{3,20}$').hasMatch(lowerDest) && !lowerDest.startsWith('lnbc') && !lowerDest.startsWith('lntb');
+                      // Detect BRIX Lightning Addresses (user@brix.app or user@bro.app)
+                      final isBrixAddress = isLnAddress && (lowerDest.endsWith('@brix.app') || lowerDest.endsWith('@brostr.app'));
+                      final needsBrixResolve = isPhone || isBrixUser || isBrixAddress;
+                      final needsAmountInput = isLnAddress || isLnurl || needsBrixResolve;
                       
                       // Atualizar UI se necessário
                       if (needsAmountInput != showAmountField) {
@@ -955,7 +965,7 @@ class _WalletScreenState extends State<WalletScreen> {
                         return;
                       }
                       
-                      // Se for Lightning Address ou LNURL, precisamos de um valor
+                      // Se for Lightning Address, LNURL, phone ou BRIX username, precisamos de um valor
                       if (needsAmountInput) {
                         final amountText = amountController.text.trim();
                         final amountSats = int.tryParse(amountText);
@@ -987,9 +997,30 @@ class _WalletScreenState extends State<WalletScreen> {
                           final breezProvider = context.read<BreezProvider>();
                           final lnAddressService = LnAddressService();
                           
+                          // Se for phone, username BRIX, ou BRIX address, resolver primeiro via BRIX
+                          var resolvedDest = destination;
+                          if (needsBrixResolve) {
+                            final brixService = BrixService();
+                            // For BRIX addresses (user@brix.app), extract username for resolve
+                            var resolveQuery = destination;
+                            if (isBrixAddress) {
+                              resolveQuery = destination.split('@').first;
+                            }
+                            final resolveResult = await brixService.resolve(resolveQuery);
+                            if (!resolveResult.found || resolveResult.brixAddress == null) {
+                              setModalState(() {
+                                isSending = false;
+                                errorMessage = 'Nenhum BRIX encontrado para "$destination"';
+                              });
+                              return;
+                            }
+                            resolvedDest = resolveResult.brixAddress!;
+                            broLog('🔍 BRIX resolvido: $destination → $resolvedDest (via ${resolveResult.matchedBy})');
+                          }
+                          
                           // Resolver Lightning Address ou LNURL para invoice BOLT11
                           final invoiceResult = await lnAddressService.getInvoice(
-                            lnAddress: destination,
+                            lnAddress: resolvedDest,
                             amountSats: amountSats,
                           );
                           
@@ -1038,7 +1069,9 @@ class _WalletScreenState extends State<WalletScreen> {
                       if (!lowerDest.startsWith('lnbc') && 
                           !lowerDest.startsWith('lntb') &&
                           !lowerDest.startsWith('lnurl') &&
-                          !isLnAddress) {
+                          !isLnAddress &&
+                          !isPhone &&
+                          !isBrixUser) {
                         setModalState(() => errorMessage = AppLocalizations.of(context).t('wallet_invalid_format'));
                         return;
                       }
@@ -2283,6 +2316,16 @@ class _WalletScreenState extends State<WalletScreen> {
         iconColor = Colors.orange;
         icon = Icons.shopping_cart;
       }
+    } else if (description == 'BRIX Payment' || description.toLowerCase().contains('brix payment')) {
+      // BRIX recebido
+      label = 'pagamento brix';
+      iconColor = Colors.purple;
+      icon = Icons.flash_on;
+    } else if (!isReceived && (payment['destination']?.toString()?.endsWith('@brostr.app') == true || payment['destination']?.toString()?.endsWith('@brix.app') == true)) {
+      // BRIX enviado
+      label = 'envio brix';
+      iconColor = Colors.purple;
+      icon = Icons.flash_on;
     } else if (isBroEarning || isBroOrderPayment) {
       label = AppLocalizations.of(context).t('wallet_bro_earning');
       iconColor = Colors.green;

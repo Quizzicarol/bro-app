@@ -161,6 +161,15 @@ class LnAddressService {
     }
   }
 
+  /// Domínios BRIX que devem ser resolvidos via servidor local
+  static const _brixDomains = ['brix.app', 'brostr.app'];
+
+  /// URL do servidor BRIX (from environment)
+  static const String _brixServerUrl = String.fromEnvironment(
+    'BRIX_SERVER_URL',
+    defaultValue: 'http://10.0.2.2:3100',
+  );
+
   /// Resolve um Lightning Address para obter os dados LNURL-pay
   /// Retorna os metadados incluindo min/max amounts
   Future<Map<String, dynamic>> resolveLnAddress(String lnAddress) async {
@@ -175,8 +184,14 @@ class LnAddressService {
       final username = parts[0];
       final domain = parts[1];
       
-      // LNURL-pay endpoint: https://domain.com/.well-known/lnurlp/username
-      final url = 'https://$domain/.well-known/lnurlp/$username';
+      // Check if it's a BRIX address — route to local server
+      String url;
+      if (_brixDomains.contains(domain.toLowerCase())) {
+        url = '$_brixServerUrl/.well-known/lnurlp/$username';
+        broLog('🔗 BRIX address detected, routing to local server');
+      } else {
+        url = 'https://$domain/.well-known/lnurlp/$username';
+      }
       
       broLog('🔍 Resolvendo LN Address: $lnAddress');
       broLog('🌐 URL: $url');

@@ -29,14 +29,14 @@ class AppConfig {
   // ============================================
   
   /// URL do backend — definido via env.json (BACKEND_URL)
-  /// Fallback: https://api.bro.app (produção)
+  /// Fallback: https://api.brostr.app (produção)
   ///
   /// Valores comuns para desenvolvimento:
   ///   Emulador Android: http://10.0.2.2:3002
   ///   Dispositivo físico: http://<SEU_IP>:3002
   static const String defaultBackendUrl = String.fromEnvironment(
     'BACKEND_URL',
-    defaultValue: 'https://api.bro.app',
+    defaultValue: 'https://api.brostr.app',
   );
 
   // ============================================
@@ -103,6 +103,9 @@ class AppConfig {
   static const String platformLightningAddress = String.fromEnvironment(
     'PLATFORM_LIGHTNING_ADDRESS',
   );
+
+  /// Taxa BRIX (0.5% - cobrada em pagamentos recebidos via BRIX)
+  static const double brixFeePercent = 0.005;
   
   // ============================================
   // TAXAS LIQUID (Boltz Swap) - Embutidas no spread

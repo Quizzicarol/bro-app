@@ -1432,6 +1432,7 @@ const Map<String, String> ptBR = {
   'prov_det_evidence_photo': '📸 Foto / Print (opcional)',
   'prov_det_copy': 'Copiar',
   'prov_det_remove': 'Remover',
+  'prov_det_see_code_below': 'Veja o código abaixo',
 };
 
 const Map<String, String> enUS = {

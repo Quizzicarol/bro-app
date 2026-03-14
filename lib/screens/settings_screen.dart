@@ -1020,6 +1020,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                           onTap: () => _showNotificationGuide(context),
                         ),
+                        Divider(height: 1, color: Colors.white12),
+                        ListTile(
+                          leading: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.chat_bubble_outline, color: Colors.blue),
+                          ),
+                          title: Text(AppLocalizations.of(context).t('home_messages'), style: const TextStyle(color: Colors.white)),
+                          subtitle: Text('Nostr DMs', style: const TextStyle(color: Colors.white54)),
+                          trailing: const Icon(Icons.chevron_right, color: Colors.white38),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 10,
+                          ),
+                          onTap: () => Navigator.pushNamed(context, '/nostr-messages'),
+                        ),
                       ],
                     ),
                   ),

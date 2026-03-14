@@ -26,6 +26,7 @@ import 'screens/nip06_backup_screen.dart';
 import 'screens/privacy_settings_screen.dart';
 import 'screens/wallet_screen.dart';
 import 'screens/marketplace_screen.dart';
+import 'screens/brix_screen.dart';
 import 'providers/breez_provider_export.dart';
 import 'providers/breez_liquid_provider.dart';
 import 'providers/lightning_provider.dart';
@@ -426,6 +427,7 @@ class BroApp extends StatelessWidget {
               '/privacy-settings': (context) => const PrivacySettingsScreen(),
               '/wallet': (context) => const WalletScreen(),
               '/marketplace': (context) => const MarketplaceScreen(),
+              '/brix': (context) => const BrixScreen(),
               '/provider-education': (context) => const ProviderEducationScreen(),
               '/provider-collateral': (context) => const ProviderCollateralScreen(providerId: 'temp'),
               '/provider-order-detail': (context) => const ProviderOrderDetailScreen(orderId: 'temp', providerId: 'temp'),

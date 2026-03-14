@@ -196,6 +196,11 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with SingleTicker
         title: Text(AppLocalizations.of(context).t('market_title')),
         actions: [
           IconButton(
+            icon: const Icon(Icons.chat_bubble_outline),
+            onPressed: () => Navigator.pushNamed(context, '/nostr-messages'),
+            tooltip: AppLocalizations.of(context).t('home_messages'),
+          ),
+          IconButton(
             icon: const Icon(Icons.add),
             onPressed: () {
               Navigator.push(

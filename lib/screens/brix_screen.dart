@@ -4,7 +4,9 @@ import 'package:bro_app/services/brix_service.dart';
 import 'package:bro_app/services/storage_service.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
+import 'dart:convert';
 
 class BrixScreen extends StatefulWidget {
   const BrixScreen({super.key});
@@ -73,6 +75,22 @@ class _BrixScreenState extends State<BrixScreen> {
 
   Future<void> _checkExisting() async {
     try {
+      // First check local cache
+      final cached = await _loadBrixLocal();
+      if (cached != null) {
+        setState(() {
+          _brixAddress = cached['address'];
+          _username = cached['username'];
+          _registeredPhone = cached['phone'];
+          _registeredEmail = cached['email'];
+          _pubkey = cached['pubkey'];
+          _step = BrixStep.active;
+        });
+        // Refresh from server in background
+        _refreshFromServer(cached['pubkey']);
+        return;
+      }
+
       final pubkey = await _storage.getNostrPublicKey();
       if (pubkey != null && pubkey.isNotEmpty) {
         _pubkey = pubkey;
@@ -85,11 +103,61 @@ class _BrixScreenState extends State<BrixScreen> {
             _registeredEmail = result.email;
             _step = BrixStep.active;
           });
+          await _saveBrixLocal();
           return;
         }
       }
     } catch (_) {}
     setState(() => _step = BrixStep.contact);
+  }
+
+  Future<void> _refreshFromServer(String? pubkey) async {
+    if (pubkey == null || pubkey.isEmpty) return;
+    try {
+      final result = await _brixService.getAddress(pubkey);
+      if (result.hasAddress && result.address != null && mounted) {
+        setState(() {
+          _brixAddress = result.address;
+          _username = result.username;
+          _registeredPhone = result.phone;
+          _registeredEmail = result.email;
+        });
+        await _saveBrixLocal();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveBrixLocal() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final data = jsonEncode({
+        'address': _brixAddress,
+        'username': _username,
+        'phone': _registeredPhone,
+        'email': _registeredEmail,
+        'pubkey': _pubkey,
+      });
+      await prefs.setString('brix_cached', data);
+    } catch (_) {}
+  }
+
+  Future<Map<String, String?>?> _loadBrixLocal() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('brix_cached');
+      if (raw == null) return null;
+      final data = jsonDecode(raw) as Map<String, dynamic>;
+      if (data['address'] == null || data['username'] == null) return null;
+      return {
+        'address': data['address'] as String?,
+        'username': data['username'] as String?,
+        'phone': data['phone'] as String?,
+        'email': data['email'] as String?,
+        'pubkey': data['pubkey'] as String?,
+      };
+    } catch (_) {
+      return null;
+    }
   }
 
   void _goToUsername() {
@@ -173,13 +241,26 @@ class _BrixScreenState extends State<BrixScreen> {
     setState(() => _isLoading = false);
 
     if (result.success && result.userId != null) {
-      setState(() {
-        _userId = result.userId;
-        _devCode = result.devCode;
-        _username = result.username;
-        _step = BrixStep.verify;
-      });
-      _startResendCooldown();
+      if (result.verified && result.brixAddress != null) {
+        // Auto-verified (no SMTP on server)
+        setState(() {
+          _brixAddress = result.brixAddress;
+          _username = result.username;
+          _pubkey = pubkey;
+          _registeredPhone = _isPhone ? contact : null;
+          _registeredEmail = !_isPhone ? contact : null;
+          _step = BrixStep.active;
+        });
+        await _saveBrixLocal();
+      } else {
+        setState(() {
+          _userId = result.userId;
+          _devCode = result.devCode;
+          _username = result.username;
+          _step = BrixStep.verify;
+        });
+        _startResendCooldown();
+      }
     } else {
       setState(() => _error = result.error ?? 'Erro ao registrar');
     }
@@ -207,8 +288,10 @@ class _BrixScreenState extends State<BrixScreen> {
     if (result.success && result.brixAddress != null) {
       setState(() {
         _brixAddress = result.brixAddress;
+        _username = result.username;
         _step = BrixStep.active;
       });
+      await _saveBrixLocal();
     } else {
       setState(() => _error = result.error ?? 'Código inválido');
     }

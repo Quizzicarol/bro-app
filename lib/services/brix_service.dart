@@ -9,7 +9,7 @@ class BrixService {
 
   static const String _brixServerUrl = String.fromEnvironment(
     'BRIX_SERVER_URL',
-    defaultValue: 'http://10.0.2.2:3100',
+    defaultValue: 'https://brix.brostr.app',
   );
 
   late final Dio _dio = Dio(BaseOptions(
@@ -59,6 +59,8 @@ class BrixService {
         username: data['username'] as String?,
         devCode: data['dev_code'] as String?,
         error: data['error'] as String?,
+        verified: data['verified'] == true,
+        brixAddress: data['brix_address'] as String?,
       );
     } on DioException catch (e) {
       final msg = e.response?.data?['error'] ?? 'Servidor BRIX indisponível';
@@ -290,8 +292,10 @@ class BrixRegisterResult {
   final String? username;
   final String? devCode;
   final String? error;
+  final bool verified;
+  final String? brixAddress;
 
-  BrixRegisterResult({required this.success, this.userId, this.username, this.devCode, this.error});
+  BrixRegisterResult({required this.success, this.userId, this.username, this.devCode, this.error, this.verified = false, this.brixAddress});
 }
 
 class BrixVerifyResult {

@@ -82,17 +82,17 @@ All communication is encrypted (NIP-44) and relayed through decentralized Nostr 
 
 ---
 
-## BRIX — Lightning Address
+## BRIX — Receive Bitcoin with your phone or email
 
-**BRIX** is Bro's built-in Lightning Address service. Every user gets a human-readable address like `yourname@brix.brostr.app` to receive Bitcoin instantly — no invoices, no QR codes.
+**BRIX** lets you receive Bitcoin using the contact info you already know by heart — your phone number or email. No new addresses to memorize, no QR codes, no invoices.
 
 - ⚡ **Instant** — Receive sats in seconds via Lightning Network
-- 📧 **Simple** — Share your address like an email: `alice@brix.brostr.app`
-- 🔒 **Verified** — SMS or email verification ensures ownership
+- 📱 **Use what you know** — Your phone number or email becomes your payment address
+- 🔒 **Verified** — One-time SMS or email code confirms ownership
 - 🌐 **Universal** — Compatible with any Lightning wallet (Phoenix, Zeus, BlueWallet, WoS, etc.)
 - 🌍 **Web + App** — Register at [brix.brostr.app](https://brix.brostr.app) or directly in the Bro App
 
-> BRIX is an open-source project. See the [BRIX repository](https://github.com/Quizzicarol/brix) for server details.
+> BRIX is open source and can be integrated into any app. See the [BRIX repository](https://github.com/Quizzicarol/brix) for details.
 
 ---
 

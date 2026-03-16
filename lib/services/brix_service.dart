@@ -138,6 +138,39 @@ class BrixService {
     }
   }
 
+  /// Find BRIX by email (fallback for web-created BRIX)
+  Future<BrixAddressResult> findByEmail(String email) async {
+    try {
+      final response = await _dio.get('/brix/find-by-email/${Uri.encodeComponent(email)}');
+      final data = response.data;
+      return BrixAddressResult(
+        hasAddress: true,
+        address: data['brix_address'] as String?,
+        username: data['username'] as String?,
+        phone: data['phone'] as String?,
+        email: data['email'] as String?,
+        hasWebPubkey: data['has_web_pubkey'] == true,
+      );
+    } on DioException catch (e) {
+      return BrixAddressResult(hasAddress: false);
+    } catch (e) {
+      return BrixAddressResult(hasAddress: false);
+    }
+  }
+
+  /// Link a real nostr pubkey to a web-created BRIX
+  Future<bool> linkPubkey({required String username, required String nostrPubkey}) async {
+    try {
+      final response = await _dio.post('/brix/link-pubkey', data: {
+        'username': username,
+        'nostr_pubkey': nostrPubkey,
+      });
+      return response.data?['success'] == true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   /// Get pending payments for a pubkey
   Future<List<BrixPendingPayment>> getPendingPayments(String pubkey) async {
     try {
@@ -313,8 +346,9 @@ class BrixAddressResult {
   final String? username;
   final String? phone;
   final String? email;
+  final bool hasWebPubkey;
 
-  BrixAddressResult({required this.hasAddress, this.address, this.username, this.phone, this.email});
+  BrixAddressResult({required this.hasAddress, this.address, this.username, this.phone, this.email, this.hasWebPubkey = false});
 }
 
 class BrixPendingPayment {

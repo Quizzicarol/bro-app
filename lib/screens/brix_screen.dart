@@ -94,6 +94,7 @@ class _BrixScreenState extends State<BrixScreen> {
       final pubkey = await _storage.getNostrPublicKey();
       if (pubkey != null && pubkey.isNotEmpty) {
         _pubkey = pubkey;
+        // Try lookup by nostr pubkey first
         final result = await _brixService.getAddress(pubkey);
         if (result.hasAddress && result.address != null) {
           setState(() {
@@ -160,12 +161,45 @@ class _BrixScreenState extends State<BrixScreen> {
     }
   }
 
-  void _goToUsername() {
+  Future<void> _goToUsername() async {
     final contact = _contactController.text.trim();
     if (contact.isEmpty) {
       setState(() => _error = _isPhone ? 'Informe seu celular' : 'Informe seu email');
       return;
     }
+
+    // If email, check if there's already a web-created BRIX for this email
+    if (!_isPhone && contact.contains('@')) {
+      setState(() { _isLoading = true; _error = null; });
+      try {
+        final found = await _brixService.findByEmail(contact);
+        if (found.hasAddress && found.address != null && found.hasWebPubkey) {
+          // Found a web-created BRIX with this email - auto-link to app
+          final pubkey = await _storage.getNostrPublicKey();
+          if (pubkey != null && pubkey.isNotEmpty && found.username != null) {
+            final linked = await _brixService.linkPubkey(
+              username: found.username!,
+              nostrPubkey: pubkey,
+            );
+            if (linked) {
+              setState(() {
+                _isLoading = false;
+                _brixAddress = found.address;
+                _username = found.username;
+                _pubkey = pubkey;
+                _registeredPhone = found.phone;
+                _registeredEmail = found.email;
+                _step = BrixStep.active;
+              });
+              await _saveBrixLocal();
+              return;
+            }
+          }
+        }
+      } catch (_) {}
+      setState(() => _isLoading = false);
+    }
+
     setState(() {
       _error = null;
       _step = BrixStep.username;

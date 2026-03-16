@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:bro_app/services/brix_service.dart';
 import 'package:bro_app/services/storage_service.dart';
 import 'package:bro_app/services/log_utils.dart';
+import 'package:bro_app/l10n/app_localizations.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
@@ -162,9 +163,10 @@ class _BrixScreenState extends State<BrixScreen> {
   }
 
   Future<void> _goToUsername() async {
+    final loc = AppLocalizations.of(context);
     final contact = _contactController.text.trim();
     if (contact.isEmpty) {
-      setState(() => _error = _isPhone ? 'Informe seu celular' : 'Informe seu email');
+      setState(() => _error = _isPhone ? loc.t('brix_error_phone_required') : loc.t('brix_error_email_required'));
       return;
     }
 
@@ -246,15 +248,16 @@ class _BrixScreenState extends State<BrixScreen> {
   }
 
   Future<void> _register() async {
+    final loc = AppLocalizations.of(context);
     final username = _usernameController.text.toLowerCase().trim();
     final contact = _contactController.text.trim();
 
     if (username.length < 3) {
-      setState(() => _error = 'Apelido precisa ter pelo menos 3 caracteres');
+      setState(() => _error = loc.t('brix_error_username_min'));
       return;
     }
     if (_usernameAvailable == false) {
-      setState(() => _error = 'Apelido não disponível');
+      setState(() => _error = loc.t('brix_error_username_taken'));
       return;
     }
 
@@ -296,14 +299,15 @@ class _BrixScreenState extends State<BrixScreen> {
         _startResendCooldown();
       }
     } else {
-      setState(() => _error = result.error ?? 'Erro ao registrar');
+      setState(() => _error = result.error ?? loc.t('brix_error_register'));
     }
   }
 
   Future<void> _verify() async {
+    final loc = AppLocalizations.of(context);
     final code = _codeController.text.trim();
     if (code.length != 6) {
-      setState(() => _error = 'Digite o código de 6 dígitos');
+      setState(() => _error = loc.t('brix_error_code_length'));
       return;
     }
 
@@ -327,7 +331,7 @@ class _BrixScreenState extends State<BrixScreen> {
       });
       await _saveBrixLocal();
     } else {
-      setState(() => _error = result.error ?? 'Código inválido');
+      setState(() => _error = result.error ?? loc.t('brix_error_verify'));
     }
   }
 
@@ -344,7 +348,7 @@ class _BrixScreenState extends State<BrixScreen> {
         _devCode = result.devCode;
         _error = null;
       } else {
-        _error = result.error ?? 'Erro ao reenviar';
+        _error = result.error ?? AppLocalizations.of(context).t('brix_error_resend');
       }
     });
 
@@ -366,9 +370,10 @@ class _BrixScreenState extends State<BrixScreen> {
   }
   // Modification flow methods
   Future<void> _requestContactUpdate() async {
+    final loc = AppLocalizations.of(context);
     final contact = _editContactController.text.trim();
     if (contact.isEmpty) {
-      setState(() => _error = 'Informe o novo contato');
+      setState(() => _error = loc.t('brix_edit_error_empty'));
       return;
     }
     if (_pubkey == null) return;
@@ -387,15 +392,16 @@ class _BrixScreenState extends State<BrixScreen> {
         _editWaitingCode = true;
         _editDevCode = result.devCode;
       } else {
-        _error = result.error ?? 'Erro ao solicitar atualização';
+        _error = result.error ?? loc.t('brix_error_update');
       }
     });
   }
 
   Future<void> _confirmContactUpdate() async {
+    final loc = AppLocalizations.of(context);
     final code = _editCodeController.text.trim();
     if (code.length != 6) {
-      setState(() => _error = 'Digite o código de 6 dígitos');
+      setState(() => _error = loc.t('brix_error_code_length'));
       return;
     }
     if (_pubkey == null) return;
@@ -425,7 +431,7 @@ class _BrixScreenState extends State<BrixScreen> {
         _editDevCode = null;
         _error = null;
       } else {
-        _error = result.error ?? 'Código inválido';
+        _error = result.error ?? loc.t('brix_error_verify');
       }
     });
   }
@@ -458,6 +464,7 @@ class _BrixScreenState extends State<BrixScreen> {
   
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context);
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
@@ -466,14 +473,14 @@ class _BrixScreenState extends State<BrixScreen> {
         leading: IconButton(
           icon: const Icon(Icons.home, color: Colors.white),
           onPressed: () => Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false),
-          tooltip: 'Início',
+          tooltip: loc.t('brix_appbar_home'),
         ),
         title: const Text('⚡ BRIX', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
         actions: [
           IconButton(
             icon: const Icon(Icons.account_balance_wallet, color: Colors.orange),
             onPressed: () => Navigator.pushNamed(context, '/wallet'),
-            tooltip: 'Carteira',
+            tooltip: loc.t('brix_appbar_wallet'),
           ),
         ],
       ),
@@ -498,6 +505,7 @@ class _BrixScreenState extends State<BrixScreen> {
 
   // ─── STEP 1: Contact ───────────────────────────────────────
   Widget _buildContactStep() {
+    final loc = AppLocalizations.of(context);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -519,14 +527,14 @@ class _BrixScreenState extends State<BrixScreen> {
               children: [
                 const Text('⚡', style: TextStyle(fontSize: 48)),
                 const SizedBox(height: 8),
-                const Text(
-                  'Receba Bitcoin\ncomo recebe PIX',
-                  style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                Text(
+                  loc.t('brix_title_receive'),
+                  style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Crie sua chave BRIX usando seu celular ou email.',
+                  loc.t('brix_subtitle_create'),
                   style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 14),
                   textAlign: TextAlign.center,
                 ),
@@ -544,8 +552,8 @@ class _BrixScreenState extends State<BrixScreen> {
             ),
             child: Row(
               children: [
-                _buildContactTab('📱 Celular', true),
-                _buildContactTab('📧 Email', false),
+                _buildContactTab(loc.t('brix_tab_phone'), true),
+                _buildContactTab(loc.t('brix_tab_email'), false),
               ],
             ),
           ),
@@ -558,9 +566,9 @@ class _BrixScreenState extends State<BrixScreen> {
             keyboardType: _isPhone ? TextInputType.phone : TextInputType.emailAddress,
             style: const TextStyle(color: Colors.white, fontSize: 18),
             decoration: InputDecoration(
-              labelText: _isPhone ? 'Seu celular' : 'Seu email',
+              labelText: _isPhone ? loc.t('brix_label_phone') : loc.t('brix_label_email'),
               labelStyle: const TextStyle(color: Colors.white38),
-              hintText: _isPhone ? '+55 11 99988-7766' : 'seu@email.com',
+              hintText: _isPhone ? loc.t('brix_hint_phone') : loc.t('brix_hint_email'),
               hintStyle: const TextStyle(color: Colors.white24),
               prefixIcon: Icon(
                 _isPhone ? Icons.phone : Icons.email,
@@ -586,8 +594,8 @@ class _BrixScreenState extends State<BrixScreen> {
           const SizedBox(height: 6),
           Text(
             _isPhone
-                ? 'Usaremos para verificar sua conta'
-                : 'Enviaremos um código de confirmação',
+                ? loc.t('brix_helper_phone')
+                : loc.t('brix_helper_email'),
             style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 12),
           ),
 
@@ -609,13 +617,13 @@ class _BrixScreenState extends State<BrixScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
-              child: const Text('Continuar'),
+              child: Text(loc.t('brix_btn_continue')),
             ),
           ),
 
           const SizedBox(height: 20),
           Text(
-            'Grátis • Sem KYC • Sem banco',
+            loc.t('brix_footer_free'),
             style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12),
             textAlign: TextAlign.center,
           ),
@@ -655,6 +663,7 @@ class _BrixScreenState extends State<BrixScreen> {
 
   // ─── STEP 2: Username ──────────────────────────────────────
   Widget _buildUsernameStep() {
+    final loc = AppLocalizations.of(context);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -669,20 +678,20 @@ class _BrixScreenState extends State<BrixScreen> {
               ),
               const SizedBox(width: 8),
               Text(
-                'Passo 2 de 3',
+                loc.t('brix_step_2_of_3'),
                 style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 13),
               ),
             ],
           ),
           const SizedBox(height: 16),
 
-          const Text(
-            'Escolha seu apelido',
-            style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+          Text(
+            loc.t('brix_choose_username'),
+            style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 6),
           Text(
-            'Esse será seu endereço para receber Bitcoin. Igual a uma chave PIX.',
+            loc.t('brix_username_hint_desc'),
             style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 14),
           ),
 
@@ -699,9 +708,9 @@ class _BrixScreenState extends State<BrixScreen> {
               LengthLimitingTextInputFormatter(20),
             ],
             decoration: InputDecoration(
-              labelText: 'Apelido',
+              labelText: loc.t('brix_label_username'),
               labelStyle: const TextStyle(color: Colors.white38),
-              hintText: 'fulano',
+              hintText: loc.t('brix_hint_username'),
               hintStyle: const TextStyle(color: Colors.white24),
               prefixIcon: const Icon(Icons.alternate_email, color: Colors.amber),
               suffixIcon: _checkingUsername
@@ -779,7 +788,7 @@ class _BrixScreenState extends State<BrixScreen> {
               ),
               child: _isLoading
                   ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                  : const Text('⚡ Criar meu BRIX'),
+                  : Text(loc.t('brix_btn_create')),
             ),
           ),
         ],
@@ -789,6 +798,7 @@ class _BrixScreenState extends State<BrixScreen> {
 
   // ─── STEP 3: Verify ────────────────────────────────────────
   Widget _buildVerifyStep() {
+    final loc = AppLocalizations.of(context);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -797,33 +807,33 @@ class _BrixScreenState extends State<BrixScreen> {
           const SizedBox(height: 20),
           const Icon(Icons.verified_user, color: Colors.amber, size: 56),
           const SizedBox(height: 16),
-          const Text(
-            'Verificação',
-            style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+          Text(
+            loc.t('brix_verify_title'),
+            style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 8),
           Text(
-            _isPhone
-                ? 'Enviamos um código de 6 dígitos para seu celular'
-                : 'Enviamos um código de 6 dígitos para seu email',
+            _devCode != null
+                ? (_isPhone ? loc.t('brix_verify_sent_phone') : loc.t('brix_verify_sent_email'))
+                : (_isPhone ? loc.t('brix_verify_sms_sent') : loc.t('brix_verify_email_sent')),
             style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 14),
             textAlign: TextAlign.center,
           ),
 
           // Dev code hint
           if (_devCode != null) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             Container(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               decoration: BoxDecoration(
-                color: Colors.amber.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                color: Colors.amber.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.amber.withOpacity(0.4)),
               ),
               child: Text(
-                '🔧 Modo dev — código: $_devCode',
-                style: const TextStyle(color: Colors.amber, fontSize: 13, fontFamily: 'monospace'),
+                loc.tp('brix_verify_dev_code', {'code': _devCode!}),
+                style: const TextStyle(color: Colors.amber, fontSize: 22, fontWeight: FontWeight.bold, fontFamily: 'monospace', letterSpacing: 4),
                 textAlign: TextAlign.center,
               ),
             ),
@@ -886,7 +896,7 @@ class _BrixScreenState extends State<BrixScreen> {
               ),
               child: _isLoading
                   ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                  : const Text('Verificar'),
+                  : Text(loc.t('brix_btn_verify')),
             ),
           ),
 
@@ -896,7 +906,7 @@ class _BrixScreenState extends State<BrixScreen> {
           TextButton(
             onPressed: _resendCooldown > 0 ? null : _resend,
             child: Text(
-              _resendCooldown > 0 ? 'Reenviar código (${_resendCooldown}s)' : 'Reenviar código',
+              _resendCooldown > 0 ? loc.tp('brix_btn_resend_cooldown', {'seconds': '$_resendCooldown'}) : loc.t('brix_btn_resend'),
               style: TextStyle(
                 color: _resendCooldown > 0 ? Colors.white24 : Colors.amber,
                 fontSize: 14,
@@ -910,13 +920,14 @@ class _BrixScreenState extends State<BrixScreen> {
 
   // ─── STEP 4: Active ────────────────────────────────────────
   Widget _buildActiveStep() {
+    final loc = AppLocalizations.of(context);
     return SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ── BRIX Address card ──
+            // ── BRIX Ativo card ──
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
@@ -932,35 +943,59 @@ class _BrixScreenState extends State<BrixScreen> {
                 children: [
                   const Text('⚡', style: TextStyle(fontSize: 48)),
                   const SizedBox(height: 4),
-                  const Text('BRIX Ativo', style: TextStyle(color: Colors.amber, fontSize: 22, fontWeight: FontWeight.bold)),
+                  Text(loc.t('brix_active_title'), style: const TextStyle(color: Colors.amber, fontSize: 22, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 14),
+
+                  // Primary: registered contact (email or phone)
+                  if (_registeredEmail != null && _registeredEmail!.isNotEmpty)
+                    _buildPrimaryContactChip(Icons.email, _registeredEmail!),
+                  if (_registeredPhone != null && _registeredPhone!.isNotEmpty) ...[
+                    if (_registeredEmail != null && _registeredEmail!.isNotEmpty) const SizedBox(height: 8),
+                    _buildPrimaryContactChip(Icons.phone, _registeredPhone!),
+                  ],
+
+                  const SizedBox(height: 12),
+
+                  // Secondary: BRIX address
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     decoration: BoxDecoration(
                       color: Colors.black.withOpacity(0.3),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    child: Column(
                       children: [
-                        Flexible(
-                          child: Text(
-                            _brixAddress ?? '',
-                            style: const TextStyle(color: Colors.white, fontFamily: 'monospace', fontSize: 16, fontWeight: FontWeight.w600),
-                            textAlign: TextAlign.center,
-                          ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                _brixAddress ?? '',
+                                style: TextStyle(color: Colors.white.withOpacity(0.7), fontFamily: 'monospace', fontSize: 13),
+                                textAlign: TextAlign.center,
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: () {
+                                if (_brixAddress != null) {
+                                  Clipboard.setData(ClipboardData(text: _brixAddress!));
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text(loc.t('brix_snack_address_copied')), backgroundColor: Colors.amber, duration: const Duration(seconds: 2)),
+                                  );
+                                }
+                              },
+                              child: const Icon(Icons.copy, color: Colors.amber, size: 18),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 8),
-                        GestureDetector(
-                          onTap: () {
-                            if (_brixAddress != null) {
-                              Clipboard.setData(ClipboardData(text: _brixAddress!));
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Endereço copiado!'), backgroundColor: Colors.amber, duration: Duration(seconds: 2)),
-                              );
-                            }
-                          },
-                          child: const Icon(Icons.copy, color: Colors.amber, size: 20),
+                        const SizedBox(height: 4),
+                        Text(
+                          loc.t('brix_active_address_label'),
+                          style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11),
+                          textAlign: TextAlign.center,
                         ),
                       ],
                     ),
@@ -979,15 +1014,16 @@ class _BrixScreenState extends State<BrixScreen> {
                     height: 48,
                     child: ElevatedButton.icon(
                       onPressed: () {
-                        if (_brixAddress != null) {
-                          Clipboard.setData(ClipboardData(text: _brixAddress!));
+                        final text = _primaryContact;
+                        if (text != null) {
+                          Clipboard.setData(ClipboardData(text: text));
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Endereço copiado!'), backgroundColor: Colors.amber),
+                            SnackBar(content: Text(loc.t('brix_snack_contact_copied')), backgroundColor: Colors.amber),
                           );
                         }
                       },
                       icon: const Icon(Icons.copy, size: 18),
-                      label: const Text('Copiar'),
+                      label: Text(loc.t('brix_btn_copy')),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.amber,
                         foregroundColor: Colors.black,
@@ -1003,12 +1039,16 @@ class _BrixScreenState extends State<BrixScreen> {
                     height: 48,
                     child: OutlinedButton.icon(
                       onPressed: () {
-                        if (_brixAddress != null) {
-                          Share.share('Me envie Bitcoin pelo meu endereço BRIX: $_brixAddress ⚡');
+                        final parts = <String>[];
+                        if (_registeredEmail != null && _registeredEmail!.isNotEmpty) parts.add('${loc.t('brix_share_email_label')}: $_registeredEmail');
+                        if (_registeredPhone != null && _registeredPhone!.isNotEmpty) parts.add('${loc.t('brix_share_phone_label')}: $_registeredPhone');
+                        if (_brixAddress != null) parts.add('BRIX: $_brixAddress');
+                        if (parts.isNotEmpty) {
+                          Share.share('${loc.t('brix_share_text')}\n${parts.join('\n')}');
                         }
                       },
                       icon: const Icon(Icons.share, color: Colors.amber, size: 18),
-                      label: const Text('Compartilhar', style: TextStyle(color: Colors.amber)),
+                      label: Text(loc.t('brix_btn_share'), style: const TextStyle(color: Colors.amber)),
                       style: OutlinedButton.styleFrom(
                         side: const BorderSide(color: Colors.amber),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1037,7 +1077,7 @@ class _BrixScreenState extends State<BrixScreen> {
                     children: [
                       const Icon(Icons.person, color: Colors.amber, size: 20),
                       const SizedBox(width: 8),
-                      const Text('Dados cadastrados', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
+                      Text(loc.t('brix_registered_title'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
                       const Spacer(),
                       if (!_isEditing)
                         GestureDetector(
@@ -1046,7 +1086,7 @@ class _BrixScreenState extends State<BrixScreen> {
                             children: [
                               const Icon(Icons.edit, color: Colors.amber, size: 16),
                               const SizedBox(width: 4),
-                              Text('Modificar', style: TextStyle(color: Colors.amber.withOpacity(0.8), fontSize: 13)),
+                              Text(loc.t('brix_btn_edit'), style: TextStyle(color: Colors.amber.withOpacity(0.8), fontSize: 13)),
                             ],
                           ),
                         ),
@@ -1056,18 +1096,18 @@ class _BrixScreenState extends State<BrixScreen> {
 
                   // Phone info
                   if (_registeredPhone != null && _registeredPhone!.isNotEmpty) ...[
-                    _buildInfoRow(Icons.phone, 'Celular', _maskPhone(_registeredPhone!)),
+                    _buildInfoRow(Icons.phone, loc.t('brix_info_phone'), _maskPhone(_registeredPhone!)),
                     const SizedBox(height: 8),
                   ],
 
                   // Email info
                   if (_registeredEmail != null && _registeredEmail!.isNotEmpty) ...[
-                    _buildInfoRow(Icons.email, 'Email', _maskEmail(_registeredEmail!)),
+                    _buildInfoRow(Icons.email, loc.t('brix_info_email'), _maskEmail(_registeredEmail!)),
                     const SizedBox(height: 8),
                   ],
 
                   // Username
-                  _buildInfoRow(Icons.alternate_email, 'Username', _username ?? ''),
+                  _buildInfoRow(Icons.alternate_email, loc.t('brix_info_username'), _username ?? ''),
 
                   if (!_isEditing) ...[
                     const SizedBox(height: 14),
@@ -1078,7 +1118,7 @@ class _BrixScreenState extends State<BrixScreen> {
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
-                        'Qualquer pessoa pode te enviar Bitcoin usando seu celular, email ou endereço BRIX.',
+                        loc.t('brix_info_anyone_can_send'),
                         style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12, height: 1.4),
                       ),
                     ),
@@ -1098,14 +1138,14 @@ class _BrixScreenState extends State<BrixScreen> {
             // ── Info cards ──
             _buildInfoCard(
               icon: Icons.flash_on,
-              title: 'Receba Bitcoin de qualquer lugar',
-              description: 'Funciona com qualquer wallet Lightning. Basta compartilhar seu endereço BRIX.',
+              title: loc.t('brix_info_receive_title'),
+              description: loc.t('brix_info_receive_desc'),
             ),
             const SizedBox(height: 10),
             _buildInfoCard(
               icon: Icons.phone_android,
-              title: 'Funciona como um PIX',
-              description: 'O app recebe os pagamentos automaticamente em segundo plano.',
+              title: loc.t('brix_info_pix_title'),
+              description: loc.t('brix_info_pix_desc'),
             ),
 
             if (_error != null && !_isEditing) ...[
@@ -1114,6 +1154,46 @@ class _BrixScreenState extends State<BrixScreen> {
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  String? get _primaryContact {
+    if (_registeredEmail != null && _registeredEmail!.isNotEmpty) return _registeredEmail;
+    if (_registeredPhone != null && _registeredPhone!.isNotEmpty) return _registeredPhone;
+    return _brixAddress;
+  }
+
+  Widget _buildPrimaryContactChip(IconData icon, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: Colors.amber, size: 18),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Text(
+              value,
+              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: () {
+              Clipboard.setData(ClipboardData(text: value));
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(AppLocalizations.of(context).t('brix_snack_copied')), backgroundColor: Colors.amber, duration: const Duration(seconds: 2)),
+              );
+            },
+            child: const Icon(Icons.copy, color: Colors.amber, size: 16),
+          ),
+        ],
       ),
     );
   }
@@ -1132,6 +1212,7 @@ class _BrixScreenState extends State<BrixScreen> {
   }
 
   Widget _buildEditSection() {
+    final loc = AppLocalizations.of(context);
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -1146,7 +1227,7 @@ class _BrixScreenState extends State<BrixScreen> {
             children: [
               const Icon(Icons.edit, color: Colors.amber, size: 18),
               const SizedBox(width: 8),
-              const Text('Alterar contato', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.w600, fontSize: 15)),
+              Text(loc.t('brix_edit_title'), style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.w600, fontSize: 15)),
               const Spacer(),
               GestureDetector(
                 onTap: _cancelEdit,
@@ -1165,8 +1246,8 @@ class _BrixScreenState extends State<BrixScreen> {
               ),
               child: Row(
                 children: [
-                  _buildEditTab('📱 Celular', true),
-                  _buildEditTab('📧 Email', false),
+                  _buildEditTab(loc.t('brix_tab_phone'), true),
+                  _buildEditTab(loc.t('brix_tab_email'), false),
                 ],
               ),
             ),
@@ -1177,7 +1258,7 @@ class _BrixScreenState extends State<BrixScreen> {
               keyboardType: _editIsPhone ? TextInputType.phone : TextInputType.emailAddress,
               style: const TextStyle(color: Colors.white, fontSize: 16),
               decoration: InputDecoration(
-                hintText: _editIsPhone ? '+55 11 99988-7766' : 'novo@email.com',
+                hintText: _editIsPhone ? loc.t('brix_hint_phone') : loc.t('brix_edit_hint_email'),
                 hintStyle: const TextStyle(color: Colors.white24),
                 prefixIcon: Icon(_editIsPhone ? Icons.phone : Icons.email, color: Colors.amber, size: 20),
                 filled: true,
@@ -1205,13 +1286,13 @@ class _BrixScreenState extends State<BrixScreen> {
                 ),
                 child: _isLoading
                     ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                    : const Text('Enviar código de verificação', style: TextStyle(fontWeight: FontWeight.bold)),
+                    : Text(loc.t('brix_edit_btn_send_code'), style: const TextStyle(fontWeight: FontWeight.bold)),
               ),
             ),
           ] else ...[
             // Verification code input
             Text(
-              'Enviamos um código para ${_editIsPhone ? "o novo celular" : "o novo email"}',
+              _editIsPhone ? loc.t('brix_edit_sent_phone') : loc.t('brix_edit_sent_email'),
               style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13),
             ),
 
@@ -1223,7 +1304,7 @@ class _BrixScreenState extends State<BrixScreen> {
                   color: Colors.amber.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text('🔧 DEV código: $_editDevCode', style: const TextStyle(color: Colors.amber, fontSize: 12, fontFamily: 'monospace'), textAlign: TextAlign.center),
+                child: Text(loc.tp('brix_edit_dev_code', {'code': _editDevCode!}), style: const TextStyle(color: Colors.amber, fontSize: 12, fontFamily: 'monospace'), textAlign: TextAlign.center),
               ),
             ],
 
@@ -1264,7 +1345,7 @@ class _BrixScreenState extends State<BrixScreen> {
                 ),
                 child: _isLoading
                     ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                    : const Text('Confirmar', style: TextStyle(fontWeight: FontWeight.bold)),
+                    : Text(loc.t('brix_edit_btn_confirm'), style: const TextStyle(fontWeight: FontWeight.bold)),
               ),
             ),
           ],

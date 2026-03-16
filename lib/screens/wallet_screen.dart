@@ -775,9 +775,9 @@ class _WalletScreenState extends State<WalletScreen> {
                   decoration: InputDecoration(
                     labelText: AppLocalizations.of(context).t('wallet_destination_label'),
                     labelStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
-                    hintText: 'Invoice, celular, email, username BRIX',
+                    hintText: AppLocalizations.of(context).t('wallet_hint_brix'),
                     hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
-                    helperText: 'Invoice, Lightning Address, LNURL, BRIX ou celular',
+                    helperText: AppLocalizations.of(context).t('wallet_helper_brix'),
                     helperStyle: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -953,7 +953,9 @@ class _WalletScreenState extends State<WalletScreen> {
                       final isBrixUser = RegExp(r'^[a-z0-9_]{3,20}$').hasMatch(lowerDest) && !lowerDest.startsWith('lnbc') && !lowerDest.startsWith('lntb');
                       // Detect BRIX Lightning Addresses
                       final isBrixAddress = isLnAddress && (lowerDest.endsWith('@brix.app') || lowerDest.endsWith('@brostr.app') || lowerDest.endsWith('@brix.brostr.app'));
-                      final needsBrixResolve = isPhone || isBrixUser || isBrixAddress;
+                      // Detect emails that could be BRIX contacts (not already a BRIX domain)
+                      final isEmailForBrix = isLnAddress && !isBrixAddress && lowerDest.contains('@');
+                      final needsBrixResolve = isPhone || isBrixUser || isBrixAddress || isEmailForBrix;
                       final needsAmountInput = isLnAddress || isLnurl || needsBrixResolve;
                       
                       // Atualizar UI se necessário
@@ -997,7 +999,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           final breezProvider = context.read<BreezProvider>();
                           final lnAddressService = LnAddressService();
                           
-                          // Se for phone, username BRIX, ou BRIX address, resolver primeiro via BRIX
+                          // Se for phone, username BRIX, email ou BRIX address, resolver primeiro via BRIX
                           var resolvedDest = destination;
                           if (needsBrixResolve) {
                             final brixService = BrixService();
@@ -1008,14 +1010,20 @@ class _WalletScreenState extends State<WalletScreen> {
                             }
                             final resolveResult = await brixService.resolve(resolveQuery);
                             if (!resolveResult.found || resolveResult.brixAddress == null) {
-                              setModalState(() {
-                                isSending = false;
-                                errorMessage = 'Nenhum BRIX encontrado para "$destination"';
-                              });
-                              return;
+                              // If it's an email, don't error — it might be a standard Lightning Address
+                              if (!isEmailForBrix) {
+                                setModalState(() {
+                                  isSending = false;
+                                  errorMessage = 'Nenhum BRIX encontrado para "$destination"';
+                                });
+                                return;
+                              }
+                              // Fall through to standard LNURL resolution for non-BRIX emails
+                              broLog('🔍 Email não encontrado no BRIX, tentando como Lightning Address: $destination');
+                            } else {
+                              resolvedDest = resolveResult.brixAddress!;
+                              broLog('🔍 BRIX resolvido: $destination → $resolvedDest (via ${resolveResult.matchedBy})');
                             }
-                            resolvedDest = resolveResult.brixAddress!;
-                            broLog('🔍 BRIX resolvido: $destination → $resolvedDest (via ${resolveResult.matchedBy})');
                           }
                           
                           // Resolver Lightning Address ou LNURL para invoice BOLT11

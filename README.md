@@ -63,6 +63,7 @@ All communication is encrypted (NIP-44) and relayed through decentralized Nostr 
 - 📊 Real-time order tracking
 - 📜 Transaction history
 - 🔑 Login with Nostr key (nsec) or BIP-39 seed
+- ⚡ [BRIX](https://www.brostr.app/#brix) — receive Bitcoin via phone or email
 
 </td>
 <td width="50%">
@@ -79,20 +80,6 @@ All communication is encrypted (NIP-44) and relayed through decentralized Nostr 
 </td>
 </tr>
 </table>
-
----
-
-## BRIX — Receive Bitcoin with your phone or email
-
-**BRIX** lets you receive Bitcoin using the contact info you already know by heart — your phone number or email. No new addresses to memorize, no QR codes, no invoices.
-
-- ⚡ **Instant** — Receive sats in seconds via Lightning Network
-- 📱 **Use what you know** — Your phone number or email becomes your payment address
-- 🔒 **Verified** — One-time SMS or email code confirms ownership
-- 🌐 **Universal** — Compatible with any Lightning wallet (Phoenix, Zeus, BlueWallet, WoS, etc.)
-- 🌍 **Web + App** — Register at [brix.brostr.app](https://brix.brostr.app) or directly in the Bro App
-
-> BRIX is open source and can be integrated into any app. See the [BRIX repository](https://github.com/Quizzicarol/brix) for details.
 
 ---
 

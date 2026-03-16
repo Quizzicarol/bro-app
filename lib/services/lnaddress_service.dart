@@ -167,7 +167,7 @@ class LnAddressService {
   /// URL do servidor BRIX (from environment)
   static const String _brixServerUrl = String.fromEnvironment(
     'BRIX_SERVER_URL',
-    defaultValue: 'http://10.0.2.2:3100',
+    defaultValue: 'https://brix.brostr.app',
   );
 
   /// Resolve um Lightning Address para obter os dados LNURL-pay
@@ -184,11 +184,11 @@ class LnAddressService {
       final username = parts[0];
       final domain = parts[1];
       
-      // Check if it's a BRIX address — route to local server
+      // BRIX addresses route to the BRIX server
       String url;
       if (_brixDomains.contains(domain.toLowerCase())) {
         url = '$_brixServerUrl/.well-known/lnurlp/$username';
-        broLog('🔗 BRIX address detected, routing to local server');
+        broLog('🔗 BRIX address detected, routing to BRIX server');
       } else {
         url = 'https://$domain/.well-known/lnurlp/$username';
       }
@@ -301,15 +301,7 @@ class LnAddressService {
       // Construir URL com o valor em millisats
       final amountMsat = amountSats * 1000;
       
-      // Rewrite BRIX callback URLs to use local server
-      var effectiveCallback = callback;
-      final callbackUri = Uri.parse(callback);
-      if (_brixDomains.any((d) => callbackUri.host == d || callbackUri.host.endsWith('.$d'))) {
-        effectiveCallback = '$_brixServerUrl${callbackUri.path}';
-        broLog('🔗 BRIX callback rewritten to local: $effectiveCallback');
-      }
-      
-      var invoiceUrl = '$effectiveCallback${effectiveCallback.contains('?') ? '&' : '?'}amount=$amountMsat';
+      var invoiceUrl = '$callback${callback.contains('?') ? '&' : '?'}amount=$amountMsat';
       
       // Adicionar comentário se permitido
       if (comment != null && comment.isNotEmpty && commentAllowed > 0) {

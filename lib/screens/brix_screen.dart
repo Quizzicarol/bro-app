@@ -997,6 +997,12 @@ class _BrixScreenState extends State<BrixScreen> {
                           style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11),
                           textAlign: TextAlign.center,
                         ),
+                        const SizedBox(height: 6),
+                        Text(
+                          loc.t('brix_external_wallet_hint'),
+                          style: TextStyle(color: Colors.amber.withOpacity(0.7), fontSize: 11),
+                          textAlign: TextAlign.center,
+                        ),
                       ],
                     ),
                   ),

@@ -170,6 +170,19 @@ class _BrixScreenState extends State<BrixScreen> {
       return;
     }
 
+    // Validate phone number format (must include country code, e.g. +5548996242870)
+    if (_isPhone) {
+      final digits = contact.replaceAll(RegExp(r'\D'), '');
+      if (digits.length < 11) {
+        setState(() => _error = loc.t('brix_error_phone_format'));
+        return;
+      }
+      if (!contact.startsWith('+')) {
+        // Auto-prepend + if user typed only digits with country code
+        _contactController.text = '+$contact';
+      }
+    }
+
     // If email, check if there's already a web-created BRIX for this email
     if (!_isPhone && contact.contains('@')) {
       setState(() { _isLoading = true; _error = null; });

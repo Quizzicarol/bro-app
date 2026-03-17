@@ -172,15 +172,29 @@ class _BrixScreenState extends State<BrixScreen> {
 
     // Validate phone number format (must include country code, e.g. +5548996242870)
     if (_isPhone) {
-      final digits = contact.replaceAll(RegExp(r'\D'), '');
-      if (digits.length < 11) {
+      var digits = contact.replaceAll(RegExp(r'\D'), '');
+
+      // Auto-fix Brazilian mobile: if 10 digits starting with area code + mobile prefix,
+      // prepend 55 (country code)
+      if (digits.length == 10 && RegExp(r'^\d{2}[6-9]').hasMatch(digits)) {
+        digits = '55$digits';
+      }
+      // Auto-fix Brazilian mobile: if 11 digits starting with area code + 9 + mobile prefix
+      if (digits.length == 11 && RegExp(r'^\d{2}9[6-9]').hasMatch(digits)) {
+        digits = '55$digits';
+      }
+      // Auto-fix Brazilian mobile: if 12 digits (55 + area + 8-digit mobile missing 9 prefix)
+      if (digits.length == 12 && digits.startsWith('55') && RegExp(r'^55\d{2}[6-9]').hasMatch(digits)) {
+        final area = digits.substring(2, 4);
+        final number = digits.substring(4);
+        digits = '55${area}9$number';
+      }
+
+      if (digits.length < 12) {
         setState(() => _error = loc.t('brix_error_phone_format'));
         return;
       }
-      if (!contact.startsWith('+')) {
-        // Auto-prepend + if user typed only digits with country code
-        _contactController.text = '+$contact';
-      }
+      _contactController.text = '+$digits';
     }
 
     // If email, check if there's already a web-created BRIX for this email

@@ -252,6 +252,20 @@ class BrixService {
     }
   }
 
+  /// Claim a pending offline payment by submitting a recipient invoice
+  Future<bool> claimPayment(String paymentId, String invoice, String pubkey) async {
+    try {
+      final response = await _dio.post('/brix/claim',
+        data: {'payment_id': paymentId, 'invoice': invoice},
+        options: Options(headers: {'x-nostr-pubkey': pubkey}),
+      );
+      return response.data?['success'] == true;
+    } catch (e) {
+      broLog('[BRIX] Error claiming payment: $e');
+      return false;
+    }
+  }
+
   /// Request contact update (sends verification code to new contact)
   Future<BrixRegisterResult> updateContact({
     String? phone,

@@ -362,12 +362,7 @@ class BroApp extends StatelessWidget {
                 home: isLoggedIn 
                     ? const HomeScreen() 
                     : (!hasSeenOnboarding 
-                        ? OnboardingScreen(onComplete: () {
-                            Navigator.of(context).pushAndRemoveUntil(
-                              MaterialPageRoute(builder: (_) => const LoginScreen()),
-                              (route) => false,
-                            );
-                          }) 
+                        ? const OnboardingScreen() 
                         : const LoginScreen()),
             onGenerateRoute: (settings) {
               // Rotas com parametros

@@ -18,6 +18,7 @@ import '../services/bitcoin_price_service.dart';
 import '../config.dart';
 import '../l10n/app_localizations.dart';
 import '../services/brix_service.dart';
+import '../services/brix_relay_service.dart';
 
 /// Tela de Carteira Lightning - Apenas BOLT11 (invoice)
 /// Funções: Ver saldo, Enviar pagamento, Receber (gerar invoice)
@@ -31,14 +32,31 @@ class WalletScreen extends StatefulWidget {
 class _WalletScreenState extends State<WalletScreen> {
   Map<String, dynamic>? _balance;
   List<Map<String, dynamic>> _payments = [];
+  List<Map<String, dynamic>> _pendingOutgoing = [];
   bool _isLoading = false;
   String? _error;
   double _btcPrice = 0;
+
+  /// Total sats queued for outgoing BRIX payments (not yet deducted from wallet).
+  int get _queuedSats => _pendingOutgoing.fold(0, (sum, p) => sum + ((p['amountSats'] as int?) ?? 0));
 
   @override
   void initState() {
     super.initState();
     _loadWalletInfo();
+    // Listen for queued payment completions
+    BrixRelayService().onQueuedPaymentCompleted = (recipient, amount) {
+      if (mounted) {
+        _loadWalletInfo();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Pagamento de $amount sats para $recipient concluído!'),
+            backgroundColor: const Color(0xFF4CAF50),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    };
   }
 
   Future<void> _loadWalletInfo() async {
@@ -184,6 +202,14 @@ class _WalletScreenState extends State<WalletScreen> {
           _payments = allPayments;
         });
       }
+
+      // Load queued outgoing BRIX payments
+      try {
+        final pending = await BrixRelayService().getPendingOutgoing();
+        if (mounted) {
+          setState(() => _pendingOutgoing = pending);
+        }
+      } catch (_) {}
     } catch (e) {
       broLog('❌ Erro ao carregar carteira: $e');
       if (mounted) {
@@ -511,6 +537,27 @@ class _WalletScreenState extends State<WalletScreen> {
                 ),
               ),
             ],
+            if (_queuedSats > 0) ...[
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.schedule, color: Colors.amber, size: 14),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${_formatSats(_queuedSats)} pendente(s)',
+                      style: const TextStyle(color: Colors.amber, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ],
       ),
@@ -593,6 +640,8 @@ class _WalletScreenState extends State<WalletScreen> {
     bool isSending = false;
     bool showAmountField = false;
     String? errorMessage;
+    bool isReaisMode = false;
+    double? btcPriceBrl;
     
     // Get current balance
     final balanceSats = int.tryParse(_balance?['balance']?.toString() ?? '0') ?? 0;
@@ -612,6 +661,9 @@ class _WalletScreenState extends State<WalletScreen> {
     final availableSats = (balanceSats - totalLockedSats).clamp(0, balanceSats);
     final hasLockedFunds = totalLockedSats > 0;
     final hasTierActive = tierLockedSats > 0;
+    
+    // Fetch BTC price for BRL conversion
+    btcPriceBrl = await BitcoinPriceService.getBitcoinPriceWithCache();
     
     if (!mounted) return;
     
@@ -797,33 +849,127 @@ class _WalletScreenState extends State<WalletScreen> {
                 // Campo de valor (mostrado para Lightning Address e LNURL)
                 if (showAmountField) ...[
                   const SizedBox(height: 16),
-                  TextField(
-                    controller: amountController,
-                    style: const TextStyle(color: Colors.white, fontSize: 18),
-                    keyboardType: TextInputType.number,
-                    enabled: !isSending,
-                    decoration: InputDecoration(
-                      labelText: AppLocalizations.of(context).t('wallet_amount_label'),
-                      labelStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
-                      hintText: 'Ex: 1000',
-                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
-                      prefixIcon: const Icon(Icons.bolt, color: Colors.orange),
-                      suffixText: 'sats',
-                      suffixStyle: const TextStyle(color: Colors.orange),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFF333333)),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: amountController,
+                          style: const TextStyle(color: Colors.white, fontSize: 18),
+                          keyboardType: isReaisMode
+                              ? const TextInputType.numberWithOptions(decimal: true)
+                              : TextInputType.number,
+                          enabled: !isSending,
+                          onChanged: (_) => setModalState(() {}),
+                          decoration: InputDecoration(
+                            labelText: isReaisMode ? 'Valor em Reais' : AppLocalizations.of(context).t('wallet_amount_label'),
+                            labelStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
+                            hintText: isReaisMode ? 'Ex: 10.00' : 'Ex: 1000',
+                            hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                            prefixIcon: Icon(
+                              isReaisMode ? Icons.attach_money : Icons.bolt,
+                              color: isReaisMode ? Colors.green : Colors.orange,
+                            ),
+                            suffixText: isReaisMode ? 'R\$' : 'sats',
+                            suffixStyle: TextStyle(color: isReaisMode ? Colors.green : Colors.orange),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: Color(0xFF333333)),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: Color(0xFF333333)),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: isReaisMode ? Colors.green : const Color(0xFFFF9800)),
+                            ),
+                          ),
+                        ),
                       ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFF333333)),
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: isSending ? null : () {
+                          setModalState(() {
+                            isReaisMode = !isReaisMode;
+                            amountController.clear();
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                          decoration: BoxDecoration(
+                            color: (isReaisMode ? Colors.green : Colors.orange).withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: (isReaisMode ? Colors.green : Colors.orange).withOpacity(0.5),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.swap_horiz,
+                                color: isReaisMode ? Colors.green : Colors.orange,
+                                size: 16,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                isReaisMode ? 'R\$' : 'SAT',
+                                style: TextStyle(
+                                  color: isReaisMode ? Colors.green : Colors.orange,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFFFF9800)),
-                      ),
-                    ),
+                    ],
                   ),
+                  // Conversion preview
+                  if (amountController.text.trim().isNotEmpty && btcPriceBrl != null)
+                    Builder(builder: (_) {
+                      Widget? preview;
+                      if (isReaisMode) {
+                        final brl = double.tryParse(amountController.text.trim().replaceAll(',', '.'));
+                        if (brl != null && brl > 0) {
+                          final sats = (brl * 100000000 / btcPriceBrl!).round();
+                          preview = Text(
+                            '≈ $sats sats  •  1 BTC = R\$ ${btcPriceBrl!.toStringAsFixed(0)}',
+                            style: const TextStyle(color: Colors.white54, fontSize: 12),
+                          );
+                        }
+                      } else {
+                        final sats = int.tryParse(amountController.text.trim());
+                        if (sats != null && sats > 0) {
+                          final brl = sats * btcPriceBrl! / 100000000;
+                          preview = Text(
+                            '≈ R\$ ${brl.toStringAsFixed(2)}  •  1 BTC = R\$ ${btcPriceBrl!.toStringAsFixed(0)}',
+                            style: const TextStyle(color: Colors.white54, fontSize: 12),
+                          );
+                        }
+                      }
+                      if (preview == null) return const SizedBox.shrink();
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.swap_vert, color: Colors.white38, size: 16),
+                              const SizedBox(width: 6),
+                              Expanded(child: preview),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
                 ],
                 
                 // Mensagem de erro
@@ -970,7 +1116,15 @@ class _WalletScreenState extends State<WalletScreen> {
                       // Se for Lightning Address, LNURL, phone ou BRIX username, precisamos de um valor
                       if (needsAmountInput) {
                         final amountText = amountController.text.trim();
-                        final amountSats = int.tryParse(amountText);
+                        int? amountSats;
+                        if (isReaisMode && btcPriceBrl != null) {
+                          final brl = double.tryParse(amountText.replaceAll(',', '.'));
+                          if (brl != null && brl > 0) {
+                            amountSats = (brl * 100000000 / btcPriceBrl!).round();
+                          }
+                        } else {
+                          amountSats = int.tryParse(amountText);
+                        }
                         
                         if (amountSats == null || amountSats <= 0) {
                           setModalState(() => errorMessage = AppLocalizations.of(context).t('wallet_enter_valid_amount'));
@@ -1034,14 +1188,30 @@ class _WalletScreenState extends State<WalletScreen> {
                           
                           if (invoiceResult['success'] != true) {
                             final errMsg = invoiceResult['error'] ?? '';
-                            setModalState(() {
-                              isSending = false;
-                              if (errMsg == 'BRIX_RECIPIENT_OFFLINE') {
-                                errorMessage = '⚡ O destinatário não está com o app aberto neste momento.\n\nPeça para ele abrir o Bro App e tente novamente. O BRIX precisa que o destinatário esteja online para gerar a invoice.';
-                              } else {
-                                errorMessage = errMsg.isNotEmpty ? errMsg : AppLocalizations.of(context).t('wallet_resolve_failed');
+                            if (errMsg == 'BRIX_RECIPIENT_OFFLINE' && needsBrixResolve) {
+                              // Queue for auto-retry when recipient comes online
+                              await BrixRelayService().queueOutgoingPayment(
+                                recipient: resolvedDest,
+                                amountSats: amountSats,
+                                originalDest: destination,
+                              );
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('✅ Pagamento agendado! Será enviado automaticamente quando o destinatário abrir o app.'),
+                                    backgroundColor: Color(0xFF4CAF50),
+                                    duration: Duration(seconds: 4),
+                                  ),
+                                );
                               }
-                            });
+                              _loadWalletInfo();
+                            } else {
+                              setModalState(() {
+                                isSending = false;
+                                errorMessage = errMsg.isNotEmpty ? errMsg : AppLocalizations.of(context).t('wallet_resolve_failed');
+                              });
+                            }
                             return;
                           }
                           
@@ -1063,21 +1233,64 @@ class _WalletScreenState extends State<WalletScreen> {
                             }
                             _loadWalletInfo();
                           } else {
-                            setModalState(() {
-                              isSending = false;
-                              errorMessage = result?['error'] ?? AppLocalizations.of(context).t('wallet_send_payment_failed');
-                            });
+                            final errStr = result?['error']?.toString() ?? '';
+                            // If payInvoice fails with invalidInput on a BRIX dest,
+                            // the invoice is likely from LNbits (offline). Queue for retry.
+                            if (needsBrixResolve && errStr.contains('invalid')) {
+                              await BrixRelayService().queueOutgoingPayment(
+                                recipient: resolvedDest,
+                                amountSats: amountSats,
+                                originalDest: destination,
+                              );
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('✅ Pagamento agendado! Será enviado automaticamente quando o destinatário abrir o app.'),
+                                    backgroundColor: Color(0xFF4CAF50),
+                                    duration: Duration(seconds: 4),
+                                  ),
+                                );
+                              }
+                              _loadWalletInfo();
+                            } else {
+                              setModalState(() {
+                                isSending = false;
+                                errorMessage = errStr.isNotEmpty ? errStr : AppLocalizations.of(context).t('wallet_send_payment_failed');
+                              });
+                            }
                           }
                         } catch (e) {
                           broLog('❌ Erro ao enviar: $e');
-                          setModalState(() {
-                            isSending = false;
-                            if (e.toString().contains('TimeoutException') || e.toString().contains('timeout')) {
-                              errorMessage = '⚡ O destinatário não está com o app aberto neste momento.\n\nPeça para ele abrir o Bro App e tente novamente. O BRIX precisa que o destinatário esteja online para gerar a invoice.';
-                            } else {
-                              errorMessage = 'Erro: $e';
+                          final isTimeout = e.toString().contains('TimeoutException') || e.toString().contains('timeout');
+                          final canQueue = needsBrixResolve && amountSats != null && amountSats! > 0;
+
+                          if (isTimeout && canQueue) {
+                            // Timeout on BRIX → queue and show as success
+                            await BrixRelayService().queueOutgoingPayment(
+                              recipient: destination,
+                              amountSats: amountSats!,
+                              originalDest: destination,
+                            );
+                            if (context.mounted) {
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('✅ Pagamento agendado! Será enviado automaticamente quando o destinatário abrir o app.'),
+                                  backgroundColor: Color(0xFF4CAF50),
+                                  duration: Duration(seconds: 4),
+                                ),
+                              );
                             }
-                          });
+                            _loadWalletInfo();
+                          } else {
+                            setModalState(() {
+                              isSending = false;
+                              errorMessage = isTimeout
+                                  ? '⚡ O destinatário não está com o app aberto neste momento.\n\nPeça para ele abrir o Bro App e tente novamente.'
+                                  : 'Erro: $e';
+                            });
+                          }
                         }
                         return;
                       }
@@ -1492,6 +1705,8 @@ class _WalletScreenState extends State<WalletScreen> {
     final isLnAddress = invoice.contains('@') && invoice.contains('.');
     final isLnurl = lowerInvoice.startsWith('lnurl');
     final needsAmountInput = isLnAddress || isLnurl;
+    // Detect BRIX addresses for queue-on-offline handling
+    final isBrixAddress = isLnAddress && (lowerInvoice.endsWith('@brix.app') || lowerInvoice.endsWith('@brostr.app') || lowerInvoice.endsWith('@brix.brostr.app'));
     
     final invoiceController = TextEditingController(text: invoice);
     final amountController = TextEditingController();
@@ -1820,9 +2035,30 @@ class _WalletScreenState extends State<WalletScreen> {
                           );
                           
                           if (resolveResult['success'] != true) {
+                            final errMsg = resolveResult['error'] ?? '';
+                            // BRIX address + recipient offline → queue for retry
+                            if (errMsg == 'BRIX_RECIPIENT_OFFLINE' && isBrixAddress) {
+                              await BrixRelayService().queueOutgoingPayment(
+                                recipient: invoice,
+                                amountSats: amountSats,
+                                originalDest: invoice,
+                              );
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('✅ Pagamento agendado! Será enviado automaticamente quando o destinatário abrir o app.'),
+                                    backgroundColor: Color(0xFF4CAF50),
+                                    duration: Duration(seconds: 4),
+                                  ),
+                                );
+                              }
+                              _loadWalletInfo();
+                              return;
+                            }
                             setModalState(() {
                               isSending = false;
-                              errorMessage = resolveResult['error'] ?? AppLocalizations.of(context).t('wallet_resolve_failed');
+                              errorMessage = errMsg.isNotEmpty ? errMsg : AppLocalizations.of(context).t('wallet_resolve_failed');
                             });
                             return;
                           }
@@ -1856,19 +2092,64 @@ class _WalletScreenState extends State<WalletScreen> {
                             );
                           }
                         } else {
+                          final errStr = result?['error']?.toString() ?? '';
+                          // If payInvoice fails with invalidInput on a BRIX dest, queue for retry
+                          if (isBrixAddress && errStr.contains('invalid')) {
+                            final amountSats = int.tryParse(amountController.text.trim()) ?? 0;
+                            if (amountSats > 0) {
+                              await BrixRelayService().queueOutgoingPayment(
+                                recipient: invoice,
+                                amountSats: amountSats,
+                                originalDest: invoice,
+                              );
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('✅ Pagamento agendado! Será enviado automaticamente quando o destinatário abrir o app.'),
+                                    backgroundColor: Color(0xFF4CAF50),
+                                    duration: Duration(seconds: 4),
+                                  ),
+                                );
+                              }
+                              _loadWalletInfo();
+                              return;
+                            }
+                          }
                           broLog('❌ Pagamento falhou: ${result?['error']}');
                           setModalState(() {
                             isSending = false;
-                            errorMessage = result?['error'] ?? AppLocalizations.of(context).t('wallet_send_payment_failed');
+                            errorMessage = errStr.isNotEmpty ? errStr : AppLocalizations.of(context).t('wallet_send_payment_failed');
                           });
                         }
                       } catch (e, stack) {
                         broLog('❌ Exceção ao enviar: $e');
                         broLog('   Stack: $stack');
-                        setModalState(() {
-                          isSending = false;
-                          errorMessage = 'Erro: $e';
-                        });
+                        final isTimeout = e.toString().contains('TimeoutException') || e.toString().contains('timeout');
+                        final amountSats = int.tryParse(amountController.text.trim()) ?? 0;
+                        if (isTimeout && isBrixAddress && amountSats > 0) {
+                          await BrixRelayService().queueOutgoingPayment(
+                            recipient: invoice,
+                            amountSats: amountSats,
+                            originalDest: invoice,
+                          );
+                          if (context.mounted) {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('✅ Pagamento agendado! Será enviado automaticamente quando o destinatário abrir o app.'),
+                                backgroundColor: Color(0xFF4CAF50),
+                                duration: Duration(seconds: 4),
+                              ),
+                            );
+                          }
+                          _loadWalletInfo();
+                        } else {
+                          setModalState(() {
+                            isSending = false;
+                            errorMessage = 'Erro: $e';
+                          });
+                        }
                       }
                     },
                     icon: isSending
@@ -2204,7 +2485,7 @@ class _WalletScreenState extends State<WalletScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        if (_payments.isEmpty)
+        if (_payments.isEmpty && _pendingOutgoing.isEmpty)
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(24),
@@ -2225,8 +2506,117 @@ class _WalletScreenState extends State<WalletScreen> {
             ),
           )
         else
+          ...(_pendingOutgoing.map((p) => _buildPendingOutgoingItem(p))),
           ...(_payments.take(15).map((payment) => _buildPaymentItem(payment))),
       ],
+    );
+  }
+
+  Widget _buildPendingOutgoingItem(Map<String, dynamic> pending) {
+    final amount = (pending['amountSats'] as int?) ?? 0;
+    final recipient = pending['originalDest']?.toString() ?? pending['recipient']?.toString() ?? '?';
+    final created = DateTime.tryParse(pending['createdAt'] ?? '');
+    final retryCount = (pending['retryCount'] as int?) ?? 0;
+
+    return Dismissible(
+      key: Key('pending_${pending['id']}'),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        decoration: BoxDecoration(
+          color: Colors.red.shade800,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        alignment: Alignment.centerRight,
+        child: const Icon(Icons.delete, color: Colors.white),
+      ),
+      onDismissed: (_) {
+        BrixRelayService().cancelOutgoingPayment(pending['id'].toString());
+        setState(() => _pendingOutgoing.removeWhere((p) => p['id'] == pending['id']));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Pagamento pendente cancelado'),
+            backgroundColor: Color(0xFFFF6B6B),
+          ),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1A2A),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.amber.withOpacity(0.4)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: Colors.amber.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: const Icon(Icons.schedule, color: Colors.amber, size: 18),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'envio brix pendente',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  Text(
+                    '→ $recipient',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.6),
+                      fontSize: 11,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    retryCount > 0
+                        ? 'Aguardando destinatário (tentativa $retryCount)'
+                        : 'Aguardando destinatário ficar online',
+                    style: TextStyle(
+                      color: Colors.amber.withOpacity(0.8),
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '-$amount sats',
+                  style: const TextStyle(
+                    color: Colors.amber,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+                if (created != null)
+                  Text(
+                    _formatDateFull(created),
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.4),
+                      fontSize: 10,
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 

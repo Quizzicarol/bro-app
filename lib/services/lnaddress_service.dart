@@ -211,7 +211,17 @@ class LnAddressService {
         };
       }
 
-      final data = json.decode(response.body);
+      // Validate response is JSON before parsing
+      final body = response.body.trim();
+      if (body.isEmpty || (!body.startsWith('{') && !body.startsWith('['))) {
+        broLog('❌ Resposta não é JSON: ${body.substring(0, body.length > 100 ? 100 : body.length)}');
+        return {
+          'success': false,
+          'error': 'Este endereço não suporta Lightning payments'
+        };
+      }
+
+      final data = json.decode(body);
       
       // Verificar se é um LNURL-pay válido
       if (data['tag'] != 'payRequest') {
@@ -303,6 +313,14 @@ class LnAddressService {
       
       var invoiceUrl = '$callback${callback.contains('?') ? '&' : '?'}amount=$amountMsat';
       
+      // BRIX relay polls for up to 25s, so use 30s timeout for BRIX addresses
+      final isBrix = !isLnurl(lnAddress) && _brixDomains.any((d) => lnAddress.toLowerCase().endsWith('@$d') || lnAddress.toLowerCase().endsWith('@brix.$d'));
+
+      // Tell BRIX server this is a BRIX app sender (Spark→Spark direct)
+      if (isBrix) {
+        invoiceUrl += '&source=brix';
+      }
+
       // Adicionar comentário se permitido
       if (comment != null && comment.isNotEmpty && commentAllowed > 0) {
         final truncatedComment = comment.length > commentAllowed 
@@ -313,9 +331,6 @@ class LnAddressService {
 
       broLog('💸 Obtendo invoice para $amountSats sats...');
       broLog('🌐 URL: $invoiceUrl');
-
-      // BRIX relay polls for up to 25s, so use 30s timeout for BRIX addresses
-      final isBrix = !isLnurl(lnAddress) && _brixDomains.any((d) => lnAddress.toLowerCase().endsWith('@$d') || lnAddress.toLowerCase().endsWith('@brix.$d'));
       final timeoutDuration = isBrix ? const Duration(seconds: 30) : const Duration(seconds: 15);
 
       final response = await http.get(

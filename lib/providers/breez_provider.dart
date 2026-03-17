@@ -1143,7 +1143,9 @@ class BreezProvider with ChangeNotifier {
                  errMsg.contains('payment method') || errMsg.contains('PaymentMethod')) {
         errMsg = 'Tipo de pagamento não suportado. Use uma invoice Lightning (BOLT11) válida que comece com "lnbc" ou "lntb".';
       } else if (errMsg.contains('invalid') || errMsg.contains('Invalid')) {
-        errMsg = 'Invoice inválida. Verifique se copiou corretamente.';
+        final originalErr = e.toString();
+        broLog('⚠️ Erro "invalid" original do SDK: $originalErr');
+        errMsg = 'Invoice inválida: ${originalErr.length > 120 ? originalErr.substring(0, 120) : originalErr}';
       } else if (errMsg.contains('parse') || errMsg.contains('Parse')) {
         errMsg = 'Não foi possível interpretar o código. Use uma invoice Lightning válida.';
       } else if (errMsg.contains('time lock') || errMsg.contains('time_lock') || errMsg.contains('timelock')) {
@@ -1155,7 +1157,7 @@ class BreezProvider with ChangeNotifier {
       _setError(errMsg);
       broLog('❌ Erro ao pagar: $errMsg');
       broLog('   Erro original: ${e.toString()}');
-      return {'success': false, 'error': errMsg};
+      return {'success': false, 'error': errMsg, 'originalError': e.toString()};
     } finally {
       _setLoading(false);
     }

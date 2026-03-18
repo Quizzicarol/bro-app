@@ -323,6 +323,20 @@ class BrixService {
       return BrixVerifyResult(success: false, error: 'Erro de conexão');
     }
   }
+
+  /// Register FCM push token with BRIX server for offline notifications
+  Future<bool> registerPushToken(String fcmToken, String pubkey) async {
+    try {
+      final response = await _dio.post('/brix/register-push',
+        data: {'fcm_token': fcmToken},
+        options: Options(headers: {'x-nostr-pubkey': pubkey}),
+      );
+      return response.data?['success'] == true;
+    } catch (e) {
+      broLog('[BRIX] Error registering push token: $e');
+      return false;
+    }
+  }
 }
 
 class BrixUsernameCheckResult {

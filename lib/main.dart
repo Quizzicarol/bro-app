@@ -1,5 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
 import 'l10n/app_localizations.dart';
@@ -45,10 +47,33 @@ import 'widgets/alfa_banner.dart';
 import 'services/nostr_service.dart';
 import 'services/background_notification_service.dart';
 import 'services/nostr_order_service.dart';
+import 'services/brix_service.dart';
 import 'config.dart';
+
+/// Top-level handler for background FCM messages (required by Firebase).
+/// Wakes up the app to process BRIX invoice requests.
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  broLog('[FCM-BG] Background message: ${message.data}');
+  // The app will start polling BRIX on next foreground resume.
+  // For data-only messages, Android delivers to onMessage when app is in foreground.
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Firebase
+  await Firebase.initializeApp();
+
+  // Register background message handler
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  // Request notification permission & get FCM token
+  final messaging = FirebaseMessaging.instance;
+  await messaging.requestPermission();
+  final fcmToken = await messaging.getToken();
+  broLog('[FCM] Push token: $fcmToken');
 
   // Inicializar notificacoes
   await NotificationService().initialize();
@@ -75,6 +100,20 @@ void main() async {
     await _restoreNostrKeys(storage);
     userPubkey = await storage.getNostrPublicKey();
     broLog('📦 Pubkey para OrderProvider: ${userPubkey?.substring(0, 16) ?? "null"}...');
+    
+    // Register FCM token with BRIX server for offline push notifications
+    if (fcmToken != null && userPubkey != null) {
+      BrixService().registerPushToken(fcmToken, userPubkey).then((ok) {
+        broLog('[FCM] BRIX push token registered: $ok');
+      });
+    }
+
+    // Listen for foreground FCM messages (BRIX wake-up)
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      broLog('[FCM] Foreground message: ${message.data}');
+      // BrixRelayService is already polling every 3s in foreground,
+      // so no additional action needed.
+    });
     
     // v262: Iniciar background notifications (polling Nostr a cada 15min)
     await initBackgroundNotifications();

@@ -1,7 +1,7 @@
 name: bro_app
 description: "Bro - Plataforma P2P para pagamento de contas com Bitcoin via Lightning Network"
 publish_to: 'none'
-version: 1.0.132+369
+version: 1.0.132+370
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -71,6 +71,10 @@ dependencies:
   
   # Background tasks (notificações com app fechado)
   workmanager: ^0.9.0
+  
+  # Firebase (push notifications for offline BRIX receiving)
+  firebase_core: ^3.12.1
+  firebase_messaging: ^15.2.4
   
   # Version & URL
   package_info_plus: ^8.0.0

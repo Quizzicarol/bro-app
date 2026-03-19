@@ -4,6 +4,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
+import 'package:breez_sdk_spark_flutter/breez_sdk_spark.dart' as spark;
+import 'package:path_provider/path_provider.dart';
 import 'l10n/app_localizations.dart';
 import 'providers/locale_provider.dart';
 import 'screens/login_screen.dart'; // Login original com chave privada
@@ -50,15 +52,67 @@ import 'services/nostr_order_service.dart';
 import 'services/brix_service.dart';
 import 'services/brix_relay_service.dart';
 import 'config.dart';
+import 'config/breez_config.dart';
+import 'extensions/breez_extensions.dart';
 
 /// Top-level handler for background FCM messages (required by Firebase).
-/// Wakes up the app to process BRIX invoice requests.
+/// When the app is killed, this generates invoices for BRIX payments.
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
   broLog('[FCM-BG] Background message: ${message.data}');
-  // The app will start polling BRIX on next foreground resume.
-  // For data-only messages, Android delivers to onMessage when app is in foreground.
+
+  if (message.data['type'] != 'brix_invoice_request') return;
+
+  final requestId = message.data['request_id'];
+  final amountStr = message.data['amount_sats'];
+  if (requestId == null || amountStr == null) return;
+
+  final amountSats = int.tryParse(amountStr);
+  if (amountSats == null || amountSats <= 0) return;
+
+  spark.BreezSdk? sdk;
+  try {
+    final storage = StorageService();
+    await storage.init();
+    final pubkey = await storage.getNostrPublicKey();
+    if (pubkey == null || pubkey.isEmpty) return;
+
+    final mnemonic = await storage.getBreezMnemonic(forPubkey: pubkey);
+    if (mnemonic == null || mnemonic.isEmpty) return;
+
+    await spark.BreezSdkSparkLib.init();
+    final seed = spark.Seed.mnemonic(mnemonic: mnemonic);
+    final network = BreezConfig.useMainnet ? spark.Network.mainnet : spark.Network.regtest;
+    final config = spark.defaultConfig(network: network).copyWith(
+      apiKey: BreezConfig.apiKey,
+    );
+    final appDir = await getApplicationDocumentsDirectory();
+    final storageDir = '${appDir.path}/breez_spark_${pubkey.substring(0, 8)}';
+
+    sdk = await spark.connect(
+      request: spark.ConnectRequest(config: config, seed: seed, storageDir: storageDir),
+    );
+
+    final resp = await sdk.receivePayment(
+      request: spark.ReceivePaymentRequest(
+        paymentMethod: spark.ReceivePaymentMethod.bolt11Invoice(
+          description: 'BRIX Payment',
+          amountSats: BigInt.from(amountSats),
+        ),
+      ),
+    ).timeout(const Duration(seconds: 30));
+
+    final bolt11 = resp.paymentRequest;
+    final brixService = BrixService();
+    final ok = await brixService.submitInvoice(requestId, bolt11, pubkey);
+    broLog('[FCM-BG] Invoice ${ok ? "submitted" : "failed"}: $amountSats sats');
+  } catch (e) {
+    broLog('[FCM-BG] Error processing background invoice: $e');
+  } finally {
+    try { await sdk?.disconnect(); } catch (_) {}
+  }
 }
 
 void main() async {

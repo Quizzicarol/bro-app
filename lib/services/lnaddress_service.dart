@@ -331,7 +331,7 @@ class LnAddressService {
 
       broLog('💸 Obtendo invoice para $amountSats sats...');
       broLog('🌐 URL: $invoiceUrl');
-      final timeoutDuration = isBrix ? const Duration(seconds: 30) : const Duration(seconds: 15);
+      final timeoutDuration = isBrix ? const Duration(seconds: 70) : const Duration(seconds: 15);
 
       final response = await http.get(
         Uri.parse(invoiceUrl),

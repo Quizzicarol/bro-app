@@ -32,7 +32,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final _currencyFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
   double _btcPrice = 0.0;
   Timer? _priceUpdateTimer;
@@ -44,6 +44,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadCurrentUserPubkey();
       _initializeBreezSdk();
@@ -58,6 +59,14 @@ class _HomeScreenState extends State<HomeScreen> {
       // Start BRIX invoice relay service (global, any screen)
       BrixRelayService().start(context);
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Restart relay service when app comes back to foreground
+      BrixRelayService().restart(context);
+    }
   }
   
   /// Carrega a pubkey do usuário atual para filtro extra de segurança
@@ -308,6 +317,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _priceUpdateTimer?.cancel();
     _ordersUpdateTimer?.cancel();
     _unreadSub?.cancel();

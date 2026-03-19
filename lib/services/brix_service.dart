@@ -119,7 +119,9 @@ class BrixService {
   /// Get the BRIX address for a given Nostr pubkey
   Future<BrixAddressResult> getAddress(String pubkey) async {
     try {
-      final response = await _dio.get('/brix/address/$pubkey');
+      final response = await _dio.get('/brix/address/$pubkey',
+        options: Options(headers: {'x-nostr-pubkey': pubkey}),
+      );
       final data = response.data;
       return BrixAddressResult(
         hasAddress: true,

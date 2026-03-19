@@ -48,6 +48,7 @@ import 'services/nostr_service.dart';
 import 'services/background_notification_service.dart';
 import 'services/nostr_order_service.dart';
 import 'services/brix_service.dart';
+import 'services/brix_relay_service.dart';
 import 'config.dart';
 
 /// Top-level handler for background FCM messages (required by Firebase).
@@ -111,6 +112,17 @@ void main() async {
       // Listen for foreground FCM messages (BRIX wake-up)
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
         broLog('[FCM] Foreground message: ${message.data}');
+        if (message.data['type'] == 'brix_invoice_request') {
+          BrixRelayService().triggerPoll();
+        }
+      });
+
+      // When user taps notification to open app, also trigger poll
+      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+        broLog('[FCM] App opened from notification: ${message.data}');
+        if (message.data['type'] == 'brix_invoice_request') {
+          BrixRelayService().triggerPoll();
+        }
       });
     }
     

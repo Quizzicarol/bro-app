@@ -6,6 +6,7 @@ import 'package:bro_app/services/log_utils.dart';
 import 'package:bro_app/l10n/app_localizations.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -74,6 +75,20 @@ class _BrixScreenState extends State<BrixScreen> {
     super.dispose();
   }
 
+  /// Register FCM push token with BRIX server so external wallets can wake the app
+  Future<void> _registerFcmToken() async {
+    if (_pubkey == null || _pubkey!.isEmpty) return;
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token != null) {
+        final ok = await _brixService.registerPushToken(token, _pubkey!);
+        broLog('[BRIX] FCM token re-registered: $ok');
+      }
+    } catch (e) {
+      broLog('[BRIX] FCM token registration error: $e');
+    }
+  }
+
   Future<void> _checkExisting() async {
     try {
       // First check local cache
@@ -89,6 +104,7 @@ class _BrixScreenState extends State<BrixScreen> {
         });
         // Refresh from server in background
         _refreshFromServer(cached['pubkey']);
+        _registerFcmToken();
         return;
       }
 
@@ -106,6 +122,7 @@ class _BrixScreenState extends State<BrixScreen> {
             _step = BrixStep.active;
           });
           await _saveBrixLocal();
+          _registerFcmToken();
           return;
         }
       }
@@ -121,8 +138,9 @@ class _BrixScreenState extends State<BrixScreen> {
         setState(() {
           _brixAddress = result.address;
           _username = result.username;
-          _registeredPhone = result.phone;
-          _registeredEmail = result.email;
+          // Only overwrite phone/email if server returned non-null values
+          if (result.phone != null) _registeredPhone = result.phone;
+          if (result.email != null) _registeredEmail = result.email;
         });
         await _saveBrixLocal();
       }
@@ -221,6 +239,7 @@ class _BrixScreenState extends State<BrixScreen> {
                 _step = BrixStep.active;
               });
               await _saveBrixLocal();
+              _registerFcmToken();
               return;
             }
           }
@@ -316,6 +335,7 @@ class _BrixScreenState extends State<BrixScreen> {
           _step = BrixStep.active;
         });
         await _saveBrixLocal();
+        _registerFcmToken();
       } else {
         setState(() {
           _userId = result.userId;
@@ -357,6 +377,7 @@ class _BrixScreenState extends State<BrixScreen> {
         _step = BrixStep.active;
       });
       await _saveBrixLocal();
+      _registerFcmToken();
     } else {
       setState(() => _error = result.error ?? loc.t('brix_error_verify'));
     }

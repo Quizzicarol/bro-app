@@ -32,13 +32,23 @@ class BrixRelayService {
 
   /// Start the relay service. Call from main app after login.
   void start(BuildContext context) {
-    if (_running) return;
     _context = context;
+    if (_running) return;
     _running = true;
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) => _poll());
     _poll(); // immediate first check
     broLog('[BRIX-RELAY] Service started');
+  }
+
+  /// Restart the relay (e.g. after app resumes from background).
+  void restart(BuildContext context) {
+    _context = context;
+    _pollTimer?.cancel();
+    _running = true;
+    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) => _poll());
+    _poll();
+    broLog('[BRIX-RELAY] Service restarted (resume)');
   }
 
   /// Stop the relay service.
@@ -48,6 +58,14 @@ class BrixRelayService {
     _running = false;
     _context = null;
     broLog('[BRIX-RELAY] Service stopped');
+  }
+
+  /// Trigger an immediate poll cycle. Called when FCM push arrives.
+  void triggerPoll() {
+    if (_running && _context != null) {
+      broLog('[BRIX-RELAY] FCM wake-up → immediate poll');
+      _poll();
+    }
   }
 
   Future<void> _poll() async {

@@ -2,6 +2,7 @@
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
 import 'package:breez_sdk_spark_flutter/breez_sdk_spark.dart' as spark;
@@ -56,7 +57,8 @@ import 'config/breez_config.dart';
 import 'extensions/breez_extensions.dart';
 
 /// Top-level handler for background FCM messages (required by Firebase).
-/// When the app is killed, this generates invoices for BRIX payments.
+/// When the app is killed, this tries to generate invoices for BRIX payments.
+/// If SDK init fails, shows a notification to prompt the user to open the app.
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -93,7 +95,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
     sdk = await spark.connect(
       request: spark.ConnectRequest(config: config, seed: seed, storageDir: storageDir),
-    );
+    ).timeout(const Duration(seconds: 15));
 
     final resp = await sdk.receivePayment(
       request: spark.ReceivePaymentRequest(
@@ -102,14 +104,35 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
           amountSats: BigInt.from(amountSats),
         ),
       ),
-    ).timeout(const Duration(seconds: 30));
+    ).timeout(const Duration(seconds: 15));
 
     final bolt11 = resp.paymentRequest;
     final brixService = BrixService();
     final ok = await brixService.submitInvoice(requestId, bolt11, pubkey);
     broLog('[FCM-BG] Invoice ${ok ? "submitted" : "failed"}: $amountSats sats');
   } catch (e) {
-    broLog('[FCM-BG] Error processing background invoice: $e');
+    broLog('[FCM-BG] Error generating invoice in background: $e');
+    // Show notification so user knows to open the app
+    try {
+      final plugin = FlutterLocalNotificationsPlugin();
+      const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const iosSettings = DarwinInitializationSettings();
+      const settings = InitializationSettings(android: androidSettings, iOS: iosSettings);
+      await plugin.initialize(settings);
+      await plugin.show(
+        9999,
+        'Pagamento BRIX recebendo...',
+        'Abra o app para receber $amountSats sats',
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'brix_payments', 'BRIX Payments',
+            importance: Importance.high,
+            priority: Priority.high,
+          ),
+          iOS: DarwinNotificationDetails(),
+        ),
+      );
+    } catch (_) {}
   } finally {
     try { await sdk?.disconnect(); } catch (_) {}
   }

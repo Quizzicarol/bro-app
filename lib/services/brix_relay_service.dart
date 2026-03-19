@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/widgets.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:bro_app/services/brix_service.dart';
 import 'package:bro_app/services/storage_service.dart';
 import 'package:bro_app/services/log_utils.dart';
@@ -26,9 +27,28 @@ class BrixRelayService {
   bool _running = false;
   String? _pubkey;
   BuildContext? _context;
+  bool _fcmRegistered = false;
 
   /// Callback for when a queued outgoing payment is completed.
   void Function(String recipient, int amountSats)? onQueuedPaymentCompleted;
+
+  /// Ensure FCM token is registered with BRIX server (idempotent).
+  Future<void> _ensureFcmRegistered() async {
+    if (_fcmRegistered) return;
+    try {
+      _pubkey ??= await _storage.getNostrPublicKey();
+      if (_pubkey == null || _pubkey!.isEmpty) return;
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token == null) return;
+      final ok = await _brixService.registerPushToken(token, _pubkey!);
+      if (ok) {
+        _fcmRegistered = true;
+        broLog('[BRIX-RELAY] FCM token registered successfully');
+      }
+    } catch (e) {
+      // Will retry next start/restart
+    }
+  }
 
   /// Start the relay service. Call from main app after login.
   void start(BuildContext context) {
@@ -38,6 +58,7 @@ class BrixRelayService {
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) => _poll());
     _poll(); // immediate first check
+    _ensureFcmRegistered();
     broLog('[BRIX-RELAY] Service started');
   }
 
@@ -48,6 +69,7 @@ class BrixRelayService {
     _running = true;
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) => _poll());
     _poll();
+    _ensureFcmRegistered();
     broLog('[BRIX-RELAY] Service restarted (resume)');
   }
 

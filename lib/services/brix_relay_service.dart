@@ -32,21 +32,32 @@ class BrixRelayService {
   /// Callback for when a queued outgoing payment is completed.
   void Function(String recipient, int amountSats)? onQueuedPaymentCompleted;
 
+  int _fcmRetryCount = 0;
+
   /// Ensure FCM token is registered with BRIX server (idempotent).
+  /// Retries automatically on failure until successful.
   Future<void> _ensureFcmRegistered() async {
     if (_fcmRegistered) return;
     try {
       _pubkey ??= await _storage.getNostrPublicKey();
       if (_pubkey == null || _pubkey!.isEmpty) return;
       final token = await FirebaseMessaging.instance.getToken();
-      if (token == null) return;
+      if (token == null) {
+        broLog('[BRIX-RELAY] FCM token is null — cannot register');
+        return;
+      }
       final ok = await _brixService.registerPushToken(token, _pubkey!);
       if (ok) {
         _fcmRegistered = true;
+        _fcmRetryCount = 0;
         broLog('[BRIX-RELAY] FCM token registered successfully');
+      } else {
+        _fcmRetryCount++;
+        broLog('[BRIX-RELAY] FCM registration failed (attempt $_fcmRetryCount) — server returned false');
       }
     } catch (e) {
-      // Will retry next start/restart
+      _fcmRetryCount++;
+      broLog('[BRIX-RELAY] FCM registration error (attempt $_fcmRetryCount): $e');
     }
   }
 
@@ -90,8 +101,16 @@ class BrixRelayService {
     }
   }
 
+  int _pollCount = 0;
+
   Future<void> _poll() async {
     if (!_running || _context == null) return;
+    _pollCount++;
+
+    // Retry FCM registration every ~30s (10 polls) until successful
+    if (!_fcmRegistered && _pollCount % 10 == 1) {
+      _ensureFcmRegistered();
+    }
 
     try {
       // Get pubkey lazily

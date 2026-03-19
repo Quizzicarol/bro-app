@@ -63,17 +63,18 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase
-  await Firebase.initializeApp();
-
-  // Register background message handler
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
-  // Request notification permission & get FCM token
-  final messaging = FirebaseMessaging.instance;
-  await messaging.requestPermission();
-  final fcmToken = await messaging.getToken();
-  broLog('[FCM] Push token: $fcmToken');
+  // Initialize Firebase (optional — app works without it, just no push notifications)
+  String? fcmToken;
+  try {
+    await Firebase.initializeApp();
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    final messaging = FirebaseMessaging.instance;
+    await messaging.requestPermission();
+    fcmToken = await messaging.getToken();
+    broLog('[FCM] Push token: $fcmToken');
+  } catch (e) {
+    broLog('[FCM] Firebase init failed (push disabled): $e');
+  }
 
   // Inicializar notificacoes
   await NotificationService().initialize();
@@ -106,14 +107,12 @@ void main() async {
       BrixService().registerPushToken(fcmToken, userPubkey).then((ok) {
         broLog('[FCM] BRIX push token registered: $ok');
       });
-    }
 
-    // Listen for foreground FCM messages (BRIX wake-up)
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      broLog('[FCM] Foreground message: ${message.data}');
-      // BrixRelayService is already polling every 3s in foreground,
-      // so no additional action needed.
-    });
+      // Listen for foreground FCM messages (BRIX wake-up)
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+        broLog('[FCM] Foreground message: ${message.data}');
+      });
+    }
     
     // v262: Iniciar background notifications (polling Nostr a cada 15min)
     await initBackgroundNotifications();

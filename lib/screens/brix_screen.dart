@@ -94,16 +94,25 @@ class _BrixScreenState extends State<BrixScreen> {
       // First check local cache
       final cached = await _loadBrixLocal();
       if (cached != null) {
+        // Fix: if cached pubkey is null (bug from verify path), read from storage
+        String? cachedPubkey = cached['pubkey'];
+        if (cachedPubkey == null || cachedPubkey.isEmpty) {
+          cachedPubkey = await _storage.getNostrPublicKey();
+        }
         setState(() {
           _brixAddress = cached['address'];
           _username = cached['username'];
           _registeredPhone = cached['phone'];
           _registeredEmail = cached['email'];
-          _pubkey = cached['pubkey'];
+          _pubkey = cachedPubkey;
           _step = BrixStep.active;
         });
+        // Update cache if we fixed the pubkey
+        if (cached['pubkey'] == null && cachedPubkey != null) {
+          _saveBrixLocal();
+        }
         // Refresh from server in background
-        _refreshFromServer(cached['pubkey']);
+        _refreshFromServer(_pubkey);
         _registerFcmToken();
         return;
       }
@@ -371,6 +380,8 @@ class _BrixScreenState extends State<BrixScreen> {
     setState(() => _isLoading = false);
 
     if (result.success && result.brixAddress != null) {
+      // Fix: retrieve pubkey from storage (was null because _register didn't save it for verify path)
+      _pubkey ??= await _storage.getNostrPublicKey();
       setState(() {
         _brixAddress = result.brixAddress;
         _username = result.username;

@@ -64,8 +64,12 @@ class BrixRelayService {
   /// Start the relay service. Call from main app after login.
   void start(BuildContext context) {
     _context = context;
-    if (_running) return;
+    if (_running) {
+      broLog('[BRIX-RELAY] start() called but already running');
+      return;
+    }
     _running = true;
+    _fcmRegistered = false; // Reset on start so we always try to register
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) => _poll());
     _poll(); // immediate first check
@@ -101,11 +105,23 @@ class BrixRelayService {
     }
   }
 
+  /// Reset FCM registration state so next poll re-registers.
+  /// Called when Firebase rotates the FCM token.
+  void resetFcmRegistration() {
+    _fcmRegistered = false;
+    _fcmRetryCount = 0;
+  }
+
   int _pollCount = 0;
 
   Future<void> _poll() async {
     if (!_running || _context == null) return;
     _pollCount++;
+
+    // Log every 10th poll for visibility
+    if (_pollCount % 10 == 1) {
+      broLog('[BRIX-RELAY] Poll #$_pollCount (running=$_running, fcmRegistered=$_fcmRegistered, pubkey=${_pubkey?.substring(0, 8) ?? "null"})');
+    }
 
     // Retry FCM registration every ~30s (10 polls) until successful
     if (!_fcmRegistered && _pollCount % 10 == 1) {
@@ -115,7 +131,12 @@ class BrixRelayService {
     try {
       // Get pubkey lazily
       _pubkey ??= await _storage.getNostrPublicKey();
-      if (_pubkey == null || _pubkey!.isEmpty) return;
+      if (_pubkey == null || _pubkey!.isEmpty) {
+        if (_pollCount % 10 == 1) {
+          broLog('[BRIX-RELAY] ⚠ No pubkey in storage — relay inactive');
+        }
+        return;
+      }
 
       // Check if user has active BRIX
       final requests = await _brixService.getInvoiceRequests(_pubkey!);

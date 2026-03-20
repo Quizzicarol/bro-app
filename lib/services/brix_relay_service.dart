@@ -51,6 +51,11 @@ class BrixRelayService {
         _fcmRegistered = true;
         _fcmRetryCount = 0;
         broLog('[BRIX-RELAY] FCM token registered successfully');
+        // Auto-claim any web-created BRIX accounts with same email
+        final linked = await _brixService.claimWebAccounts(_pubkey!);
+        if (linked.isNotEmpty) {
+          broLog('[BRIX-RELAY] Auto-linked web accounts: ${linked.join(", ")}');
+        }
       } else {
         _fcmRetryCount++;
         broLog('[BRIX-RELAY] FCM registration failed (attempt $_fcmRetryCount) — server returned false');

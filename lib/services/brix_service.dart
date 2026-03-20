@@ -383,6 +383,20 @@ class BrixService {
       return false;
     }
   }
+
+  /// Claim all web-created BRIX accounts with same email as the caller.
+  /// Links them to the caller's pubkey so the relay picks up their invoices.
+  Future<List<String>> claimWebAccounts(String pubkey) async {
+    try {
+      final response = await _dio.post('/brix/claim-web-accounts',
+        options: _signedOptions('/brix/claim-web-accounts', 'POST', pubkey: pubkey),
+      );
+      final linked = response.data?['linked'] as List? ?? [];
+      return linked.cast<String>();
+    } catch (e) {
+      return [];
+    }
+  }
 }
 
 class BrixUsernameCheckResult {

@@ -76,6 +76,10 @@ class _WalletScreenState extends State<WalletScreen> {
         }
       }
 
+      // Sincronizar carteira ANTES de buscar saldo/pagamentos
+      // Sem isso, pagamentos recebidos pelo Spark (cloud) não aparecem
+      await breezProvider.forceSyncWallet();
+
       final balance = await breezProvider.getBalance();
       final payments = await breezProvider.listPayments();
       

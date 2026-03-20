@@ -182,7 +182,10 @@ class BrixService {
   /// Find BRIX by email (fallback for web-created BRIX)
   Future<BrixAddressResult> findByEmail(String email) async {
     try {
-      final response = await _dio.get('/brix/find-by-email/${Uri.encodeComponent(email)}');
+      final response = await _dio.get(
+        '/brix/find-by-email/${Uri.encodeComponent(email)}',
+        options: _signedOptions('/brix/find-by-email/${Uri.encodeComponent(email)}', 'GET'),
+      );
       final data = response.data;
       return BrixAddressResult(
         hasAddress: true,
@@ -250,7 +253,10 @@ class BrixService {
   /// Resolve phone, email, or username to a BRIX address
   Future<BrixResolveResult> resolve(String query) async {
     try {
-      final response = await _dio.get('/brix/resolve/${Uri.encodeComponent(query)}');
+      final response = await _dio.get(
+        '/brix/resolve/${Uri.encodeComponent(query)}',
+        options: _signedOptions('/brix/resolve/${Uri.encodeComponent(query)}', 'GET'),
+      );
       final data = response.data;
       if (data['found'] == true) {
         return BrixResolveResult(

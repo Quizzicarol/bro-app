@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:dio/dio.dart';
+import 'package:nostr/nostr.dart';
 import 'package:bro_app/services/log_utils.dart';
+import 'package:bro_app/services/storage_service.dart';
 
 class BrixService {
   static final BrixService _instance = BrixService._internal();
@@ -20,6 +22,43 @@ class BrixService {
   ));
 
   String get serverUrl => _brixServerUrl;
+
+  String? _privateKey;
+
+  /// Initialize NIP-98 credentials for cryptographically signed requests.
+  Future<void> initCredentials() async {
+    if (_privateKey != null) return;
+    final storage = StorageService();
+    _privateKey = await storage.getNostrPrivateKey();
+  }
+
+  /// Create Options with NIP-98 signed Authorization header.
+  Options _signedOptions(String path, String method, {String? pubkey}) {
+    final headers = <String, String>{};
+    if (pubkey != null) headers['x-nostr-pubkey'] = pubkey;
+    if (_privateKey != null) {
+      try {
+        final url = '$_brixServerUrl$path';
+        final event = Event.from(
+          kind: 27235,
+          tags: [['u', url], ['method', method]],
+          content: '',
+          privkey: _privateKey!,
+        );
+        final eventMap = {
+          'id': event.id,
+          'pubkey': event.pubkey,
+          'created_at': event.createdAt,
+          'kind': event.kind,
+          'tags': event.tags,
+          'content': event.content,
+          'sig': event.sig,
+        };
+        headers['Authorization'] = 'Nostr ${base64Encode(utf8.encode(jsonEncode(eventMap)))}';
+      } catch (_) {}
+    }
+    return Options(headers: headers);
+  }
 
   /// Check if a username is available
   Future<BrixUsernameCheckResult> checkUsername(String username) async {
@@ -120,7 +159,7 @@ class BrixService {
   Future<BrixAddressResult> getAddress(String pubkey) async {
     try {
       final response = await _dio.get('/brix/address/$pubkey',
-        options: Options(headers: {'x-nostr-pubkey': pubkey}),
+        options: _signedOptions('/brix/address/$pubkey', 'GET', pubkey: pubkey),
       );
       final data = response.data;
       return BrixAddressResult(
@@ -163,10 +202,13 @@ class BrixService {
   /// Link a real nostr pubkey to a web-created BRIX
   Future<bool> linkPubkey({required String username, required String nostrPubkey}) async {
     try {
-      final response = await _dio.post('/brix/link-pubkey', data: {
-        'username': username,
-        'nostr_pubkey': nostrPubkey,
-      });
+      final response = await _dio.post('/brix/link-pubkey',
+        data: {
+          'username': username,
+          'nostr_pubkey': nostrPubkey,
+        },
+        options: _signedOptions('/brix/link-pubkey', 'POST', pubkey: nostrPubkey),
+      );
       return response.data?['success'] == true;
     } catch (e) {
       return false;
@@ -177,7 +219,7 @@ class BrixService {
   Future<List<BrixPendingPayment>> getPendingPayments(String pubkey) async {
     try {
       final response = await _dio.get('/brix/pending-payments',
-        options: Options(headers: {'x-nostr-pubkey': pubkey}),
+        options: _signedOptions('/brix/pending-payments', 'GET', pubkey: pubkey),
       );
       final data = response.data;
       final payments = data['payments'] as List? ?? [];
@@ -228,7 +270,9 @@ class BrixService {
   /// Poll for pending invoice requests (called when BRIX is active)
   Future<List<BrixInvoiceRequest>> getInvoiceRequests(String pubkey) async {
     try {
-      final response = await _dio.get('/brix/invoice-requests/$pubkey');
+      final response = await _dio.get('/brix/invoice-requests/$pubkey',
+        options: _signedOptions('/brix/invoice-requests/$pubkey', 'GET', pubkey: pubkey),
+      );
       final data = response.data;
       final requests = data['requests'] as List? ?? [];
       return requests.map((r) => BrixInvoiceRequest(
@@ -246,7 +290,7 @@ class BrixService {
     try {
       final response = await _dio.post('/brix/submit-invoice',
         data: {'request_id': requestId, 'invoice': invoice},
-        options: Options(headers: {'x-nostr-pubkey': pubkey}),
+        options: _signedOptions('/brix/submit-invoice', 'POST', pubkey: pubkey),
       );
       return response.data?['success'] == true;
     } catch (e) {
@@ -259,7 +303,7 @@ class BrixService {
     try {
       final response = await _dio.post('/brix/claim',
         data: {'payment_id': paymentId, 'invoice': invoice},
-        options: Options(headers: {'x-nostr-pubkey': pubkey}),
+        options: _signedOptions('/brix/claim', 'POST', pubkey: pubkey),
       );
       return response.data?['success'] == true;
     } catch (e) {
@@ -280,7 +324,7 @@ class BrixService {
           if (phone != null && phone.isNotEmpty) 'phone': phone,
           if (email != null && email.isNotEmpty) 'email': email,
         },
-        options: Options(headers: {'x-nostr-pubkey': pubkey}),
+        options: _signedOptions('/brix/update-contact', 'POST', pubkey: pubkey),
       );
       final data = response.data;
       return BrixRegisterResult(
@@ -310,7 +354,7 @@ class BrixService {
           if (phone != null && phone.isNotEmpty) 'phone': phone,
           if (email != null && email.isNotEmpty) 'email': email,
         },
-        options: Options(headers: {'x-nostr-pubkey': pubkey}),
+        options: _signedOptions('/brix/confirm-update', 'POST', pubkey: pubkey),
       );
       final data = response.data;
       return BrixVerifyResult(
@@ -331,7 +375,7 @@ class BrixService {
     try {
       final response = await _dio.post('/brix/register-push',
         data: {'fcm_token': fcmToken},
-        options: Options(headers: {'x-nostr-pubkey': pubkey}),
+        options: _signedOptions('/brix/register-push', 'POST', pubkey: pubkey),
       );
       return response.data?['success'] == true;
     } catch (e) {

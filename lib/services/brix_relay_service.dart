@@ -138,6 +138,9 @@ class BrixRelayService {
         return;
       }
 
+      // Init NIP-98 credentials lazily (loads private key for signed auth)
+      await _brixService.initCredentials();
+
       // Check if user has active BRIX
       final requests = await _brixService.getInvoiceRequests(_pubkey!);
       if (requests.isEmpty) return;

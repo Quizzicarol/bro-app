@@ -174,15 +174,27 @@ class BreezProvider with ChangeNotifier {
           broLog('');
           broLog('⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️');
           broLog('🆕 NENHUMA SEED encontrada em NENHUM local!');
-          broLog('   Gerando NOVA seed...');
-          broLog('   Se você tinha saldo, precisa IMPORTAR a seed!');
           broLog('⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️');
           broLog('');
-          _mnemonic = bip39.generateMnemonic();
-          await StorageService().saveBreezMnemonic(_mnemonic!);
-          _isNewWallet = true;
-          _seedRecoveryNeeded = true;
-          broLog('🆕 Nova seed gerada (${_mnemonic!.split(' ').length} palavras)');
+
+          if (pubkey != null) {
+            // Usuário já tinha conta (pubkey existe) mas seed não foi encontrada.
+            // NÃO gerar nova seed — isso resultaria em carteira vazia e perda de fundos!
+            broLog('🚨 CRÍTICO: Usuário tem pubkey mas seed não foi encontrada!');
+            broLog('   Usuário deve IMPORTAR a seed de backup.');
+            _seedRecoveryNeeded = true;
+            _setError('Seed não encontrada. Vá em Configurações > Restaurar Carteira para importar sua seed.');
+            _setLoading(false);
+            notifyListeners();
+            return false;
+          } else {
+            // Sem pubkey = usuário genuinamente novo, pode gerar seed nova
+            broLog('🆕 Novo usuário sem pubkey — gerando nova seed...');
+            _mnemonic = bip39.generateMnemonic();
+            await StorageService().saveBreezMnemonic(_mnemonic!);
+            _isNewWallet = true;
+            broLog('🆕 Nova seed gerada (${_mnemonic!.split(' ').length} palavras)');
+          }
         }
         broLog('═══════════════════════════════════════════════════════════');
       }
@@ -286,10 +298,21 @@ class BreezProvider with ChangeNotifier {
     // 2. Limpar storage directory antigo para forçar resync
     try {
       final appDir = await getApplicationDocumentsDirectory();
-      final storageDir = Directory('${appDir.path}/breez_spark');
+      final pubkey = await StorageService().getNostrPublicKey();
+      final userDirSuffix = pubkey != null ? '_${pubkey.substring(0, 8)}' : '';
+
+      // Limpar diretório com sufixo correto do usuário
+      final storageDir = Directory('${appDir.path}/breez_spark$userDirSuffix');
       if (await storageDir.exists()) {
         await storageDir.delete(recursive: true);
-        broLog('🗑️ Storage directory limpo');
+        broLog('🗑️ Storage directory limpo: breez_spark$userDirSuffix');
+      }
+
+      // Fallback: limpar diretório legado sem sufixo
+      final legacyDir = Directory('${appDir.path}/breez_spark');
+      if (await legacyDir.exists()) {
+        await legacyDir.delete(recursive: true);
+        broLog('🗑️ Storage directory legado limpo: breez_spark');
       }
     } catch (e) {
       broLog('⚠️ Erro ao limpar storage (ignorando): $e');

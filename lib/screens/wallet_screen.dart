@@ -72,6 +72,9 @@ class _WalletScreenState extends State<WalletScreen> {
         broLog('🔄 Inicializando Breez SDK...');
         final success = await breezProvider.initialize();
         if (!success) {
+          if (breezProvider.seedRecoveryNeeded) {
+            throw Exception('Seed recovery required');
+          }
           throw Exception('Falha ao inicializar SDK');
         }
       }
@@ -437,6 +440,73 @@ class _WalletScreenState extends State<WalletScreen> {
   }
 
   Widget _buildBalanceCard() {
+    final breezProvider = context.read<BreezProvider>();
+    final seedRecoveryNeeded = breezProvider.seedRecoveryNeeded;
+
+    // Show recovery banner when seed is missing instead of a misleading "0 sats"
+    if (seedRecoveryNeeded) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Colors.red.shade900, Colors.red.shade700],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.red.withOpacity(0.4),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.error_outline, color: Colors.white, size: 24),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '⚠️ Seed não encontrada',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Sua seed de recuperação não foi encontrada. Restaure sua carteira para acessar seus fundos.',
+              style: TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => Navigator.pushNamed(context, '/settings'),
+                icon: const Icon(Icons.restore, size: 18),
+                label: const Text('Restaurar Carteira'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: Colors.red.shade900,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final balanceSats = int.tryParse(_balance?['balance']?.toString() ?? '0') ?? 0;
     final hasError = _balance?['error'] != null;
     

@@ -99,12 +99,22 @@ All communication is encrypted (NIP-44) and relayed through decentralized Nostr 
 
 ## Download
 
+**Versão atual:** v1.0.132 (build 377) — ✅ STABLE
+
 | Platform | Link | Status |
 |----------|------|--------|
+| 🤖 Android (Latest) | [📥 Baixar APK](https://github.com/Quizzicarol/bro-releases/releases/download/v1.0.132/bro-latest.apk) | ✅ Available |
 | 🍎 iOS Beta | [TestFlight](https://testflight.apple.com/join/rkHbPQ94) | ✅ Available |
-| 🤖 Android | [Releases](https://github.com/Brostr/bro/releases) | ✅ Available |
 | 🤖 Google Play | Coming soon | 🔜 |
 | 🍎 App Store | Coming soon | 🔜 |
+
+### Changelog (build 377)
+- ⚡ BRIX Lightning Address: pagamentos online e offline funcionando
+- 📱 FCM push acorda o app em background para gerar invoices Spark
+- 🔒 Pagamentos vão direto pro canal Spark (cloud-hosted) — sem intermediários
+- 🔄 Registro FCM corrigido para verificação por email/SMS
+- 🛡️ Timeout estendido no servidor para SDK cold-start em background
+- 🔐 Isolamento de storage entre main e background SDK
 
 ---
 

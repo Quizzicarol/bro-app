@@ -1,0 +1,46 @@
+name: Update Latest Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g. v1.0.132)'
+        required: true
+      build:
+        description: 'Build number (e.g. 377)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Delete existing release (if any)
+        run: gh release delete "${{ inputs.version }}" --yes --cleanup-tag 2>/dev/null || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release placeholder
+        run: |
+          gh release create "${{ inputs.version }}" \
+            --title "Bro ${{ inputs.version }} (build ${{ inputs.build }}) - Stable" \
+            --notes "## Download
+
+          📥 [Baixar APK](https://github.com/Quizzicarol/bro-releases/releases/download/${{ inputs.version }}/bro-latest.apk)
+
+          Versão estável mais recente do Bro App.
+
+          ### Changelog (build ${{ inputs.build }})
+          - ⚡ BRIX Lightning Address: pagamentos online e offline
+          - 📱 FCM push background para invoices Spark
+          - 🔒 Pagamentos via canal Spark (cloud-hosted)
+          - 🔄 Registro FCM corrigido
+          - 🛡️ Timeout estendido para SDK cold-start
+          - 🔐 Isolamento de storage main/background SDK" \
+            --latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

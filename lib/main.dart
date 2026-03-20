@@ -91,11 +91,14 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       apiKey: BreezConfig.apiKey,
     );
     final appDir = await getApplicationDocumentsDirectory();
-    final storageDir = '${appDir.path}/breez_spark_${pubkey.substring(0, 8)}';
+    // Use a separate storageDir for background isolate to avoid SQLite lock
+    // conflicts with the main isolate's SDK connection. Both connect to the
+    // same cloud-hosted Spark node (identified by seed), just different local cache.
+    final storageDir = '${appDir.path}/breez_spark_bg_${pubkey.substring(0, 8)}';
 
     sdk = await spark.connect(
       request: spark.ConnectRequest(config: config, seed: seed, storageDir: storageDir),
-    ).timeout(const Duration(seconds: 15));
+    ).timeout(const Duration(seconds: 30));
 
     final resp = await sdk.receivePayment(
       request: spark.ReceivePaymentRequest(
@@ -104,7 +107,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
           amountSats: BigInt.from(amountSats),
         ),
       ),
-    ).timeout(const Duration(seconds: 15));
+    ).timeout(const Duration(seconds: 20));
 
     final bolt11 = resp.paymentRequest;
     final brixService = BrixService();

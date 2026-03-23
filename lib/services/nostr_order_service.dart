@@ -154,7 +154,10 @@ class NostrOrderService {
   String _decryptBillCode(Map<String, dynamic> content, String? userPubkey) {
     final rawBillCode = content['billCode']?.toString() ?? '';
     if (rawBillCode != '[encrypted]') return rawBillCode;
-    if (_decryptionKey == null) return '';
+    if (_decryptionKey == null) {
+      broLog('⚠️ [DECRYPT] _decryptionKey é null — não é possível descriptografar');
+      return '';
+    }
 
     // Try provider-specific encrypted field first
     final providerEncrypted = content['billCode_nip44_provider'] as String?;
@@ -162,10 +165,15 @@ class NostrOrderService {
       try {
         final decrypted = _nip44.decryptBetween(providerEncrypted, _decryptionKey!, userPubkey);
         if (decrypted.isNotEmpty) {
-          broLog('🔓 billCode descriptografado (provider NIP-44)');
+          broLog('🔓 billCode descriptografado (provider NIP-44) — ${decrypted.length} chars');
           return decrypted;
         }
-      } catch (_) {}
+        broLog('⚠️ [DECRYPT] billCode_nip44_provider presente mas decryptBetween retornou vazio');
+      } catch (e) {
+        broLog('⚠️ [DECRYPT] Falha ao descriptografar billCode_nip44_provider: $e');
+      }
+    } else {
+      broLog('🔍 [DECRYPT] billCode_nip44_provider=${providerEncrypted != null ? "presente" : "AUSENTE"}, userPubkey=${userPubkey != null ? userPubkey.substring(0, 8) : "null"}');
     }
 
     // Try self-decrypt (only works if I'm the order owner)
@@ -178,9 +186,12 @@ class NostrOrderService {
           broLog('🔓 billCode descriptografado (self NIP-44)');
           return decrypted;
         }
-      } catch (_) {}
+      } catch (e) {
+        broLog('🔍 [DECRYPT] Self-decrypt falhou (esperado se não sou o dono): ${e.toString().substring(0, 50)}');
+      }
     }
 
+    broLog('❌ [DECRYPT] Nenhum método conseguiu descriptografar o billCode');
     return ''; // Could not decrypt
   }
 
@@ -869,7 +880,8 @@ class NostrOrderService {
   }
 
   /// Busca uma ordem específica do Nostr pelo ID
-  /// PERFORMANCE: Busca em todos os relays EM PARALELO e usa o primeiro resultado
+  /// CORREÇÃO: Usa o evento MAIS RECENTE entre todos os relays
+  /// para garantir que billCode_nip44_provider (do republish) seja encontrado
   Future<Map<String, dynamic>?> fetchOrderFromNostr(String orderId) async {
     
     // Buscar em todos os relays em paralelo
@@ -877,12 +889,28 @@ class NostrOrderService {
       _relays.take(3).map((relay) => _fetchOrderFromRelay(relay, orderId).catchError((_) => null)),
     );
     
-    // Usar o primeiro resultado não-null
+    // CORREÇÃO: Usar o resultado MAIS RECENTE (maior created_at)
+    // Isso garante que o evento republished (com billCode_nip44_provider) seja preferido
+    Map<String, dynamic>? newest;
+    int newestTimestamp = 0;
     for (final result in results) {
-      if (result != null) return result;
+      if (result == null) continue;
+      final ts = result['created_at'] as int? ?? 0;
+      if (newest == null || ts > newestTimestamp) {
+        newest = result;
+        newestTimestamp = ts;
+      }
     }
     
-    return null;
+    if (newest != null) {
+      final hasBillCodeProvider = newest['billCode_nip44_provider'] != null;
+      final billCode = newest['billCode'] as String? ?? '';
+      broLog('🔍 [FETCH] fetchOrderFromNostr: ${results.where((r) => r != null).length} relays responderam, '
+          'usando evento ts=$newestTimestamp, billCode=${billCode.isNotEmpty && billCode != "[encrypted]" ? "OK(${billCode.length}ch)" : "VAZIO"}, '
+          'billCode_nip44_provider=${hasBillCodeProvider ? "SIM" : "NÃO"}');
+    }
+    
+    return newest;
   }
   
   /// Helper: Busca ordem de um relay específico
@@ -894,10 +922,20 @@ class NostrOrderService {
         _fetchFromRelay(relay, kinds: [kindBroOrder], tags: {'#t': [orderId]}, limit: 5),
       ]);
       
-      // Combinar resultados
+      // Combinar resultados e ordenar por timestamp DECRESCENTE (mais recente primeiro)
       final allEvents = [...results[0], ...results[1]];
+      allEvents.sort((a, b) => ((b['created_at'] as int?) ?? 0).compareTo((a['created_at'] as int?) ?? 0));
       
-      // Verificar se algum evento tem o orderId no content
+      // Deduplicar por event id
+      final seenIds = <String>{};
+      allEvents.removeWhere((e) {
+        final id = e['id'] as String? ?? '';
+        if (seenIds.contains(id)) return true;
+        seenIds.add(id);
+        return false;
+      });
+      
+      // Verificar se algum evento tem o orderId no content — PREFERIR O MAIS RECENTE
       for (final event in allEvents) {
         try {
           final content = event['parsedContent'] ?? jsonDecode(event['content']);
@@ -924,15 +962,15 @@ class NostrOrderService {
               'status': content['status'] ?? 'pending',
               'providerId': content['providerId'],
               'createdAt': content['createdAt'],
-              'created_at': event['created_at'], // Timestamp Nostr como fallback
+              'created_at': event['created_at'],
             };
           }
         } catch (_) {}
       }
       
-      // Se encontrou eventos mas nenhum com orderId match, usar o primeiro
+      // Se encontrou eventos mas nenhum com orderId match, usar o mais recente
       if (allEvents.isNotEmpty) {
-        final event = allEvents.first;
+        final event = allEvents.first; // Já está ordenado — mais recente primeiro
         final content = event['parsedContent'] ?? jsonDecode(event['content']);
         final fallbackUserPubkey = content['userPubkey'] as String? ?? event['pubkey'] as String?;
         if (fallbackUserPubkey == null || fallbackUserPubkey.isEmpty) return null;
@@ -954,7 +992,7 @@ class NostrOrderService {
           'status': content['status'] ?? 'pending',
           'providerId': content['providerId'],
           'createdAt': content['createdAt'],
-          'created_at': event['created_at'], // Timestamp Nostr como fallback
+          'created_at': event['created_at'],
         };
       }
     } catch (e) {}

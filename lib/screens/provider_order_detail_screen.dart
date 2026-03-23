@@ -74,12 +74,18 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   void initState() {
     super.initState();
     // Aguardar o frame completo antes de acessar o Provider
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadOrderDetails(forceSync: true);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _loadOrderDetails(forceSync: true);
       _startStatusPolling();
       _fetchResolutionIfNeeded();
       _fetchProviderMediatorMessages();
       _fetchProviderProofImage();
+      // CORREÇÃO: Se tela abrir com ordem já aceita mas billCode vazio,
+      // iniciar polling imediatamente (ex: app reaberto pelo provedor)
+      if (_isBillCodeMissing() && (_orderDetails?['status'] == 'accepted' || _orderAccepted)) {
+        broLog('🔄 [INIT] billCode ausente na abertura — iniciando polling...');
+        _startBillCodePolling();
+      }
     });
   }
 
@@ -228,7 +234,10 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   void _startBillCodePolling() {
     _billCodePollingTimer?.cancel();
     int attempts = 0;
-    const maxAttempts = 18; // 18 x 5s = 90s máximo
+    const maxAttempts = 60; // 60 x 5s = 300s (5 min) máximo
+
+    // CORREÇÃO: Executar a PRIMEIRA busca IMEDIATAMENTE (sem esperar 5s)
+    _doBillCodeFetch(0, maxAttempts);
 
     _billCodePollingTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
       attempts++;
@@ -244,30 +253,50 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         return;
       }
 
-      broLog('🔄 [BILLCODE_POLL] Tentativa $attempts/$maxAttempts — buscando billCode do Nostr...');
-      try {
-        final nostrService = NostrOrderService();
-        final nostrOrder = await nostrService.fetchOrderFromNostr(widget.orderId).timeout(
-          const Duration(seconds: 8),
-          onTimeout: () => null,
-        );
-        if (nostrOrder != null) {
-          final nostrBillCode = nostrOrder['billCode'] as String? ?? '';
-          if (nostrBillCode.isNotEmpty && nostrBillCode != '[encrypted]') {
-            broLog('✅ [BILLCODE_POLL] billCode obtido na tentativa $attempts: ${nostrBillCode.length} chars');
-            timer.cancel();
-            if (mounted) {
-              setState(() {
-                _orderDetails?['billCode'] = nostrBillCode;
-              });
-            }
-            return;
-          }
-        }
-      } catch (e) {
-        broLog('⚠️ [BILLCODE_POLL] Erro na tentativa $attempts: $e');
-      }
+      await _doBillCodeFetch(attempts, maxAttempts);
     });
+  }
+
+  /// Executa uma tentativa de busca do billCode do Nostr
+  Future<void> _doBillCodeFetch(int attempt, int maxAttempts) async {
+    if (!mounted || !_isBillCodeMissing()) return;
+    
+    broLog('🔄 [BILLCODE_POLL] Tentativa $attempt/$maxAttempts — buscando billCode do Nostr...');
+    try {
+      final nostrService = NostrOrderService();
+      final nostrOrder = await nostrService.fetchOrderFromNostr(widget.orderId).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => null,
+      );
+      if (nostrOrder != null) {
+        final nostrBillCode = nostrOrder['billCode'] as String? ?? '';
+        if (nostrBillCode.isNotEmpty && nostrBillCode != '[encrypted]') {
+          broLog('✅ [BILLCODE_POLL] billCode obtido na tentativa $attempt: ${nostrBillCode.length} chars');
+          _billCodePollingTimer?.cancel();
+          
+          // Persistir o billCode na ordem local para não perder em reloads
+          try {
+            final orderProvider = context.read<OrderProvider>();
+            final localOrder = orderProvider.getOrderById(widget.orderId);
+            if (localOrder != null && (localOrder.billCode.isEmpty || localOrder.billCode == '[encrypted]')) {
+              orderProvider.updateOrderBillCodeLocal(widget.orderId, nostrBillCode);
+              broLog('💾 [BILLCODE_POLL] billCode persistido na ordem local');
+            }
+          } catch (e) {
+            broLog('⚠️ [BILLCODE_POLL] Erro ao persistir billCode local: $e');
+          }
+          
+          if (mounted) {
+            setState(() {
+              _orderDetails?['billCode'] = nostrBillCode;
+            });
+          }
+          return;
+        }
+      }
+    } catch (e) {
+      broLog('⚠️ [BILLCODE_POLL] Erro na tentativa $attempt: $e');
+    }
   }
 
   Future<void> _loadOrderDetails({bool forceSync = false}) async {

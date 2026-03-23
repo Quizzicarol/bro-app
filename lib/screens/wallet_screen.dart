@@ -1172,8 +1172,9 @@ class _WalletScreenState extends State<WalletScreen> {
                               if (!isEmailForBrix) {
                                 setModalState(() {
                                   isSending = false;
-                                  errorMessage = 'Nenhum BRIX encontrado para "$destination"';
+                                  errorMessage = resolveResult.error ?? 'Nenhum BRIX encontrado para "$destination"';
                                 });
+                                broLog('🔍 BRIX resolve failed for "$destination": ${resolveResult.error ?? "not found"}');
                                 return;
                               }
                               // Fall through to standard LNURL resolution for non-BRIX emails

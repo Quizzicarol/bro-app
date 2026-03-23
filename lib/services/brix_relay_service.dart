@@ -169,7 +169,7 @@ class BrixRelayService {
       final breezProvider = _context!.read<BreezProvider>();
 
       for (final request in requests) {
-        broLog('⚡ [BRIX-RELAY] Generating invoice: ${request.amountSats} sats');
+        broLog('⚡ [BRIX-RELAY] Generating invoice: ${request.amountSats} sats (request=${request.id})');
 
         // Generate invoice for FULL amount (LNURL wallets verify amount match)
         final invoiceResult = await breezProvider.createInvoice(
@@ -177,7 +177,17 @@ class BrixRelayService {
           description: 'BRIX Payment',
         );
 
-        if (invoiceResult != null && invoiceResult['success'] == true) {
+        if (invoiceResult == null) {
+          broLog('❌ [BRIX-RELAY] createInvoice returned null for ${request.amountSats} sats');
+          continue;
+        }
+
+        if (invoiceResult['success'] != true) {
+          broLog('❌ [BRIX-RELAY] createInvoice FAILED for ${request.amountSats} sats: ${invoiceResult['error']}');
+          continue;
+        }
+
+        if (invoiceResult['success'] == true) {
           final bolt11 = invoiceResult['bolt11'] as String? ??
               invoiceResult['invoice'] as String?;
           if (bolt11 != null) {

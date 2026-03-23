@@ -15,6 +15,7 @@ import '../services/escrow_service.dart';
 import '../services/dispute_service.dart';
 import '../services/notification_service.dart';
 import '../services/nostr_order_service.dart';
+import '../services/nip44_service.dart';
 import '../config.dart';
 import '../l10n/app_localizations.dart';
 
@@ -269,9 +270,42 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         onTimeout: () => null,
       );
       if (nostrOrder != null) {
-        final nostrBillCode = nostrOrder['billCode'] as String? ?? '';
-        if (nostrBillCode.isNotEmpty && nostrBillCode != '[encrypted]') {
-          broLog('✅ [BILLCODE_POLL] billCode obtido na tentativa $attempt: ${nostrBillCode.length} chars');
+        String billCodeResult = nostrOrder['billCode'] as String? ?? '';
+        
+        // Se _decryptBillCode retornou vazio mas billCode_nip44_provider existe,
+        // tentar descriptografar DIRETAMENTE aqui (fallback para quando
+        // _decryptionKey estava null no momento do fetchOrderFromNostr)
+        if ((billCodeResult.isEmpty || billCodeResult == '[encrypted]')) {
+          final encryptedForProvider = nostrOrder['billCode_nip44_provider'] as String?;
+          final userPubkey = nostrOrder['userPubkey'] as String?;
+          if (encryptedForProvider != null && encryptedForProvider.isNotEmpty &&
+              userPubkey != null && userPubkey.isNotEmpty) {
+            broLog('🔑 [BILLCODE_POLL] billCode vazio mas billCode_nip44_provider presente — tentando decrypt direto...');
+            try {
+              final orderProvider = context.read<OrderProvider>();
+              final privKey = orderProvider.nostrPrivateKey;
+              if (privKey != null && privKey.isNotEmpty) {
+                final nip44 = Nip44Service();
+                final decrypted = nip44.decryptBetween(encryptedForProvider, privKey, userPubkey);
+                if (decrypted.isNotEmpty) {
+                  billCodeResult = decrypted;
+                  broLog('✅ [BILLCODE_POLL] Decrypt DIRETO funcionou: ${decrypted.length} chars');
+                } else {
+                  broLog('⚠️ [BILLCODE_POLL] Decrypt direto retornou vazio');
+                }
+              } else {
+                broLog('⚠️ [BILLCODE_POLL] Chave privada não disponível para decrypt direto');
+              }
+            } catch (e) {
+              broLog('⚠️ [BILLCODE_POLL] Erro no decrypt direto: $e');
+            }
+          } else {
+            broLog('🔍 [BILLCODE_POLL] billCode_nip44_provider=${encryptedForProvider != null ? "presente" : "AUSENTE"}, userPubkey=${userPubkey != null ? userPubkey.substring(0, 8) : "null"} — aguardando buyer republicar...');
+          }
+        }
+        
+        if (billCodeResult.isNotEmpty && billCodeResult != '[encrypted]') {
+          broLog('✅ [BILLCODE_POLL] billCode obtido na tentativa $attempt: ${billCodeResult.length} chars');
           _billCodePollingTimer?.cancel();
           
           // Persistir o billCode na ordem local para não perder em reloads
@@ -279,7 +313,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             final orderProvider = context.read<OrderProvider>();
             final localOrder = orderProvider.getOrderById(widget.orderId);
             if (localOrder != null && (localOrder.billCode.isEmpty || localOrder.billCode == '[encrypted]')) {
-              orderProvider.updateOrderBillCodeLocal(widget.orderId, nostrBillCode);
+              orderProvider.updateOrderBillCodeLocal(widget.orderId, billCodeResult);
               broLog('💾 [BILLCODE_POLL] billCode persistido na ordem local');
             }
           } catch (e) {
@@ -288,7 +322,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           
           if (mounted) {
             setState(() {
-              _orderDetails?['billCode'] = nostrBillCode;
+              _orderDetails?['billCode'] = billCodeResult;
             });
           }
           return;
@@ -349,7 +383,31 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               onTimeout: () => null,
             );
             if (nostrOrder != null) {
-              final nostrBillCode = nostrOrder['billCode'] as String? ?? '';
+              String nostrBillCode = nostrOrder['billCode'] as String? ?? '';
+              
+              // Fallback: decrypt direto de billCode_nip44_provider
+              if ((nostrBillCode.isEmpty || nostrBillCode == '[encrypted]')) {
+                final encForProvider = nostrOrder['billCode_nip44_provider'] as String?;
+                final userPub = nostrOrder['userPubkey'] as String?;
+                if (encForProvider != null && encForProvider.isNotEmpty &&
+                    userPub != null && userPub.isNotEmpty) {
+                  broLog('🔑 [LOAD] Tentando decrypt direto de billCode_nip44_provider...');
+                  try {
+                    final privKey = orderProvider.nostrPrivateKey;
+                    if (privKey != null && privKey.isNotEmpty) {
+                      final nip44 = Nip44Service();
+                      final dec = nip44.decryptBetween(encForProvider, privKey, userPub);
+                      if (dec.isNotEmpty) {
+                        nostrBillCode = dec;
+                        broLog('✅ [LOAD] Decrypt direto OK: ${dec.length} chars');
+                      }
+                    }
+                  } catch (e) {
+                    broLog('⚠️ [LOAD] Decrypt direto falhou: $e');
+                  }
+                }
+              }
+              
               if (nostrBillCode.isNotEmpty && nostrBillCode != '[encrypted]') {
                 order['billCode'] = nostrBillCode;
                 broLog('✅ billCode obtido do Nostr: ${nostrBillCode.length} chars');

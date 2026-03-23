@@ -41,6 +41,7 @@ class OrderProvider with ChangeNotifier {
   static const int _minSyncIntervalSeconds = 15; // Intervalo mÃÂ­nimo entre syncs automÃÂ¡ticos
   Timer? _saveDebounceTimer; // Debounce para _saveOrders
   Timer? _notifyDebounceTimer; // Debounce para notifyListeners
+  Timer? _backgroundSyncTimer; // Sync periódico para billCode_nip44_provider
   bool _notifyPending = false; // Flag para notify pendente
 
   // v132: Callback para auto-pagamento de ordens liquidadas
@@ -471,10 +472,31 @@ class OrderProvider with ChangeNotifier {
       } catch (e) {
       }
     });
+    
+    // Iniciar sync periódico (30s) para detectar aceitação e republicar billCode_nip44_provider
+    // Isso garante que o buyer republica MESMO se order_status_screen não estiver aberta
+    _startBackgroundSyncTimer();
+  }
+
+  /// Sync periódico a cada 30s enquanto houver ordens ativas (não-terminais)
+  void _startBackgroundSyncTimer() {
+    _backgroundSyncTimer?.cancel();
+    _backgroundSyncTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
+      if (_currentUserPubkey == null) return;
+      final hasActiveOrders = _orders.any((o) =>
+        o.status == 'pending' || o.status == 'payment_received' ||
+        o.status == 'accepted' || o.status == 'awaiting_confirmation'
+      );
+      if (!hasActiveOrders) return;
+      try {
+        await syncOrdersFromNostr();
+      } catch (_) {}
+    });
   }
 
   // Limpar ordens ao fazer logout - SEGURANÃâ¡A CRÃÂTICA
   void clearOrders() {
+    _backgroundSyncTimer?.cancel();
     _orders = [];
     _availableOrdersForProvider = [];  // TambÃÂ©m limpar lista de disponÃÂ­veis
     _currentOrder = null;

@@ -62,6 +62,9 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   Duration? _timeRemaining;
   DateTime? _receiptSubmittedAt;
   
+  // Comprovante buscado do Nostr (descriptografado)
+  String? _providerProofImage;
+  
   // Timer para polling automático de updates de status
   Timer? _statusPollingTimer;
 
@@ -74,6 +77,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       _startStatusPolling();
       _fetchResolutionIfNeeded();
       _fetchProviderMediatorMessages();
+      _fetchProviderProofImage();
     });
   }
 
@@ -135,6 +139,32 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     } catch (e) {
       broLog('⚠️ Provider: erro ao buscar mensagens do mediador: $e');
       if (mounted) setState(() => _loadingProviderMediatorMessages = false);
+    }
+  }
+  
+  /// Busca comprovante do provedor via Nostr para exibição local
+  Future<void> _fetchProviderProofImage() async {
+    try {
+      final orderProvider = context.read<OrderProvider>();
+      final providerPrivKey = orderProvider.nostrPrivateKey;
+      if (providerPrivKey == null || providerPrivKey.isEmpty) return;
+      
+      final nostrService = NostrOrderService();
+      final result = await nostrService.fetchProofForOrder(
+        widget.orderId,
+        providerPubkey: widget.providerId.isNotEmpty ? widget.providerId : null,
+        privateKey: providerPrivKey,
+      );
+      
+      final proof = result['proofImage'] as String?;
+      final encrypted = result['encrypted'] as bool? ?? false;
+      
+      if (mounted && proof != null && proof.isNotEmpty && !encrypted) {
+        setState(() => _providerProofImage = proof);
+        broLog('✅ Comprovante do provedor obtido do Nostr para exibição');
+      }
+    } catch (e) {
+      broLog('⚠️ Erro ao buscar comprovante do provedor: $e');
     }
   }
   
@@ -215,6 +245,33 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       
       broLog('🔍 _loadOrderDetails: ordem carregada = ${order != null ? "OK (status=${order['status']})" : "NULL"}');
       broLog('🔍 _loadOrderDetails: billCode = ${order?['billCode'] != null && (order!['billCode'] as String).isNotEmpty ? "present (${(order['billCode'] as String).length} chars)" : "EMPTY"}');
+
+      // FIX: Se billCode está vazio/encrypted e a ordem foi aceita,
+      // buscar do Nostr onde o evento republished tem billCode_nip44_provider
+      if (order != null) {
+        final currentBillCode = order['billCode'] as String? ?? '';
+        final currentStatus = order['status'] as String? ?? 'pending';
+        if ((currentBillCode.isEmpty || currentBillCode == '[encrypted]') &&
+            currentStatus != 'pending') {
+          broLog('🔄 billCode vazio/encrypted — buscando do Nostr para descriptografia...');
+          try {
+            final nostrService = NostrOrderService();
+            final nostrOrder = await nostrService.fetchOrderFromNostr(widget.orderId).timeout(
+              const Duration(seconds: 10),
+              onTimeout: () => null,
+            );
+            if (nostrOrder != null) {
+              final nostrBillCode = nostrOrder['billCode'] as String? ?? '';
+              if (nostrBillCode.isNotEmpty && nostrBillCode != '[encrypted]') {
+                order['billCode'] = nostrBillCode;
+                broLog('✅ billCode obtido do Nostr: ${nostrBillCode.length} chars');
+              }
+            }
+          } catch (e) {
+            broLog('⚠️ Falha ao buscar billCode do Nostr: $e');
+          }
+        }
+      }
 
       if (mounted) {
         setState(() {
@@ -1008,7 +1065,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   Widget _buildCompletedOrderView(double amount, double providerFee, String billType) {
     final totalGanho = providerFee;
     final metadata = _orderDetails?['metadata'] as Map<String, dynamic>?;
-    final proofImage = metadata?['paymentProof'] as String?;
+    final proofImage = _providerProofImage ?? metadata?['paymentProof'] as String?;
     final createdAt = _orderDetails?['createdAt'] != null 
         ? DateTime.tryParse(_orderDetails!['createdAt'].toString())
         : null;
@@ -1908,7 +1965,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     final isExpiringSoon = hoursRemaining < 4;
     final isExpired = _timeRemaining != null && _timeRemaining!.isNegative;
     final metadata = _orderDetails?['metadata'] as Map<String, dynamic>?;
-    final proofImage = metadata?['paymentProof'] as String?;
+    final proofImage = _providerProofImage ?? metadata?['paymentProof'] as String?;
     
     // Se o prazo expirou, executar auto-liquidação
     if (isExpired && !_isProcessingAutoLiquidation) {

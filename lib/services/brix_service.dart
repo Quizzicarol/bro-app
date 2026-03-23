@@ -203,7 +203,7 @@ class BrixService {
   }
 
   /// Link a real nostr pubkey to a web-created BRIX
-  Future<bool> linkPubkey({required String username, required String nostrPubkey}) async {
+  Future<BrixVerifyResult> linkPubkey({required String username, required String nostrPubkey}) async {
     try {
       final response = await _dio.post('/brix/link-pubkey',
         data: {
@@ -212,9 +212,17 @@ class BrixService {
         },
         options: _signedOptions('/brix/link-pubkey', 'POST', pubkey: nostrPubkey),
       );
-      return response.data?['success'] == true;
+      final data = response.data;
+      return BrixVerifyResult(
+        success: data?['success'] == true,
+        brixAddress: data?['brix_address'] as String?,
+        username: data?['username'] as String?,
+      );
+    } on DioException catch (e) {
+      final msg = e.response?.data?['error'] ?? 'Erro ao vincular BRIX';
+      return BrixVerifyResult(success: false, error: msg.toString());
     } catch (e) {
-      return false;
+      return BrixVerifyResult(success: false, error: 'Erro ao conectar ao servidor BRIX');
     }
   }
 

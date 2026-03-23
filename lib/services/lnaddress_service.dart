@@ -353,6 +353,10 @@ class LnAddressService {
       // Verificar erro na resposta
       if (data['status'] == 'ERROR' || data['reason'] != null) {
         final reason = data['reason'] ?? 'Erro desconhecido';
+        // Detect BRIX recipient offline for auto-queue in wallet_screen
+        if (reason.toString().toLowerCase().contains('offline')) {
+          return {'success': false, 'error': 'BRIX_RECIPIENT_OFFLINE'};
+        }
         return {'success': false, 'error': reason};
       }
 

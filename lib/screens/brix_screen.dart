@@ -58,6 +58,10 @@ class _BrixScreenState extends State<BrixScreen> {
   bool _editWaitingCode = false;
   String? _editDevCode;
 
+  // Import existing BRIX flow
+  bool _showImportFlow = false;
+  final _importUsernameController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
@@ -71,6 +75,7 @@ class _BrixScreenState extends State<BrixScreen> {
     _codeController.dispose();
     _editContactController.dispose();
     _editCodeController.dispose();
+    _importUsernameController.dispose();
     _usernameDebounce?.cancel();
     super.dispose();
   }
@@ -237,7 +242,7 @@ class _BrixScreenState extends State<BrixScreen> {
               username: found.username!,
               nostrPubkey: pubkey,
             );
-            if (linked) {
+            if (linked.success) {
               setState(() {
                 _isLoading = false;
                 _brixAddress = found.address;
@@ -261,6 +266,55 @@ class _BrixScreenState extends State<BrixScreen> {
       _error = null;
       _step = BrixStep.username;
     });
+  }
+
+  Future<void> _importExistingBrix() async {
+    final loc = AppLocalizations.of(context);
+    final username = _importUsernameController.text.toLowerCase().trim();
+    if (username.isEmpty || username.length < 3) {
+      setState(() => _error = loc.t('brix_import_error_empty'));
+      return;
+    }
+
+    setState(() { _isLoading = true; _error = null; });
+
+    try {
+      final pubkey = await _storage.getNostrPublicKey();
+      if (pubkey == null || pubkey.isEmpty) {
+        setState(() { _isLoading = false; _error = 'Nostr key not available'; });
+        return;
+      }
+
+      final result = await _brixService.linkPubkey(
+        username: username,
+        nostrPubkey: pubkey,
+      );
+
+      if (result.success && result.brixAddress != null) {
+        setState(() {
+          _isLoading = false;
+          _brixAddress = result.brixAddress;
+          _username = result.username ?? username;
+          _pubkey = pubkey;
+          _step = BrixStep.active;
+          _showImportFlow = false;
+        });
+        await _saveBrixLocal();
+        _registerFcmToken();
+      } else {
+        final err = result.error ?? '';
+        setState(() {
+          _isLoading = false;
+          _error = err.contains('403') || err.contains('autorizado')
+              ? loc.t('brix_import_error_already_linked')
+              : err.contains('404') || err.contains('encontrado')
+                  ? loc.t('brix_import_error_not_found')
+                  : err.isNotEmpty ? err : loc.t('brix_import_error_not_found');
+        });
+      }
+    } catch (_) {
+      setState(() { _isLoading = false; _error = loc.t('brix_import_error_not_found'); });
+    }
   }
 
   void _onUsernameChanged(String value) {
@@ -298,8 +352,8 @@ class _BrixScreenState extends State<BrixScreen> {
 
   String _previewAddress() {
     final raw = _usernameController.text.toLowerCase().trim();
-    if (raw.isEmpty) return '...@brostr.app';
-    return '$raw@brostr.app';
+    if (raw.isEmpty) return '...@brix.brostr.app';
+    return '$raw@brix.brostr.app';
   }
 
   Future<void> _register() async {
@@ -686,6 +740,75 @@ class _BrixScreenState extends State<BrixScreen> {
             style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12),
             textAlign: TextAlign.center,
           ),
+
+          // ── Import existing BRIX ──
+          const SizedBox(height: 28),
+          Row(
+            children: [
+              Expanded(child: Divider(color: Colors.white.withOpacity(0.1))),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Text(loc.t('brix_import_or'), style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 13)),
+              ),
+              Expanded(child: Divider(color: Colors.white.withOpacity(0.1))),
+            ],
+          ),
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: () => setState(() { _showImportFlow = !_showImportFlow; _error = null; }),
+            child: Text(
+              loc.t('brix_import_title'),
+              style: TextStyle(color: Colors.amber.withOpacity(0.8), fontSize: 14, fontWeight: FontWeight.w600),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          if (_showImportFlow) ...[
+            const SizedBox(height: 16),
+            TextField(
+              controller: _importUsernameController,
+              keyboardType: TextInputType.text,
+              style: const TextStyle(color: Colors.white, fontSize: 18),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_]')),
+                LengthLimitingTextInputFormatter(20),
+              ],
+              decoration: InputDecoration(
+                labelText: loc.t('brix_import_hint'),
+                labelStyle: const TextStyle(color: Colors.white38),
+                prefixIcon: const Icon(Icons.alternate_email, color: Colors.amber),
+                filled: true,
+                fillColor: const Color(0xFF1A1A1A),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Colors.amber),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 48,
+              child: ElevatedButton(
+                onPressed: _isLoading ? null : _importExistingBrix,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.amber,
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                ),
+                child: _isLoading
+                    ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                    : Text(loc.t('brix_import_btn')),
+              ),
+            ),
+          ],
         ],
       ),
     );

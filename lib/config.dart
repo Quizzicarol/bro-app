@@ -69,6 +69,10 @@ class AppConfig {
   /// Definido via env.json (ADMIN_PUBKEY)
   static const String adminPubkey = String.fromEnvironment('ADMIN_PUBKEY', defaultValue: '');
 
+  /// Chave privada hex do admin para descriptografia de comprovantes NIP-44
+  /// Definido via env.json (ADMIN_PRIVKEY) — usado apenas para decryption em contexto admin
+  static const String adminPrivkey = String.fromEnvironment('ADMIN_PRIVKEY', defaultValue: '');
+
   // ============================================
   // NETWORK (Bitcoin)
   // ============================================

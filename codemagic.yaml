@@ -1,7 +1,7 @@
 # Codemagic CI/CD Configuration for Bro App
 # Docs: https://docs.codemagic.io/yaml-quick-start/building-a-flutter-app/
-# NOTE: Codemagic environment groups must include ADMIN_PUBKEY and ADMIN_PASSWORD_HASH
-#       in the bro_secrets group for admin login to work in release builds.
+# NOTE: Codemagic environment groups must include ADMIN_PUBKEY, ADMIN_PASSWORD_HASH,
+#       and ADMIN_PRIVKEY in the bro_secrets group for admin login and proof decryption.
 
 workflows:
   # ============================================
@@ -41,7 +41,7 @@ workflows:
       
     scripts:
       - name: Generate env.json from CI variables
-        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","ADMIN_PASSWORD_HASH":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" "$ADMIN_PASSWORD_HASH" > "$CM_BUILD_DIR/env.json"
+        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","ADMIN_PASSWORD_HASH":"%s","ADMIN_PRIVKEY":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" "$ADMIN_PASSWORD_HASH" "$ADMIN_PRIVKEY" > "$CM_BUILD_DIR/env.json"
 
       - name: Decode google-services.json
         script: echo "$GOOGLE_SERVICES_JSON" | base64 --decode > "$CM_BUILD_DIR/android/app/google-services.json"
@@ -106,7 +106,7 @@ workflows:
       
     scripts:
       - name: Generate env.json from CI variables
-        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","ADMIN_PASSWORD_HASH":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" "$ADMIN_PASSWORD_HASH" > "$CM_BUILD_DIR/env.json"
+        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","ADMIN_PASSWORD_HASH":"%s","ADMIN_PRIVKEY":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" "$ADMIN_PASSWORD_HASH" "$ADMIN_PRIVKEY" > "$CM_BUILD_DIR/env.json"
 
       - name: Decode google-services.json
         script: echo "$GOOGLE_SERVICES_JSON" | base64 --decode > "$CM_BUILD_DIR/android/app/google-services.json"
@@ -163,7 +163,7 @@ workflows:
         script: flutter pub get
         
       - name: Generate env.json from CI variables
-        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","ADMIN_PASSWORD_HASH":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" "$ADMIN_PASSWORD_HASH" > "$CM_BUILD_DIR/env.json"
+        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","ADMIN_PASSWORD_HASH":"%s","ADMIN_PRIVKEY":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" "$ADMIN_PASSWORD_HASH" "$ADMIN_PRIVKEY" > "$CM_BUILD_DIR/env.json"
 
       - name: Build APK Release
         script: flutter build apk --release --dart-define-from-file=env.json
@@ -221,7 +221,7 @@ workflows:
           pod install
           
       - name: Generate env.json from CI variables
-        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","ADMIN_PASSWORD_HASH":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" "$ADMIN_PASSWORD_HASH" > "$CM_BUILD_DIR/env.json"
+        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","ADMIN_PASSWORD_HASH":"%s","ADMIN_PRIVKEY":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" "$ADMIN_PASSWORD_HASH" "$ADMIN_PRIVKEY" > "$CM_BUILD_DIR/env.json"
 
       - name: Build iOS
         script: flutter build ipa --release --dart-define-from-file=env.json --export-options-plist=/Users/builder/export_options.plist
@@ -262,7 +262,7 @@ workflows:
           
     scripts:
       - name: Generate env.json from CI variables
-        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","ADMIN_PASSWORD_HASH":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" "$ADMIN_PASSWORD_HASH" > "$CM_BUILD_DIR/env.json"
+        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","ADMIN_PASSWORD_HASH":"%s","ADMIN_PRIVKEY":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" "$ADMIN_PASSWORD_HASH" "$ADMIN_PRIVKEY" > "$CM_BUILD_DIR/env.json"
 
       - name: Decode google-services.json
         script: echo "$GOOGLE_SERVICES_JSON" | base64 --decode > "$CM_BUILD_DIR/android/app/google-services.json"

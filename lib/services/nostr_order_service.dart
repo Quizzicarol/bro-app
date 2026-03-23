@@ -1326,10 +1326,10 @@ class NostrOrderService {
 
       final keychain = Keychain(providerPrivateKey);
       
-      // NOTA: O comprovante é criptografado via NIP-44 entre provedor e usuário
-      // Apenas o destinatário (userPubkey) pode descriptografar
+      // Criptografar comprovante para: usuário, admin E provedor (self)
       String? encryptedProofImage;
       String? encryptedProofImageAdmin;
+      String? encryptedProofImageProvider;
       try {
         if (order.userPubkey != null && order.userPubkey!.isNotEmpty) {
           encryptedProofImage = _nip44.encryptBetween(
@@ -1339,7 +1339,7 @@ class NostrOrderService {
           );
           broLog('🔐 proofImage criptografado com NIP-44 para usuário (${encryptedProofImage.length} chars)');
         }
-        // Também criptografar para o admin/mediador (para disputas)
+        // Criptografar para o admin/mediador (para disputas)
         if (AppConfig.adminPubkey.isNotEmpty) {
           encryptedProofImageAdmin = _nip44.encryptBetween(
             proofImageBase64,
@@ -1348,6 +1348,13 @@ class NostrOrderService {
           );
           broLog('🔐 proofImage criptografado com NIP-44 para admin (${encryptedProofImageAdmin.length} chars)');
         }
+        // Self-encrypt para que o provedor possa rever seu próprio comprovante
+        encryptedProofImageProvider = _nip44.encryptToSelf(
+          proofImageBase64,
+          keychain.private,
+          keychain.public,
+        );
+        broLog('🔐 proofImage criptografado com NIP-44 para provedor/self (${encryptedProofImageProvider.length} chars)');
       } catch (e) {
         broLog('⚠️ Falha ao criptografar proofImage: $e — enviando em plaintext');
       }
@@ -1369,6 +1376,10 @@ class NostrOrderService {
         // Cópia criptografada para admin (usado em disputas)
         if (encryptedProofImageAdmin != null) {
           contentMap['proofImage_nip44_admin'] = encryptedProofImageAdmin;
+        }
+        // Cópia criptografada para o próprio provedor (para rever o comprovante)
+        if (encryptedProofImageProvider != null) {
+          contentMap['proofImage_nip44_provider'] = encryptedProofImageProvider;
         }
       } else {
         contentMap['proofImage'] = proofImageBase64;
@@ -4157,6 +4168,21 @@ class NostrOrderService {
                       broLog('🔓 Comprovante descriptografado (admin copy) para ${orderId.substring(0, 8)}');
                     } catch (e) {
                       broLog('⚠️ Falha decrypt admin copy: $e');
+                    }
+                  }
+                  
+                  // Tentar cópia do provedor (self-encrypted)
+                  final proofImageNip44Provider = content['proofImage_nip44_provider'] as String?;
+                  if (!decrypted && proofImageNip44Provider != null && proofImageNip44Provider.isNotEmpty) {
+                    try {
+                      final myPubkey = Keychain(privateKey).public;
+                      final decryptedProof = _nip44.decryptFromSelf(proofImageNip44Provider, privateKey, myPubkey);
+                      result['proofImage'] = decryptedProof;
+                      result['encrypted'] = false;
+                      decrypted = true;
+                      broLog('🔓 Comprovante descriptografado (provider self copy) para ${orderId.substring(0, 8)}');
+                    } catch (e) {
+                      broLog('⚠️ Falha decrypt provider self copy: $e');
                     }
                   }
                   

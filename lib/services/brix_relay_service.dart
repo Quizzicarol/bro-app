@@ -76,7 +76,7 @@ class BrixRelayService {
     _running = true;
     _fcmRegistered = false; // Reset on start so we always try to register
     _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) => _poll());
+    _pollTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) => _poll());
     _poll(); // immediate first check
     _ensureFcmRegistered();
     broLog('[BRIX-RELAY] Service started');
@@ -87,7 +87,7 @@ class BrixRelayService {
     _context = context;
     _pollTimer?.cancel();
     _running = true;
-    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) => _poll());
+    _pollTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) => _poll());
     _poll();
     _ensureFcmRegistered();
     broLog('[BRIX-RELAY] Service restarted (resume)');
@@ -123,13 +123,13 @@ class BrixRelayService {
     if (!_running || _context == null) return;
     _pollCount++;
 
-    // Log every 10th poll for visibility
-    if (_pollCount % 10 == 1) {
+    // Log every 20th poll (~30s) for visibility
+    if (_pollCount % 20 == 1) {
       broLog('[BRIX-RELAY] Poll #$_pollCount (running=$_running, fcmRegistered=$_fcmRegistered, pubkey=${_pubkey?.substring(0, 8) ?? "null"})');
     }
 
-    // Retry FCM registration every ~30s (10 polls) until successful
-    if (!_fcmRegistered && _pollCount % 10 == 1) {
+    // Retry FCM registration every ~30s (20 polls) until successful
+    if (!_fcmRegistered && _pollCount % 20 == 1) {
       _ensureFcmRegistered();
     }
 
@@ -137,7 +137,7 @@ class BrixRelayService {
       // Get pubkey lazily
       _pubkey ??= await _storage.getNostrPublicKey();
       if (_pubkey == null || _pubkey!.isEmpty) {
-        if (_pollCount % 10 == 1) {
+        if (_pollCount % 20 == 1) {
           broLog('[BRIX-RELAY] ⚠ No pubkey in storage — relay inactive');
         }
         return;

@@ -42,6 +42,7 @@ class OrderProvider with ChangeNotifier {
   Timer? _saveDebounceTimer; // Debounce para _saveOrders
   Timer? _notifyDebounceTimer; // Debounce para notifyListeners
   Timer? _backgroundSyncTimer; // Sync periódico para billCode_nip44_provider
+  final Set<String> _republishedOldOrders = {}; // Ordens antigas já republicadas com billCode_nip44_provider
   bool _notifyPending = false; // Flag para notify pendente
 
   // v132: Callback para auto-pagamento de ordens liquidadas
@@ -1556,6 +1557,50 @@ class OrderProvider with ChangeNotifier {
       _debouncedSave();
       _throttledNotify();
       broLog('💾 updateOrderBillCodeLocal: ${orderId.substring(0, 8)} → ${billCode.length} chars');
+    }
+  }
+
+  /// v387: Republicar ordens antigas aceitas que não tiveram billCode_nip44_provider publicado.
+  /// Ordens aceitas ANTES do build 387 nunca tiveram o republish adequado.
+  /// Escaneia ordens locais com status 'accepted', billCode válido e providerId,
+  /// e força o republish. Cada ordem só é republicada UMA vez por sessão.
+  Future<void> _republishOldAcceptedOrders() async {
+    if (_currentUserPubkey == null) return;
+    final privateKey = _nostrService.privateKey;
+    if (privateKey == null || privateKey.isEmpty) return;
+
+    final candidates = _orders.where((o) =>
+      o.status == 'accepted' &&
+      o.userPubkey == _currentUserPubkey &&
+      o.billCode.isNotEmpty &&
+      o.billCode != '[encrypted]' &&
+      o.providerId != null &&
+      o.providerId!.isNotEmpty &&
+      !_republishedOldOrders.contains(o.id)
+    ).toList();
+
+    if (candidates.isEmpty) return;
+
+    broLog('🔄 [REPUBLISH_OLD] ${candidates.length} ordens aceitas antigas para republicar');
+
+    for (final order in candidates) {
+      try {
+        final success = await _nostrOrderService.republishOrderWithStatus(
+          privateKey: privateKey,
+          order: order,
+          newStatus: 'accepted',
+          providerId: order.providerId,
+        );
+        _republishedOldOrders.add(order.id);
+        if (success) {
+          broLog('✅ [REPUBLISH_OLD] Ordem ${order.id.substring(0, 8)} republicada com billCode_nip44_provider');
+        } else {
+          broLog('⚠️ [REPUBLISH_OLD] Falha ao republicar ordem ${order.id.substring(0, 8)}');
+        }
+      } catch (e) {
+        _republishedOldOrders.add(order.id); // Marcar como tentado para não repetir
+        broLog('❌ [REPUBLISH_OLD] Erro ao republicar ${order.id.substring(0, 8)}: $e');
+      }
     }
   }
 
@@ -3091,6 +3136,10 @@ class OrderProvider with ChangeNotifier {
       if (statusUpdated > 0) {
         _immediateNotify(); // v269: notificar UI imediatamente quando status muda
       }
+      
+      // v387: Republicar ordens antigas aceitas que estão sem billCode_nip44_provider
+      // Ordens aceitas ANTES do build 387 nunca tiveram billCode_nip44_provider publicado
+      await _republishOldAcceptedOrders();
       
       // AUTO-LIQUIDAÇÃO v234: Também verificar no sync do usuário
       await _checkAutoLiquidation();

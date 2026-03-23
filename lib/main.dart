@@ -152,6 +152,13 @@ void main() async {
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
     final messaging = FirebaseMessaging.instance;
     await messaging.requestPermission();
+    // iOS: Permitir exibição de notificações em foreground
+    // Sem isso, firebase_messaging suprime alertas quando o app está aberto
+    await messaging.setForegroundNotificationPresentationOptions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
     fcmToken = await messaging.getToken();
     broLog('[FCM] Push token: $fcmToken');
   } catch (e) {

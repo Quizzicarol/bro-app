@@ -1038,7 +1038,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     title: order.billType == 'pix' ? 'PIX' : 'Boleto',
                     amount: _currencyFormat.format(order.amount),
                     status: order.status,
-                    statusLabel: _getStatusLabel(order.status),
+                    statusLabel: _getStatusLabel(order.status, metadata: order.metadata),
                     orderId: order.id,
                     onTap: () {
                       _showOrderDetails(order);
@@ -1233,7 +1233,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  String _getStatusLabel(String status) {
+  String _getStatusLabel(String status, {Map<String, dynamic>? metadata}) {
     final t = AppLocalizations.of(context);
     switch (status.toLowerCase()) {
       case 'pending':
@@ -1248,8 +1248,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return t.t('home_status_confirm_payment');
       case 'completed':
       case 'paid':
+        // Mostrar 'Resolvida' para ordens que passaram por mediação
+        if (metadata?['wasDisputed'] == true) {
+          return t.t('home_status_resolved');
+        }
         return t.t('home_status_completed');
       case 'cancelled':
+        if (metadata?['wasDisputed'] == true) {
+          return t.t('home_status_resolved');
+        }
         return t.t('home_status_cancelled');
       case 'disputed':
         return t.t('home_status_in_dispute');

@@ -254,6 +254,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           orderId: widget.orderId,
           amount: widget.amountBrl,
         );
+        // Se veio de disputed, buscar resolução para mostrar detalhes
+        if (_currentStatus == 'disputed' && _disputeResolution == null) {
+          _fetchResolutionIfNeeded();
+        }
         break;
       case 'liquidated':
         _notificationService.notifyOrderAutoLiquidated(
@@ -352,9 +356,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           _startCountdownTimer();
         }
 
-        // CORREÇÃO: Parar polling em estados FINAIS (completed, cancelled, disputed, liquidated)
-        // disputed não precisa de polling — a resolução vem via Nostr events
-        if (status == 'completed' || status == 'cancelled' || status == 'disputed' || status == 'liquidated') {
+        // Parar polling em estados FINAIS (completed, cancelled, liquidated)
+        // NOTA: disputed NÃO para o polling — precisa detectar resolução da mediação
+        if (status == 'completed' || status == 'cancelled' || status == 'liquidated') {
           timer.cancel();
           _countdownTimer?.cancel();
         }
@@ -2740,33 +2744,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       );
 
       if (mounted) {
-        Navigator.pop(context); // Fechar loading
+        Navigator.pop(context); // Fechar loading IMEDIATAMENTE
         
         // Atualizar status local para "em disputa"
         final orderProvider = context.read<OrderProvider>();
         await orderProvider.updateOrderStatus(orderId: widget.orderId, status: 'disputed');
         
-        // Publicar notificação de disputa no Nostr (kind 1 com tag bro-disputa)
-        // Isso permite que o admin veja todas as disputas de qualquer dispositivo
-        try {
-          final nostrOrderService = NostrOrderService();
-          final privateKey = orderProvider.nostrPrivateKey;
-          if (privateKey != null) {
-            await nostrOrderService.publishDisputeNotification(
-              privateKey: privateKey,
-              orderId: widget.orderId,
-              reason: reason,
-              description: description,
-              openedBy: 'user',
-              orderDetails: orderDetails,
-              userEvidence: userEvidence,
-            );
-            broLog('📤 Disputa publicada no Nostr com sucesso');
-          }
-        } catch (e) {
-          broLog('⚠️ Erro ao publicar disputa no Nostr: $e');
-        }
-        
+        // Atualizar UI ANTES de publicar no Nostr (que é lento)
         setState(() {
           _currentStatus = 'disputed';
           _disputeReason = reason;
@@ -2782,6 +2766,30 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             duration: const Duration(seconds: 4),
           ),
         );
+        
+        // Publicar notificação de disputa no Nostr (fire-and-forget)
+        // Não bloqueia a UI — o admin será notificado em segundo plano
+        try {
+          final nostrOrderService = NostrOrderService();
+          final privateKey = orderProvider.nostrPrivateKey;
+          if (privateKey != null) {
+            nostrOrderService.publishDisputeNotification(
+              privateKey: privateKey,
+              orderId: widget.orderId,
+              reason: reason,
+              description: description,
+              openedBy: 'user',
+              orderDetails: orderDetails,
+              userEvidence: userEvidence,
+            ).then((_) {
+              broLog('📤 Disputa publicada no Nostr com sucesso');
+            }).catchError((e) {
+              broLog('⚠️ Erro ao publicar disputa no Nostr: $e');
+            });
+          }
+        } catch (e) {
+          broLog('⚠️ Erro ao publicar disputa no Nostr: $e');
+        }
       }
     } catch (e) {
       if (mounted) {

@@ -67,6 +67,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   
   // Timer para polling automático de updates de status
   Timer? _statusPollingTimer;
+  // Timer para polling de billCode (PIX) após aceitar ordem
+  Timer? _billCodePollingTimer;
 
   @override
   void initState() {
@@ -84,6 +86,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   @override
   void dispose() {
     _statusPollingTimer?.cancel();
+    _billCodePollingTimer?.cancel();
     _confirmationCodeController.dispose();
     _e2eIdController.dispose();
     super.dispose();
@@ -171,12 +174,13 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   /// Inicia polling automático para verificar updates de status
   /// Isso permite que o Bro veja quando o usuário confirma o pagamento
   void _startStatusPolling() {
-    // Polling a cada 10 segundos quando em awaiting_confirmation
+    // Polling a cada 10 segundos quando em awaiting_confirmation ou accepted (billCode pendente)
     _statusPollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) async {
       final currentStatus = _orderDetails?['status'] ?? '';
       
-      // Só fazer polling se estiver aguardando confirmação
-      if (currentStatus == 'awaiting_confirmation' && mounted) {
+      // Polling para awaiting_confirmation E para accepted com billCode vazio
+      final needsBillCodePoll = currentStatus == 'accepted' && _isBillCodeMissing();
+      if ((currentStatus == 'awaiting_confirmation' || needsBillCodePoll) && mounted) {
         broLog('🔄 [POLLING] Verificando status da ordem ${widget.orderId.substring(0, 8)}...');
         await _loadOrderDetails();
         
@@ -207,6 +211,61 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             );
           }
         }
+      }
+    });
+  }
+
+  /// Verifica se o billCode (código PIX/boleto) está ausente ou criptografado
+  bool _isBillCodeMissing() {
+    final billCode = _orderDetails?['billCode'] as String? ?? 
+                     _orderDetails?['bill_code'] as String? ?? '';
+    return billCode.isEmpty || billCode == '[encrypted]';
+  }
+
+  /// Inicia polling dedicado para obter billCode após aceitar ordem
+  /// O usuário precisa republish o evento com billCode_nip44_provider
+  /// para que o provedor consiga descriptografar
+  void _startBillCodePolling() {
+    _billCodePollingTimer?.cancel();
+    int attempts = 0;
+    const maxAttempts = 18; // 18 x 5s = 90s máximo
+
+    _billCodePollingTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+      attempts++;
+      if (!mounted || attempts > maxAttempts) {
+        broLog('⏱️ [BILLCODE_POLL] Polling encerrado após $attempts tentativas');
+        timer.cancel();
+        return;
+      }
+
+      if (!_isBillCodeMissing()) {
+        broLog('✅ [BILLCODE_POLL] billCode já disponível, parando polling');
+        timer.cancel();
+        return;
+      }
+
+      broLog('🔄 [BILLCODE_POLL] Tentativa $attempts/$maxAttempts — buscando billCode do Nostr...');
+      try {
+        final nostrService = NostrOrderService();
+        final nostrOrder = await nostrService.fetchOrderFromNostr(widget.orderId).timeout(
+          const Duration(seconds: 8),
+          onTimeout: () => null,
+        );
+        if (nostrOrder != null) {
+          final nostrBillCode = nostrOrder['billCode'] as String? ?? '';
+          if (nostrBillCode.isNotEmpty && nostrBillCode != '[encrypted]') {
+            broLog('✅ [BILLCODE_POLL] billCode obtido na tentativa $attempts: ${nostrBillCode.length} chars');
+            timer.cancel();
+            if (mounted) {
+              setState(() {
+                _orderDetails?['billCode'] = nostrBillCode;
+              });
+            }
+            return;
+          }
+        }
+      } catch (e) {
+        broLog('⚠️ [BILLCODE_POLL] Erro na tentativa $attempts: $e');
       }
     });
   }
@@ -517,6 +576,14 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
 
     broLog('🔵 [ACCEPT] Recarregando detalhes da ordem...');
     await _loadOrderDetails();
+    
+    // Iniciar polling de billCode — o usuário precisa republicar o evento
+    // com billCode_nip44_provider para o provedor poder descriptografar
+    if (_isBillCodeMissing()) {
+      broLog('🔄 [ACCEPT] billCode ausente — iniciando polling para descriptografia...');
+      _startBillCodePolling();
+    }
+    
     broLog('🔵 [ACCEPT] Ordem aceita e detalhes carregados com sucesso!');
   }
 
@@ -895,6 +962,49 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             // Mostrar código de pagamento APENAS quando Bro precisa pagar
             if (paymentData != null && paymentData.isNotEmpty) ...[
               _buildPaymentDataCard(billType, paymentData),
+              const SizedBox(height: 16),
+            ] else ...[
+              // Indicador de que o billCode está sendo obtido
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1A1A),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                ),
+                child: Column(
+                  children: [
+                    const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.orange,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      AppLocalizations.of(context)!.t('prov_det_loading_pix'),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.orange,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      AppLocalizations.of(context)!.t('prov_det_loading_pix_hint'),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 16),
             ],
             _buildReceiptSection(),
@@ -2500,27 +2610,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       final orderProvider = context.read<OrderProvider>();
       await orderProvider.updateOrderStatus(orderId: widget.orderId, status: 'disputed');
 
-      // Publicar notificação de disputa no Nostr (kind 1 com tag bro-disputa)
-      try {
-        final nostrOrderService = NostrOrderService();
-        final privateKey = orderProvider.nostrPrivateKey;
-        if (privateKey != null) {
-          await nostrOrderService.publishDisputeNotification(
-            privateKey: privateKey,
-            orderId: widget.orderId,
-            reason: reason,
-            description: description,
-            openedBy: 'provider',
-            orderDetails: orderDetails,
-          );
-          broLog('📤 Disputa do provedor publicada no Nostr');
-        }
-      } catch (e) {
-        broLog('⚠️ Erro ao publicar disputa no Nostr: $e');
-      }
-
       if (mounted) {
-        Navigator.pop(context); // Fechar loading
+        Navigator.pop(context); // Fechar loading IMEDIATAMENTE
         
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -2531,7 +2622,30 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         );
         
         // Recarregar detalhes
-        await _loadOrderDetails();
+        _loadOrderDetails();
+      }
+
+      // Publicar notificação de disputa no Nostr (fire-and-forget)
+      // Não bloqueia a UI — o admin será notificado em segundo plano
+      try {
+        final nostrOrderService = NostrOrderService();
+        final privateKey = orderProvider.nostrPrivateKey;
+        if (privateKey != null) {
+          nostrOrderService.publishDisputeNotification(
+            privateKey: privateKey,
+            orderId: widget.orderId,
+            reason: reason,
+            description: description,
+            openedBy: 'provider',
+            orderDetails: orderDetails,
+          ).then((_) {
+            broLog('📤 Disputa do provedor publicada no Nostr');
+          }).catchError((e) {
+            broLog('⚠️ Erro ao publicar disputa no Nostr: $e');
+          });
+        }
+      } catch (e) {
+        broLog('⚠️ Erro ao publicar disputa no Nostr: $e');
       }
     } catch (e) {
       if (mounted) {

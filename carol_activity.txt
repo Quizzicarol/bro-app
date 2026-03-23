@@ -1,0 +1,113 @@
+﻿
+[2merror.message=[0m"could not find a good candidate within 1 attempts at 
+load balancing. last error: [PM01] machines API returned an error: "machine ID 
+0801553b236198 lease currently held by 
+69e44a4c-cb18-5265-9335-e177fe199085@tokens.fly.io, expires at 
+2026-03-23T18:33:16Z"" [2m2026-03-23T18:33:04Z[0m proxy[0801553b236198] 
+[32mams[0m [[31merror[0m][2mrequest.url=[0m"/brix/invoice-requests/0b3118
+1f021539d1afcda76e66577d5a7797a9603ac4a7aa46514745c8acfc26?username=carol" 
+[2merror.message=[0m"could not find a good candidate within 1 attempts at 
+load balancing. last error: [PM01] machines API returned an error: "machine ID 
+0801553b236198 lease currently held by 
+69e44a4c-cb18-5265-9335-e177fe199085@tokens.fly.io, expires at 
+2026-03-23T18:33:16Z"" [2m2026-03-23T18:33:04Z[0m proxy[0801553b236198] 
+[32mams[0m [[31merror[0m][2mrequest.url=[0m"/brix/invoice-requests/4c020f
+93e3240ba5215ce3f2d6b2b1e9ec57b64d0189b6411b8394d8a60c499d?username=quizzicarol
+" 
+[2merror.message=[0m"could not find a good candidate within 1 attempts at 
+load balancing. last error: [PM01] machines API returned an error: "rate limit 
+exceeded"" [2m2026-03-23T18:33:04Z[0m proxy[0801553b236198] [32mams[0m [[3
+1merror[0m][2mrequest.url=[0m"/brix/invoice-requests/0b31181f021539d1afcda76
+e66577d5a7797a9603ac4a7aa46514745c8acfc26?username=carol" 
+[2merror.message=[0m"could not find a good candidate within 1 attempts at 
+load balancing. last error: [PM01] machines API returned an error: "rate limit 
+exceeded"" [2m2026-03-23T18:33:04Z[0m proxy[0801553b236198] [32mams[0m [[3
+1merror[0m][2mrequest.url=[0m"/brix/invoice-requests/4c020f93e3240ba5215ce3f
+2d6b2b1e9ec57b64d0189b6411b8394d8a60c499d?username=quizzicarol" 
+[2merror.message=[0m"could not find a good candidate within 1 attempts at 
+load balancing. last error: [PM01] machines API returned an error: "rate limit 
+exceeded"" [2m2026-03-23T18:33:04Z[0m proxy[0801553b236198] [32mams[0m [[3
+1merror[0m][2mrequest.url=[0m"/brix/invoice-requests/4c020f93e3240ba5215ce3f
+2d6b2b1e9ec57b64d0189b6411b8394d8a60c499d?username=quizzicarol" 
+[2merror.message=[0m"could not find a good candidate within 1 attempts at 
+load balancing. last error: [PM01] machines API returned an error: "rate limit 
+exceeded"" [2m2026-03-23T18:33:04Z[0m proxy[0801553b236198] [32mams[0m [[3
+1merror[0m][2mrequest.url=[0m"/brix/invoice-requests/0b31181f021539d1afcda76
+e66577d5a7797a9603ac4a7aa46514745c8acfc26?username=carol" 
+[2merror.message=[0m"could not find a good candidate within 1 attempts at 
+load balancing. last error: [PC01] instance refused connection. is your app 
+listening on 0.0.0.0:8080? make sure it is not only listening on 127.0.0.1 
+(hint: look at your startup logs, servers often print the address they are 
+listening on)" [2m2026-03-23T18:33:05Z[0m proxy[0801553b236198] [32mams[0m 
+[[31merror[0m][2mrequest.url=[0m"/brix/invoice-requests/4c020f93e3240ba5215
+ce3f2d6b2b1e9ec57b64d0189b6411b8394d8a60c499d?username=quizzicarol" 
+[2m2026-03-23T18:33:06Z[0m app[0801553b236198] [32mams[0m 
+[[34minfo[0m][FIX] Updated carol's nostr_pubkey from 4c020f93e3240ba5... to 
+0b31181f021539d1...
+[2m2026-03-23T18:33:06Z[0m app[0801553b236198] [32mams[0m 
+[[34minfo[0m][STARTUP] user=quizzicarol pubkey=4c020f93e3240ba5... 
+last_seen=2026-03-23 18:32:51 fcm=1 verified=1
+[2m2026-03-23T18:33:06Z[0m app[0801553b236198] [32mams[0m 
+[[34minfo[0m][STARTUP] user=carol pubkey=0b31181f021539d1... 
+last_seen=2026-03-23 18:32:51 fcm=1 verified=1
+[2m2026-03-23T18:44:12Z[0m app[0801553b236198] [32mams[0m 
+[[34minfo[0m][LNURL] Request cc28fd9d-4154-4420-9ece-c87eb932aeb0 for 
+carol@brix.brostr.app: 58 sats (source=external) ÔÇö waiting for app... 
+(fcm=true, recentlySeen=true)
+[2m2026-03-23T18:44:12Z[0m app[0801553b236198] [32mams[0m 
+[[34minfo[0m][PUSH] Sending wake-up push to carol for request 
+cc28fd9d-4154-4420-9ece-c87eb932aeb0 (58 sats)
+[2m2026-03-23T18:44:13Z[0m app[0801553b236198] [32mams[0m 
+[[34minfo[0m][LNURL] Push sent to carol@brix.brostr.app
+[2m2026-03-23T18:44:14Z[0m app[0801553b236198] [32mams[0m 
+[[34minfo[0m][POLL] carol has 1 pending request(s): cc28fd9d=58sats
+[2m2026-03-23T18:44:15Z[0m app[0801553b236198] [32mams[0m 
+[[34minfo[0m][LNURL] Ô£ô Spark invoice ready for carol@brix.brostr.app: 58 
+sats
+[2m2026-03-23T18:44:56Z[0m app[0801553b236198] [32mams[0m 
+[[34minfo[0m][RESOLVE] carol ÔåÆ carol@brix.brostr.app (by=username, 
+caller=4c020f93)
+[2m2026-03-23T18:44:58Z[0m app[0801553b236198] [32mams[0m 
+[[34minfo[0m][LNURL] Request bb1978d2-2e2a-4d62-a45e-cb70b18c748d for 
+carol@brix.brostr.app: 20 sats (source=brix) ÔÇö waiting for app... (fcm=true, 
+recentlySeen=true)
+[2m2026-03-23T18:44:58Z[0m app[0801553b236198] [32mams[0m 
+[[34minfo[0m][PUSH] Sending wake-up push to carol for request 
+bb1978d2-2e2a-4d62-a45e-cb70b18c748d (20 sats)
+[2m2026-03-23T18:44:58Z[0m app[0801553b236198] [32mams[0m 
+[[34minfo[0m][LNURL] Push sent to carol@brix.brostr.app
+[2m2026-03-23T18:44:59Z[0m app[0801553b236198] [32mams[0m 
+[[34minfo[0m][POLL] carol has 1 pending request(s): bb1978d2=20sats
+[2m2026-03-23T18:45:00Z[0m app[0801553b236198] [32mams[0m 
+[[34minfo[0m][LNURL] Ô£ô Spark invoice ready for carol@brix.brostr.app: 20 
+sats
+[2m2026-03-23T20:17:08Z[0m app[0801553b236198] [32mams[0m 
+[[34minfo[0m][LNURL] Request e33d3dff-f05c-4aa3-b6a1-0f4ac9affab5 for 
+carol@brix.brostr.app: 14 sats (source=brix) ÔÇö waiting for app... (fcm=true, 
+recentlySeen=true)
+[2m2026-03-23T20:17:08Z[0m app[0801553b236198] [32mams[0m 
+[[34minfo[0m][PUSH] Sending wake-up push to carol for request 
+e33d3dff-f05c-4aa3-b6a1-0f4ac9affab5 (14 sats)
+[2m2026-03-23T20:17:08Z[0m app[0801553b236198] [32mams[0m 
+[[34minfo[0m][LNURL] Push sent to carol@brix.brostr.app
+[2m2026-03-23T20:17:09Z[0m app[0801553b236198] [32mams[0m 
+[[34minfo[0m][POLL] carol has 1 pending request(s): e33d3dff=14sats
+[2m2026-03-23T20:17:10Z[0m app[0801553b236198] [32mams[0m 
+[[34minfo[0m][LNURL] Ô£ô Spark invoice ready for carol@brix.brostr.app: 14 
+sats
+[2m2026-03-23T20:17:46Z[0m app[0801553b236198] [32mams[0m 
+[[34minfo[0m][LNURL] Request b1f3b97a-4f3e-44c9-8fd7-cd61c4c3edff for 
+carol@brix.brostr.app: 18 sats (source=brix) ÔÇö waiting for app... (fcm=true, 
+recentlySeen=true)
+[2m2026-03-23T20:17:46Z[0m app[0801553b236198] [32mams[0m 
+[[34minfo[0m][PUSH] Sending wake-up push to carol for request 
+b1f3b97a-4f3e-44c9-8fd7-cd61c4c3edff (18 sats)
+[2m2026-03-23T20:17:46Z[0m app[0801553b236198] [32mams[0m 
+[[34minfo[0m][LNURL] Push sent to carol@brix.brostr.app
+[2m2026-03-23T20:17:46Z[0m app[0801553b236198] [32mams[0m 
+[[34minfo[0m][POLL] carol has 1 pending request(s): b1f3b97a=18sats
+[2m2026-03-23T20:17:48Z[0m app[0801553b236198] [32mams[0m 
+[[34minfo[0m][LNURL] Ô£ô Spark invoice ready for carol@brix.brostr.app: 18 
+sats
+
+

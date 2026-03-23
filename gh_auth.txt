@@ -1,0 +1,13 @@
+﻿gh : 
+No linha:1 caractere:76
++ ... _DISABLED = "1"; gh auth login -h github.com -p https -w 2>&1 | Out-F ...
++                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+! First copy your one-time code: E994-0661
+Open this URL to continue in your web browser: https://github.com/login/device
+Ô£ô Authentication complete.
+- gh config set -h github.com git_protocol https
+Ô£ô Configured git protocol
+Ô£ô Logged in as Quizzicarol

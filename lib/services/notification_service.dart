@@ -1,7 +1,9 @@
-﻿import 'package:flutter/material.dart' show Color;
+﻿import 'dart:convert';
+import 'package:flutter/material.dart' show Color;
 import 'package:flutter/foundation.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Servico de notificacoes locais para alertar o usuario sobre eventos importantes
 class NotificationService {
@@ -11,6 +13,9 @@ class NotificationService {
 
   final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
   bool _isInitialized = false;
+
+  // Shared dedup key — used by both foreground NotificationService and BackgroundNotificationService
+  static const String notifiedTransitionsKey = 'bro_notified_transitions';
 
   /// Inicializa o servico de notificacoes
   Future<void> initialize() async {
@@ -318,7 +323,7 @@ class NotificationService {
     );
   }
 
-  /// Metodo generico para mostrar notificacao
+  /// Metodo generico para mostrar notificacao (com dedup via SharedPreferences)
   Future<void> _showNotification({
     required int id,
     required String title,
@@ -327,6 +332,22 @@ class NotificationService {
     Importance importance = Importance.defaultImportance,
   }) async {
     if (!_isInitialized) await initialize();
+
+    // Dedup: skip if this exact notification was already shown
+    if (payload != null && payload.isNotEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      final notifiedJson = prefs.getString(notifiedTransitionsKey) ?? '[]';
+      final notified = Set<String>.from(jsonDecode(notifiedJson) as List);
+      if (notified.contains(payload)) {
+        broLog('🔕 Notificacao duplicada ignorada: $payload');
+        return;
+      }
+      notified.add(payload);
+      // Keep only last 300 entries
+      final list = notified.toList();
+      if (list.length > 300) list.removeRange(0, list.length - 300);
+      await prefs.setString(notifiedTransitionsKey, jsonEncode(list));
+    }
 
     final androidDetails = AndroidNotificationDetails(
       'bro_app_channel',

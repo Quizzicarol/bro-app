@@ -1289,36 +1289,42 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   void _showProofImage(String base64Image) {
     try {
       final imageBytes = base64Decode(base64Image);
+      final screenHeight = MediaQuery.of(context).size.height;
       showDialog(
         context: context,
         builder: (context) => Dialog(
           backgroundColor: const Color(0xFF1A1A1A),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AppBar(
-                backgroundColor: Colors.transparent,
-                title: Text(AppLocalizations.of(context)!.t('prov_det_receipt_title')),
-                leading: IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.pop(context),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: screenHeight * 0.85),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AppBar(
+                  backgroundColor: Colors.transparent,
+                  title: Text(AppLocalizations.of(context)!.t('prov_det_receipt_title')),
+                  leading: IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.memory(
-                    imageBytes,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => Center(
-                      child: Text(AppLocalizations.of(context)!.t('prov_det_image_error'),
-                          style: TextStyle(color: Colors.white70)),
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.memory(
+                        imageBytes,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => Center(
+                          child: Text(AppLocalizations.of(context)!.t('prov_det_image_error'),
+                              style: TextStyle(color: Colors.white70)),
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       );

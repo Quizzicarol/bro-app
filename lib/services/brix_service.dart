@@ -282,9 +282,13 @@ class BrixService {
   }
 
   /// Poll for pending invoice requests (called when BRIX is active)
-  Future<List<BrixInvoiceRequest>> getInvoiceRequests(String pubkey) async {
+  Future<List<BrixInvoiceRequest>> getInvoiceRequests(String pubkey, {String? username}) async {
     try {
-      final response = await _dio.get('/brix/invoice-requests/$pubkey',
+      String path = '/brix/invoice-requests/$pubkey';
+      if (username != null && username.isNotEmpty) {
+        path += '?username=${Uri.encodeComponent(username)}';
+      }
+      final response = await _dio.get(path,
         options: _signedOptions('/brix/invoice-requests/$pubkey', 'GET', pubkey: pubkey),
       );
       final data = response.data;
@@ -294,7 +298,15 @@ class BrixService {
         amountSats: r['amount_sats'] as int,
         createdAt: r['created_at'] as String,
       )).toList();
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 403) {
+        broLog('[BRIX] 403 Unauthorized polling invoice-requests');
+      } else if (e.type == DioExceptionType.connectionTimeout || e.type == DioExceptionType.receiveTimeout) {
+        broLog('[BRIX] Timeout polling invoice-requests');
+      }
+      return [];
     } catch (e) {
+      broLog('[BRIX] Error polling invoice-requests: $e');
       return [];
     }
   }

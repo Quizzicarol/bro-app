@@ -125,8 +125,10 @@ Future<void> _checkNostrForNewEvents() async {
   final lastCheck = prefs.getInt(_lastCheckKey) ?? 0;
   final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
   
-  // Se nunca verificou, usar "1 hora atras" para nao inundar com notificacoes antigas
-  final sinceTimestamp = lastCheck > 0 ? lastCheck : (now - 3600);
+  // Clamp: nunca buscar eventos com mais de 2 horas — evita notificacoes atrasadas
+  // quando Android Doze atrasa o WorkManager por dias
+  final maxAge = now - 7200; // 2 horas
+  final sinceTimestamp = lastCheck > maxAge ? lastCheck : maxAge;
   
   // 4. Carregar IDs de eventos ja vistos (para evitar duplicatas)
   final seenIdsJson = prefs.getString(_seenEventsKey) ?? '[]';
@@ -381,6 +383,22 @@ Future<void> _showNotificationForEvent(Map<String, dynamic> event, String userPu
     default:
       broLog('[BRO-BG] Kind desconhecido: $kind — ignorando');
       return;
+  }
+  
+  // Shared dedup with foreground NotificationService
+  if (payload.isNotEmpty) {
+    final prefs = await SharedPreferences.getInstance();
+    const notifiedKey = 'bro_notified_transitions';
+    final notifiedJson = prefs.getString(notifiedKey) ?? '[]';
+    final notified = Set<String>.from(jsonDecode(notifiedJson) as List);
+    if (notified.contains(payload)) {
+      broLog('[BRO-BG] Notificacao duplicada ignorada: $payload');
+      return;
+    }
+    notified.add(payload);
+    final list = notified.toList();
+    if (list.length > 300) list.removeRange(0, list.length - 300);
+    await prefs.setString(notifiedKey, jsonEncode(list));
   }
   
   final androidDetails = AndroidNotificationDetails(

@@ -1185,9 +1185,11 @@ class _WalletScreenState extends State<WalletScreen> {
                           }
                           
                           // Resolver Lightning Address ou LNURL para invoice BOLT11
+                          final senderPubkey = await StorageService().getNostrPublicKey();
                           final invoiceResult = await lnAddressService.getInvoice(
                             lnAddress: resolvedDest,
                             amountSats: amountSats,
+                            senderPubkey: senderPubkey,
                           );
                           
                           if (invoiceResult['success'] != true) {
@@ -2033,9 +2035,11 @@ class _WalletScreenState extends State<WalletScreen> {
                           final lnService = LnAddressService();
                           
                           // Usar getInvoice que funciona tanto para LN Address quanto LNURL
+                          final senderPk = await StorageService().getNostrPublicKey();
                           final resolveResult = await lnService.getInvoice(
                             lnAddress: invoice,
                             amountSats: amountSats,
+                            senderPubkey: senderPk,
                           );
                           
                           if (resolveResult['success'] != true) {

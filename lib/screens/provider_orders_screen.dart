@@ -1,8 +1,10 @@
 ﻿import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/collateral_provider.dart';
 import '../providers/order_provider.dart';
 import '../providers/breez_provider_export.dart';
@@ -49,6 +51,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
   List<Map<String, dynamic>> _availableOrders = [];
   List<Map<String, dynamic>> _myOrders = []; // Ordens aceitas por este provedor
   Set<String> _seenOrderIds = {};
+  static const String _seenOrderIdsKey = 'bro_provider_seen_order_ids';
   bool _isLoading = false;
   bool _isSyncingNostr = false;
   bool _hasCollateral = false;
@@ -72,6 +75,9 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     // Salvar modo provedor com pubkey do usuário
     SecureStorageService.setProviderMode(true, userPubkey: widget.providerId);
     
+    // Load persisted seen order IDs so widget rebuilds don't re-notify
+    _loadSeenOrderIds();
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // PERFORMANCE v1.0.219+220: Mostrar ordens aceitas do cache local IMEDIATAMENTE
       // antes de iniciar o sync pesado do Nostr. Isso elimina o "zeramento" da lista
@@ -83,6 +89,19 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     });
   }
   
+  Future<void> _loadSeenOrderIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    final json = prefs.getString(_seenOrderIdsKey) ?? '[]';
+    _seenOrderIds = Set<String>.from(jsonDecode(json) as List);
+  }
+
+  Future<void> _saveSeenOrderIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = _seenOrderIds.toList();
+    if (list.length > 500) list.removeRange(0, list.length - 500);
+    await prefs.setString(_seenOrderIdsKey, jsonEncode(list));
+  }
+
   void _startOrdersPolling() {
     // CORREÇÃO: Intervalo aumentado para 45s para dar tempo da sincronização completa
     // A busca de ordens do provedor pode demorar até 60s devido às múltiplas consultas Nostr
@@ -303,11 +322,13 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       }
       
       // Notificar sobre novas ordens disponíveis
+      bool seenIdsChanged = false;
       for (final order in available) {
         final orderId = order['id'] as String? ?? '';
         if (orderId.isEmpty) continue; // Pular ordens sem ID
         if (!_seenOrderIds.contains(orderId)) {
           _seenOrderIds.add(orderId);
+          seenIdsChanged = true;
           if (_lastOrderCount > 0) {
             _notificationService.notifyNewOrderAvailable(
               orderId: orderId,
@@ -317,6 +338,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           }
         }
       }
+      if (seenIdsChanged) _saveSeenOrderIds();
       
       // ========== REGISTRAR GANHOS DE ORDENS COMPLETADAS ==========
       // Verificar ordens completadas e registrar ganhos que ainda não foram registrados

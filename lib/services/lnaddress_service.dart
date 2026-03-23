@@ -265,10 +265,12 @@ class LnAddressService {
   /// destination: LN Address (user@domain) ou LNURL (lnurl1...)
   /// amountSats: valor em satoshis
   /// comment: comentário opcional (se suportado)
+  /// senderPubkey: remetente nostr pubkey (para BRIX, evita self-invoicing)
   Future<Map<String, dynamic>> getInvoice({
     required String lnAddress,
     required int amountSats,
     String? comment,
+    String? senderPubkey,
   }) async {
     try {
       Map<String, dynamic> resolved;
@@ -319,6 +321,11 @@ class LnAddressService {
       // Tell BRIX server this is a BRIX app sender (Spark→Spark direct)
       if (isBrix) {
         invoiceUrl += '&source=brix';
+        // Send sender's pubkey so server can prevent self-invoicing
+        // when sender and recipient share the same nostr pubkey
+        if (senderPubkey != null && senderPubkey.isNotEmpty) {
+          invoiceUrl += '&sender=${Uri.encodeComponent(senderPubkey)}';
+        }
       }
 
       // Adicionar comentário se permitido

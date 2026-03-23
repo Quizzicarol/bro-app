@@ -26,6 +26,7 @@ class BrixRelayService {
   Timer? _pollTimer;
   bool _running = false;
   String? _pubkey;
+  String? _brixUsername;
   BuildContext? _context;
   bool _fcmRegistered = false;
 
@@ -143,11 +144,26 @@ class BrixRelayService {
         return;
       }
 
+      // Load BRIX username lazily (needed to filter requests per-account)
+      if (_brixUsername == null) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final raw = prefs.getString('brix_cached');
+          if (raw != null) {
+            final cached = jsonDecode(raw) as Map<String, dynamic>;
+            _brixUsername = cached['username'] as String?;
+            if (_brixUsername != null) {
+              broLog('[BRIX-RELAY] Loaded BRIX username: $_brixUsername');
+            }
+          }
+        } catch (_) {}
+      }
+
       // Init NIP-98 credentials lazily (loads private key for signed auth)
       await _brixService.initCredentials();
 
       // Check if user has active BRIX
-      final requests = await _brixService.getInvoiceRequests(_pubkey!);
+      final requests = await _brixService.getInvoiceRequests(_pubkey!, username: _brixUsername);
       if (requests.isEmpty) return;
 
       final breezProvider = _context!.read<BreezProvider>();
@@ -214,7 +230,10 @@ class BrixRelayService {
         }
       }
     } catch (e) {
-      // Silent — don't spam logs on connection errors
+      // Log errors periodically (every ~30s) to avoid spam but still visible
+      if (_pollCount % 20 == 1) {
+        broLog('[BRIX-RELAY] Poll error: $e');
+      }
     }
 
     // Retry queued outgoing BRIX payments (async, non-blocking)
@@ -386,6 +405,7 @@ class BrixRelayService {
           final invoiceResult = await lnService.getInvoice(
             lnAddress: recipient,
             amountSats: amountSats,
+            senderPubkey: _pubkey,
           );
 
           if (invoiceResult['success'] != true) {

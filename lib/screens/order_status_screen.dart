@@ -180,6 +180,28 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         });
         broLog('✅ Resolução de disputa encontrada para ${widget.orderId.substring(0, 8)}');
         
+        // v390: Atualizar status da ordem se ainda está 'disputed' — corrige dashboard
+        try {
+          final orderProvider = context.read<OrderProvider>();
+          final order = orderProvider.getOrderById(widget.orderId);
+          if (order != null && order.status == 'disputed') {
+            final newStatus = resolution['resolution'] == 'resolved_user' ? 'cancelled' : 'completed';
+            final updatedMetadata = {
+              ...?order.metadata,
+              'wasDisputed': true,
+              'disputeResolvedAt': DateTime.now().toIso8601String(),
+            };
+            orderProvider.updateOrderWithMetadata(
+              orderId: widget.orderId,
+              status: newStatus,
+              metadata: updatedMetadata,
+            );
+            broLog('⚖️ Ordem ${widget.orderId.substring(0, 8)} atualizada: disputed → $newStatus (wasDisputed=true)');
+          }
+        } catch (e) {
+          broLog('⚠️ Erro ao atualizar status da disputa resolvida: $e');
+        }
+        
         // v338: AUTO-PAY — pagar provedor automaticamente sem interação do usuário
         if (paymentNeeded && mounted) {
           broLog('🤖 [AutoPay] Iniciando pagamento automático ao provedor...');

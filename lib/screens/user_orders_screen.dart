@@ -8,6 +8,7 @@ import '../services/lnaddress_service.dart';
 import '../providers/order_provider.dart';
 import '../providers/breez_provider.dart';
 import '../config.dart';
+import '../services/nostr_order_service.dart';
 import 'user_order_detail_screen.dart';
 
 /// Helper para substring seguro (evita RangeError)
@@ -148,6 +149,9 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
         });
       }
       broLog('📱 ${_orders.length} ordens carregadas');
+      
+      // v390: Verificar resoluções de disputas pendentes em background
+      _checkDisputeResolutions(orderProvider);
     } catch (e) {
       broLog('❌ Erro ao carregar ordens: $e');
       if (mounted) {
@@ -156,6 +160,58 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  /// v390: Verificar se ordens 'disputed' já foram resolvidas no Nostr
+  Future<void> _checkDisputeResolutions(OrderProvider orderProvider) async {
+    final disputedOrders = orderProvider.myCreatedOrders
+        .where((o) => o.status == 'disputed')
+        .toList();
+    if (disputedOrders.isEmpty) return;
+    
+    broLog('⚖️ Verificando resolução de ${disputedOrders.length} disputas...');
+    final nostrService = NostrOrderService();
+    
+    for (final order in disputedOrders) {
+      try {
+        final resolution = await nostrService.fetchDisputeResolution(order.id);
+        if (resolution != null) {
+          final newStatus = resolution['resolution'] == 'resolved_user' ? 'cancelled' : 'completed';
+          final updatedMetadata = {
+            ...?order.metadata,
+            'wasDisputed': true,
+            'disputeResolvedAt': DateTime.now().toIso8601String(),
+          };
+          orderProvider.updateOrderWithMetadata(
+            orderId: order.id,
+            status: newStatus,
+            metadata: updatedMetadata,
+          );
+          broLog('⚖️ Disputa ${order.id.substring(0, 8)} resolvida → $newStatus');
+        }
+      } catch (e) {
+        broLog('⚠️ Erro ao verificar disputa ${order.id.substring(0, 8)}: $e');
+      }
+    }
+    
+    // Recarregar UI se houve atualizações
+    if (mounted && disputedOrders.isNotEmpty) {
+      final updatedOrders = orderProvider.myCreatedOrders
+          .map((order) => {
+            'id': order.id,
+            'status': order.status,
+            'amount_brl': order.amount,
+            'amount_sats': (order.btcAmount * 100000000).toInt(),
+            'created_at': order.createdAt.toIso8601String(),
+            'expires_at': order.createdAt.add(const Duration(hours: 24)).toIso8601String(),
+            'payment_type': order.billType == 'electricity' || order.billType == 'water' || order.billType == 'internet'
+                ? order.billType
+                : 'pix',
+            'provider_id': order.providerId,
+            'metadata': order.metadata,
+          }).toList();
+      setState(() => _orders = updatedOrders);
     }
   }
 
@@ -1692,8 +1748,9 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
   Map<String, dynamic> _getStatusInfo(String status, {Map<String, dynamic>? metadata}) {
     // v390: Check if dispute was resolved via mediation
     final wasDisputed = metadata?['wasDisputed'] == true;
-    if (wasDisputed) {
-      if (status == 'completed') {
+    final disputeResolved = metadata?['disputeResolvedAt'] != null;
+    if (wasDisputed || (status == 'disputed' && disputeResolved)) {
+      if (status == 'completed' || (status == 'disputed' && disputeResolved)) {
         return {
           'label': 'Resolvida ⚖️',
           'color': Colors.teal,

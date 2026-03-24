@@ -36,6 +36,7 @@ class OrderProvider with ChangeNotifier {
   static const int _maxSyncDurationSeconds = 120; // v259: Max 2 min de sync antes de forcar reset
   static const int _maxRepairBatchSize = 5; // v259: Max 5 ordens reparadas por sessao
   final Set<String> _ordersNeedingUserPubkeyFix = {}; // v257: Ordens com userPubkey corrompido
+  bool _didMigratePlainTextBillCode = false; // v388: one-time migration
   DateTime? _lastUserSyncTime; // Timestamp do ÃÂºltimo sync de usuÃÂ¡rio
   DateTime? _lastProviderSyncTime; // Timestamp do ÃÂºltimo sync de provedor
   static const int _minSyncIntervalSeconds = 15; // Intervalo mÃÂ­nimo entre syncs automÃÂ¡ticos
@@ -1471,6 +1472,41 @@ class OrderProvider with ChangeNotifier {
     } finally {
       _isLoading = false;
       _immediateNotify();
+    }
+  }
+
+  /// v388: One-time migration — republish active orders with plain text billCode.
+  /// Old orders had encrypted billCode in Nostr. Now we publish plain text.
+  /// Buyer has plain text locally, so republish pushes it to relays.
+  Future<void> _migrateBillCodeToPlainText() async {
+    if (_didMigratePlainTextBillCode) return;
+    _didMigratePlainTextBillCode = true;
+    
+    if (_currentUserPubkey == null) return;
+    final privateKey = _nostrService.privateKey;
+    if (privateKey == null || privateKey.isEmpty) return;
+
+    final candidates = _orders.where((o) =>
+      o.userPubkey == _currentUserPubkey &&
+      o.billCode.isNotEmpty &&
+      o.billCode != '[encrypted]' &&
+      o.providerId != null &&
+      o.providerId!.isNotEmpty &&
+      (o.status == 'accepted' || o.status == 'awaiting_confirmation' || o.status == 'payment_received')
+    ).toList();
+
+    if (candidates.isEmpty) return;
+    broLog('v388: Migrating ${candidates.length} orders to plain text billCode');
+
+    for (final order in candidates) {
+      try {
+        await _nostrOrderService.republishOrderWithStatus(
+          privateKey: privateKey,
+          order: order,
+          newStatus: order.status,
+          providerId: order.providerId,
+        );
+      } catch (_) {}
     }
   }
 
@@ -3026,6 +3062,9 @@ class OrderProvider with ChangeNotifier {
       if (statusUpdated > 0) {
         _immediateNotify(); // v269: notificar UI imediatamente quando status muda
       }
+      
+      // v388: One-time migration of old encrypted billCode to plain text
+      await _migrateBillCodeToPlainText();
       
       // AUTO-LIQUIDAÇÃO v234: Também verificar no sync do usuário
       await _checkAutoLiquidation();

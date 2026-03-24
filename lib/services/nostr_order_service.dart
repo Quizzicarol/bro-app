@@ -147,52 +147,9 @@ class NostrOrderService {
   static const String broTag = 'bro-order';
   static const String broAppTag = 'bro-app';
 
-  /// Descriptografa billCode de um evento Nostr.
-  /// Tenta: 1) billCode_nip44_provider (provider decrypts using user's pubkey)
-  ///        2) billCode_nip44 (self-decrypt, only works for order owner)
-  ///        3) billCode plaintext (legacy/fallback)
-  String _decryptBillCode(Map<String, dynamic> content, String? userPubkey) {
-    final rawBillCode = content['billCode']?.toString() ?? '';
-    if (rawBillCode != '[encrypted]') return rawBillCode;
-    if (_decryptionKey == null) {
-      broLog('⚠️ [DECRYPT] _decryptionKey é null — não é possível descriptografar');
-      return '';
-    }
-
-    // Try provider-specific encrypted field first
-    final providerEncrypted = content['billCode_nip44_provider'] as String?;
-    if (providerEncrypted != null && userPubkey != null) {
-      try {
-        final decrypted = _nip44.decryptBetween(providerEncrypted, _decryptionKey!, userPubkey);
-        if (decrypted.isNotEmpty) {
-          broLog('🔓 billCode descriptografado (provider NIP-44) — ${decrypted.length} chars');
-          return decrypted;
-        }
-        broLog('⚠️ [DECRYPT] billCode_nip44_provider presente mas decryptBetween retornou vazio');
-      } catch (e) {
-        broLog('⚠️ [DECRYPT] Falha ao descriptografar billCode_nip44_provider: $e');
-      }
-    } else {
-      broLog('🔍 [DECRYPT] billCode_nip44_provider=${providerEncrypted != null ? "presente" : "AUSENTE"}, userPubkey=${userPubkey != null ? userPubkey.substring(0, 8) : "null"}');
-    }
-
-    // Try self-decrypt (only works if I'm the order owner)
-    final selfEncrypted = content['billCode_nip44'] as String?;
-    if (selfEncrypted != null) {
-      try {
-        final myPubkey = Keychain(_decryptionKey!).public;
-        final decrypted = _nip44.decryptFromSelf(selfEncrypted, _decryptionKey!, myPubkey);
-        if (decrypted.isNotEmpty) {
-          broLog('🔓 billCode descriptografado (self NIP-44)');
-          return decrypted;
-        }
-      } catch (e) {
-        broLog('🔍 [DECRYPT] Self-decrypt falhou (esperado se não sou o dono): ${e.toString().substring(0, 50)}');
-      }
-    }
-
-    broLog('❌ [DECRYPT] Nenhum método conseguiu descriptografar o billCode');
-    return ''; // Could not decrypt
+  /// Retorna billCode de um evento Nostr (plain text)
+  String _getBillCode(Map<String, dynamic> content) {
+    return content['billCode']?.toString() ?? '';
   }
 
   /// Publica uma ordem nos relays (raw)
@@ -211,25 +168,13 @@ class NostrOrderService {
     try {
       final keychain = Keychain(privateKey);
       
-      // PRIVACIDADE: billCode (chave PIX) é criptografado com NIP-44 (self-encrypt)
-      // O provedor só recebe o billCode após aceitar a ordem, via campo billCode_nip44_provider
-      // no evento republished com status='accepted'.
-      String? encryptedBillCode;
-      try {
-        encryptedBillCode = _nip44.encryptToSelf(billCode, keychain.private, keychain.public);
-        broLog('🔐 billCode criptografado com NIP-44 (self-encrypt)');
-      } catch (e) {
-        broLog('⚠️ Falha ao criptografar billCode: $e');
-      }
-
       final content = jsonEncode({
         'type': 'bro_order',
         'version': '1.0',
         'orderId': orderId,
         'userPubkey': keychain.public,
         'billType': billType,
-        'billCode': '[encrypted]', // Removido do plaintext por privacidade
-        if (encryptedBillCode != null) 'billCode_nip44': encryptedBillCode, // Só o dono pode descriptografar
+        'billCode': billCode,
         'amount': amount,
         'btcAmount': btcAmount,
         'btcPrice': btcPrice,
@@ -512,7 +457,7 @@ class NostrOrderService {
             eventId: raw['eventId']?.toString(),
             userPubkey: raw['userPubkey']?.toString() ?? '',
             billType: raw['billType']?.toString() ?? 'pix',
-            billCode: _decryptBillCode(raw, raw['userPubkey']?.toString()),
+            billCode: _getBillCode(raw),
             amount: (raw['amount'] as num?)?.toDouble() ?? 0,
             btcAmount: (raw['btcAmount'] as num?)?.toDouble() ?? 0,
             btcPrice: (raw['btcPrice'] as num?)?.toDouble() ?? 0,
@@ -852,7 +797,7 @@ class NostrOrderService {
         eventId: event['id'],
         userPubkey: originalUserPubkey,
         billType: content['billType'] ?? 'pix',
-        billCode: _decryptBillCode(content, originalUserPubkey),
+        billCode: _getBillCode(content),
         amount: finalAmount,
         btcAmount: (content['btcAmount'] as num?)?.toDouble() ?? 0,
         btcPrice: (content['btcPrice'] as num?)?.toDouble() ?? 0,
@@ -880,8 +825,7 @@ class NostrOrderService {
   }
 
   /// Busca uma ordem específica do Nostr pelo ID
-  /// CORREÇÃO: Usa o evento MAIS RECENTE entre todos os relays
-  /// para garantir que billCode_nip44_provider (do republish) seja encontrado
+  /// Usa o evento MAIS RECENTE entre todos os relays
   Future<Map<String, dynamic>?> fetchOrderFromNostr(String orderId) async {
     
     // Buscar em todos os relays em paralelo
@@ -889,8 +833,7 @@ class NostrOrderService {
       _relays.take(3).map((relay) => _fetchOrderFromRelay(relay, orderId).catchError((_) => null)),
     );
     
-    // CORREÇÃO: Usar o resultado MAIS RECENTE (maior created_at)
-    // Isso garante que o evento republished (com billCode_nip44_provider) seja preferido
+    // Usar o resultado MAIS RECENTE (maior created_at)
     Map<String, dynamic>? newest;
     int newestTimestamp = 0;
     for (final result in results) {
@@ -903,11 +846,9 @@ class NostrOrderService {
     }
     
     if (newest != null) {
-      final hasBillCodeProvider = newest['billCode_nip44_provider'] != null;
       final billCode = newest['billCode'] as String? ?? '';
       broLog('🔍 [FETCH] fetchOrderFromNostr: ${results.where((r) => r != null).length} relays responderam, '
-          'usando evento ts=$newestTimestamp, billCode=${billCode.isNotEmpty && billCode != "[encrypted]" ? "OK(${billCode.length}ch)" : "VAZIO"}, '
-          'billCode_nip44_provider=${hasBillCodeProvider ? "SIM" : "NÃO"}');
+          'usando evento ts=$newestTimestamp, billCode=${billCode.isNotEmpty ? "OK(${billCode.length}ch)" : "VAZIO"}');
     }
     
     return newest;
@@ -950,9 +891,7 @@ class NostrOrderService {
               'eventId': event['id'],
               'userPubkey': contentUserPubkey,
               'billType': content['billType'] ?? 'pix',
-              'billCode': _decryptBillCode(content, contentUserPubkey),
-              if (content['billCode_nip44'] != null) 'billCode_nip44': content['billCode_nip44'],
-              if (content['billCode_nip44_provider'] != null) 'billCode_nip44_provider': content['billCode_nip44_provider'],
+              'billCode': _getBillCode(content),
               'amount': (content['amount'] as num?)?.toDouble() ?? 0,
               'btcAmount': (content['btcAmount'] as num?)?.toDouble() ?? 0,
               'btcPrice': (content['btcPrice'] as num?)?.toDouble() ?? 0,
@@ -980,9 +919,7 @@ class NostrOrderService {
           'eventId': event['id'],
           'userPubkey': fallbackUserPubkey,
           'billType': content['billType'] ?? 'pix',
-          'billCode': _decryptBillCode(content, fallbackUserPubkey),
-          if (content['billCode_nip44'] != null) 'billCode_nip44': content['billCode_nip44'],
-          if (content['billCode_nip44_provider'] != null) 'billCode_nip44_provider': content['billCode_nip44_provider'],
+          'billCode': _getBillCode(content),
           'amount': (content['amount'] as num?)?.toDouble() ?? 0,
           'btcAmount': (content['btcAmount'] as num?)?.toDouble() ?? 0,
           'btcPrice': (content['btcPrice'] as num?)?.toDouble() ?? 0,
@@ -1203,32 +1140,13 @@ class NostrOrderService {
         return false;
       }
 
-      // PRIVACIDADE: billCode criptografado
-      String? encryptedBillCode;
-      String? encryptedBillCodeProvider;
-      try {
-        if (order.billCode.isNotEmpty && order.billCode != '[encrypted]') {
-          encryptedBillCode = _nip44.encryptToSelf(order.billCode, keychain.private, keychain.public);
-          // Se temos providerId, criptografar para o provedor também
-          final provId = providerId ?? order.providerId;
-          if (provId != null && provId.isNotEmpty) {
-            encryptedBillCodeProvider = _nip44.encryptBetween(order.billCode, keychain.private, provId);
-            broLog('🔐 billCode criptografado para provedor: ${provId.substring(0, 16)}...');
-          }
-        }
-      } catch (e) {
-        broLog('⚠️ Falha ao criptografar billCode: $e');
-      }
-
       final content = jsonEncode({
         'type': 'bro_order',
         'version': '1.0',
         'orderId': order.id,
         'userPubkey': keychain.public,
         'billType': order.billType,
-        'billCode': '[encrypted]', // Removido do plaintext
-        if (encryptedBillCode != null) 'billCode_nip44': encryptedBillCode,
-        if (encryptedBillCodeProvider != null) 'billCode_nip44_provider': encryptedBillCodeProvider,
+        'billCode': order.billCode,
         'amount': order.amount,
         'btcAmount': order.btcAmount,
         'btcPrice': order.btcPrice,

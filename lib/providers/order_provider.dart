@@ -41,8 +41,6 @@ class OrderProvider with ChangeNotifier {
   static const int _minSyncIntervalSeconds = 15; // Intervalo mÃÂ­nimo entre syncs automÃÂ¡ticos
   Timer? _saveDebounceTimer; // Debounce para _saveOrders
   Timer? _notifyDebounceTimer; // Debounce para notifyListeners
-  Timer? _backgroundSyncTimer; // Sync periódico para billCode_nip44_provider
-  final Set<String> _republishedOldOrders = {}; // Ordens antigas já republicadas com billCode_nip44_provider
   bool _notifyPending = false; // Flag para notify pendente
 
   // v132: Callback para auto-pagamento de ordens liquidadas
@@ -473,31 +471,10 @@ class OrderProvider with ChangeNotifier {
       } catch (e) {
       }
     });
-    
-    // Iniciar sync periódico (30s) para detectar aceitação e republicar billCode_nip44_provider
-    // Isso garante que o buyer republica MESMO se order_status_screen não estiver aberta
-    _startBackgroundSyncTimer();
-  }
-
-  /// Sync periódico a cada 30s enquanto houver ordens ativas (não-terminais)
-  void _startBackgroundSyncTimer() {
-    _backgroundSyncTimer?.cancel();
-    _backgroundSyncTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
-      if (_currentUserPubkey == null) return;
-      final hasActiveOrders = _orders.any((o) =>
-        o.status == 'pending' || o.status == 'payment_received' ||
-        o.status == 'accepted' || o.status == 'awaiting_confirmation'
-      );
-      if (!hasActiveOrders) return;
-      try {
-        await syncOrdersFromNostr();
-      } catch (_) {}
-    });
   }
 
   // Limpar ordens ao fazer logout - SEGURANÃâ¡A CRÃÂTICA
   void clearOrders() {
-    _backgroundSyncTimer?.cancel();
     _orders = [];
     _availableOrdersForProvider = [];  // TambÃÂ©m limpar lista de disponÃÂ­veis
     _currentOrder = null;
@@ -1501,8 +1478,6 @@ class OrderProvider with ChangeNotifier {
   /// Isso SUBSTITUI o evento original (status=pending) pelo novo (status=accepted/completed/etc).
   /// Garante que outros provedores NAO vejam a ordem como disponivel,
   /// mesmo se a query de status updates (kind 30079/30080/30081) falhar.
-  /// CRÍTICO para status 'accepted': inclui billCode_nip44_provider que o provedor precisa
-  /// para descriptografar o código PIX. Faz retry em caso de falha.
   /// So deve ser chamado pelo DONO da ordem.
   Future<void> _republishOrderEventWithTerminalStatus(Order order, String newStatus) async {
     // So re-publicar para status terminal-ish
@@ -1515,92 +1490,15 @@ class OrderProvider with ChangeNotifier {
     final privateKey = _nostrService.privateKey;
     if (privateKey == null || privateKey.isEmpty) return;
     
-    // Para status 'accepted', o republish é CRÍTICO — inclui billCode_nip44_provider
-    // que o provedor precisa para ver o código PIX. Fazemos retry.
-    final isAccepted = newStatus == 'accepted';
-    final maxAttempts = isAccepted ? 3 : 1;
-    
-    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        final success = await _nostrOrderService.republishOrderWithStatus(
-          privateKey: privateKey,
-          order: order,
-          newStatus: newStatus,
-          providerId: order.providerId,
-        );
-        if (success) {
-          if (isAccepted) {
-            broLog('🔑 [REPUBLISH] billCode_nip44_provider publicado (tentativa $attempt) para ordem ${order.id.substring(0, 8)}');
-          }
-          return;
-        }
-        if (isAccepted) {
-          broLog('⚠️ [REPUBLISH] Tentativa $attempt/$maxAttempts falhou para ${order.id.substring(0, 8)}');
-        }
-      } catch (e) {
-        broLog('❌ [REPUBLISH] Erro tentativa $attempt/$maxAttempts: $e');
-      }
-      if (attempt < maxAttempts) {
-        await Future.delayed(const Duration(seconds: 2));
-      }
-    }
-    if (isAccepted) {
-      broLog('❌ [REPUBLISH] FALHOU todas as $maxAttempts tentativas para ordem ${order.id.substring(0, 8)}!');
-    }
-  }
-
-  /// Atualiza o billCode de uma ordem localmente (usado pelo provedor após descriptografar do Nostr)
-  void updateOrderBillCodeLocal(String orderId, String billCode) {
-    final index = _orders.indexWhere((o) => o.id == orderId);
-    if (index != -1) {
-      _orders[index] = _orders[index].copyWith(billCode: billCode);
-      _debouncedSave();
-      _throttledNotify();
-      broLog('💾 updateOrderBillCodeLocal: ${orderId.substring(0, 8)} → ${billCode.length} chars');
-    }
-  }
-
-  /// v387: Republicar ordens antigas aceitas que não tiveram billCode_nip44_provider publicado.
-  /// Ordens aceitas ANTES do build 387 nunca tiveram o republish adequado.
-  /// Escaneia ordens locais com status 'accepted', billCode válido e providerId,
-  /// e força o republish. Cada ordem só é republicada UMA vez por sessão.
-  Future<void> _republishOldAcceptedOrders() async {
-    if (_currentUserPubkey == null) return;
-    final privateKey = _nostrService.privateKey;
-    if (privateKey == null || privateKey.isEmpty) return;
-
-    final candidates = _orders.where((o) =>
-      o.status == 'accepted' &&
-      o.userPubkey == _currentUserPubkey &&
-      o.billCode.isNotEmpty &&
-      o.billCode != '[encrypted]' &&
-      o.providerId != null &&
-      o.providerId!.isNotEmpty &&
-      !_republishedOldOrders.contains(o.id)
-    ).toList();
-
-    if (candidates.isEmpty) return;
-
-    broLog('🔄 [REPUBLISH_OLD] ${candidates.length} ordens aceitas antigas para republicar');
-
-    for (final order in candidates) {
-      try {
-        final success = await _nostrOrderService.republishOrderWithStatus(
-          privateKey: privateKey,
-          order: order,
-          newStatus: 'accepted',
-          providerId: order.providerId,
-        );
-        _republishedOldOrders.add(order.id);
-        if (success) {
-          broLog('✅ [REPUBLISH_OLD] Ordem ${order.id.substring(0, 8)} republicada com billCode_nip44_provider');
-        } else {
-          broLog('⚠️ [REPUBLISH_OLD] Falha ao republicar ordem ${order.id.substring(0, 8)}');
-        }
-      } catch (e) {
-        _republishedOldOrders.add(order.id); // Marcar como tentado para não repetir
-        broLog('❌ [REPUBLISH_OLD] Erro ao republicar ${order.id.substring(0, 8)}: $e');
-      }
+    try {
+      await _nostrOrderService.republishOrderWithStatus(
+        privateKey: privateKey,
+        order: order,
+        newStatus: newStatus,
+        providerId: order.providerId,
+      );
+    } catch (e) {
+      broLog('❌ [REPUBLISH] Erro: $e');
     }
   }
 
@@ -3118,16 +3016,8 @@ class OrderProvider with ChangeNotifier {
             statusUpdated++;
             
             // v261: Re-publicar o evento 30078 com status terminal para remover da marketplace
-            // CRÍTICO para 'accepted': AWAIT o republish para garantir que billCode_nip44_provider
-            // seja publicado antes de continuar. Sem await, o republish pode falhar silenciosamente.
             if (isStatusAdvancing) {
-              if (statusToUse == 'accepted') {
-                // AWAIT para accepted — billCode_nip44_provider é vital para o provedor
-                await _republishOrderEventWithTerminalStatus(_orders[existingIndex], statusToUse);
-              } else {
-                // Fire-and-forget para outros status
-                _republishOrderEventWithTerminalStatus(_orders[existingIndex], statusToUse);
-              }
+              _republishOrderEventWithTerminalStatus(_orders[existingIndex], statusToUse);
             }
           }
         }
@@ -3136,10 +3026,6 @@ class OrderProvider with ChangeNotifier {
       if (statusUpdated > 0) {
         _immediateNotify(); // v269: notificar UI imediatamente quando status muda
       }
-      
-      // v387: Republicar ordens antigas aceitas que estão sem billCode_nip44_provider
-      // Ordens aceitas ANTES do build 387 nunca tiveram billCode_nip44_provider publicado
-      await _republishOldAcceptedOrders();
       
       // AUTO-LIQUIDAÇÃO v234: Também verificar no sync do usuário
       await _checkAutoLiquidation();

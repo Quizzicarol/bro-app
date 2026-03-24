@@ -15,7 +15,6 @@ import '../services/escrow_service.dart';
 import '../services/dispute_service.dart';
 import '../services/notification_service.dart';
 import '../services/nostr_order_service.dart';
-import '../services/nip44_service.dart';
 import '../config.dart';
 import '../l10n/app_localizations.dart';
 
@@ -68,8 +67,6 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   
   // Timer para polling automático de updates de status
   Timer? _statusPollingTimer;
-  // Timer para polling de billCode (PIX) após aceitar ordem
-  Timer? _billCodePollingTimer;
 
   @override
   void initState() {
@@ -81,19 +78,12 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       _fetchResolutionIfNeeded();
       _fetchProviderMediatorMessages();
       _fetchProviderProofImage();
-      // CORREÇÃO: Se tela abrir com ordem já aceita mas billCode vazio,
-      // iniciar polling imediatamente (ex: app reaberto pelo provedor)
-      if (_isBillCodeMissing() && (_orderDetails?['status'] == 'accepted' || _orderAccepted)) {
-        broLog('🔄 [INIT] billCode ausente na abertura — iniciando polling...');
-        _startBillCodePolling();
-      }
     });
   }
 
   @override
   void dispose() {
     _statusPollingTimer?.cancel();
-    _billCodePollingTimer?.cancel();
     _confirmationCodeController.dispose();
     _e2eIdController.dispose();
     super.dispose();
@@ -181,13 +171,11 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   /// Inicia polling automático para verificar updates de status
   /// Isso permite que o Bro veja quando o usuário confirma o pagamento
   void _startStatusPolling() {
-    // Polling a cada 10 segundos quando em awaiting_confirmation ou accepted (billCode pendente)
+    // Polling a cada 10 segundos quando em awaiting_confirmation
     _statusPollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) async {
       final currentStatus = _orderDetails?['status'] ?? '';
       
-      // Polling para awaiting_confirmation E para accepted com billCode vazio
-      final needsBillCodePoll = currentStatus == 'accepted' && _isBillCodeMissing();
-      if ((currentStatus == 'awaiting_confirmation' || needsBillCodePoll) && mounted) {
+      if (currentStatus == 'awaiting_confirmation' && mounted) {
         broLog('🔄 [POLLING] Verificando status da ordem ${widget.orderId.substring(0, 8)}...');
         await _loadOrderDetails();
         
@@ -220,117 +208,6 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         }
       }
     });
-  }
-
-  /// Verifica se o billCode (código PIX/boleto) está ausente ou criptografado
-  bool _isBillCodeMissing() {
-    final billCode = _orderDetails?['billCode'] as String? ?? 
-                     _orderDetails?['bill_code'] as String? ?? '';
-    return billCode.isEmpty || billCode == '[encrypted]';
-  }
-
-  /// Inicia polling dedicado para obter billCode após aceitar ordem
-  /// O usuário precisa republish o evento com billCode_nip44_provider
-  /// para que o provedor consiga descriptografar
-  void _startBillCodePolling() {
-    _billCodePollingTimer?.cancel();
-    int attempts = 0;
-    const maxAttempts = 60; // 60 x 5s = 300s (5 min) máximo
-
-    // CORREÇÃO: Executar a PRIMEIRA busca IMEDIATAMENTE (sem esperar 5s)
-    _doBillCodeFetch(0, maxAttempts);
-
-    _billCodePollingTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
-      attempts++;
-      if (!mounted || attempts > maxAttempts) {
-        broLog('⏱️ [BILLCODE_POLL] Polling encerrado após $attempts tentativas');
-        timer.cancel();
-        return;
-      }
-
-      if (!_isBillCodeMissing()) {
-        broLog('✅ [BILLCODE_POLL] billCode já disponível, parando polling');
-        timer.cancel();
-        return;
-      }
-
-      await _doBillCodeFetch(attempts, maxAttempts);
-    });
-  }
-
-  /// Executa uma tentativa de busca do billCode do Nostr
-  Future<void> _doBillCodeFetch(int attempt, int maxAttempts) async {
-    if (!mounted || !_isBillCodeMissing()) return;
-    
-    broLog('🔄 [BILLCODE_POLL] Tentativa $attempt/$maxAttempts — buscando billCode do Nostr...');
-    try {
-      final nostrService = NostrOrderService();
-      final nostrOrder = await nostrService.fetchOrderFromNostr(widget.orderId).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => null,
-      );
-      if (nostrOrder != null) {
-        String billCodeResult = nostrOrder['billCode'] as String? ?? '';
-        
-        // Se _decryptBillCode retornou vazio mas billCode_nip44_provider existe,
-        // tentar descriptografar DIRETAMENTE aqui (fallback para quando
-        // _decryptionKey estava null no momento do fetchOrderFromNostr)
-        if ((billCodeResult.isEmpty || billCodeResult == '[encrypted]')) {
-          final encryptedForProvider = nostrOrder['billCode_nip44_provider'] as String?;
-          final userPubkey = nostrOrder['userPubkey'] as String?;
-          if (encryptedForProvider != null && encryptedForProvider.isNotEmpty &&
-              userPubkey != null && userPubkey.isNotEmpty) {
-            broLog('🔑 [BILLCODE_POLL] billCode vazio mas billCode_nip44_provider presente — tentando decrypt direto...');
-            try {
-              final orderProvider = context.read<OrderProvider>();
-              final privKey = orderProvider.nostrPrivateKey;
-              if (privKey != null && privKey.isNotEmpty) {
-                final nip44 = Nip44Service();
-                final decrypted = nip44.decryptBetween(encryptedForProvider, privKey, userPubkey);
-                if (decrypted.isNotEmpty) {
-                  billCodeResult = decrypted;
-                  broLog('✅ [BILLCODE_POLL] Decrypt DIRETO funcionou: ${decrypted.length} chars');
-                } else {
-                  broLog('⚠️ [BILLCODE_POLL] Decrypt direto retornou vazio');
-                }
-              } else {
-                broLog('⚠️ [BILLCODE_POLL] Chave privada não disponível para decrypt direto');
-              }
-            } catch (e) {
-              broLog('⚠️ [BILLCODE_POLL] Erro no decrypt direto: $e');
-            }
-          } else {
-            broLog('🔍 [BILLCODE_POLL] billCode_nip44_provider=${encryptedForProvider != null ? "presente" : "AUSENTE"}, userPubkey=${userPubkey != null ? userPubkey.substring(0, 8) : "null"} — aguardando buyer republicar...');
-          }
-        }
-        
-        if (billCodeResult.isNotEmpty && billCodeResult != '[encrypted]') {
-          broLog('✅ [BILLCODE_POLL] billCode obtido na tentativa $attempt: ${billCodeResult.length} chars');
-          _billCodePollingTimer?.cancel();
-          
-          // Persistir o billCode na ordem local para não perder em reloads
-          try {
-            final orderProvider = context.read<OrderProvider>();
-            final localOrder = orderProvider.getOrderById(widget.orderId);
-            if (localOrder != null && (localOrder.billCode.isEmpty || localOrder.billCode == '[encrypted]')) {
-              orderProvider.updateOrderBillCodeLocal(widget.orderId, billCodeResult);
-              broLog('💾 [BILLCODE_POLL] billCode persistido na ordem local');
-            }
-          } catch (e) {
-            broLog('⚠️ [BILLCODE_POLL] Erro ao persistir billCode local: $e');
-          }
-          
-          if (mounted) {
-            setState(() {
-              _orderDetails?['billCode'] = billCodeResult;
-            });
-          }
-          return;
-        }
-      }
-    } catch (e) {
-      broLog('⚠️ [BILLCODE_POLL] Erro na tentativa $attempt: $e');
-    }
   }
 
   Future<void> _loadOrderDetails({bool forceSync = false}) async {
@@ -367,57 +244,6 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       
       broLog('🔍 _loadOrderDetails: ordem carregada = ${order != null ? "OK (status=${order['status']})" : "NULL"}');
       broLog('🔍 _loadOrderDetails: billCode = ${order?['billCode'] != null && (order!['billCode'] as String).isNotEmpty ? "present (${(order['billCode'] as String).length} chars)" : "EMPTY"}');
-
-      // FIX: Se billCode está vazio/encrypted e a ordem foi aceita,
-      // buscar do Nostr onde o evento republished tem billCode_nip44_provider
-      if (order != null) {
-        final currentBillCode = order['billCode'] as String? ?? '';
-        final currentStatus = order['status'] as String? ?? 'pending';
-        if ((currentBillCode.isEmpty || currentBillCode == '[encrypted]') &&
-            currentStatus != 'pending') {
-          broLog('🔄 billCode vazio/encrypted — buscando do Nostr para descriptografia...');
-          try {
-            final nostrService = NostrOrderService();
-            final nostrOrder = await nostrService.fetchOrderFromNostr(widget.orderId).timeout(
-              const Duration(seconds: 10),
-              onTimeout: () => null,
-            );
-            if (nostrOrder != null) {
-              String nostrBillCode = nostrOrder['billCode'] as String? ?? '';
-              
-              // Fallback: decrypt direto de billCode_nip44_provider
-              if ((nostrBillCode.isEmpty || nostrBillCode == '[encrypted]')) {
-                final encForProvider = nostrOrder['billCode_nip44_provider'] as String?;
-                final userPub = nostrOrder['userPubkey'] as String?;
-                if (encForProvider != null && encForProvider.isNotEmpty &&
-                    userPub != null && userPub.isNotEmpty) {
-                  broLog('🔑 [LOAD] Tentando decrypt direto de billCode_nip44_provider...');
-                  try {
-                    final privKey = orderProvider.nostrPrivateKey;
-                    if (privKey != null && privKey.isNotEmpty) {
-                      final nip44 = Nip44Service();
-                      final dec = nip44.decryptBetween(encForProvider, privKey, userPub);
-                      if (dec.isNotEmpty) {
-                        nostrBillCode = dec;
-                        broLog('✅ [LOAD] Decrypt direto OK: ${dec.length} chars');
-                      }
-                    }
-                  } catch (e) {
-                    broLog('⚠️ [LOAD] Decrypt direto falhou: $e');
-                  }
-                }
-              }
-              
-              if (nostrBillCode.isNotEmpty && nostrBillCode != '[encrypted]') {
-                order['billCode'] = nostrBillCode;
-                broLog('✅ billCode obtido do Nostr: ${nostrBillCode.length} chars');
-              }
-            }
-          } catch (e) {
-            broLog('⚠️ Falha ao buscar billCode do Nostr: $e');
-          }
-        }
-      }
 
       if (mounted) {
         setState(() {
@@ -663,13 +489,6 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
 
     broLog('🔵 [ACCEPT] Recarregando detalhes da ordem...');
     await _loadOrderDetails();
-    
-    // Iniciar polling de billCode — o usuário precisa republicar o evento
-    // com billCode_nip44_provider para o provedor poder descriptografar
-    if (_isBillCodeMissing()) {
-      broLog('🔄 [ACCEPT] billCode ausente — iniciando polling para descriptografia...');
-      _startBillCodePolling();
-    }
     
     broLog('🔵 [ACCEPT] Ordem aceita e detalhes carregados com sucesso!');
   }

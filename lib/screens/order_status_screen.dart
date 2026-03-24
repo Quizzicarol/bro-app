@@ -241,9 +241,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           orderId: widget.orderId,
           broName: _orderDetails?['provider_id']?.substring(0, 8) ?? 'Bro',
         );
-        // CRÍTICO: Republicar IMEDIATAMENTE o evento com billCode_nip44_provider
-        // para que o provedor consiga descriptografar o código PIX
-        _immediateRepublishBillCodeForProvider();
         break;
       case 'awaiting_confirmation':
       case 'payment_submitted':
@@ -272,59 +269,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       case 'disputed':
         _notificationService.notifyDisputeOpened(orderId: widget.orderId);
         break;
-    }
-  }
-
-  /// CRÍTICO: Republicar o evento kind 30078 com billCode_nip44_provider
-  /// para que o provedor possa descriptografar o código PIX imediatamente.
-  /// Chamado assim que detectamos que a ordem foi aceita.
-  /// Inclui retry (3 tentativas) pois esta é a operação mais crítica do fluxo.
-  Future<void> _immediateRepublishBillCodeForProvider() async {
-    try {
-      final orderProvider = Provider.of<OrderProvider>(context, listen: false);
-      final order = orderProvider.getOrderById(widget.orderId);
-      if (order == null) {
-        broLog('⚠️ [REPUBLISH_PIX] Ordem não encontrada localmente');
-        return;
-      }
-      if (order.billCode.isEmpty || order.billCode == '[encrypted]') {
-        broLog('⚠️ [REPUBLISH_PIX] billCode local vazio/encrypted — impossível republicar');
-        return;
-      }
-      if (order.providerId == null || order.providerId!.isEmpty) {
-        broLog('⚠️ [REPUBLISH_PIX] providerId ausente — impossível criptografar para provedor');
-        return;
-      }
-
-      final privateKey = orderProvider.nostrPrivateKey;
-      if (privateKey == null || privateKey.isEmpty) {
-        broLog('⚠️ [REPUBLISH_PIX] Chave privada não disponível');
-        return;
-      }
-
-      final nostrService = NostrOrderService();
-      
-      // Retry até 3 vezes — esta é a operação mais crítica
-      for (int attempt = 1; attempt <= 3; attempt++) {
-        broLog('🔑 [REPUBLISH_PIX] Tentativa $attempt/3 — publicando billCode_nip44_provider para ${order.providerId!.substring(0, 8)}...');
-        final success = await nostrService.republishOrderWithStatus(
-          privateKey: privateKey,
-          order: order,
-          newStatus: 'accepted',
-          providerId: order.providerId,
-        );
-        if (success) {
-          broLog('✅ [REPUBLISH_PIX] billCode_nip44_provider publicado com sucesso na tentativa $attempt!');
-          return;
-        }
-        broLog('⚠️ [REPUBLISH_PIX] Tentativa $attempt falhou');
-        if (attempt < 3) {
-          await Future.delayed(const Duration(seconds: 2));
-        }
-      }
-      broLog('❌ [REPUBLISH_PIX] FALHOU todas as 3 tentativas de republicar billCode!');
-    } catch (e) {
-      broLog('❌ [REPUBLISH_PIX] ERRO: $e');
     }
   }
 

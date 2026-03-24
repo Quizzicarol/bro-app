@@ -336,84 +336,60 @@ class NostrOrderService {
   /// 1. Ordens (kindBroOrder) onde tag #p = provedor
   /// 2. Eventos de aceitação (kindBroAccept) publicados pelo provedor
   /// 3. Eventos de comprovante (kindBroComplete) publicados pelo provedor
+  /// v390: Sequential relay fallback instead of all-relays-in-parallel (reduces 12+ WebSockets to 2-4)
   Future<List<Map<String, dynamic>>> _fetchProviderOrdersRaw(String providerPubkey) async {
     final orders = <Map<String, dynamic>>[];
     final seenIds = <String>{};
     final orderIdsFromAccepts = <String>{};
 
-    // PERFORMANCE: Buscar de todos os relays EM PARALELO
-    // CORREÇÃO v1.0.128: Adicionada estratégia 3 com tag #t para maior cobertura
-    final relayResults = await Future.wait(
-      _relays.take(3).map((relay) async {
-        final relayOrders = <Map<String, dynamic>>[];
-        final relayAcceptIds = <String>{};
-        try {
-          // PARALELO: 4 estratégias simultâneas por relay
-          final results = await Future.wait([
-            // 1. Ordens com tag #p do provedor
-            _fetchFromRelay(relay, kinds: [kindBroOrder], tags: {'#p': [providerPubkey]}, limit: 100)
-              .catchError((_) => <Map<String, dynamic>>[]),
-            // 2. Eventos de aceitação/update/complete publicados por este provedor
-            _fetchFromRelay(relay, kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete], authors: [providerPubkey], limit: 200)
-              .catchError((_) => <Map<String, dynamic>>[]),
-            // 3. NOVO: Buscar eventos bro-accept com tag #t (fallback se #p falhar)
-            _fetchFromRelay(relay, kinds: [kindBroAccept, kindBroComplete], tags: {'#t': ['bro-accept']}, limit: 100)
-              .catchError((_) => <Map<String, dynamic>>[]),
-            // 4. v252: Buscar status updates TAGUEADOS com #p do provedor (descobrir disputas)
-            // Isso captura ordens em disputa mesmo quando o evento original foi excluído do relay
-            _fetchFromRelay(relay, kinds: [kindBroPaymentProof], tags: {'#p': [providerPubkey]}, limit: 100)
-              .catchError((_) => <Map<String, dynamic>>[]),
-          ]);
-          
-          relayOrders.addAll(results[0]);
-          
-          // Extrair orderIds dos eventos de aceitação/update (estratégia 2 + 3 + 4)
-          for (final eventList in [results[1], results[2], results[3]]) {
-            for (final event in eventList) {
-              try {
-                // Filtrar eventos da estratégia 3 para apenas os do provedor
-                final eventPubkey = event['pubkey'] as String?;
-                if (eventPubkey != providerPubkey && !results[1].contains(event)) continue;
-                
-                final content = event['parsedContent'] ?? jsonDecode(event['content']);
-                
-                // CORREÇÃO v1.0.129: Ignorar eventos administrativos do mediador
-                // Mediador publica kind 30080 com type=bro_dispute_resolution
-                // e type=bro_admin_reimbursement — nenhum deve ser tratado como atividade de provedor
-                final eventType = content['type'] as String?;
-                if (eventType == 'bro_dispute_resolution' || eventType == 'bro_admin_reimbursement') continue;
-                
-                final orderId = content['orderId'] as String?;
-                if (orderId != null) relayAcceptIds.add(orderId);
-              } catch (_) {}
-            }
+    // v390: Try relays SEQUENTIALLY — use first relay that returns results
+    // This reduces WebSocket connections from 12+ to 2 per sync
+    for (final relay in _relays.take(3)) {
+      try {
+        // 2 parallel strategies per relay (reduced from 4)
+        final results = await Future.wait([
+          // 1. Ordens com tag #p do provedor
+          _fetchFromRelay(relay, kinds: [kindBroOrder], tags: {'#p': [providerPubkey]}, limit: 100)
+            .catchError((_) => <Map<String, dynamic>>[]),
+          // 2. Eventos de aceitação/update/complete publicados por este provedor + disputas tagueadas
+          _fetchFromRelay(relay, kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete], authors: [providerPubkey], limit: 200)
+            .catchError((_) => <Map<String, dynamic>>[]),
+        ]);
+        
+        for (final order in results[0]) {
+          final id = order['id'];
+          if (!seenIds.contains(id)) {
+            seenIds.add(id);
+            orders.add(order);
           }
-        } catch (e) {}
-        return {'orders': relayOrders, 'acceptIds': relayAcceptIds};
-      }),
-    );
-    
-    // Consolidar resultados de todos os relays
-    for (final result in relayResults) {
-      for (final order in result['orders'] as List<Map<String, dynamic>>) {
-        final id = order['id'];
-        if (!seenIds.contains(id)) {
-          seenIds.add(id);
-          orders.add(order);
         }
+        
+        // Extrair orderIds dos eventos de aceitação/update
+        for (final event in results[1]) {
+          try {
+            final content = event['parsedContent'] ?? jsonDecode(event['content']);
+            final eventType = content['type'] as String?;
+            if (eventType == 'bro_dispute_resolution' || eventType == 'bro_admin_reimbursement') continue;
+            final orderId = content['orderId'] as String?;
+            if (orderId != null) orderIdsFromAccepts.add(orderId);
+          } catch (_) {}
+        }
+        
+        // If this relay returned data, skip remaining relays
+        if (results[0].isNotEmpty || results[1].isNotEmpty) break;
+      } catch (e) {
+        // Relay failed, try next one
       }
-      orderIdsFromAccepts.addAll(result['acceptIds'] as Set<String>);
     }
     
-    // 3. Buscar as ordens originais pelos IDs encontrados nos eventos de aceitação
-    // PERFORMANCE: Buscar EM PARALELO em lotes de 10
+    // Buscar ordens originais pelos IDs dos eventos de aceitação
     if (orderIdsFromAccepts.isNotEmpty) {
       final missingIds = orderIdsFromAccepts.where((id) => !seenIds.contains(id)).toList();
       
       if (missingIds.isNotEmpty) {
-        // Buscar em lotes paralelos de 10 para não sobrecarregar
-        for (int i = 0; i < missingIds.length; i += 10) {
-          final batch = missingIds.skip(i).take(10).toList();
+        // Buscar em lotes de 5 (reduced from 10)
+        for (int i = 0; i < missingIds.length; i += 5) {
+          final batch = missingIds.skip(i).take(5).toList();
           final batchResults = await Future.wait(
             batch.map((orderId) => fetchOrderFromNostr(orderId).catchError((_) => null)),
           );
@@ -1864,20 +1840,14 @@ class NostrOrderService {
     final updates = <String, Map<String, dynamic>>{}; // orderId -> latest update
     
     
-    // PERFORMANCE: Buscar de todos os relays EM PARALELO
-    // Para cada relay, buscar AMBAS as estratégias em paralelo (com e sem tag)
+    // v390: Sequential relay fallback — try first relay, use second only if first fails
     final allEvents = <Map<String, dynamic>>[];
-    // Usar mesmo window de 14 dias das ordens para garantir cobertura completa
     final fourteenDaysAgo = DateTime.now().subtract(const Duration(days: 14));
     final statusSince = (fourteenDaysAgo.millisecondsSinceEpoch / 1000).floor();
     
-    final relayFutures = _relays.map((relay) async {
+    for (final relay in _relays) {
       try {
-        // Buscar ambas estratégias em paralelo dentro do mesmo relay
-        // COM since para evitar truncagem por limit em volumes altos
-        // PERFORMANCE v1.0.129+218: Reduzido limit de 2000→500 por estratégia
-        // Com a filtragem de ordens terminais no caller, não precisamos mais
-        // buscar o histórico completo de 14 dias — apenas ordens ativas recentes
+        // 2 strategies per relay
         final results = await Future.wait([
           _fetchFromRelayWithSince(
             relay,
@@ -1894,31 +1864,26 @@ class NostrOrderService {
           ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]),
         ]);
         
-        // Combinar e deduplicar
-        final combined = <Map<String, dynamic>>[];
+        // Combinar and deduplicar
         final seenIds = <String>{};
         for (final eventList in results) {
           for (final e in eventList) {
             final id = e['id'];
             if (id != null && !seenIds.contains(id)) {
               seenIds.add(id);
-              combined.add(e);
+              allEvents.add(e);
             }
           }
         }
         
-        return combined;
+        // v390: If this relay returned data, skip remaining relays
+        if (allEvents.isNotEmpty) break;
       } catch (e) {
-        return <Map<String, dynamic>>[];
+        // Relay failed, try next
       }
-    }).toList();
-    
-    final results = await Future.wait(relayFutures);
-    for (final relayEvents in results) {
-      allEvents.addAll(relayEvents);
     }
     
-    broLog('📋 _fetchAllOrderStatusUpdates: ${allEvents.length} eventos de ${_relays.length} relays (paralelo)');
+    broLog('📋 _fetchAllOrderStatusUpdates: ${allEvents.length} eventos (sequential relay)');
     
     // Processar todos os eventos coletados
     for (final event in allEvents) {
@@ -2330,29 +2295,20 @@ class NostrOrderService {
     final orders = <Map<String, dynamic>>[];
     final seenIds = <String>{};
 
-
-    // Buscar de TODOS os relays em paralelo
-    final futures = <Future<List<Map<String, dynamic>>>>[];
-    
+    // v390: Sequential relay fallback — try first relay, use next only if first fails
     for (final relay in _relays) {
-      futures.add(_fetchUserOrdersFromRelay(relay, pubkey));
-    }
-    
-    // Aguardar todas as buscas em paralelo
-    final results = await Future.wait(futures, eagerError: false);
-    
-    // Processar resultados
-    for (int i = 0; i < results.length; i++) {
-      final relayOrders = results[i];
-      final relay = _relays[i];
-      
-      for (final order in relayOrders) {
-        final id = order['id'];
-        if (!seenIds.contains(id)) {
-          seenIds.add(id);
-          orders.add(order);
+      try {
+        final relayOrders = await _fetchUserOrdersFromRelay(relay, pubkey);
+        for (final order in relayOrders) {
+          final id = order['id'];
+          if (!seenIds.contains(id)) {
+            seenIds.add(id);
+            orders.add(order);
+          }
         }
-      }
+        // If this relay returned data, skip remaining relays
+        if (orders.isNotEmpty) break;
+      } catch (_) {}
     }
 
     return orders;
@@ -2408,53 +2364,49 @@ class NostrOrderService {
     // Converter para Set para filtragem O(1) no processamento
     final activeOrderIdSet = orderIds?.toSet();
 
-    // PERFORMANCE: Buscar de todos os relays EM PARALELO
-    // CORREÇÃO v1.0.128: Também buscar eventos do PRÓPRIO USUÁRIO (kind 30080)
-    // para encontrar status 'completed' publicado quando o usuário confirmou o pagamento
-    final allRelayEvents = await Future.wait(
-      _relays.take(3).map((relay) async {
-        try {
-          // PERFORMANCE: Buscar TODAS as estratégias em paralelo
-          final strategies = <Future<List<Map<String, dynamic>>>>[
-            // Estratégia 1: Eventos do Bro direcionados ao usuário (accept/complete)
-            _fetchFromRelay(relay, kinds: [kindBroAccept, kindBroComplete], tags: {'#p': [userPubkey]}, limit: 100)
+    // v390: Sequential relay fallback — try first relay, use next only if fails
+    final allEvents = <Map<String, dynamic>>[];
+    
+    for (final relay in _relays.take(3)) {
+      try {
+        // 2 core strategies per relay (reduced from 5)
+        final strategies = <Future<List<Map<String, dynamic>>>>[
+          // 1. Eventos direcionados ao usuário (accept/complete/proof)
+          _fetchFromRelay(relay, kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete], tags: {'#p': [userPubkey]}, limit: 200)
+            .catchError((_) => <Map<String, dynamic>>[]),
+          // 2. Eventos do PRÓPRIO USUÁRIO (kind 30080 — status updates publicados por mim)
+          _fetchFromRelay(relay, kinds: [kindBroPaymentProof], authors: [userPubkey], limit: 100)
+            .catchError((_) => <Map<String, dynamic>>[]),
+        ];
+        // 3. Buscar por #r (orderId) para updates do provedor sem tag #p
+        if (activeOrderIdSet != null && activeOrderIdSet.isNotEmpty) {
+          strategies.add(
+            _fetchFromRelay(relay, kinds: [kindBroPaymentProof], tags: {'#r': activeOrderIdSet.toList()}, limit: 100)
               .catchError((_) => <Map<String, dynamic>>[]),
-            // Estratégia 2: Eventos com tag bro (fallback)
-            _fetchFromRelay(relay, kinds: [kindBroAccept, kindBroComplete], tags: {'#t': [broTag]}, limit: 100)
-              .catchError((_) => <Map<String, dynamic>>[]),
-            // Estratégia 3: Eventos do PRÓPRIO USUÁRIO (kind 30080)
-            // Quando o usuário confirma pagamento, publica kind 30080 com status 'completed'
-            _fetchFromRelay(relay, kinds: [kindBroPaymentProof], authors: [userPubkey], limit: 100)
-              .catchError((_) => <Map<String, dynamic>>[]),
-            // Estratégia 4: Eventos kind 30080 DIRECIONADOS a este usuário via tag #p
-            // Isso captura disputas/updates publicados pela OUTRA parte (ex: usuário publica 'disputed', provedor recebe)
-            _fetchFromRelay(relay, kinds: [kindBroPaymentProof], tags: {'#p': [userPubkey]}, limit: 100)
-              .catchError((_) => <Map<String, dynamic>>[]),
-          ];
-          // v240: Estratégia 5: Buscar por #r (orderId) - captura updates do provedor
-          // que NÃO têm tag #p do usuário (ex: auto-liquidação publicada pelo provedor)
-          // CORREÇÃO CRÍTICA: Sem isso, liquidated/cancelled pelo provedor nunca chega ao usuário
-          if (activeOrderIdSet != null && activeOrderIdSet.isNotEmpty) {
-            strategies.add(
-              _fetchFromRelay(relay, kinds: [kindBroPaymentProof], tags: {'#r': activeOrderIdSet.toList()}, limit: 100)
-                .catchError((_) => <Map<String, dynamic>>[]),
-            );
-          }
-          final results = await Future.wait(strategies);
-          return results.expand((list) => list).toList();
-        } catch (e) {
-          return <Map<String, dynamic>>[];
+          );
         }
-      }),
-    );
+        final results = await Future.wait(strategies);
+        final seenIds = <String>{};
+        for (final eventList in results) {
+          for (final e in eventList) {
+            final id = e['id'];
+            if (id != null && !seenIds.contains(id)) {
+              seenIds.add(id);
+              allEvents.add(e);
+            }
+          }
+        }
+        // If this relay returned data, skip remaining
+        if (allEvents.isNotEmpty) break;
+      } catch (e) {
+        // Relay failed, try next
+      }
+    }
     
-    // LOG: Total de eventos recebidos dos relays
-    final totalEvents = allRelayEvents.fold<int>(0, (sum, list) => sum + list.length);
-    broLog('🔍 fetchOrderUpdatesForUser: $totalEvents eventos de ${_relays.take(3).length} relays');
+    broLog('🔍 fetchOrderUpdatesForUser: ${allEvents.length} eventos (sequential relay)');
     
-    // Processar todos os eventos de todos os relays
-    for (final events in allRelayEvents) {
-      for (final event in events) {
+    // Processar todos os eventos
+    for (final event in allEvents) {
           try {
             final content = event['parsedContent'] ?? jsonDecode(event['content']);
             final orderId = content['orderId'] as String?;
@@ -2561,7 +2513,6 @@ class NostrOrderService {
             };
           } catch (e) {
           }
-      }
     }
 
     broLog('🔍 fetchOrderUpdatesForUser: ${updates.length} updates encontrados');
@@ -2572,9 +2523,7 @@ class NostrOrderService {
   }
   
   /// Busca eventos de update de status para ordens que o provedor aceitou
-  /// Isso permite que o Bro veja quando o usuário confirmou o pagamento (completed)
-  /// SEGURANÇA: Só retorna updates para ordens específicas do provedor
-  /// PERFORMANCE: Todas as estratégias rodam em PARALELO em todos os relays
+  /// v390: Sequential relay fallback — reduces WebSocket connections from 15 to 2-3
   Future<Map<String, Map<String, dynamic>>> fetchOrderUpdatesForProvider(String providerPubkey, {List<String>? orderIds}) async {
     final updates = <String, Map<String, dynamic>>{}; // orderId -> latest update
     
@@ -2586,77 +2535,51 @@ class NostrOrderService {
     final orderIdSet = orderIds.toSet();
     broLog('🔍 fetchOrderUpdatesForProvider: buscando updates para ${orderIds.length} ordens');
     
-    // Construir d-tags para Estratégia 4
-    final dTagsToSearch = orderIds.map((id) => '${id}_complete').toList();
-    
-    // PERFORMANCE: Rodar TODAS as estratégias em TODOS os relays EM PARALELO
-    // Antes: 4 estratégias × 3 relays = 12 chamadas SEQUENCIAIS (até 96s)
-    // Agora: todas em paralelo (máximo ~8s, tempo de um único timeout)
-    final allEventsFutures = <Future<List<Map<String, dynamic>>>>[];
-    
-    for (final relay in _relays.take(3)) {
-      // Estratégia 1: #p tag
-      allEventsFutures.add(
-        _fetchFromRelay(relay, kinds: [kindBroPaymentProof], tags: {'#p': [providerPubkey]}, limit: 100)
-          .catchError((_) => <Map<String, dynamic>>[])
-      );
-      // Estratégia 2: #r tag batch
-      allEventsFutures.add(
-        _fetchFromRelay(relay, kinds: [kindBroPaymentProof], tags: {'#r': orderIds}, limit: 200)
-          .catchError((_) => <Map<String, dynamic>>[])
-      );
-      // Estratégia 2b: #e tag batch (legado)
-      allEventsFutures.add(
-        _fetchFromRelay(relay, kinds: [kindBroPaymentProof], tags: {'#e': orderIds}, limit: 200)
-          .catchError((_) => <Map<String, dynamic>>[])
-      );
-      // Estratégia 3: #t bro-update
-      allEventsFutures.add(
-        _fetchFromRelay(relay, kinds: [kindBroPaymentProof], tags: {'#t': ['bro-update']}, limit: 100)
-          .catchError((_) => <Map<String, dynamic>>[])
-      );
-      // Estratégia 4: #d tag batch
-      allEventsFutures.add(
-        _fetchFromRelay(relay, kinds: [kindBroPaymentProof, kindBroComplete], tags: {'#d': dTagsToSearch}, limit: 200)
-          .catchError((_) => <Map<String, dynamic>>[])
-      );
-    }
-    
-    // Executar TUDO em paralelo
-    final allResults = await Future.wait(allEventsFutures);
-    
-    // Processar todos os eventos de todas as estratégias
+    // v390: Sequential relay fallback
     int totalEvents = 0;
-    for (final events in allResults) {
-      totalEvents += events.length;
-      for (final event in events) {
-        try {
-          final content = event['parsedContent'] ?? jsonDecode(event['content']);
-          final eventOrderId = content['orderId'] as String?;
-          final status = content['status'] as String?;
-          final createdAt = event['created_at'] as int? ?? 0;
-          
-          if (eventOrderId == null || status == null) continue;
-          if (!orderIdSet.contains(eventOrderId)) continue;
-          
-          final existingUpdate = updates[eventOrderId];
-          final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
-          
-          if (existingUpdate == null || createdAt > existingCreatedAt) {
-            // PROTEÇÃO: Não regredir status — usar _isStatusProgression com lista COMPLETA
-            final existingStatus = existingUpdate?['status'] as String?;
-            if (existingStatus != null) {
-              if (!_isStatusProgression(status, existingStatus)) continue;
-            }
-            
-            updates[eventOrderId] = {
-              'orderId': eventOrderId,
-              'status': status,
-              'created_at': createdAt,
-            };
+    for (final relay in _relays.take(3)) {
+      try {
+        // 2 core strategies per relay (reduced from 5)
+        final results = await Future.wait([
+          // 1. Updates direcionados ao provedor via #p
+          _fetchFromRelay(relay, kinds: [kindBroPaymentProof], tags: {'#p': [providerPubkey]}, limit: 100)
+            .catchError((_) => <Map<String, dynamic>>[]),
+          // 2. Updates por #r (orderId batch)
+          _fetchFromRelay(relay, kinds: [kindBroPaymentProof], tags: {'#r': orderIds}, limit: 200)
+            .catchError((_) => <Map<String, dynamic>>[]),
+        ]);
+        
+        for (final events in results) {
+          totalEvents += events.length;
+          for (final event in events) {
+            try {
+              final content = event['parsedContent'] ?? jsonDecode(event['content']);
+              final eventOrderId = content['orderId'] as String?;
+              final status = content['status'] as String?;
+              final createdAt = event['created_at'] as int? ?? 0;
+              
+              if (eventOrderId == null || status == null) continue;
+              if (!orderIdSet.contains(eventOrderId)) continue;
+              
+              final existingUpdate = updates[eventOrderId];
+              final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
+              
+              if (existingUpdate == null || createdAt > existingCreatedAt) {
+                final existingStatus = existingUpdate?['status'] as String?;
+                if (existingStatus != null && !_isStatusProgression(status, existingStatus)) continue;
+                
+                updates[eventOrderId] = {
+                  'orderId': eventOrderId,
+                  'status': status,
+                  'created_at': createdAt,
+                };
+              }
+            } catch (_) {}
           }
-        } catch (_) {}
-      }
+        }
+        // If this relay returned data, skip remaining
+        if (totalEvents > 0) break;
+      } catch (_) {}
     }
 
     broLog('🔍 fetchOrderUpdatesForProvider RESULTADO: ${updates.length} updates de $totalEvents eventos');

@@ -138,6 +138,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
             ? order.billType 
             : 'pix',
           'provider_id': order.providerId,
+          'metadata': order.metadata,
         }).toList();
       
       if (mounted) {
@@ -429,14 +430,14 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
     if (_filterStatus == 'all') {
       return _orders;
     } else if (_filterStatus == 'active') {
-      // Ativas: pending, payment_received, confirmed, accepted, awaiting_confirmation
+      // Ativas: pending, payment_received, confirmed, accepted, awaiting_confirmation, disputed
       return _orders.where((order) {
         final status = order['status'] as String;
-        return ['pending', 'payment_received', 'confirmed', 'accepted', 'awaiting_confirmation'].contains(status);
+        return ['pending', 'payment_received', 'confirmed', 'accepted', 'awaiting_confirmation', 'disputed'].contains(status);
       }).toList();
     } else if (_filterStatus == 'completed') {
-      // Completadas
-      return _orders.where((order) => order['status'] == 'completed').toList();
+      // Completadas (inclui resolvidas por mediação)
+      return _orders.where((order) => order['status'] == 'completed' || order['status'] == 'liquidated').toList();
     } else if (_filterStatus == 'cancelled') {
       // Canceladas
       return _orders.where((order) => order['status'] == 'cancelled').toList();
@@ -1514,8 +1515,9 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
     final createdAt = DateTime.parse(order['created_at'] as String);
     final expiresAt = DateTime.parse(order['expires_at'] as String);
     final paymentType = order['payment_type'] as String? ?? 'pix';
+    final metadata = order['metadata'] as Map<String, dynamic>?;
 
-    final statusInfo = _getStatusInfo(status);
+    final statusInfo = _getStatusInfo(status, metadata: metadata);
     final canCancel = status == 'pending';
 
     return Card(
@@ -1687,7 +1689,26 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
     );
   }
 
-  Map<String, dynamic> _getStatusInfo(String status) {
+  Map<String, dynamic> _getStatusInfo(String status, {Map<String, dynamic>? metadata}) {
+    // v390: Check if dispute was resolved via mediation
+    final wasDisputed = metadata?['wasDisputed'] == true;
+    if (wasDisputed) {
+      if (status == 'completed') {
+        return {
+          'label': 'Resolvida ⚖️',
+          'color': Colors.teal,
+          'icon': Icons.gavel,
+        };
+      }
+      if (status == 'cancelled') {
+        return {
+          'label': 'Cancelada ⚖️',
+          'color': Colors.red,
+          'icon': Icons.gavel,
+        };
+      }
+    }
+
     switch (status) {
       case 'pending':
       case 'payment_received':

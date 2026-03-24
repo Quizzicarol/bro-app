@@ -39,11 +39,11 @@ class NotificationService {
     );
     
     _isInitialized = true;
-    broLog('? NotificationService inicializado');
+    broLog('🔔 NotificationService inicializado');
   }
 
   void _onNotificationTapped(NotificationResponse response) {
-    broLog('?? Notificacao clicada: ${response.payload}');
+    broLog('👆 Notificação clicada: ${response.payload}');
     // Aqui pode navegar para tela especifica baseado no payload
   }
 
@@ -54,7 +54,7 @@ class NotificationService {
   }) async {
     await _showNotification(
       id: orderId.hashCode,
-      title: '? Bro Encontrado!',
+      title: '🤝 Bro Encontrado!',
       body: '$broName aceitou sua ordem. Aguarde o pagamento.',
       payload: 'order_accepted:$orderId',
     );
@@ -67,7 +67,7 @@ class NotificationService {
   }) async {
     await _showNotification(
       id: orderId.hashCode + 1,
-      title: '?? Comprovante Recebido!',
+      title: '📸 Comprovante Recebido!',
       body: 'Verifique o comprovante de R\$ ${amount.toStringAsFixed(2)} e confirme.',
       payload: 'payment_received:$orderId',
       importance: Importance.high,
@@ -81,7 +81,7 @@ class NotificationService {
   }) async {
     await _showNotification(
       id: orderId.hashCode + 2,
-      title: '?? Confirme o Pagamento',
+      title: '⏰ Confirme o Pagamento',
       body: 'Voce tem $hoursRemaining horas para confirmar. Apos isso, Bitcoin sera liberado para o Bro.',
       payload: 'confirm_required:$orderId',
       importance: Importance.max,
@@ -95,7 +95,7 @@ class NotificationService {
   }) async {
     await _showNotification(
       id: orderId.hashCode + 3,
-      title: '? Troca Concluida!',
+      title: '✅ Troca Concluída!',
       body: 'Sua conta de R\$ ${amount.toStringAsFixed(2)} foi paga com sucesso.',
       payload: 'order_completed:$orderId',
     );
@@ -107,7 +107,7 @@ class NotificationService {
   }) async {
     await _showNotification(
       id: orderId.hashCode + 4,
-      title: '?? Disputa Aberta',
+      title: '⚠️ Disputa Aberta',
       body: 'Uma disputa foi aberta para sua ordem. Acompanhe o status.',
       payload: 'dispute_opened:$orderId',
       importance: Importance.high,
@@ -121,7 +121,7 @@ class NotificationService {
   }) async {
     await _showNotification(
       id: DateTime.now().millisecondsSinceEpoch,
-      title: '?? Nova Mensagem',
+      title: '💬 Nova Mensagem',
       body: '$senderName: $preview',
       payload: 'new_message:$senderName',
     );
@@ -371,7 +371,7 @@ class NotificationService {
     );
 
     await _notifications.show(id, title, body, details, payload: payload);
-    broLog('?? Notificacao enviada: $title');
+    broLog('📤 Notificação enviada: $title');
   }
 
   /// Cancela uma notificacao especifica

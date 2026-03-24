@@ -56,6 +56,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _checkSeedRecoveryStatus();
       _checkAndShowBackupReminder();
       _checkForAppUpdate();
+      _checkBatteryOptimization(); // v390: Prompt battery exempt for bg notifications
       // Start BRIX invoice relay service (global, any screen)
       BrixRelayService().start(context);
     });
@@ -144,6 +145,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
   
+  /// v390: Check if battery optimization is disabled, prompt user if not
+  Future<void> _checkBatteryOptimization() async {
+    await Future.delayed(const Duration(seconds: 6));
+    if (!mounted) return;
+    
+    try {
+      final storage = StorageService();
+      await storage.init();
+      final prompted = await storage.getData('battery_opt_prompted');
+      if (prompted == 'true') return;
+      
+      const platform = MethodChannel('app.bro.mobile/settings');
+      final isIgnoring = await platform.invokeMethod<bool>('isIgnoringBatteryOptimizations');
+      if (isIgnoring == true) return;
+      
+      if (!mounted) return;
+      await storage.saveData('battery_opt_prompted', 'true');
+      
+      await platform.invokeMethod('openBatterySettings');
+    } catch (e) {
+      broLog('[HOME] Battery optimization check failed: $e');
+    }
+  }
+
   /// Mostra aviso de backup da seed para novos usuários
   Future<void> _checkAndShowBackupReminder() async {
     final storage = StorageService();
@@ -343,9 +368,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
   
   void _startOrdersPolling() {
-    // v269: Reduzido de 30s para 15s para sincronia com order_status_screen
-    // O syncOrdersFromNostr já tem throttle interno de 15s
-    _ordersUpdateTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
+    // v390: Increased from 15s to 45s to reduce WebSocket connections and CPU usage
+    _ordersUpdateTimer = Timer.periodic(const Duration(seconds: 45), (_) async {
       if (mounted) {
         final orderProvider = context.read<OrderProvider>();
         // PERFORMANCE v226: Pular sync de user quando provider mode está ativo

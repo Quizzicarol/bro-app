@@ -854,9 +854,9 @@ class OrderProvider with ChangeNotifier {
 
     try {
       
-      // Calcular taxas (1% provider + 2% platform)
-      final providerFee = amount * 0.01;
-      final platformFee = amount * 0.02;
+      // Calcular taxas (3% provider + 2% platform) — centralizado em AppConfig
+      final providerFee = amount * AppConfig.providerFeePercent;
+      final platformFee = amount * AppConfig.platformFeePercent;
       final total = amount + providerFee + platformFee;
       
       // ðŸ�?�¥ SIMPLIFICADO: Status 'pending' = Aguardando Bro

@@ -3,6 +3,7 @@ import '../l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 import '../providers/order_provider.dart';
 import '../models/order.dart';
+import '../config.dart';
 
 /// Tela de histórico de ordens completadas pelo provedor
 /// Mostra todas as ordens finalizadas para verificação futura ou disputas
@@ -69,7 +70,7 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
           // Calcular estatísticas
           final totalEarned = completedOrders.fold<double>(
             0.0,
-            (sum, order) => sum + (order.amount * 0.03),
+            (sum, order) => sum + (order.amount * AppConfig.providerFeePercent),
           );
           final totalVolume = completedOrders.fold<double>(
             0.0,
@@ -241,7 +242,7 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
   }
 
   Widget _buildOrderCard(Order order, AppLocalizations l) {
-    final earnedAmount = order.amount * 0.03;
+    final earnedAmount = order.amount * AppConfig.providerFeePercent;
     final completedDate = _formatDate(order.createdAt);
     final isLiquidated = order.status == 'liquidated';
     final statusColor = isLiquidated ? Colors.purple : Colors.green;

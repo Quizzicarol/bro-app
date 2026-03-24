@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../providers/order_provider.dart';
 import '../services/nostr_service.dart';
 import '../models/order.dart';
+import '../config.dart';
 import 'provider_order_detail_screen.dart';
 
 /// Helper para substring seguro - evita RangeError em strings curtas
@@ -261,7 +262,7 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  l.tp('prov_my_fee', {'amount': (order.amount * 0.03).toStringAsFixed(2)}),
+                  l.tp('prov_my_fee', {'amount': (order.amount * AppConfig.providerFeePercent).toStringAsFixed(2)}),
                   style: const TextStyle(
                     color: Colors.green,
                     fontSize: 14,

@@ -344,9 +344,9 @@ class ApiService {
       final btcAmount = amount / btcPrice;
       final satsAmount = (btcAmount * 100000000).round();
       
-      // Taxas (ajustÃ¡veis)
-      const platformFeePercent = 0.02; // 2% taxa da plataforma
-      const providerFeePercent = 0.01; // 1% taxa do provedor
+      // Taxas centralizadas em AppConfig
+      const platformFeePercent = AppConfig.platformFeePercent; // 2%
+      const providerFeePercent = AppConfig.providerFeePercent; // 3%
       
       final platformFeeBrl = amount * platformFeePercent;
       final providerFeeBrl = amount * providerFeePercent;

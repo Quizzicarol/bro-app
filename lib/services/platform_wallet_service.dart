@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:bip39/bip39.dart' as bip39;
 import '../config/breez_config.dart';
+import '../config.dart';
 import '../extensions/breez_extensions.dart';
 
 /// Carteira Master da Plataforma para Escrow e Split de Taxas
@@ -24,7 +25,7 @@ class PlatformWalletService {
   String? _error;
   String? _mnemonic;
   
-  static const double platformFeePercent = 0.02;
+  static const double platformFeePercent = AppConfig.platformFeePercent;
   
   static PlatformWalletService get instance {
     _instance ??= PlatformWalletService._();

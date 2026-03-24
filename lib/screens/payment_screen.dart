@@ -15,6 +15,7 @@ import '../services/local_collateral_service.dart';
 import '../services/platform_fee_service.dart';
 import '../l10n/app_localizations.dart';
 import '../widgets/fee_breakdown_card.dart';
+import '../config.dart';
 import 'onchain_payment_screen.dart';
 import 'lightning_payment_screen.dart';
 
@@ -1466,9 +1467,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
     
     // Calculate fees (provider 3%, platform 0% - não cobrando taxa de plataforma por enquanto)
     final accountValue = (billValue is num) ? billValue.toDouble() : 0.0;
-    final providerFeePercent = 3.0;  // Taxa do Bro: 3%
+    final providerFeePercent = AppConfig.providerFeePercent * 100; // 3%
     final platformFeePercent = 0.0; // Taxa de plataforma desativada
-    final providerFee = accountValue * (providerFeePercent / 100.0);
+    final providerFee = accountValue * AppConfig.providerFeePercent;
     final platformFee = 0.0; // Não cobrando
     final totalBrl = accountValue + providerFee; // Apenas valor + taxa do Bro
     

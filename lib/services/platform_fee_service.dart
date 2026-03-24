@@ -23,9 +23,8 @@ class PlatformFeeService {
   static const String _paidOrderIdsKey = 'platform_fee_paid_order_ids';
   static const String _feePaymentHashesKey = 'platform_fee_payment_hashes';
   
-  /// Taxa da plataforma (2%)
-  /// Atualmente apenas registrada, não cobrada
-  static const double platformFeePercent = 0.02;
+  /// Taxa da plataforma — centralizada em AppConfig
+  static const double platformFeePercent = AppConfig.platformFeePercent;
   
   /// Inicializa o serviço carregando ordens já pagas do storage
   static Future<void> initialize() async {

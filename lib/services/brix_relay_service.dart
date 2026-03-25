@@ -88,6 +88,7 @@ class BrixRelayService {
     _context = context;
     _pollTimer?.cancel();
     _running = true;
+    _fcmRegistered = false; // Force re-registration after resume (token may have rotated)
     _pollTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) => _poll());
     _poll();
     _ensureFcmRegistered();

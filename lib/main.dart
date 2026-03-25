@@ -229,8 +229,10 @@ void main() async {
       // Re-register when Firebase rotates the FCM token
       FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
         broLog('[FCM] Token refreshed, re-registering...');
-        BrixService().registerPushToken(newToken, userPubkey!).then((ok) {
-          broLog('[FCM] BRIX push token re-registered after refresh: $ok');
+        BrixService().initCredentials().then((_) {
+          BrixService().registerPushToken(newToken, userPubkey!).then((ok) {
+            broLog('[FCM] BRIX push token re-registered after refresh: $ok');
+          });
         });
         // Reset relay service FCM state so it also re-registers
         BrixRelayService().resetFcmRegistration();

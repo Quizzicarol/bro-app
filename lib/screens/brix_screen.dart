@@ -86,6 +86,7 @@ class _BrixScreenState extends State<BrixScreen> {
     try {
       final token = await FirebaseMessaging.instance.getToken();
       if (token != null) {
+        await _brixService.initCredentials();
         final ok = await _brixService.registerPushToken(token, _pubkey!);
         broLog('[BRIX] FCM token re-registered: $ok');
       }

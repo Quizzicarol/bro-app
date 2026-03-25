@@ -47,6 +47,8 @@ class BrixRelayService {
         broLog('[BRIX-RELAY] FCM token is null — cannot register');
         return;
       }
+      // Ensure NIP-98 credentials are loaded before signing the request
+      await _brixService.initCredentials();
       final ok = await _brixService.registerPushToken(token, _pubkey!);
       if (ok) {
         _fcmRegistered = true;

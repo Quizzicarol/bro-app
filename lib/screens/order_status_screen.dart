@@ -4039,10 +4039,28 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 break;
               } else {
                 paymentError = payResult?['error']?.toString() ?? l.t('order_unknown_failure');
+                // Detectar invoice já pago — tratar como sucesso
+                if (paymentError.toLowerCase().contains('already paid') ||
+                    paymentError.toLowerCase().contains('already settled') ||
+                    paymentError.toLowerCase().contains('invoice already') ||
+                    paymentError.toLowerCase().contains('duplicate payment')) {
+                  broLog('✅ Invoice já foi pago anteriormente — tratando como sucesso');
+                  paymentSuccess = true;
+                  break;
+                }
                 broLog('⚠️ Tentativa $attempt falhou: $paymentError');
               }
             } catch (e) {
               paymentError = e.toString();
+              // Detectar invoice já pago em exceções
+              if (paymentError.toLowerCase().contains('already paid') ||
+                  paymentError.toLowerCase().contains('already settled') ||
+                  paymentError.toLowerCase().contains('invoice already') ||
+                  paymentError.toLowerCase().contains('duplicate payment')) {
+                broLog('✅ Invoice já foi pago anteriormente (exception) — tratando como sucesso');
+                paymentSuccess = true;
+                break;
+              }
               broLog('⚠️ Tentativa $attempt erro: $paymentError');
             }
             
@@ -4079,7 +4097,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       
       broLog('✅ Pagamento ao provedor confirmado! Agora marcando ordem como completed...');
 
-      // ========== ETAPA 2: MARCAR COMO COMPLETED NO NOSTR (só após pagamento bem-sucedido) ==========
+      // ========== ETAPA 2: MARCAR COMO COMPLETED ==========
+      // CRÍTICO: Salvar localmente PRIMEIRO para evitar desync se Nostr falhar
+      // Se o pagamento Lightning já foi feito, a ordem DEVE ser completed localmente
+      orderProvider.updateOrderStatusLocalOnly(
+        orderId: widget.orderId,
+        status: 'completed',
+      );
+
+      // Tentar publicar no Nostr (best-effort — pagamento já foi feito)
       final updateSuccess = await orderProvider.updateOrderStatus(
         orderId: widget.orderId,
         status: 'completed',
@@ -4088,7 +4114,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       
       if (!updateSuccess) {
         broLog('⚠️ Pagamento feito mas falha ao publicar status no Nostr - tentando novamente...');
-        // Pagamento já foi feito, tentar publicar novamente
         await Future.delayed(const Duration(seconds: 2));
         final retrySuccess = await orderProvider.updateOrderStatus(
           orderId: widget.orderId,
@@ -4096,7 +4121,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           providerId: providerId,
         );
         if (!retrySuccess) {
-          broLog('⚠️ Segunda tentativa de publicar status falhou - pagamento foi feito, status será sincronizado depois');
+          broLog('⚠️ Segunda tentativa de publicar status falhou - pagamento foi feito, status atualizado localmente');
         }
       }
       

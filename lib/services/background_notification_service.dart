@@ -7,8 +7,8 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nostr/nostr.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:workmanager/workmanager.dart';
@@ -455,7 +455,7 @@ const String _brixServerUrl = String.fromEnvironment(
 
 Future<void> _refreshFcmToken() async {
   try {
-    // 1. Recuperar pubkey do storage seguro
+    // 1. Recuperar pubkey e private key do storage seguro
     const secureStorage = FlutterSecureStorage(
       aOptions: AndroidOptions(encryptedSharedPreferences: true),
       iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
@@ -467,6 +467,12 @@ Future<void> _refreshFcmToken() async {
       return;
     }
 
+    final privateKey = await secureStorage.read(key: 'nostr_private_key');
+    if (privateKey == null || privateKey.isEmpty) {
+      broLog('[BRO-BG-FCM] Sem private key — abortando refresh (NIP-98 required)');
+      return;
+    }
+
     // 2. Inicializar Firebase e obter token FCM
     await Firebase.initializeApp();
     final fcmToken = await FirebaseMessaging.instance.getToken();
@@ -475,12 +481,31 @@ Future<void> _refreshFcmToken() async {
       return;
     }
 
-    // 3. Registrar token no BRIX server (POST /brix/register-push)
+    // 3. Criar NIP-98 auth header (kind 27235)
+    final url = '$_brixServerUrl/brix/register-push';
+    final nip98Event = Event.from(
+      kind: 27235,
+      tags: [['u', url], ['method', 'POST']],
+      content: '',
+      privkey: privateKey,
+    );
+    final eventMap = {
+      'id': nip98Event.id,
+      'pubkey': nip98Event.pubkey,
+      'created_at': nip98Event.createdAt,
+      'kind': nip98Event.kind,
+      'tags': nip98Event.tags,
+      'content': nip98Event.content,
+      'sig': nip98Event.sig,
+    };
+    final authHeader = 'Nostr ${base64Encode(utf8.encode(jsonEncode(eventMap)))}';
+
+    // 4. Registrar token no BRIX server com NIP-98 auth
     final response = await http.post(
-      Uri.parse('$_brixServerUrl/brix/register-push'),
+      Uri.parse(url),
       headers: {
         'Content-Type': 'application/json',
-        'x-nostr-pubkey': userPubkey,
+        'Authorization': authHeader,
       },
       body: jsonEncode({'fcm_token': fcmToken}),
     ).timeout(const Duration(seconds: 10));

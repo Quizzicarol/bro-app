@@ -218,8 +218,10 @@ void main() async {
     
     // Register FCM token with BRIX server for offline push notifications
     if (fcmToken != null && userPubkey != null) {
+      final token = fcmToken;
+      final pubkey = userPubkey!;
       BrixService().initCredentials().then((_) {
-        BrixService().registerPushToken(fcmToken, userPubkey).then((ok) {
+        BrixService().registerPushToken(token, pubkey).then((ok) {
           broLog('[FCM] BRIX push token registered: $ok');
         });
       });

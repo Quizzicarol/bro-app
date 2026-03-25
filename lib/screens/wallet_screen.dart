@@ -2817,6 +2817,11 @@ class _WalletScreenState extends State<WalletScreen> {
       final fee = feeRaw < 1 ? 1 : feeRaw;
       displayAmount = displayAmount + fee;
     }
+    // Ganho como Bro: incluir taxa de 3% do provedor no valor exibido
+    if (isBroEarning || isBroOrderPayment) {
+      final providerFeeRaw = (displayAmount * AppConfig.providerFeePercent).round();
+      displayAmount = displayAmount + (providerFeeRaw < 1 ? 1 : providerFeeRaw);
+    }
 
     return GestureDetector(
       onTap: () => _showTransactionDetails(payment),
@@ -2986,9 +2991,15 @@ class _WalletScreenState extends State<WalletScreen> {
     
     // Integrar taxa no valor exibido (mesmo spread do histórico)
     int detailAmount = (amount is int) ? amount : (amount as num).toInt();
+    final int baseSats = detailAmount; // Valor original do pagamento Lightning (sats do PIX)
     if (!isReceived && correlatedOrderId != null && PlatformFeeService.isFeePaid(correlatedOrderId!)) {
       final feeRaw = (detailAmount * AppConfig.platformFeePercent).round();
       detailAmount = detailAmount + (feeRaw < 1 ? 1 : feeRaw);
+    }
+    // Ganho como Bro: incluir taxa de 3% do provedor no valor exibido
+    if (isGanhoBro) {
+      final providerFeeRaw = (baseSats * AppConfig.providerFeePercent).round();
+      detailAmount = baseSats + (providerFeeRaw < 1 ? 1 : providerFeeRaw);
     }
     
     showModalBottomSheet(
@@ -3083,6 +3094,38 @@ class _WalletScreenState extends State<WalletScreen> {
                   _buildDetailRow(AppLocalizations.of(context).t('wallet_order_status'), correlatedOrder.status.toUpperCase()),
                   if (correlatedOrder.billCode.isNotEmpty)
                     _buildDetailRow(AppLocalizations.of(context).t('wallet_code'), correlatedOrder.billCode, monospace: true),
+                  // Provider fee breakdown for Bro earnings
+                  if (isGanhoBro) ...[                    
+                    const SizedBox(height: 12),
+                    const Divider(color: Color(0xFF333333)),
+                    const SizedBox(height: 12),
+                    Text(
+                      AppLocalizations.of(context).t('wallet_earnings_breakdown'),
+                      style: const TextStyle(
+                        color: Colors.green,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildDetailRow(
+                      AppLocalizations.of(context).t('wallet_pix_cost'),
+                      'R\$ ${correlatedOrder.amount.toStringAsFixed(2)} (~$baseSats sats)',
+                    ),
+                    Builder(builder: (context) {
+                      final providerFeeSats = detailAmount - baseSats;
+                      final providerFeeBrl = correlatedOrder!.amount * AppConfig.providerFeePercent;
+                      return _buildDetailRow(
+                        '💰 ${AppLocalizations.of(context).t('wallet_your_profit')} (${(AppConfig.providerFeePercent * 100).toStringAsFixed(0)}%)',
+                        '+ $providerFeeSats sats (~R\$ ${providerFeeBrl.toStringAsFixed(2)})',
+                      );
+                    }),
+                    const Divider(color: Color(0xFF333333)),
+                    _buildDetailRow(
+                      AppLocalizations.of(context).t('wallet_total_received'),
+                      '$detailAmount sats',
+                    ),
+                  ],
                 ],
                   
                 const SizedBox(height: 16),

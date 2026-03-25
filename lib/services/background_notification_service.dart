@@ -2,8 +2,11 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show Color;
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nostr/nostr.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -44,6 +47,7 @@ void broBackgroundCallbackDispatcher() {
       if (taskName == _taskName || taskName == Workmanager.iOSBackgroundTask) {
         await _checkNostrForNewEvents();
         await _checkAutoLiquidationBackground();
+        await _refreshFcmToken();
       }
       
       broLog('[BRO-BG] Task concluida com sucesso');
@@ -436,6 +440,59 @@ String? _getTagValue(Map<String, dynamic> event, String tagName) {
     }
   }
   return null;
+}
+
+// ============================================================
+// FCM TOKEN REFRESH EM BACKGROUND
+// v396: Renova token FCM e re-registra no BRIX a cada 15min
+// Garante que usuarios offline por semanas mantenham token valido
+// ============================================================
+
+const String _brixServerUrl = String.fromEnvironment(
+  'BRIX_SERVER_URL',
+  defaultValue: 'https://brix.brostr.app',
+);
+
+Future<void> _refreshFcmToken() async {
+  try {
+    // 1. Recuperar pubkey do storage seguro
+    const secureStorage = FlutterSecureStorage(
+      aOptions: AndroidOptions(encryptedSharedPreferences: true),
+      iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
+    );
+
+    final userPubkey = await secureStorage.read(key: 'nostr_public_key');
+    if (userPubkey == null || userPubkey.isEmpty) {
+      broLog('[BRO-BG-FCM] Sem pubkey — abortando refresh');
+      return;
+    }
+
+    // 2. Inicializar Firebase e obter token FCM
+    await Firebase.initializeApp();
+    final fcmToken = await FirebaseMessaging.instance.getToken();
+    if (fcmToken == null || fcmToken.isEmpty) {
+      broLog('[BRO-BG-FCM] Sem FCM token — abortando');
+      return;
+    }
+
+    // 3. Registrar token no BRIX server (POST /brix/register-push)
+    final response = await http.post(
+      Uri.parse('$_brixServerUrl/brix/register-push'),
+      headers: {
+        'Content-Type': 'application/json',
+        'x-nostr-pubkey': userPubkey,
+      },
+      body: jsonEncode({'fcm_token': fcmToken}),
+    ).timeout(const Duration(seconds: 10));
+
+    if (response.statusCode == 200) {
+      broLog('[BRO-BG-FCM] Token FCM re-registrado com sucesso');
+    } else {
+      broLog('[BRO-BG-FCM] Falha ao registrar token: ${response.statusCode}');
+    }
+  } catch (e) {
+    broLog('[BRO-BG-FCM] Erro no refresh: $e');
+  }
 }
 
 // ============================================================

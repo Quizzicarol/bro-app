@@ -3,6 +3,16 @@ const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const { collaterals } = require('../models/database');
 
+/**
+ * Parse inteiro estrito — rejeita notação científica, hex, decimais.
+ */
+function parseStrictInt(val) {
+  if (val === null || val === undefined || val === '') return NaN;
+  const str = String(val);
+  if (!/^-?\d+$/.test(str)) return NaN;
+  return Number(str);
+}
+
 // POST /collateral/deposit - Criar invoice para depósito de garantia
 router.post('/deposit', async (req, res) => {
   try {
@@ -18,22 +28,22 @@ router.post('/deposit', async (req, res) => {
       });
     }
 
-    // v270: Validação de range
-    const satsParsed = parseInt(amountSats);
+    // v270: Validação de range (v398: rejeitar notação científica)
+    const satsParsed = parseStrictInt(amountSats);
     if (isNaN(satsParsed) || satsParsed <= 0 || satsParsed > 10000000) {
       return res.status(400).json({ error: 'amountSats deve ser entre 1 e 10.000.000' });
     }
 
     // Gerar invoice Lightning (simulado)
     const invoiceId = uuidv4();
-    const invoice = `lnbc${amountSats}n1...`; // Invoice fake para exemplo
+    const invoice = `lnbc${satsParsed}n1...`; // Invoice fake para exemplo
 
     const depositRecord = {
       id: invoiceId,
       providerId,
       tierId,
-      amountBrl: parseFloat(amountBrl),
-      amountSats: parseInt(amountSats),
+      amountBrl: parseStrictInt(amountBrl) || 0,
+      amountSats: satsParsed,
       status: 'pending',
       invoice,
       createdAt: new Date().toISOString(),
@@ -49,7 +59,7 @@ router.post('/deposit', async (req, res) => {
       success: true,
       invoice,
       invoiceId,
-      amountSats: parseInt(amountSats)
+      amountSats: satsParsed
     });
 
   } catch (error) {
@@ -80,7 +90,7 @@ router.post('/lock', async (req, res) => {
     res.json({
       success: true,
       message: 'Garantia bloqueada com sucesso',
-      lockedSats: parseInt(lockedSats)
+      lockedSats: parseStrictInt(lockedSats) || 0
     });
 
   } catch (error) {

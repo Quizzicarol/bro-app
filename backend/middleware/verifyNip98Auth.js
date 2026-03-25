@@ -14,8 +14,8 @@
 
 const { verifyEvent } = require('nostr-tools/pure');
 
-// Tolerância de timestamp: 5 minutos (em segundos)
-const TIMESTAMP_TOLERANCE = 5 * 60;
+// Tolerância de timestamp: 60 segundos
+const TIMESTAMP_TOLERANCE = 60;
 
 /**
  * Middleware que exige autenticação Nostr válida.
@@ -152,8 +152,7 @@ function verifyNip98Event(event, req) {
     const eventPath = new URL(eventUrl).pathname;
     const requestPath = req.originalUrl.split('?')[0];
     if (eventPath !== requestPath) {
-      // Log mas não rejeitar — URLs podem diferir por proxy/LB
-      console.warn(`⚠️ NIP-98 URL mismatch: event=${eventPath} request=${requestPath}`);
+      return { valid: false, reason: `URL path mismatch: event=${eventPath} request=${requestPath}` };
     }
   }
   

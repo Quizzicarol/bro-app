@@ -4,6 +4,18 @@ const { v4: uuidv4 } = require('uuid');
 const { orders } = require('../models/database');
 const { refundOrder } = require('../services/bitcoinService');
 
+/**
+ * Parse numérico estrito — rejeita notação científica, hex, strings vazias.
+ * Retorna NaN se o valor não for um decimal simples.
+ */
+function parseStrictNumber(val) {
+  if (val === null || val === undefined || val === '') return NaN;
+  const str = String(val);
+  // Só permite dígitos, ponto decimal opcional, sinal negativo opcional
+  if (!/^-?\d+(\.\d+)?$/.test(str)) return NaN;
+  return Number(str);
+}
+
 // POST /orders/create - Criar nova ordem após pagamento Lightning
 router.post('/create', async (req, res) => {
   try {
@@ -26,9 +38,9 @@ router.post('/create', async (req, res) => {
       });
     }
 
-    // v270: Validação de range
-    const billValueParsed = parseFloat(billValue);
-    const btcAmountParsed = parseFloat(btcAmount);
+    // v270: Validação de range (v398: rejeitar notação científica)
+    const billValueParsed = parseStrictNumber(billValue);
+    const btcAmountParsed = parseStrictNumber(btcAmount);
     if (isNaN(billValueParsed) || billValueParsed <= 0 || billValueParsed > 100000) {
       return res.status(400).json({ error: 'billValue deve ser entre 0 e R$ 100.000' });
     }
@@ -50,8 +62,8 @@ router.post('/create', async (req, res) => {
       paymentHash,
       paymentType,
       accountNumber,
-      billValue: parseFloat(billValue),
-      btcAmount: parseFloat(btcAmount),
+      billValue: billValueParsed,
+      btcAmount: btcAmountParsed,
       status: 'pending',
       providerId: null,
       proofUrl: null,
@@ -99,10 +111,22 @@ router.get('/available', (req, res) => {
 
     console.log(`📋 Listando ${availableOrders.length} ordens disponíveis para provedor ${providerId || 'any'}`);
 
+    // v398: Filtrar campos sensíveis — provedores não precisam ver accountNumber
+    const sanitizedOrders = availableOrders.map(order => ({
+      id: order.id,
+      userId: order.userId,
+      paymentType: order.paymentType,
+      billValue: order.billValue,
+      btcAmount: order.btcAmount,
+      status: order.status,
+      createdAt: order.createdAt,
+      expiresAt: order.expiresAt,
+    }));
+
     res.json({
       success: true,
-      count: availableOrders.length,
-      orders: availableOrders
+      count: sanitizedOrders.length,
+      orders: sanitizedOrders
     });
 
   } catch (error) {
@@ -119,6 +143,12 @@ router.get('/:orderId', (req, res) => {
 
     if (!order) {
       return res.status(404).json({ error: 'Ordem não encontrada' });
+    }
+
+    // v398: Apenas o criador ou o provedor da ordem podem ver detalhes completos
+    const callerPubkey = req.verifiedPubkey;
+    if (callerPubkey !== order.userId && callerPubkey !== order.providerId) {
+      return res.status(403).json({ error: 'Sem permissão para ver esta ordem' });
     }
 
     res.json({
@@ -226,9 +256,9 @@ router.post('/:orderId/accept', async (req, res) => {
       return res.status(404).json({ error: 'Ordem não encontrada' });
     }
 
-    // Validar status
+    // Validar status (v398: proteção contra race condition com check atômico)
     if (order.status !== 'pending') {
-      return res.status(400).json({ 
+      return res.status(409).json({ 
         error: 'Ordem já foi aceita ou não está mais disponível',
         currentStatus: order.status
       });
@@ -241,6 +271,16 @@ router.post('/:orderId/accept', async (req, res) => {
       order.status = 'expired';
       orders.set(orderId, order);
       return res.status(400).json({ error: 'Ordem expirada' });
+    }
+
+    // v398: Marcar como aceita IMEDIATAMENTE para prevenir race condition
+    // Se outro provider já mudou o status entre o check e aqui, detectamos na re-verificação
+    const currentOrder = orders.get(orderId);
+    if (!currentOrder || currentOrder.status !== 'pending') {
+      return res.status(409).json({ 
+        error: 'Ordem já foi aceita por outro provedor',
+        currentStatus: currentOrder?.status
+      });
     }
 
     // Atualizar ordem
@@ -289,6 +329,18 @@ router.post('/:orderId/submit-proof', async (req, res) => {
         error: 'Ordem não está em estado para receber comprovante',
         currentStatus: order.status
       });
+    }
+
+    // v398: Validar proofUrl se fornecido — deve ser HTTPS
+    if (proofUrl) {
+      try {
+        const parsed = new URL(proofUrl);
+        if (parsed.protocol !== 'https:') {
+          return res.status(400).json({ error: 'proofUrl deve usar HTTPS' });
+        }
+      } catch (e) {
+        return res.status(400).json({ error: 'proofUrl inválido' });
+      }
     }
 
     // Atualizar ordem

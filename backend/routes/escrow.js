@@ -3,6 +3,16 @@ const router = express.Router();
 const { escrows } = require('../models/database');
 const { orders } = require('../models/database');
 
+/**
+ * Parse numérico estrito — rejeita notação científica, hex, strings vazias.
+ */
+function parseStrictNumber(val) {
+  if (val === null || val === undefined || val === '') return NaN;
+  const str = String(val);
+  if (!/^-?\d+(\.\d+)?$/.test(str)) return NaN;
+  return Number(str);
+}
+
 // POST /escrow/create - Criar escrow com Bitcoin do usuário
 router.post('/create', async (req, res) => {
   try {
@@ -16,15 +26,15 @@ router.post('/create', async (req, res) => {
         required: ['orderId', 'btcAmount']
       });
     }
-    // v270: Validação de range
-    const btcAmountParsed = parseFloat(btcAmount);
+    // v270: Validação de range (v398: rejeitar notação científica)
+    const btcAmountParsed = parseStrictNumber(btcAmount);
     if (isNaN(btcAmountParsed) || btcAmountParsed <= 0 || btcAmountParsed > 1) {
       return res.status(400).json({ error: 'btcAmount deve ser entre 0 e 1 BTC' });
     }
     const escrow = {
       id: orderId,
       userId,
-      btcAmount: parseFloat(btcAmount),
+      btcAmount: btcAmountParsed,
       status: 'locked',
       createdAt: new Date().toISOString(),
       releasedAt: null
@@ -81,6 +91,19 @@ router.post('/release', async (req, res) => {
         console.warn(`🔒 Escrow release rejeitado: caller ${callerPubkey.substring(0, 8)} não é dono nem provedor`);
         return res.status(403).json({ error: 'Sem permissão para liberar este escrow' });
       }
+    }
+
+    // v398: Verificar que a ordem associada foi completada antes de liberar escrow
+    const associatedOrder = orders.get(orderId);
+    if (!associatedOrder) {
+      return res.status(400).json({ error: 'Ordem associada não encontrada' });
+    }
+    if (associatedOrder.status !== 'completed') {
+      console.warn(`🔒 Escrow release rejeitado: ordem ${orderId} status=${associatedOrder.status} (esperado: completed)`);
+      return res.status(400).json({ 
+        error: 'Ordem ainda não foi completada — pagamento precisa ser validado primeiro',
+        currentOrderStatus: associatedOrder.status
+      });
     }
 
     // Calcular fees

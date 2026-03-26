@@ -2928,6 +2928,28 @@ class OrderProvider with ChangeNotifier {
           // accepted e awaiting_confirmation podem evoluir para completed
           final protectedStatuses = ['cancelled', 'completed', 'liquidated'];
           if (protectedStatuses.contains(existing.status)) {
+            // v404: CORREÇÃO — Ainda mesclar metadata para ordens terminais
+            // Antes, ordens completed nunca recebiam proofImage do Nostr
+            // porque o continue pulava TODO o processamento incluindo merge de metadata
+            if (nostrOrder.metadata != null && nostrOrder.metadata!.isNotEmpty) {
+              final existingMeta = existing.metadata ?? <String, dynamic>{};
+              // Só mesclar se Nostr tem dados que faltam localmente (proofImage, etc)
+              final hasNewProof = nostrOrder.metadata!.containsKey('proofImage') &&
+                  nostrOrder.metadata!['proofImage'] != null &&
+                  !nostrOrder.metadata!['proofImage'].toString().startsWith('[encrypted:') &&
+                  (existingMeta['proofImage'] == null || existingMeta['proofImage'].toString().startsWith('[encrypted:'));
+              final hasNewNip44 = nostrOrder.metadata!.containsKey('proofImage_nip44') &&
+                  !existingMeta.containsKey('proofImage_nip44');
+              if (hasNewProof || hasNewNip44) {
+                final mergedMetadata = <String, dynamic>{
+                  ...existingMeta,
+                  ...nostrOrder.metadata!,
+                };
+                _orders[existingIndex] = existing.copyWith(metadata: mergedMetadata);
+                updated++;
+                broLog('🔄 syncOrdersFromNostr: metadata atualizado para ordem completed ${existing.id.substring(0, 8)}');
+              }
+            }
             continue;
           }
           
@@ -3072,13 +3094,21 @@ class OrderProvider with ChangeNotifier {
                 }
               }
               
+              // v404: NÃO sobrescrever proofImage decriptografado com marcador [encrypted:]
+              final existingProof = existing.metadata?['proofImage'] as String?;
+              final isExistingDecrypted = existingProof != null && 
+                  existingProof.isNotEmpty && 
+                  !existingProof.startsWith('[encrypted:');
+              
               updatedMetadata = {
                 ...?existing.metadata,
                 if (decryptedProofImage != null) 'proofImage': decryptedProofImage,
                 if (decryptedProofImage != null) 'paymentProof': decryptedProofImage,
-                if (decryptedProofImage == null && update['proofImage'] != null) 'proofImage': update['proofImage'],
+                // Só sobrescrever proofImage se NÃO temos versão decriptografada
+                if (decryptedProofImage == null && !isExistingDecrypted && update['proofImage'] != null) 
+                  'proofImage': update['proofImage'],
                 if (update['providerInvoice'] != null) 'providerInvoice': update['providerInvoice'],
-                // v403: Preservar dados NIP-44 para fallback de descriptografia na UI
+                // Preservar dados NIP-44 para fallback de descriptografia na UI
                 if (proofImageNip44 != null) 'proofImage_nip44': proofImageNip44,
                 if (senderPubkey != null) 'proofImage_senderPubkey': senderPubkey,
                 if (update['encryption'] != null) 'encryption': update['encryption'],

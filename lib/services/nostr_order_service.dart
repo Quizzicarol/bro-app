@@ -2041,16 +2041,18 @@ class NostrOrderService {
               // IMPORTANTE: Guardar quem publicou o evento para verificar se foi o próprio usuário
               final eventAuthorPubkey = event['pubkey'] as String?;
               
+              // v404: Preservar dados do comprovante quando evento mais recente não tem
+              final previousUpdate = updates[orderId];
               updates[orderId] = {
                 'orderId': orderId,
                 'status': status,
-                'providerId': providerId,
-                'eventAuthorPubkey': eventAuthorPubkey, // Quem publicou este update
-                'proofImage': proofImage, // Comprovante enviado pelo Bro (pode ser marcador se encriptado)
-                'proofImage_nip44': proofImageNip44, // Versão NIP-44 encriptada (se houver)
-                'encryption': encryption, // Flag de criptografia
-                'providerInvoice': providerInvoice, // Invoice para pagar o Bro
-                'completedAt': content['completedAt'],
+                'providerId': providerId ?? previousUpdate?['providerId'],
+                'eventAuthorPubkey': eventAuthorPubkey ?? previousUpdate?['eventAuthorPubkey'],
+                'proofImage': proofImage ?? previousUpdate?['proofImage'],
+                'proofImage_nip44': proofImageNip44 ?? previousUpdate?['proofImage_nip44'],
+                'encryption': encryption ?? previousUpdate?['encryption'],
+                'providerInvoice': providerInvoice ?? previousUpdate?['providerInvoice'],
+                'completedAt': content['completedAt'] ?? previousUpdate?['completedAt'],
                 'created_at': createdAt,
               };
             }
@@ -2506,15 +2508,18 @@ class NostrOrderService {
               continue; // Evento antigo e não é progressão - ignorar
             }
             
+            // v404: Preservar dados do comprovante quando evento mais recente não tem
+            // Kind 30080 (completed pelo usuário) NÃO tem proofImage, mas Kind 30081 (do provedor) TEM
+            final previousUpdate = updates[orderId];
             updates[orderId] = {
               'orderId': orderId,
               'status': newStatus,
               'eventKind': eventKind,
-              'providerId': content['providerId'] ?? event['pubkey'],
-              'proofImage': content['proofImage'],
-              'proofImage_nip44': content['proofImage_nip44'],
-              'encryption': content['encryption'],
-              'eventAuthorPubkey': event['pubkey'] as String?, // v403: Para NIP-44 senderPubkey
+              'providerId': content['providerId'] ?? event['pubkey'] ?? previousUpdate?['providerId'],
+              'proofImage': content['proofImage'] ?? previousUpdate?['proofImage'],
+              'proofImage_nip44': content['proofImage_nip44'] ?? previousUpdate?['proofImage_nip44'],
+              'encryption': content['encryption'] ?? previousUpdate?['encryption'],
+              'eventAuthorPubkey': event['pubkey'] as String? ?? previousUpdate?['eventAuthorPubkey'] as String?,
               'created_at': createdAt,
             };
           } catch (e) {

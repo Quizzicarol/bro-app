@@ -184,6 +184,8 @@ void main() async {
       badge: true,
       sound: true,
     );
+    // Force-refresh FCM token to clear stale tokens from old builds/projects
+    await messaging.deleteToken();
     fcmToken = await messaging.getToken();
     broLog('[FCM] Push token: $fcmToken');
   } catch (e) {

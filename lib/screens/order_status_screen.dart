@@ -78,10 +78,27 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   @override
   void initState() {
     super.initState();
+    // v403: Carregar status inicial do OrderProvider IMEDIATAMENTE (sem await)
+    // Isso evita o flash de "Aguardando Bro" quando o status local já é mais avançado
+    _loadInitialStatusFromProvider();
     _loadOrderDetails();
     _startStatusPolling();
     _fetchResolutionIfNeeded();
     _fetchMediatorMessagesForUser();
+  }
+
+  /// v403: Carrega status do OrderProvider sincronamente para evitar inconsistência
+  /// O OrderProvider tem o status mais recente em memória (atualizado via Nostr sync)
+  void _loadInitialStatusFromProvider() {
+    try {
+      final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+      final order = orderProvider.getOrderById(widget.orderId);
+      if (order != null && order.status.isNotEmpty) {
+        _currentStatus = order.status;
+        _orderDetails = order.toJson();
+        broLog('⚡ Status inicial do OrderProvider: $_currentStatus');
+      }
+    } catch (_) {}
   }
 
   @override

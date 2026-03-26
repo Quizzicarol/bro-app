@@ -1978,7 +1978,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       try {
         final orderProvider = Provider.of<OrderProvider>(context, listen: false);
         final privateKey = orderProvider.nostrPrivateKey;
-        final senderPubkey = metadata?['proofImage_senderPubkey'] as String?;
+        // v403: Fallback para providerId se proofImage_senderPubkey não estiver disponível
+        final senderPubkey = metadata?['proofImage_senderPubkey'] as String?
+            ?? metadata?['providerId'] as String?
+            ?? _orderDetails?['providerId'] as String?;
         if (privateKey != null && senderPubkey != null) {
           final nip44 = Nip44Service();
           receiptUrl = nip44.decryptBetween(
@@ -1987,6 +1990,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             senderPubkey,
           );
           broLog('🔓 proofImage re-descriptografado on-demand na UI');
+        } else {
+          broLog('⚠️ proofImage NIP-44: privateKey=${privateKey != null}, senderPubkey=${senderPubkey != null}');
         }
       } catch (e) {
         broLog('⚠️ Falha ao re-descriptografar proofImage na UI: $e');

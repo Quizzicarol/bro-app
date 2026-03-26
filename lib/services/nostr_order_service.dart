@@ -121,6 +121,11 @@ class NostrOrderService {
     _decryptionKey = privateKey;
   }
 
+  /// v403: Expor descriptografia NIP-44 para uso pelo OrderProvider durante sync
+  String decryptNip44(String ciphertext, String privateKey, String senderPubkey) {
+    return _nip44.decryptBetween(ciphertext, privateKey, senderPubkey);
+  }
+
   // Relays para publicar ordens
   // NOTA: nostr.wine REMOVIDO - causa rate limit 429 constante e timeouts
   final List<String> _relays = [
@@ -2509,6 +2514,7 @@ class NostrOrderService {
               'proofImage': content['proofImage'],
               'proofImage_nip44': content['proofImage_nip44'],
               'encryption': content['encryption'],
+              'eventAuthorPubkey': event['pubkey'] as String?, // v403: Para NIP-44 senderPubkey
               'created_at': createdAt,
             };
           } catch (e) {

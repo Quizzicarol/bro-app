@@ -3048,11 +3048,40 @@ class OrderProvider with ChangeNotifier {
                 if (statusToUse == 'completed') 'disputePaymentPending': true,
               };
               broLog('?? syncOrdersFromNostr: ordem ${existing.id.substring(0, 8)} resolvida de disputa ? $statusToUse');
-            } else if (update['proofImage'] != null || update['providerInvoice'] != null) {
+            } else if (update['proofImage'] != null || update['providerInvoice'] != null || update['proofImage_nip44'] != null) {
+              // v403: CORREÇÃO CRÍTICA — preservar dados NIP-44 para descriptografia on-demand
+              // Antes, apenas proofImage (marcador [encrypted:nip44v2]) era armazenado,
+              // mas proofImage_nip44 e senderPubkey eram descartados, impossibilitando
+              // a descriptografia do comprovante na UI
+              final proofImageNip44 = update['proofImage_nip44'] as String?;
+              final senderPubkey = update['eventAuthorPubkey'] as String? ?? update['providerId'] as String?;
+              
+              // Tentar descriptografar NIP-44 on-the-fly
+              String? decryptedProofImage;
+              if (proofImageNip44 != null && proofImageNip44.isNotEmpty) {
+                final privateKey = _nostrService.privateKey;
+                if (privateKey != null && senderPubkey != null) {
+                  try {
+                    decryptedProofImage = _nostrOrderService.decryptNip44(
+                      proofImageNip44, privateKey, senderPubkey,
+                    );
+                    broLog('🔓 syncOrdersFromNostr: proofImage descriptografado para ${existing.id.substring(0, 8)}');
+                  } catch (e) {
+                    broLog('⚠️ syncOrdersFromNostr: falha ao descriptografar proofImage: $e');
+                  }
+                }
+              }
+              
               updatedMetadata = {
                 ...?existing.metadata,
-                if (update['proofImage'] != null) 'proofImage': update['proofImage'],
+                if (decryptedProofImage != null) 'proofImage': decryptedProofImage,
+                if (decryptedProofImage != null) 'paymentProof': decryptedProofImage,
+                if (decryptedProofImage == null && update['proofImage'] != null) 'proofImage': update['proofImage'],
                 if (update['providerInvoice'] != null) 'providerInvoice': update['providerInvoice'],
+                // v403: Preservar dados NIP-44 para fallback de descriptografia na UI
+                if (proofImageNip44 != null) 'proofImage_nip44': proofImageNip44,
+                if (senderPubkey != null) 'proofImage_senderPubkey': senderPubkey,
+                if (update['encryption'] != null) 'encryption': update['encryption'],
                 'proofReceivedAt': DateTime.now().toIso8601String(),
               };
             } else {

@@ -1358,7 +1358,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 const SizedBox(height: 10),
                 _buildOrderDetailsCard(),
                 const SizedBox(height: 10),
-                if (_currentStatus == 'awaiting_confirmation') ...[
+                if (_currentStatus == 'awaiting_confirmation' || _currentStatus == 'completed') ...[
                   _buildReceiptCard(),
                   const SizedBox(height: 10),
                 ],
@@ -1793,6 +1793,32 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             fontWeight: FontWeight.w500,
             fontSize: 13,
             color: Colors.white,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// v406: Detail row with wrapping value (for long PIX codes)
+  Widget _buildDetailRowWrap(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white54,
+            fontSize: 13,
+          ),
+        ),
+        const SizedBox(height: 4),
+        SelectableText(
+          value,
+          style: const TextStyle(
+            fontWeight: FontWeight.w500,
+            fontSize: 12,
+            color: Colors.white70,
+            fontFamily: 'monospace',
           ),
         ),
       ],

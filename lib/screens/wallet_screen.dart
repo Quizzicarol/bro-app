@@ -3163,28 +3163,24 @@ class _WalletScreenState extends State<WalletScreen> {
                       final billSats = correlatedOrder!.btcPrice > 0
                           ? (correlatedOrder.amount / correlatedOrder.btcPrice * 100000000).round()
                           : 0;
-                      final provFeeBrl = correlatedOrder.providerFee;
                       final provFeeSats = correlatedOrder.btcPrice > 0
-                          ? (provFeeBrl / correlatedOrder.btcPrice * 100000000).round()
+                          ? (correlatedOrder.providerFee / correlatedOrder.btcPrice * 100000000).round()
                           : 0;
-                      final totalBrl = correlatedOrder.total;
-                      final totalSats = correlatedOrder.btcPrice > 0
-                          ? (totalBrl / correlatedOrder.btcPrice * 100000000).round()
-                          : 0;
+                      final totalSats = billSats + provFeeSats;
                       return Column(
                         children: [
                           _buildDetailRow(
                             AppLocalizations.of(context).t('wallet_bill_value'),
-                            'R\$ ${correlatedOrder.amount.toStringAsFixed(2)}  (~$billSats sats)',
+                            '$billSats sats',
                           ),
                           _buildDetailRow(
                             AppLocalizations.of(context).t('wallet_provider_fee'),
-                            'R\$ ${provFeeBrl.toStringAsFixed(2)}  (~$provFeeSats sats)',
+                            '$provFeeSats sats',
                           ),
                           const Divider(color: Color(0xFF333333)),
                           _buildDetailRow(
                             AppLocalizations.of(context).t('wallet_total_paid'),
-                            'R\$ ${totalBrl.toStringAsFixed(2)}  (~$totalSats sats)',
+                            '$totalSats sats',
                           ),
                         ],
                       );

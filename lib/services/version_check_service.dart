@@ -19,8 +19,9 @@ class VersionCheckService {
   /// Repo público de releases
   static const String _repoOwner = 'Brostr';
   static const String _repoName = 'bro';
+  /// v406: Usar tags API em vez de releases/latest (no repo só existem tags, não Releases)
   static const String _githubApiUrl = 
-      'https://api.github.com/repos/$_repoOwner/$_repoName/releases/latest';
+      'https://api.github.com/repos/$_repoOwner/$_repoName/tags?per_page=10';
 
   /// URL do TestFlight para iOS
   static const String _testFlightUrl = 'https://testflight.apple.com/join/rkHbPQ94';
@@ -57,41 +58,45 @@ class VersionCheckService {
       
       if (response.statusCode != 200) {
         broLog('⚠️ GitHub API retornou ${response.statusCode}');
-        _alreadyChecked = true;
+        // v406: NÃO marcar como checked em erro — permitir retry
         return false;
       }
       
-      final data = json.decode(response.body) as Map<String, dynamic>;
-      final tagName = data['tag_name'] as String? ?? '';
-      _releaseNotes = data['body'] as String? ?? '';
+      final tags = json.decode(response.body) as List<dynamic>;
+      if (tags.isEmpty) {
+        broLog('⚠️ Nenhuma tag encontrada no GitHub');
+        return false;
+      }
       
-      // Extrair build number do tag (formato: v1.0.129-b238)
-      final buildMatch = RegExp(r'b(\d+)').firstMatch(tagName);
-      final remoteBuild = buildMatch != null 
-          ? int.tryParse(buildMatch.group(1)!) ?? 0 
-          : 0;
-      
-      // Extrair versão do tag (formato: v1.0.129-b238)
-      final versionMatch = RegExp(r'v?([\d.]+)').firstMatch(tagName);
-      _latestVersion = versionMatch?.group(1) ?? tagName;
-      
-      // Buscar URL do APK nos assets
-      final assets = data['assets'] as List<dynamic>? ?? [];
-      for (final asset in assets) {
-        final name = asset['name'] as String? ?? '';
-        if (name.endsWith('.apk')) {
-          _downloadUrl = asset['browser_download_url'] as String?;
-          break;
+      // v406: Encontrar a tag com o maior build number
+      // Formato de tags: v1.0.132+393, v1.0.132+391, v1.0.132+368, etc.
+      int highestBuild = 0;
+      String highestTag = '';
+      for (final tag in tags) {
+        final tagName = tag['name'] as String? ?? '';
+        // Aceitar formatos: v1.0.132+393, v1.0.132-b238, v1.0.132-393-stable
+        final buildMatch = RegExp(r'[+\-b](\d+)').firstMatch(tagName);
+        if (buildMatch != null) {
+          final build = int.tryParse(buildMatch.group(1)!) ?? 0;
+          if (build > highestBuild) {
+            highestBuild = build;
+            highestTag = tagName;
+          }
         }
       }
       
-      // Fallback: URL da release page
-      _downloadUrl ??= data['html_url'] as String?;
+      // Extrair versão do tag mais recente
+      final versionMatch = RegExp(r'v?([\d.]+)').firstMatch(highestTag);
+      _latestVersion = versionMatch?.group(1) ?? highestTag;
       
-      _updateAvailable = remoteBuild > currentBuild;
+      // v406: URL de download — releases page do repo
+      _downloadUrl = 'https://github.com/$_repoOwner/$_repoName/releases';
+      _releaseNotes = '';
+      
+      _updateAvailable = highestBuild > currentBuild;
       _isCritical = currentBuild < _minimumRequiredBuild;
       
-      broLog('📦 Versão remota: $_latestVersion (build $remoteBuild) | '
+      broLog('📦 Tag mais recente: $highestTag (build $highestBuild) | '
           'Local: $currentVersion (build $currentBuild) | '
           'Atualização: $_updateAvailable | Crítica: $_isCritical');
       
@@ -100,7 +105,7 @@ class VersionCheckService {
       
     } catch (e) {
       broLog('⚠️ Erro ao verificar atualização: $e');
-      _alreadyChecked = true;
+      // v406: NÃO marcar como checked em erro de rede — permitir retry
       return false;
     }
   }

@@ -2960,6 +2960,57 @@ class _WalletScreenState extends State<WalletScreen> {
       }
     }
     
+    // v406: Correlacionar pagamentos ENVIADOS com ordens que eu criei (modo usuário)
+    // Quando o usuário cria uma ordem, ele ENVIA sats para o escrow
+    if (!isReceived && correlatedOrder == null) {
+      // Tentar correlação por paymentHash
+      if (paymentHash.isNotEmpty) {
+        try {
+          correlatedOrder = orderProvider.orders.firstWhere(
+            (o) => o.paymentHash == paymentHash,
+          );
+          correlatedOrderId = correlatedOrder.id;
+        } catch (_) {}
+      }
+      
+      // Tentar correlação por descrição
+      if (correlatedOrder == null && description.contains('Bro')) {
+        String? orderIdFromDesc;
+        if (description.contains('Bro - Ordem ')) {
+          orderIdFromDesc = description.split('Bro - Ordem ').last.trim();
+        }
+        if (orderIdFromDesc != null && orderIdFromDesc.isNotEmpty) {
+          try {
+            correlatedOrder = orderProvider.orders.firstWhere(
+              (o) => o.id.startsWith(orderIdFromDesc!) || orderIdFromDesc!.startsWith(o.id.substring(0, 8)),
+            );
+            correlatedOrderId = correlatedOrder.id;
+          } catch (_) {}
+        }
+      }
+      
+      // Tentar correlação por valor/data com ordens que eu criei
+      if (correlatedOrder == null) {
+        final myOrders = orderProvider.myCreatedOrders;
+        final paymentDate = date is DateTime ? date : DateTime.now();
+        
+        for (final order in myOrders) {
+          final totalSats = (order.total / order.btcPrice * 100000000).round();
+          final tolerance = (totalSats * 0.05).round();
+          
+          if ((amount - totalSats).abs() <= tolerance) {
+            final orderDate = order.createdAt;
+            final diff = paymentDate.difference(orderDate).abs();
+            if (diff.inHours <= 24) {
+              correlatedOrderId = order.id;
+              correlatedOrder = order;
+              break;
+            }
+          }
+        }
+      }
+    }
+    
     // Determinar tipo para exibição
     String typeLabel;
     Color typeColor;
@@ -3094,6 +3145,51 @@ class _WalletScreenState extends State<WalletScreen> {
                   _buildDetailRow(AppLocalizations.of(context).t('wallet_order_status'), correlatedOrder.status.toUpperCase()),
                   if (correlatedOrder.billCode.isNotEmpty)
                     _buildDetailRow(AppLocalizations.of(context).t('wallet_code'), correlatedOrder.billCode, monospace: true),
+                  // v406: Detalhamento de custos para o USUÁRIO (pagamento enviado)
+                  if (!isReceived && !isGanhoBro) ...[
+                    const SizedBox(height: 12),
+                    const Divider(color: Color(0xFF333333)),
+                    const SizedBox(height: 12),
+                    Text(
+                      AppLocalizations.of(context).t('wallet_cost_breakdown'),
+                      style: const TextStyle(
+                        color: Colors.amber,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Builder(builder: (context) {
+                      final billSats = correlatedOrder!.btcPrice > 0
+                          ? (correlatedOrder.amount / correlatedOrder.btcPrice * 100000000).round()
+                          : 0;
+                      final provFeeBrl = correlatedOrder.providerFee;
+                      final provFeeSats = correlatedOrder.btcPrice > 0
+                          ? (provFeeBrl / correlatedOrder.btcPrice * 100000000).round()
+                          : 0;
+                      final totalBrl = correlatedOrder.total;
+                      final totalSats = correlatedOrder.btcPrice > 0
+                          ? (totalBrl / correlatedOrder.btcPrice * 100000000).round()
+                          : 0;
+                      return Column(
+                        children: [
+                          _buildDetailRow(
+                            AppLocalizations.of(context).t('wallet_bill_value'),
+                            'R\$ ${correlatedOrder.amount.toStringAsFixed(2)}  (~$billSats sats)',
+                          ),
+                          _buildDetailRow(
+                            AppLocalizations.of(context).t('wallet_provider_fee'),
+                            'R\$ ${provFeeBrl.toStringAsFixed(2)}  (~$provFeeSats sats)',
+                          ),
+                          const Divider(color: Color(0xFF333333)),
+                          _buildDetailRow(
+                            AppLocalizations.of(context).t('wallet_total_paid'),
+                            'R\$ ${totalBrl.toStringAsFixed(2)}  (~$totalSats sats)',
+                          ),
+                        ],
+                      );
+                    }),
+                  ],
                   // Provider fee breakdown for Bro earnings
                   if (isGanhoBro) ...[                    
                     const SizedBox(height: 12),

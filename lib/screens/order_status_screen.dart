@@ -1686,6 +1686,29 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   Widget _buildOrderDetailsCard() {
     final l = AppLocalizations.of(context)!;
+    
+    // v406: Buscar dados completos do OrderProvider para fees e billCode
+    final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+    final fullOrder = orderProvider.getOrderById(widget.orderId);
+    
+    // Calcular fees e valores
+    final billCode = fullOrder?.billCode ?? _orderDetails?['billCode'] ?? '';
+    final providerFeeBrl = fullOrder?.providerFee ?? 
+        ((_orderDetails?['providerFee'] as num?)?.toDouble() ?? 0.0);
+    final platformFeeBrl = fullOrder?.platformFee ?? 
+        ((_orderDetails?['platformFee'] as num?)?.toDouble() ?? 0.0);
+    final totalBrl = fullOrder?.total ?? 
+        ((_orderDetails?['total'] as num?)?.toDouble() ?? 
+         (widget.amountBrl + providerFeeBrl + platformFeeBrl));
+    final btcPrice = fullOrder?.btcPrice ?? 
+        ((_orderDetails?['btcPrice'] as num?)?.toDouble() ?? 0.0);
+    
+    // Converter fees para sats
+    final providerFeeSats = btcPrice > 0 
+        ? (providerFeeBrl / btcPrice * 100000000).round() : 0;
+    final totalSats = btcPrice > 0 
+        ? (totalBrl / btcPrice * 100000000).round() : widget.amountSats;
+    
     return Card(
       color: const Color(0xFF1A1A1A),
       shape: RoundedRectangleBorder(
@@ -1708,19 +1731,43 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             Divider(height: 20, color: Colors.grey.withOpacity(0.2)),
             _buildDetailRow(l.t('order_detail_id'), widget.orderId.substring(0, 8)),
             const SizedBox(height: 12),
-            _buildDetailRow(l.t('order_detail_value'), 'R\$ ${widget.amountBrl.toStringAsFixed(2)}'),
-            const SizedBox(height: 12),
-            _buildDetailRow(l.t('order_detail_bitcoin'), '${widget.amountSats} sats'),
-            const SizedBox(height: 12),
             _buildDetailRow(
               l.t('order_detail_payment_type'),
               _orderDetails?['billType'] == 'pix' ? 'PIX' : 'Boleto',
             ),
-            if (_orderDetails?['provider_id'] != null) ...[
+            if (billCode.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _buildDetailRow(l.t('order_detail_code'), billCode),
+            ],
+            const SizedBox(height: 16),
+            Divider(height: 1, color: Colors.grey.withOpacity(0.15)),
+            const SizedBox(height: 16),
+            // Valor da conta (BRL + sats)
+            _buildDetailRow(
+              l.t('order_detail_bill_value'),
+              'R\$ ${widget.amountBrl.toStringAsFixed(2)}  (~${widget.amountSats} sats)',
+            ),
+            // Taxa do provedor
+            if (providerFeeBrl > 0) ...[
               const SizedBox(height: 12),
               _buildDetailRow(
+                l.t('order_detail_provider_fee'),
+                'R\$ ${providerFeeBrl.toStringAsFixed(2)}  (~$providerFeeSats sats)',
+              ),
+            ],
+            // Total pago
+            const SizedBox(height: 12),
+            _buildDetailRow(
+              l.t('order_detail_total_paid'),
+              'R\$ ${totalBrl.toStringAsFixed(2)}  (~$totalSats sats)',
+            ),
+            if (_orderDetails?['provider_id'] != null || fullOrder?.providerId != null) ...[
+              const SizedBox(height: 16),
+              Divider(height: 1, color: Colors.grey.withOpacity(0.15)),
+              const SizedBox(height: 16),
+              _buildDetailRow(
                 l.t('order_detail_provider'),
-                _orderDetails!['provider_id'].substring(0, 8),
+                (fullOrder?.providerId ?? _orderDetails!['provider_id']).substring(0, 8),
               ),
             ],
           ],
@@ -1949,17 +1996,32 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     Map<String, dynamic>? metadata;
     
     if (_orderDetails != null && _orderDetails!['metadata'] != null) {
-      metadata = _orderDetails!['metadata'] as Map<String, dynamic>;
+      metadata = Map<String, dynamic>.from(_orderDetails!['metadata'] as Map<String, dynamic>);
     }
     
-    // SEMPRE tentar buscar do OrderProvider também (não só em testMode)
-    // porque o metadata pode ter sido atualizado após sincronização do Nostr
-    if (metadata == null || metadata.isEmpty) {
-      final orderProvider = context.read<OrderProvider>();
-      final order = orderProvider.getOrderById(widget.orderId);
-      if (order?.metadata != null) {
-        metadata = order!.metadata;
+    // v406: SEMPRE mesclar dados do OrderProvider — não só quando metadata é null
+    // O OrderProvider pode ter dados mais recentes (proofImage decriptografado)
+    // que _orderDetails (carregado do SharedPreferences) não tem
+    final orderProvider = context.read<OrderProvider>();
+    final orderFromProvider = orderProvider.getOrderById(widget.orderId);
+    if (orderFromProvider?.metadata != null) {
+      if (metadata == null || metadata.isEmpty) {
+        metadata = Map<String, dynamic>.from(orderFromProvider!.metadata!);
         broLog('🔍 Metadata carregado do OrderProvider');
+      } else {
+        // Merge: preencher campos faltantes com dados do OrderProvider
+        for (final key in orderFromProvider!.metadata!.keys) {
+          final existingVal = metadata[key];
+          final providerVal = orderFromProvider.metadata![key];
+          // Substituir se local é null, vazio, ou marcador encriptado
+          if (existingVal == null || 
+              (existingVal is String && existingVal.isEmpty) ||
+              (key == 'proofImage' && existingVal is String && existingVal.startsWith('[encrypted:'))) {
+            if (providerVal != null) {
+              metadata[key] = providerVal;
+            }
+          }
+        }
       }
     }
 
@@ -2012,6 +2074,24 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         }
       } catch (e) {
         broLog('⚠️ Falha ao re-descriptografar proofImage na UI: $e');
+      }
+    }
+    
+    // v406: Se on-demand decryption funcionou, salvar no cache write-once
+    if (receiptUrl != null && receiptUrl.isNotEmpty && !receiptUrl.startsWith('[encrypted:')) {
+      final cached = orderProvider.getProofImageFromCache(widget.orderId);
+      if (cached == null) {
+        orderProvider.cacheProofImage(widget.orderId, receiptUrl);
+      }
+    }
+    
+    // v406: FALLBACK FINAL — Tentar cache persistente write-once
+    // Este cache sobrevive QUALQUER bug de sync/merge
+    if (receiptUrl == null || receiptUrl.isEmpty || receiptUrl.startsWith('[encrypted:')) {
+      final cachedProof = orderProvider.getProofImageFromCache(widget.orderId);
+      if (cachedProof != null && cachedProof.isNotEmpty) {
+        receiptUrl = cachedProof;
+        broLog('🔓 proofImage recuperado do cache write-once');
       }
     }
     

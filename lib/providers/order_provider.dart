@@ -44,6 +44,11 @@ class OrderProvider with ChangeNotifier {
   Timer? _notifyDebounceTimer; // Debounce para notifyListeners
   bool _notifyPending = false; // Flag para notify pendente
 
+  // v406: Cache write-once de proofImage decriptografado por orderId
+  // Uma vez que proof é decriptografado com sucesso, NUNCA pode ser perdido
+  final Map<String, String> _proofImageCache = {};
+  bool _proofCacheLoaded = false;
+
   // v132: Callback para auto-pagamento de ordens liquidadas
   // Setado pelo main.dart com acesso aos providers Lightning
   Future<bool> Function(String orderId, Order order)? onAutoPayLiquidation;
@@ -423,6 +428,9 @@ class OrderProvider with ChangeNotifier {
     // Carregar ordens locais primeiro (SEMPRE, para preservar status atualizados)
     await _loadSavedOrders();
     
+    // v406: Carregar cache de proofImages
+    await _loadProofCache();
+    
     // SEGURAN�?�?�A: Filtrar ordens que n�?£o pertencem a este usu�?¡rio
     // (podem ter vazado de sincroniza�?§�?µes anteriores)
     // IMPORTANTE: Manter ordens que este usu�?¡rio CRIOU ou ACEITOU como Bro!
@@ -511,6 +519,13 @@ class OrderProvider with ChangeNotifier {
         // Quando o relay n�?£o retorna o evento 'completed', o cache local preserva o status correto
         for (final order in _orders) {
           _savedOrdersCache[order.id] = order;
+          // v406: Popular proof cache com proofImage existente nas ordens salvas
+          final proof = order.metadata?['proofImage'] as String?;
+          if (proof != null && proof.isNotEmpty && !proof.startsWith('[encrypted:')) {
+            if (!_proofImageCache.containsKey(order.id)) {
+              _proofImageCache[order.id] = proof;
+            }
+          }
         }
         
         
@@ -638,7 +653,64 @@ class OrderProvider with ChangeNotifier {
 
   /// Expirar ordens pendentes antigas (> 2 horas sem aceite)
   /// Ordens que ficam muito tempo pendentes provavelmente foram abandonadas
-  // Salvar ordens no SharedPreferences (SEMPRE salva, n�?£o s�?³ em testMode)
+  
+  // v406: Cache write-once de proofImage — uma vez decriptografado, NUNCA perde
+  static const String _proofCachePrefix = 'proof_cache_';
+  
+  /// Salvar proof decriptografado no cache persistente (write-once)
+  Future<void> cacheProofImage(String orderId, String proofImage) async {
+    if (proofImage.isEmpty || proofImage.startsWith('[encrypted:')) return;
+    if (_proofImageCache.containsKey(orderId)) return; // write-once
+    _proofImageCache[orderId] = proofImage;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('$_proofCachePrefix$orderId', proofImage);
+    } catch (_) {}
+  }
+  
+  /// Recuperar proof do cache persistente (sync, do mapa em memória)
+  String? getProofImageFromCache(String orderId) {
+    return _proofImageCache[orderId];
+  }
+  
+  /// Recuperar proof do cache persistente (async, do SharedPreferences)
+  Future<String?> getProofImageCached(String orderId) async {
+    // Check memory first
+    if (_proofImageCache.containsKey(orderId)) {
+      return _proofImageCache[orderId];
+    }
+    // Check SharedPreferences
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getString('$_proofCachePrefix$orderId');
+      if (cached != null && cached.isNotEmpty) {
+        _proofImageCache[orderId] = cached; // Load into memory
+        return cached;
+      }
+    } catch (_) {}
+    return null;
+  }
+  
+  /// Carregar cache de proofs do SharedPreferences (chamado em loadOrdersForUser)
+  Future<void> _loadProofCache() async {
+    if (_proofCacheLoaded) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final allKeys = prefs.getKeys();
+      for (final key in allKeys) {
+        if (key.startsWith(_proofCachePrefix)) {
+          final orderId = key.substring(_proofCachePrefix.length);
+          final cached = prefs.getString(key);
+          if (cached != null && cached.isNotEmpty) {
+            _proofImageCache[orderId] = cached;
+          }
+        }
+      }
+      _proofCacheLoaded = true;
+    } catch (_) {}
+  }
+  
+  // Salvar ordens no SharedPreferences (SEMPRE salva)�?£o s�?³ em testMode)
   // SEGURAN�?�?�A: Agora s�?³ salva ordens do usu�?¡rio atual (igual _saveOnlyUserOrders)
   Future<void> _saveOrders() async {
     // SEGURAN�?�?�A CR�?TICA: N�?£o salvar se n�?£o temos pubkey definida
@@ -1955,15 +2027,18 @@ class OrderProvider with ChangeNotifier {
           status: 'awaiting_confirmation',
           metadata: {
             ...(_orders[index].metadata ?? {}),
-            // CORRIGIDO: Salvar imagem completa em base64, n�?£o truncar!
+            // CORRIGIDO: Salvar imagem completa em base64, não truncar!
             'paymentProof': proof,
+            'proofImage': proof,
             'proofSentAt': DateTime.now().toIso8601String(),
             if (e2eId != null && e2eId.isNotEmpty) 'e2eId': e2eId,
             if (providerInvoice != null) 'providerInvoice': providerInvoice,
           },
         );
+        // v406: Cache write-once para provider side também
+        cacheProofImage(orderId, proof);
         
-        // Salvar localmente usando _saveOrders() com filtro de seguran�?§a
+        // Salvar localmente usando _saveOrders() com filtro de segurança�?§a
         await _saveOrders();
         
       }
@@ -2945,6 +3020,14 @@ class OrderProvider with ChangeNotifier {
                   ...existingMeta,
                   ...nostrOrder.metadata!,
                 };
+                // v406: GUARD — Preservar proofImage decriptografado existente
+                final _ep = existingMeta['proofImage'] as String?;
+                if (_ep != null && _ep.isNotEmpty && !_ep.startsWith('[encrypted:')) {
+                  mergedMetadata['proofImage'] = _ep;
+                  if (existingMeta['paymentProof'] != null) {
+                    mergedMetadata['paymentProof'] = existingMeta['paymentProof'];
+                  }
+                }
                 _orders[existingIndex] = existing.copyWith(metadata: mergedMetadata);
                 updated++;
                 broLog('🔄 syncOrdersFromNostr: metadata atualizado para ordem completed ${existing.id.substring(0, 8)}');
@@ -2963,11 +3046,21 @@ class OrderProvider with ChangeNotifier {
             // Aqui apenas aplicamos o status que j�?¡ foi filtrado pelo NostrOrderService.
             String statusToUse = nostrOrder.status;
             
-            // Mesclar metadata: preservar local e adicionar do Nostr (proofImage, etc)
+            // v406: PROTEÇÃO ABSOLUTA — Mesclar metadata preservando proofImage decriptografado
+            // O spread ...?nostrOrder.metadata sobrescrevia proofImage local decriptografado
+            // com versão encriptada ou null do Nostr. Agora protege explicitamente.
             final mergedMetadata = <String, dynamic>{
               ...?existing.metadata,
-              ...?nostrOrder.metadata, // Dados do Nostr (incluindo proofImage)
+              ...?nostrOrder.metadata,
             };
+            // GUARD: Se existing tinha proofImage decriptografado, NUNCA substituir
+            final _existProof = existing.metadata?['proofImage'] as String?;
+            if (_existProof != null && _existProof.isNotEmpty && !_existProof.startsWith('[encrypted:')) {
+              mergedMetadata['proofImage'] = _existProof;
+              if (existing.metadata?['paymentProof'] != null) {
+                mergedMetadata['paymentProof'] = existing.metadata!['paymentProof'];
+              }
+            }
             
             _orders[existingIndex] = existing.copyWith(
               status: _isStatusMoreRecent(statusToUse, existing.status) 
@@ -2983,6 +3076,11 @@ class OrderProvider with ChangeNotifier {
               eventId: nostrOrder.eventId ?? existing.eventId,
               metadata: mergedMetadata.isNotEmpty ? mergedMetadata : null,
             );
+            // v406: Cache proof após merge
+            final proofForCache = mergedMetadata['proofImage'] as String?;
+            if (proofForCache != null && proofForCache.isNotEmpty && !proofForCache.startsWith('[encrypted:')) {
+              cacheProofImage(existing.id, proofForCache);
+            }
             updated++;
           }
         }
@@ -3088,6 +3186,8 @@ class OrderProvider with ChangeNotifier {
                       proofImageNip44, privateKey, senderPubkey,
                     );
                     broLog('🔓 syncOrdersFromNostr: proofImage descriptografado para ${existing.id.substring(0, 8)}');
+                    // v406: Salvar no cache write-once para NUNCA perder
+                    cacheProofImage(existing.id, decryptedProofImage!);
                   } catch (e) {
                     broLog('⚠️ syncOrdersFromNostr: falha ao descriptografar proofImage: $e');
                   }
@@ -3123,6 +3223,11 @@ class OrderProvider with ChangeNotifier {
               providerId: newProviderId ?? existing.providerId,
               metadata: updatedMetadata,
             );
+            // v406: Cache proof após Phase 2 update
+            final p2proof = updatedMetadata?['proofImage'] as String?;
+            if (p2proof != null && p2proof.isNotEmpty && !p2proof.startsWith('[encrypted:')) {
+              cacheProofImage(existing.id, p2proof);
+            }
             statusUpdated++;
             
             // v261: Re-publicar o evento 30078 com status terminal para remover da marketplace

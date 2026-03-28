@@ -1890,6 +1890,37 @@ class NostrOrderService {
     
     broLog('📋 _fetchAllOrderStatusUpdates: ${allEvents.length} eventos (sequential relay)');
     
+    // v406: CORREÇÃO DEFINITIVA — Acumular dados de comprovante de TODOS os eventos
+    // ANTES de processar, para que proof nunca se perca por ordem de processamento.
+    // Relays retornam eventos do mais novo ao mais antigo. Se o evento mais novo
+    // (kind 30080, completed, sem proof) é processado primeiro, o mais antigo
+    // (kind 30081, com proof) era IGNORADO pelo guard de timestamp.
+    // O acumulador garante que proof é preservado independente da ordem.
+    final proofAccumulator = <String, Map<String, dynamic>>{};
+    for (final event in allEvents) {
+      try {
+        final content = event['parsedContent'] ?? jsonDecode(event['content']);
+        final orderId = content['orderId'] as String?;
+        if (orderId == null) continue;
+        final proofImage = content['proofImage'] as String?;
+        final proofImageNip44 = content['proofImage_nip44'] as String?;
+        final providerInvoice = content['providerInvoice'] as String?;
+        if (proofImage != null || proofImageNip44 != null || providerInvoice != null) {
+          // Guardar apenas o PRIMEIRO (mais completo) conjunto de proof encontrado
+          if (!proofAccumulator.containsKey(orderId)) {
+            proofAccumulator[orderId] = {
+              'proofImage': proofImage,
+              'proofImage_nip44': proofImageNip44,
+              'encryption': content['encryption'] as String?,
+              'providerInvoice': providerInvoice,
+              'eventAuthorPubkey': event['pubkey'] as String?,
+              'completedAt': content['completedAt'] as String?,
+            };
+          }
+        }
+      } catch (_) {}
+    }
+    
     // Processar todos os eventos coletados
     for (final event in allEvents) {
           try {
@@ -2041,18 +2072,20 @@ class NostrOrderService {
               // IMPORTANTE: Guardar quem publicou o evento para verificar se foi o próprio usuário
               final eventAuthorPubkey = event['pubkey'] as String?;
               
-              // v404: Preservar dados do comprovante quando evento mais recente não tem
+              // v406: Usar proofAccumulator como fallback DEFINITIVO para proof data
+              // Isso garante que proof NUNCA se perde por ordem de processamento de eventos
               final previousUpdate = updates[orderId];
+              final accum = proofAccumulator[orderId];
               updates[orderId] = {
                 'orderId': orderId,
                 'status': status,
-                'providerId': providerId ?? previousUpdate?['providerId'],
-                'eventAuthorPubkey': eventAuthorPubkey ?? previousUpdate?['eventAuthorPubkey'],
-                'proofImage': proofImage ?? previousUpdate?['proofImage'],
-                'proofImage_nip44': proofImageNip44 ?? previousUpdate?['proofImage_nip44'],
-                'encryption': encryption ?? previousUpdate?['encryption'],
-                'providerInvoice': providerInvoice ?? previousUpdate?['providerInvoice'],
-                'completedAt': content['completedAt'] ?? previousUpdate?['completedAt'],
+                'providerId': providerId ?? previousUpdate?['providerId'] ?? accum?['providerId'],
+                'eventAuthorPubkey': eventAuthorPubkey ?? previousUpdate?['eventAuthorPubkey'] ?? accum?['eventAuthorPubkey'],
+                'proofImage': proofImage ?? previousUpdate?['proofImage'] ?? accum?['proofImage'],
+                'proofImage_nip44': proofImageNip44 ?? previousUpdate?['proofImage_nip44'] ?? accum?['proofImage_nip44'],
+                'encryption': encryption ?? previousUpdate?['encryption'] ?? accum?['encryption'],
+                'providerInvoice': providerInvoice ?? previousUpdate?['providerInvoice'] ?? accum?['providerInvoice'],
+                'completedAt': content['completedAt'] ?? previousUpdate?['completedAt'] ?? accum?['completedAt'],
                 'created_at': createdAt,
               };
             }
@@ -2412,6 +2445,30 @@ class NostrOrderService {
     
     broLog('🔍 fetchOrderUpdatesForUser: ${allEvents.length} eventos (sequential relay)');
     
+    // v406: CORREÇÃO DEFINITIVA — Acumular proof de TODOS os eventos por orderId
+    // antes de processar. Garante que proof do kind 30081 (provider complete) NUNCA
+    // se perde mesmo quando kind 30080 (user completed, sem proof) é processado primeiro.
+    final proofAccumulator = <String, Map<String, dynamic>>{};
+    for (final event in allEvents) {
+      try {
+        final content = event['parsedContent'] ?? jsonDecode(event['content']);
+        final orderId = content['orderId'] as String?;
+        if (orderId == null) continue;
+        final proofImage = content['proofImage'] as String?;
+        final proofImageNip44 = content['proofImage_nip44'] as String?;
+        if (proofImage != null || proofImageNip44 != null) {
+          if (!proofAccumulator.containsKey(orderId)) {
+            proofAccumulator[orderId] = {
+              'proofImage': proofImage,
+              'proofImage_nip44': proofImageNip44,
+              'encryption': content['encryption'] as String?,
+              'eventAuthorPubkey': event['pubkey'] as String?,
+            };
+          }
+        }
+      } catch (_) {}
+    }
+    
     // Processar todos os eventos
     for (final event in allEvents) {
           try {
@@ -2510,16 +2567,18 @@ class NostrOrderService {
             
             // v404: Preservar dados do comprovante quando evento mais recente não tem
             // Kind 30080 (completed pelo usuário) NÃO tem proofImage, mas Kind 30081 (do provedor) TEM
+            // v406: Usar proofAccumulator como fallback DEFINITIVO
             final previousUpdate = updates[orderId];
+            final accum = proofAccumulator[orderId];
             updates[orderId] = {
               'orderId': orderId,
               'status': newStatus,
               'eventKind': eventKind,
               'providerId': content['providerId'] ?? event['pubkey'] ?? previousUpdate?['providerId'],
-              'proofImage': content['proofImage'] ?? previousUpdate?['proofImage'],
-              'proofImage_nip44': content['proofImage_nip44'] ?? previousUpdate?['proofImage_nip44'],
-              'encryption': content['encryption'] ?? previousUpdate?['encryption'],
-              'eventAuthorPubkey': event['pubkey'] as String? ?? previousUpdate?['eventAuthorPubkey'] as String?,
+              'proofImage': content['proofImage'] ?? previousUpdate?['proofImage'] ?? accum?['proofImage'],
+              'proofImage_nip44': content['proofImage_nip44'] ?? previousUpdate?['proofImage_nip44'] ?? accum?['proofImage_nip44'],
+              'encryption': content['encryption'] ?? previousUpdate?['encryption'] ?? accum?['encryption'],
+              'eventAuthorPubkey': event['pubkey'] as String? ?? previousUpdate?['eventAuthorPubkey'] as String? ?? accum?['eventAuthorPubkey'] as String?,
               'created_at': createdAt,
             };
           } catch (e) {
@@ -2528,7 +2587,7 @@ class NostrOrderService {
 
     broLog('🔍 fetchOrderUpdatesForUser: ${updates.length} updates encontrados');
     for (final entry in updates.entries) {
-      broLog('   📋 ${entry.key.substring(0, 8)}: status=${entry.value['status']}, kind=${entry.value['eventKind']}');
+      broLog('   📋 ${entry.key.substring(0, 8)}: status=${entry.value['status']}, kind=${entry.value['eventKind']}, proof=${entry.value['proofImage'] != null || entry.value['proofImage_nip44'] != null}');
     }
     return updates;
   }

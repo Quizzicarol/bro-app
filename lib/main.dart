@@ -65,30 +65,9 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   broLog('[FCM-BG] Background message: ${message.data}');
 
-  // v390: Handle notification-type FCM messages (show notification directly)
-  final notifTitle = message.notification?.title;
-  final notifBody = message.notification?.body;
-  if (notifTitle != null && notifBody != null) {
-    try {
-      final plugin = FlutterLocalNotificationsPlugin();
-      const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-      const settings = InitializationSettings(android: androidSettings, iOS: DarwinInitializationSettings());
-      await plugin.initialize(settings);
-      await plugin.show(
-        DateTime.now().millisecondsSinceEpoch % 2147483647,
-        notifTitle,
-        notifBody,
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'bro_app_channel', 'Bro App',
-            importance: Importance.high,
-            priority: Priority.high,
-          ),
-          iOS: DarwinNotificationDetails(),
-        ),
-      );
-    } catch (_) {}
-  }
+  // v390: Notification-type messages are now auto-shown by Android/iOS
+  // when the app is in background/killed. No need to show them manually.
+  // (notification field added to FCM payload in v410)
 
   if (message.data['type'] != 'brix_invoice_request') return;
 

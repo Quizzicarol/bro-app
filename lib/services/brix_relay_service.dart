@@ -351,11 +351,11 @@ class BrixRelayService {
     broLog('⏳ [BRIX-QUEUE] Queued: $amountSats sats → $recipient');
   }
 
-  /// Get list of pending outgoing payments (for UI display).
+  /// Get list of pending and expired outgoing payments (for UI display).
   Future<List<Map<String, dynamic>>> getPendingOutgoing() async {
     final prefs = await SharedPreferences.getInstance();
     return _loadQueue(prefs)
-        .where((p) => p['status'] == 'pending')
+        .where((p) => p['status'] == 'pending' || p['status'] == 'expired')
         .toList();
   }
 
@@ -455,8 +455,8 @@ class BrixRelayService {
       }
 
       if (changed) {
-        // Remove completed/expired entries
-        list.removeWhere((p) => p['status'] != 'pending');
+        // Remove only completed entries; keep expired for user visibility
+        list.removeWhere((p) => p['status'] == 'completed');
         await _saveQueue(prefs, list);
       }
     } catch (e) {

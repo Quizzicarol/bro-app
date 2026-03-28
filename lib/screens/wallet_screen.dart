@@ -39,7 +39,10 @@ class _WalletScreenState extends State<WalletScreen> {
   bool _showAllTransactions = false;
 
   /// Total sats queued for outgoing BRIX payments (not yet deducted from wallet).
-  int get _queuedSats => _pendingOutgoing.fold(0, (sum, p) => sum + ((p['amountSats'] as int?) ?? 0));
+  /// Excludes expired payments (they were never sent).
+  int get _queuedSats => _pendingOutgoing
+      .where((p) => p['status'] == 'pending')
+      .fold(0, (sum, p) => sum + ((p['amountSats'] as int?) ?? 0));
 
   @override
   void initState() {
@@ -2585,6 +2588,9 @@ class _WalletScreenState extends State<WalletScreen> {
     final recipient = pending['originalDest']?.toString() ?? pending['recipient']?.toString() ?? '?';
     final created = DateTime.tryParse(pending['createdAt'] ?? '');
     final retryCount = (pending['retryCount'] as int?) ?? 0;
+    final isExpired = pending['status'] == 'expired';
+
+    final accentColor = isExpired ? Colors.red : Colors.amber;
 
     return Dismissible(
       key: Key('pending_${pending['id']}'),
@@ -2603,9 +2609,9 @@ class _WalletScreenState extends State<WalletScreen> {
         BrixRelayService().cancelOutgoingPayment(pending['id'].toString());
         setState(() => _pendingOutgoing.removeWhere((p) => p['id'] == pending['id']));
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Pagamento pendente cancelado'),
-            backgroundColor: Color(0xFFFF6B6B),
+          SnackBar(
+            content: Text(isExpired ? 'Envio expirado removido' : 'Pagamento pendente cancelado'),
+            backgroundColor: const Color(0xFFFF6B6B),
           ),
         );
       },
@@ -2613,9 +2619,9 @@ class _WalletScreenState extends State<WalletScreen> {
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A2A),
+          color: isExpired ? const Color(0xFF2A1A1A) : const Color(0xFF1A1A2A),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.amber.withOpacity(0.4)),
+          border: Border.all(color: accentColor.withOpacity(0.4)),
         ),
         child: Row(
           children: [
@@ -2623,10 +2629,14 @@ class _WalletScreenState extends State<WalletScreen> {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: Colors.amber.withOpacity(0.2),
+                color: accentColor.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(18),
               ),
-              child: const Icon(Icons.schedule, color: Colors.amber, size: 18),
+              child: Icon(
+                isExpired ? Icons.error_outline : Icons.schedule,
+                color: accentColor,
+                size: 18,
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -2634,9 +2644,9 @@ class _WalletScreenState extends State<WalletScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'envio brix pendente',
-                    style: const TextStyle(
-                      color: Colors.white,
+                    isExpired ? 'envio brix expirado' : 'envio brix pendente',
+                    style: TextStyle(
+                      color: isExpired ? Colors.red.shade300 : Colors.white,
                       fontWeight: FontWeight.w600,
                       fontSize: 14,
                     ),
@@ -2650,11 +2660,13 @@ class _WalletScreenState extends State<WalletScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   Text(
-                    retryCount > 0
-                        ? 'Aguardando destinatário (tentativa $retryCount)'
-                        : 'Aguardando destinatário ficar online',
+                    isExpired
+                        ? 'Expirado — destinatário não abriu o app. Refaça o envio.'
+                        : retryCount > 0
+                            ? 'Aguardando destinatário (tentativa $retryCount)'
+                            : 'Aguardando destinatário ficar online',
                     style: TextStyle(
-                      color: Colors.amber.withOpacity(0.8),
+                      color: isExpired ? Colors.red.shade300.withOpacity(0.9) : Colors.amber.withOpacity(0.8),
                       fontSize: 10,
                     ),
                   ),
@@ -2665,9 +2677,9 @@ class _WalletScreenState extends State<WalletScreen> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  '-$amount sats',
-                  style: const TextStyle(
-                    color: Colors.amber,
+                  isExpired ? '$amount sats (não enviado)' : '-$amount sats',
+                  style: TextStyle(
+                    color: isExpired ? Colors.red.shade300 : Colors.amber,
                     fontWeight: FontWeight.bold,
                     fontSize: 13,
                   ),

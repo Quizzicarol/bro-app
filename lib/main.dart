@@ -65,10 +65,6 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   broLog('[FCM-BG] Background message: ${message.data}');
 
-  // v390: Notification-type messages are now auto-shown by Android/iOS
-  // when the app is in background/killed. No need to show them manually.
-  // (notification field added to FCM payload in v410)
-
   if (message.data['type'] != 'brix_invoice_request') return;
 
   final requestId = message.data['request_id'];
@@ -118,6 +114,29 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     final brixService = BrixService();
     final ok = await brixService.submitInvoice(requestId, bolt11, pubkey);
     broLog('[FCM-BG] Invoice ${ok ? "submitted" : "failed"}: $amountSats sats');
+
+    // Show local notification on success so user knows payment is arriving
+    if (ok) {
+      try {
+        final plugin = FlutterLocalNotificationsPlugin();
+        const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+        const settings = InitializationSettings(android: androidSettings, iOS: DarwinInitializationSettings());
+        await plugin.initialize(settings);
+        await plugin.show(
+          DateTime.now().millisecondsSinceEpoch % 2147483647,
+          'Pagamento BRIX recebido!',
+          'Recebendo $amountSats sats na sua carteira',
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'brix_payments', 'BRIX Payments',
+              importance: Importance.high,
+              priority: Priority.high,
+            ),
+            iOS: DarwinNotificationDetails(),
+          ),
+        );
+      } catch (_) {}
+    }
   } catch (e) {
     broLog('[FCM-BG] Error generating invoice in background: $e');
     // Show notification so user knows to open the app

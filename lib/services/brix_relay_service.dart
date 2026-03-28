@@ -224,9 +224,12 @@ class BrixRelayService {
 
         broLog('💰 [BRIX-RELAY] Claiming offline payment: ${payment.amountSats} sats');
 
+        final offlineDesc = payment.senderNote != null && payment.senderNote!.isNotEmpty
+            ? 'BRIX: ${payment.senderNote}'
+            : 'BRIX Payment';
         final invoiceResult = await breezProvider.createInvoice(
           amountSats: payment.amountSats,
-          description: 'BRIX Payment (offline)',
+          description: offlineDesc,
         );
 
         if (invoiceResult != null && invoiceResult['success'] == true) {

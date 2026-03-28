@@ -2659,6 +2659,17 @@ class _WalletScreenState extends State<WalletScreen> {
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
+                  if (pending['comment'] != null && (pending['comment'] as String).isNotEmpty)
+                    Text(
+                      '💬 ${pending['comment']}',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.7),
+                        fontSize: 11,
+                        fontStyle: FontStyle.italic,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   Text(
                     isExpired
                         ? 'Expirado — destinatário não abriu o app. Refaça o envio.'
@@ -2803,7 +2814,7 @@ class _WalletScreenState extends State<WalletScreen> {
         iconColor = Colors.orange;
         icon = Icons.shopping_cart;
       }
-    } else if (description == 'BRIX Payment' || description.toLowerCase().contains('brix payment')) {
+    } else if (description == 'BRIX Payment' || description.toLowerCase().contains('brix payment') || description.startsWith('BRIX: ')) {
       // BRIX recebido
       label = 'pagamento brix';
       iconColor = Colors.amber;
@@ -2932,6 +2943,17 @@ class _WalletScreenState extends State<WalletScreen> {
                       fontSize: 14,
                     ),
                   ),
+                  if (description.startsWith('BRIX: ') && description.length > 6)
+                    Text(
+                      '💬 ${description.substring(6)}',
+                      style: TextStyle(
+                        color: Colors.amber.withOpacity(0.8),
+                        fontSize: 11,
+                        fontStyle: FontStyle.italic,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   if (date != null)
                     Text(
                       _formatDateFull(date),
@@ -2986,6 +3008,12 @@ class _WalletScreenState extends State<WalletScreen> {
     final description = payment['description']?.toString() ?? '';
     final paymentHash = payment['paymentHash']?.toString() ?? '';
     final paymentId = payment['id']?.toString() ?? '';
+    
+    // v411: Extract BRIX memo from description (format: "BRIX: <memo>")
+    String? brixMemo;
+    if (description.startsWith('BRIX: ') && description != 'BRIX: ') {
+      brixMemo = description.substring(6).trim();
+    }
     
     // Correlacionar com ordem se possível
     final orderProvider = context.read<OrderProvider>();
@@ -3191,6 +3219,50 @@ class _WalletScreenState extends State<WalletScreen> {
                 _buildDetailRow(AppLocalizations.of(context).t('wallet_status'), status.replaceAll('PaymentStatus.', '').toUpperCase()),
                 if (description.isNotEmpty)
                   _buildDetailRow(AppLocalizations.of(context).t('wallet_description'), description),
+                if (brixMemo != null && brixMemo!.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.chat_bubble_outline, color: Colors.amber, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                AppLocalizations.of(context).t('wallet_brix_message'),
+                                style: const TextStyle(
+                                  color: Colors.amber,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                brixMemo!,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
                 _buildDetailRow(AppLocalizations.of(context).t('wallet_network'), 'Lightning Network'),
                 
                 // NOVO: Mostrar dados da ordem correlacionada

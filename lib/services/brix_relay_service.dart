@@ -122,10 +122,22 @@ class BrixRelayService {
   }
 
   int _pollCount = 0;
+  bool _polling = false;
 
   Future<void> _poll() async {
     if (!_running || _context == null) return;
+    if (_polling) return; // Prevent concurrent polls
+    _polling = true;
     _pollCount++;
+
+    try {
+      await _pollInner();
+    } finally {
+      _polling = false;
+    }
+  }
+
+  Future<void> _pollInner() async {
 
     // Log every 20th poll (~30s) for visibility
     if (_pollCount % 20 == 1) {

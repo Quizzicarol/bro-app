@@ -1295,9 +1295,6 @@ class _BrixScreenState extends State<BrixScreen> {
                     const SizedBox(height: 8),
                   ],
 
-                  // Username
-                  _buildInfoRow(Icons.alternate_email, loc.t('brix_info_username'), _username ?? ''),
-
                   if (!_isEditing) ...[
                     const SizedBox(height: 14),
                     Container(

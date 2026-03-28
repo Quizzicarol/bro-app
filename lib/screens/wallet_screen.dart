@@ -36,6 +36,7 @@ class _WalletScreenState extends State<WalletScreen> {
   bool _isLoading = false;
   String? _error;
   double _btcPrice = 0;
+  bool _showAllTransactions = false;
 
   /// Total sats queued for outgoing BRIX payments (not yet deducted from wallet).
   int get _queuedSats => _pendingOutgoing.fold(0, (sum, p) => sum + ((p['amountSats'] as int?) ?? 0));
@@ -2554,7 +2555,27 @@ class _WalletScreenState extends State<WalletScreen> {
           )
         else
           ...(_pendingOutgoing.map((p) => _buildPendingOutgoingItem(p))),
-          ...(_payments.take(15).map((payment) => _buildPaymentItem(payment))),
+          ...(_showAllTransactions ? _payments : _payments.take(15)).map((payment) => _buildPaymentItem(payment)),
+          if (!_showAllTransactions && _payments.length > 15)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => setState(() => _showAllTransactions = true),
+                  icon: const Icon(Icons.expand_more, size: 18),
+                  label: Text('Mostrar todas (${_payments.length})'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFFF9800),
+                    side: const BorderSide(color: Color(0xFF444444)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ),
       ],
     );
   }

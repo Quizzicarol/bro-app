@@ -163,8 +163,8 @@ void main() async {
       badge: true,
       sound: true,
     );
-    // Force-refresh FCM token to clear stale tokens from old builds/projects
-    await messaging.deleteToken();
+    // Get FCM token (avoid deleteToken on iOS — it invalidates APNs mapping
+    // and can cause a gap where pushes are lost)
     fcmToken = await messaging.getToken();
     broLog('[FCM] Push token: $fcmToken');
   } catch (e) {

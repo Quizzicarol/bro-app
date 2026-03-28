@@ -7,6 +7,8 @@ import '../providers/order_provider.dart';
 import '../models/collateral_tier.dart';
 import '../services/bitcoin_price_service.dart';
 import '../services/local_collateral_service.dart';
+import '../services/nostr_service.dart';
+import '../services/brix_service.dart';
 import 'tier_deposit_screen.dart';
 
 /// Tela simplificada para selecionar tier de garantia
@@ -727,6 +729,16 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
     if (confirmed == true) {
       final collateralService = LocalCollateralService();
       await collateralService.withdrawAll();
+
+      // Notify BRIX server that this user is no longer a provider
+      final nostrService = NostrService();
+      final pubkey = nostrService.publicKey;
+      if (pubkey != null && pubkey.isNotEmpty) {
+        BrixService().setProviderStatus(false, pubkey).then((ok) {
+          broLog('[TIER] Provider status deactivated on BRIX server: $ok');
+        }).catchError((_) {});
+      }
+
       _loadData();
     }
   }

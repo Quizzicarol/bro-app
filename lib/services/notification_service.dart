@@ -379,6 +379,17 @@ class NotificationService {
     await _notifications.cancel(id);
   }
 
+  /// Shows a local notification when a new order is available (from FCM push)
+  Future<void> showNewOrderNotification(String billType) async {
+    await _showNotification(
+      id: DateTime.now().millisecondsSinceEpoch % 2147483647,
+      title: 'Nova Ordem Disponível!',
+      body: 'Nova ordem ($billType) aguardando provedor. Abra o app para aceitar.',
+      payload: 'new_order_push',
+      importance: Importance.high,
+    );
+  }
+
   /// Cancela todas as notificacoes
   Future<void> cancelAll() async {
     await _notifications.cancelAll();

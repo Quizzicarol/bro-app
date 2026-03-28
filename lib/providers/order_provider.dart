@@ -9,6 +9,7 @@ import '../services/nostr_service.dart';
 import '../services/nostr_order_service.dart';
 import '../services/local_collateral_service.dart';
 import '../services/platform_fee_service.dart';
+import '../services/brix_service.dart';
 import '../models/order.dart';
 import '../config.dart';
 
@@ -961,6 +962,15 @@ class OrderProvider with ChangeNotifier {
       // ðŸ�?�¥ PUBLICAR NO NOSTR IMEDIATAMENTE
       // A ordem j�?¡ est�?¡ com pagamento sendo processado
       _publishOrderToNostr(order);
+
+      // Notificar provedores ativos via FCM push (fire-and-forget)
+      if (_currentUserPubkey.isNotEmpty) {
+        BrixService().initCredentials().then((_) {
+          BrixService().notifyProviders(billType, _currentUserPubkey).then((ok) {
+            broLog('[ORDER] Provider notification ${ok ? "sent" : "failed"} for $billType');
+          });
+        });
+      }
       
       return order;
     } catch (e) {

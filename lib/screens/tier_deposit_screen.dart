@@ -12,6 +12,7 @@ import '../services/local_collateral_service.dart';
 import '../services/payment_monitor_service.dart';
 import '../services/secure_storage_service.dart';
 import '../services/nostr_service.dart';
+import '../services/brix_service.dart';
 import 'provider_orders_screen.dart';
 
 /// Tela para depositar garantia para um tier específico
@@ -278,6 +279,15 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
     // ✅ IMPORTANTE: Marcar como modo provedor para persistir entre sessões COM PUBKEY
     await SecureStorageService.setProviderMode(true, userPubkey: pubkey);
     broLog('✅ Provider mode ativado e persistido para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
+
+    // ✅ Registrar como provedor no servidor BRIX para receber push de novas ordens
+    if (pubkey != null && pubkey.isNotEmpty) {
+      BrixService().initCredentials().then((_) {
+        BrixService().setProviderStatus(true, pubkey).then((ok) {
+          broLog('🔔 [PROVIDER] Server provider status set: $ok');
+        });
+      });
+    }
 
     // ✅ IMPORTANTE: Atualizar o CollateralProvider para refletir a mudança
     if (mounted) {

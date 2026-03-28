@@ -52,6 +52,7 @@ import 'services/background_notification_service.dart';
 import 'services/nostr_order_service.dart';
 import 'services/brix_service.dart';
 import 'services/brix_relay_service.dart';
+import 'services/secure_storage_service.dart';
 import 'config.dart';
 import 'config/breez_config.dart';
 import 'extensions/breez_extensions.dart';
@@ -64,6 +65,37 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
   broLog('[FCM-BG] Background message: ${message.data}');
+
+  // Handle new_order push — just show local notification
+  if (message.data['type'] == 'new_order') {
+    try {
+      final billType = message.data['bill_type'] ?? 'pix';
+      final plugin = FlutterLocalNotificationsPlugin();
+      const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const settings = InitializationSettings(android: androidSettings, iOS: DarwinInitializationSettings());
+      await plugin.initialize(settings);
+      await plugin.show(
+        DateTime.now().millisecondsSinceEpoch % 2147483647,
+        'Nova Ordem Disponível!',
+        'Nova ordem ($billType) aguardando provedor. Abra o app para aceitar.',
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'bro_app_channel', 'Bro App',
+            importance: Importance.high,
+            priority: Priority.high,
+            icon: '@mipmap/ic_launcher',
+          ),
+          iOS: DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
+          ),
+        ),
+        payload: 'new_order_push',
+      );
+    } catch (_) {}
+    return;
+  }
 
   if (message.data['type'] != 'brix_invoice_request') return;
 
@@ -243,6 +275,9 @@ void main() async {
         broLog('[FCM] Foreground message: ${message.data}');
         if (message.data['type'] == 'brix_invoice_request') {
           BrixRelayService().triggerPoll();
+        } else if (message.data['type'] == 'new_order') {
+          final billType = message.data['bill_type'] ?? 'pix';
+          NotificationService().showNewOrderNotification(billType);
         }
       });
 
@@ -252,9 +287,21 @@ void main() async {
         if (message.data['type'] == 'brix_invoice_request') {
           BrixRelayService().triggerPoll();
         }
+        // new_order: app is already opening, user will see orders naturally
       });
     }
     
+    // Register provider status on BRIX server if user has active tier
+    if (userPubkey != null) {
+      SecureStorageService.isProviderMode(userPubkey: userPubkey).then((isProvider) {
+        if (isProvider) {
+          BrixService().setProviderStatus(true, userPubkey!).then((ok) {
+            broLog('[STARTUP] Provider status registered on BRIX server: $ok');
+          }).catchError((_) {});
+        }
+      }).catchError((_) {});
+    }
+
     // v262: Iniciar background notifications (polling Nostr a cada 15min)
     await initBackgroundNotifications();
     broLog('🔔 Background notifications ativado');

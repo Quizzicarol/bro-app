@@ -183,6 +183,11 @@ class BrixRelayService {
       final breezProvider = _context!.read<BreezProvider>();
 
       for (final request in requests) {
+        // Reject absurd amounts (max 1M sats = ~$350 USD)
+        if (request.amountSats <= 0 || request.amountSats > 1000000) {
+          broLog('⚠️ [BRIX-RELAY] Skipping invalid amount: ${request.amountSats} sats (request=${request.id})');
+          continue;
+        }
         broLog('⚡ [BRIX-RELAY] Generating invoice: ${request.amountSats} sats (request=${request.id})${request.comment != null ? ' memo: ${request.comment}' : ''}');
 
         // Generate invoice for FULL amount (LNURL wallets verify amount match)
@@ -231,6 +236,11 @@ class BrixRelayService {
       final pendingPayments = await _brixService.getPendingPayments(_pubkey!);
       for (final payment in pendingPayments) {
         if (_claimedPayments.contains(payment.id)) continue;
+        // Reject absurd amounts
+        if (payment.amountSats <= 0 || payment.amountSats > 1000000) {
+          broLog('⚠️ [BRIX-RELAY] Skipping invalid claim amount: ${payment.amountSats} sats');
+          continue;
+        }
         _claimedPayments.add(payment.id);
 
         broLog('💰 [BRIX-RELAY] Claiming offline payment: ${payment.amountSats} sats');

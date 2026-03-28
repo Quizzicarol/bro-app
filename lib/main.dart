@@ -104,7 +104,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   if (requestId == null || amountStr == null) return;
 
   final amountSats = int.tryParse(amountStr);
-  if (amountSats == null || amountSats <= 0) return;
+  if (amountSats == null || amountSats <= 0 || amountSats > 1000000) return;
 
   spark.BreezSdk? sdk;
   try {

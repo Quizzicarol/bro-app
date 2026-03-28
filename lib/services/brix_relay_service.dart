@@ -172,12 +172,15 @@ class BrixRelayService {
       final breezProvider = _context!.read<BreezProvider>();
 
       for (final request in requests) {
-        broLog('⚡ [BRIX-RELAY] Generating invoice: ${request.amountSats} sats (request=${request.id})');
+        broLog('⚡ [BRIX-RELAY] Generating invoice: ${request.amountSats} sats (request=${request.id})${request.comment != null ? ' memo: ${request.comment}' : ''}');
 
         // Generate invoice for FULL amount (LNURL wallets verify amount match)
+        final description = request.comment != null && request.comment!.isNotEmpty
+            ? 'BRIX: ${request.comment}'
+            : 'BRIX Payment';
         final invoiceResult = await breezProvider.createInvoice(
           amountSats: request.amountSats,
-          description: 'BRIX Payment',
+          description: description,
         );
 
         if (invoiceResult == null) {
@@ -317,6 +320,7 @@ class BrixRelayService {
     required String recipient,
     required int amountSats,
     String? originalDest,
+    String? comment,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final list = _loadQueue(prefs);
@@ -336,6 +340,7 @@ class BrixRelayService {
       'recipient': recipient,
       'originalDest': originalDest ?? recipient,
       'amountSats': amountSats,
+      'comment': comment,
       'createdAt': DateTime.now().toIso8601String(),
       'retryCount': 0,
       'lastRetry': null,
@@ -407,6 +412,7 @@ class BrixRelayService {
 
         final recipient = payment['recipient'] as String;
         final amountSats = payment['amountSats'] as int;
+        final paymentComment = payment['comment'] as String?;
 
         broLog('🔄 [BRIX-QUEUE] Retrying: $amountSats sats → $recipient (attempt ${payment['retryCount'] + 1})');
         payment['lastRetry'] = now.toIso8601String();
@@ -418,6 +424,7 @@ class BrixRelayService {
           final invoiceResult = await lnService.getInvoice(
             lnAddress: recipient,
             amountSats: amountSats,
+            comment: paymentComment,
             senderPubkey: _pubkey,
           );
 

@@ -1695,19 +1695,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     final billCode = fullOrder?.billCode ?? _orderDetails?['billCode'] ?? '';
     final providerFeeBrl = fullOrder?.providerFee ?? 
         ((_orderDetails?['providerFee'] as num?)?.toDouble() ?? 0.0);
-    final platformFeeBrl = fullOrder?.platformFee ?? 
-        ((_orderDetails?['platformFee'] as num?)?.toDouble() ?? 0.0);
-    final totalBrl = fullOrder?.total ?? 
-        ((_orderDetails?['total'] as num?)?.toDouble() ?? 
-         (widget.amountBrl + providerFeeBrl + platformFeeBrl));
     final btcPrice = fullOrder?.btcPrice ?? 
         ((_orderDetails?['btcPrice'] as num?)?.toDouble() ?? 0.0);
     
-    // Converter fees para sats
+    // Converter para sats (taxa plataforma 2% embutida no spread)
     final providerFeeSats = btcPrice > 0 
         ? (providerFeeBrl / btcPrice * 100000000).round() : 0;
-    final totalSats = btcPrice > 0 
-        ? (totalBrl / btcPrice * 100000000).round() : widget.amountSats;
+    final totalSats = widget.amountSats + providerFeeSats;
     
     return Card(
       color: const Color(0xFF1A1A1A),
@@ -1737,29 +1731,29 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             ),
             if (billCode.isNotEmpty) ...[
               const SizedBox(height: 12),
-              _buildDetailRow(l.t('order_detail_code'), billCode),
+              _buildDetailRowWrap(l.t('order_detail_code'), billCode),
             ],
             const SizedBox(height: 16),
             Divider(height: 1, color: Colors.grey.withOpacity(0.15)),
             const SizedBox(height: 16),
-            // Valor da conta (BRL + sats)
+            // Valor da conta em sats
             _buildDetailRow(
               l.t('order_detail_bill_value'),
-              'R\$ ${widget.amountBrl.toStringAsFixed(2)}  (~${widget.amountSats} sats)',
+              '${widget.amountSats} sats',
             ),
-            // Taxa do provedor
-            if (providerFeeBrl > 0) ...[
+            // Taxa do provedor Bro
+            if (providerFeeSats > 0) ...[
               const SizedBox(height: 12),
               _buildDetailRow(
                 l.t('order_detail_provider_fee'),
-                'R\$ ${providerFeeBrl.toStringAsFixed(2)}  (~$providerFeeSats sats)',
+                '$providerFeeSats sats',
               ),
             ],
-            // Total pago
+            // Total pago em sats
             const SizedBox(height: 12),
             _buildDetailRow(
               l.t('order_detail_total_paid'),
-              'R\$ ${totalBrl.toStringAsFixed(2)}  (~$totalSats sats)',
+              '$totalSats sats',
             ),
             if (_orderDetails?['provider_id'] != null || fullOrder?.providerId != null) ...[
               const SizedBox(height: 16),

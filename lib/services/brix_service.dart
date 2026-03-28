@@ -297,6 +297,7 @@ class BrixService {
         id: r['id'] as String,
         amountSats: r['amount_sats'] as int,
         createdAt: r['created_at'] as String,
+        comment: r['comment'] as String?,
       )).toList();
     } on DioException catch (e) {
       if (e.response?.statusCode == 403) {
@@ -494,6 +495,7 @@ class BrixInvoiceRequest {
   final String id;
   final int amountSats;
   final String createdAt;
+  final String? comment;
 
-  BrixInvoiceRequest({required this.id, required this.amountSats, required this.createdAt});
+  BrixInvoiceRequest({required this.id, required this.amountSats, required this.createdAt, this.comment});
 }

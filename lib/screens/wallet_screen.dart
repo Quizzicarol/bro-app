@@ -641,6 +641,7 @@ class _WalletScreenState extends State<WalletScreen> {
   void _showSendDialog() async {
     final invoiceController = TextEditingController();
     final amountController = TextEditingController();
+    final memoController = TextEditingController();
     bool isSending = false;
     bool showAmountField = false;
     String? errorMessage;
@@ -975,6 +976,38 @@ class _WalletScreenState extends State<WalletScreen> {
                       );
                     }),
                 ],
+
+                // Campo de mensagem/memo (para Lightning Address e BRIX)
+                if (showAmountField) ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: memoController,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    maxLength: 140,
+                    maxLines: 2,
+                    enabled: !isSending,
+                    decoration: InputDecoration(
+                      labelText: 'Mensagem (opcional)',
+                      labelStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
+                      hintText: 'Ex: Pagamento do jantar',
+                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                      prefixIcon: Icon(Icons.message_outlined, color: Colors.white.withOpacity(0.5)),
+                      counterStyle: TextStyle(color: Colors.white.withOpacity(0.4)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF333333)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF333333)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFFF9800)),
+                      ),
+                    ),
+                  ),
+                ],
                 
                 // Mensagem de erro
                 if (errorMessage != null) ...[
@@ -1152,7 +1185,8 @@ class _WalletScreenState extends State<WalletScreen> {
                         });
                         
                         broLog('💸 Enviando $amountSats sats para $destination...');
-                        
+
+                        final memoText = memoController.text.trim();
                         try {
                           final breezProvider = context.read<BreezProvider>();
                           final lnAddressService = LnAddressService();
@@ -1190,6 +1224,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           final invoiceResult = await lnAddressService.getInvoice(
                             lnAddress: resolvedDest,
                             amountSats: amountSats,
+                            comment: memoText.isNotEmpty ? memoText : null,
                             senderPubkey: senderPubkey,
                           );
                           
@@ -1201,6 +1236,7 @@ class _WalletScreenState extends State<WalletScreen> {
                                 recipient: resolvedDest,
                                 amountSats: amountSats,
                                 originalDest: destination,
+                                comment: memoText.isNotEmpty ? memoText : null,
                               );
                               if (context.mounted) {
                                 Navigator.pop(context);
@@ -1248,6 +1284,7 @@ class _WalletScreenState extends State<WalletScreen> {
                                 recipient: resolvedDest,
                                 amountSats: amountSats,
                                 originalDest: destination,
+                                comment: memoText.isNotEmpty ? memoText : null,
                               );
                               if (context.mounted) {
                                 Navigator.pop(context);
@@ -1278,6 +1315,7 @@ class _WalletScreenState extends State<WalletScreen> {
                               recipient: destination,
                               amountSats: amountSats!,
                               originalDest: destination,
+                              comment: memoText.isNotEmpty ? memoText : null,
                             );
                             if (context.mounted) {
                               Navigator.pop(context);

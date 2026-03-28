@@ -8,9 +8,8 @@ class CollateralTier {
   final String description;
   final List<String> benefits;
   
-  // TEMPORÁRIO: Limite máximo de tier durante fase de testes externos
-  // Remover/aumentar quando liberar para produção completa
-  static const double maxTierLimitBrl = 200.0;
+  // Todos os tiers liberados para produção
+  static const double maxTierLimitBrl = double.infinity;
 
   CollateralTier({
     required this.id,

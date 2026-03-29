@@ -1296,68 +1296,23 @@ class NostrOrderService {
 
       final keychain = Keychain(providerPrivateKey);
       
-      // Criptografar comprovante para: usuário, admin E provedor (self)
-      String? encryptedProofImage;
-      String? encryptedProofImageAdmin;
-      String? encryptedProofImageProvider;
-      try {
-        if (order.userPubkey != null && order.userPubkey!.isNotEmpty) {
-          encryptedProofImage = _nip44.encryptBetween(
-            proofImageBase64,
-            keychain.private,
-            order.userPubkey!,
-          );
-          broLog('🔐 proofImage criptografado com NIP-44 para usuário (${encryptedProofImage.length} chars)');
-        }
-        // Criptografar para o admin/mediador (para disputas)
-        if (AppConfig.adminPubkey.isNotEmpty) {
-          encryptedProofImageAdmin = _nip44.encryptBetween(
-            proofImageBase64,
-            keychain.private,
-            AppConfig.adminPubkey,
-          );
-          broLog('🔐 proofImage criptografado com NIP-44 para admin (${encryptedProofImageAdmin.length} chars)');
-        }
-        // Self-encrypt para que o provedor possa rever seu próprio comprovante
-        encryptedProofImageProvider = _nip44.encryptToSelf(
-          proofImageBase64,
-          keychain.private,
-          keychain.public,
-        );
-        broLog('🔐 proofImage criptografado com NIP-44 para provedor/self (${encryptedProofImageProvider.length} chars)');
-      } catch (e) {
-        broLog('❌ Falha ao criptografar proofImage: $e — NÃO enviar em plaintext (dados sensíveis)');
-        // DO NOT fallback to plaintext — proof images contain bank screenshots with CPF/sensitive data
-        return false;
-      }
+      // v424: Encrypt proof with BRO1 symmetric (single copy, smaller event).
+      // NIP-44 multi-recipient was generating events too large for relays
+      // (3 copies of ~500KB image = ~1.5MB event → rejected).
+      final encryptedProof = _billCodeCrypto.isEnabled
+          ? _billCodeCrypto.encrypt(proofImageBase64)
+          : proofImageBase64;
       
       final contentMap = {
         'type': 'bro_complete',
         'orderId': order.id,
         'orderEventId': order.eventId,
         'providerId': keychain.public,
-        'recipientPubkey': order.userPubkey, // Para quem é destinado
+        'recipientPubkey': order.userPubkey,
         'completedAt': DateTime.now().toIso8601String(),
+        'proofImage': encryptedProof,
+        if (_billCodeCrypto.isEnabled) 'encryption': 'bro1',
       };
-      
-      // Only send encrypted proof images — never plaintext
-      if (encryptedProofImage != null) {
-        contentMap['proofImage_nip44'] = encryptedProofImage;
-        contentMap['proofImage'] = '[encrypted:nip44v2]'; // Marcador para clientes antigos
-        contentMap['encryption'] = 'nip44v2';
-        // Cópia criptografada para admin (usado em disputas)
-        if (encryptedProofImageAdmin != null) {
-          contentMap['proofImage_nip44_admin'] = encryptedProofImageAdmin;
-        }
-        // Cópia criptografada para o próprio provedor (para rever o comprovante)
-        if (encryptedProofImageProvider != null) {
-          contentMap['proofImage_nip44_provider'] = encryptedProofImageProvider;
-        }
-      } else {
-        // Encryption is mandatory — should not reach here (caught above)
-        broLog('❌ proofImage encryption produced null — aborting');
-        return false;
-      }
       
       // Incluir invoice do provedor se fornecido
       if (providerInvoice != null && providerInvoice.isNotEmpty) {
@@ -2195,6 +2150,11 @@ class NostrOrderService {
           }
         }
       }
+    }
+    
+    // BRO1: Descriptografar proofImage com chave simétrica
+    if (proofImage != null && BillCodeCryptoService.isEncrypted(proofImage)) {
+      proofImage = _billCodeCrypto.decrypt(proofImage);
     }
     
     // Se proofImage é o marcador de criptografia, não usar como imagem
@@ -4134,10 +4094,22 @@ class NostrOrderService {
                 final proofImageNip44 = content['proofImage_nip44'] as String?;
                 
                 if (proofImage != null && proofImage.isNotEmpty && proofImage != '[encrypted:nip44v2]') {
-                  // Plaintext - perfeito
-                  result['proofImage'] = proofImage;
-                  result['encrypted'] = false;
-                  broLog('✅ Comprovante plaintext encontrado para ${orderId.substring(0, 8)}');
+                  // Check if it's BRO1 encrypted
+                  if (BillCodeCryptoService.isEncrypted(proofImage)) {
+                    final decrypted = _billCodeCrypto.decrypt(proofImage);
+                    if (decrypted.isNotEmpty) {
+                      result['proofImage'] = decrypted;
+                      result['encrypted'] = false;
+                      broLog('✅ Comprovante BRO1 descriptografado para ${orderId.substring(0, 8)}');
+                    } else {
+                      result['encrypted'] = true;
+                    }
+                  } else {
+                    // Plaintext legacy
+                    result['proofImage'] = proofImage;
+                    result['encrypted'] = false;
+                    broLog('✅ Comprovante plaintext encontrado para ${orderId.substring(0, 8)}');
+                  }
                 } else if (privateKey != null) {
                   // Tentar descriptografar com a chave privada fornecida
                   final proofImageNip44Admin = content['proofImage_nip44_admin'] as String?;

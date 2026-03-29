@@ -964,9 +964,10 @@ class OrderProvider with ChangeNotifier {
       _publishOrderToNostr(order);
 
       // Notificar provedores ativos via FCM push (fire-and-forget)
-      if (_currentUserPubkey.isNotEmpty) {
+      final pubkey = _currentUserPubkey;
+      if (pubkey != null && pubkey.isNotEmpty) {
         BrixService().initCredentials().then((_) {
-          BrixService().notifyProviders(billType, _currentUserPubkey).then((ok) {
+          BrixService().notifyProviders(billType, pubkey).then((ok) {
             broLog('[ORDER] Provider notification ${ok ? "sent" : "failed"} for $billType');
           });
         });

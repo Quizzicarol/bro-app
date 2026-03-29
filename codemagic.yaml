@@ -65,6 +65,31 @@ workflows:
 
       - name: Build iOS
         script: flutter build ipa --release --dart-define-from-file=env.json --export-options-plist=/Users/builder/export_options.plist
+
+      - name: Publish APK to GitHub Releases (Obtainium)
+        script: |
+          #!/usr/bin/env zsh
+          if [ -z "$GITHUB_TOKEN" ]; then
+            echo "GITHUB_TOKEN not set, skipping GitHub release"
+            exit 0
+          fi
+          VERSION=$(grep "^version:" pubspec.yaml | sed 's/version: //')
+          TAG="v${VERSION}"
+          APK_PATH=$(find build -name "*.apk" -path "*release*" | head -1)
+          if [ -z "$APK_PATH" ]; then
+            echo "No APK found, skipping GitHub release"
+            exit 0
+          fi
+          cp "$APK_PATH" "bro-${TAG}.apk"
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" \
+            --title "Bro ${TAG}" \
+            --notes "## Bro ${TAG}
+
+          📱 Release automática via Codemagic.
+          Instale via Obtainium apontando para este repositório." \
+            --latest \
+            "bro-${TAG}.apk"
         
     artifacts:
       - build/**/outputs/**/*.apk

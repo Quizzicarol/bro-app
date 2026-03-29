@@ -46,19 +46,7 @@ async function sendPaymentToProvider(providerId, amount) {
   });
 }
 
-/**
- * Verificar se invoice foi pago
- * @param {string} invoiceId - ID do invoice
- */
-async function checkInvoicePayment(invoiceId) {
-  // TODO: Em produção, consultar status real do invoice via Breez SDK
-  
-  // Simulação (50% de chance de estar pago para testes)
-  return Math.random() > 0.5;
-}
-
 module.exports = {
   refundOrder,
-  sendPaymentToProvider,
-  checkInvoicePayment
+  sendPaymentToProvider
 };

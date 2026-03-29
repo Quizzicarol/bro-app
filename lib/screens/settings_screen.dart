@@ -338,9 +338,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _copySeed() {
     if (_mnemonic != null) {
       Clipboard.setData(ClipboardData(text: _mnemonic!));
+      // SEGURANÇA: limpar clipboard após 2 minutos
+      final seedText = _mnemonic!;
+      Future.delayed(const Duration(minutes: 2), () async {
+        final current = await Clipboard.getData('text/plain');
+        if (current?.text == seedText) {
+          await Clipboard.setData(const ClipboardData(text: ''));
+        }
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(AppLocalizations.of(context).t('settings_seed_copied')),
+          content: Text('${AppLocalizations.of(context).t('settings_seed_copied')} (clipboard limpo em 2min)'),
           backgroundColor: Colors.green,
           duration: const Duration(seconds: 2),
         ),

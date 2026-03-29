@@ -32,9 +32,16 @@ class FirstTimeSeedDialog extends StatelessWidget {
 
   void _copySeed(BuildContext context) {
     Clipboard.setData(ClipboardData(text: mnemonic));
+    // SEGURANÇA: limpar clipboard após 2 minutos
+    Future.delayed(const Duration(minutes: 2), () async {
+      final current = await Clipboard.getData('text/plain');
+      if (current?.text == mnemonic) {
+        await Clipboard.setData(const ClipboardData(text: ''));
+      }
+    });
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Seed copiada para a área de transferência!'),
+        content: Text('Seed copiada! Clipboard será limpo em 2min.'),
         backgroundColor: Colors.green,
         duration: Duration(seconds: 2),
       ),

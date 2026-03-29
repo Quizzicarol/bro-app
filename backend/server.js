@@ -130,8 +130,7 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
   console.error('Erro:', err);
   res.status(500).json({ 
-    error: 'Erro interno do servidor', 
-    message: err.message 
+    error: 'Erro interno do servidor'
   });
 });
 

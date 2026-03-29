@@ -8,6 +8,7 @@ import 'package:bro_app/services/log_utils.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../config.dart';
 import '../models/order.dart';
+import 'billcode_crypto_service.dart';
 import 'nip04_service.dart';
 import 'nip44_service.dart';
 
@@ -25,6 +26,9 @@ class NostrOrderService {
 
   // Serviço de criptografia NIP-44
   final _nip44 = Nip44Service();
+
+  // Serviço de criptografia simétrica para billCode
+  final _billCodeCrypto = BillCodeCryptoService();
 
   // Chave privada para descriptografia (configurada pelo order_provider)
   String? _decryptionKey;
@@ -153,40 +157,21 @@ class NostrOrderService {
   static const String broAppTag = 'bro-app';
 
   /// Retorna billCode de um evento Nostr
-  /// Tenta: plain text → NIP-44 encrypted para provedor → NIP-44 self-encrypted
+  /// Tenta: BRO1 encrypted → plain text legacy
   String _getBillCode(Map<String, dynamic> content) {
-    // 1. Legacy: plain text (ordens antigas)
-    final plain = content['billCode']?.toString() ?? '';
-    if (plain.isNotEmpty) return plain;
+    final raw = content['billCode']?.toString() ?? '';
+    if (raw.isEmpty) return '';
     
-    // 2. NIP-44 encrypted para o provedor aceito
-    final encryptedForProvider = content['billCode_nip44']?.toString();
-    if (encryptedForProvider != null && encryptedForProvider.isNotEmpty && _decryptionKey != null) {
-      final senderPubkey = content['userPubkey']?.toString() ?? '';
-      if (senderPubkey.isNotEmpty) {
-        try {
-          return _nip44.decryptBetween(encryptedForProvider, _decryptionKey!, senderPubkey);
-        } catch (e) {
-          broLog('⚠️ _getBillCode: falha ao descriptografar billCode_nip44: $e');
-        }
-      }
+    // Se é BRO1 encrypted, decriptar
+    if (BillCodeCryptoService.isEncrypted(raw)) {
+      final decrypted = _billCodeCrypto.decrypt(raw);
+      if (decrypted.isNotEmpty) return decrypted;
+      broLog('⚠️ _getBillCode: falha ao decriptar BRO1');
+      return '';
     }
     
-    // 3. Self-encrypted (dono da ordem pode recuperar)
-    final selfEnc = content['billCode_self']?.toString();
-    if (selfEnc != null && selfEnc.isNotEmpty && _decryptionKey != null) {
-      try {
-        final myPubkey = Keychain(_decryptionKey!).public;
-        // Só funciona se EU sou o dono da ordem
-        if (content['userPubkey'] == myPubkey) {
-          return _nip44.decryptFromSelf(selfEnc, _decryptionKey!, myPubkey);
-        }
-      } catch (e) {
-        broLog('⚠️ _getBillCode: falha ao descriptografar billCode_self: $e');
-      }
-    }
-    
-    return '';
+    // Plain text (ordens legacy)
+    return raw;
   }
 
   /// Publica uma ordem nos relays (raw)
@@ -205,13 +190,18 @@ class NostrOrderService {
     try {
       final keychain = Keychain(privateKey);
       
+      // Encriptar billCode se a chave estiver configurada, senão plaintext
+      final encryptedBillCode = _billCodeCrypto.isEnabled
+          ? _billCodeCrypto.encrypt(billCode)
+          : billCode;
+      
       final contentMap = {
         'type': 'bro_order',
         'version': '1.0',
         'orderId': orderId,
         'userPubkey': keychain.public,
         'billType': billType,
-        'billCode': billCode,
+        'billCode': encryptedBillCode,
         'amount': amount,
         'btcAmount': btcAmount,
         'btcPrice': btcPrice,
@@ -1157,13 +1147,18 @@ class NostrOrderService {
 
       final resolvedProviderId = providerId ?? order.providerId;
       
+      // Encriptar billCode se a chave estiver configurada
+      final encryptedBillCode = _billCodeCrypto.isEnabled && order.billCode.isNotEmpty
+          ? _billCodeCrypto.encrypt(order.billCode)
+          : order.billCode;
+      
       final contentMap = <String, dynamic>{
         'type': 'bro_order',
         'version': '1.0',
         'orderId': order.id,
         'userPubkey': keychain.public,
         'billType': order.billType,
-        'billCode': order.billCode,
+        'billCode': encryptedBillCode,
         'amount': order.amount,
         'btcAmount': order.btcAmount,
         'btcPrice': order.btcPrice,

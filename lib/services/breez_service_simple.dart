@@ -117,7 +117,7 @@ class BreezServiceSimple {
 
   // Helpers
   String _generateHash() {
-    final random = Random();
+    final random = Random.secure();
     return List.generate(64, (_) => random.nextInt(16).toRadixString(16)).join();
   }
 

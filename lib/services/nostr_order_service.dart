@@ -152,9 +152,41 @@ class NostrOrderService {
   static const String broTag = 'bro-order';
   static const String broAppTag = 'bro-app';
 
-  /// Retorna billCode de um evento Nostr (plain text)
+  /// Retorna billCode de um evento Nostr
+  /// Tenta: plain text → NIP-44 encrypted para provedor → NIP-44 self-encrypted
   String _getBillCode(Map<String, dynamic> content) {
-    return content['billCode']?.toString() ?? '';
+    // 1. Legacy: plain text (ordens antigas)
+    final plain = content['billCode']?.toString() ?? '';
+    if (plain.isNotEmpty) return plain;
+    
+    // 2. NIP-44 encrypted para o provedor aceito
+    final encryptedForProvider = content['billCode_nip44']?.toString();
+    if (encryptedForProvider != null && encryptedForProvider.isNotEmpty && _decryptionKey != null) {
+      final senderPubkey = content['userPubkey']?.toString() ?? '';
+      if (senderPubkey.isNotEmpty) {
+        try {
+          return _nip44.decryptBetween(encryptedForProvider, _decryptionKey!, senderPubkey);
+        } catch (e) {
+          broLog('⚠️ _getBillCode: falha ao descriptografar billCode_nip44: $e');
+        }
+      }
+    }
+    
+    // 3. Self-encrypted (dono da ordem pode recuperar)
+    final selfEnc = content['billCode_self']?.toString();
+    if (selfEnc != null && selfEnc.isNotEmpty && _decryptionKey != null) {
+      try {
+        final myPubkey = Keychain(_decryptionKey!).public;
+        // Só funciona se EU sou o dono da ordem
+        if (content['userPubkey'] == myPubkey) {
+          return _nip44.decryptFromSelf(selfEnc, _decryptionKey!, myPubkey);
+        }
+      } catch (e) {
+        broLog('⚠️ _getBillCode: falha ao descriptografar billCode_self: $e');
+      }
+    }
+    
+    return '';
   }
 
   /// Publica uma ordem nos relays (raw)
@@ -173,13 +205,23 @@ class NostrOrderService {
     try {
       final keychain = Keychain(privateKey);
       
-      final content = jsonEncode({
+      // Encrypt billCode for self-recovery only — NOT published in plaintext
+      String billCodeSelf = '';
+      try {
+        billCodeSelf = _nip44.encryptToSelf(billCode, keychain.private, keychain.public);
+      } catch (e) {
+        broLog('⚠️ _publishOrderRaw: falha ao encriptar billCode para self: $e');
+        // Continua sem self-encryption — o billCode local continua acessível
+      }
+      
+      final contentMap = {
         'type': 'bro_order',
-        'version': '1.0',
+        'version': '1.1',
         'orderId': orderId,
         'userPubkey': keychain.public,
         'billType': billType,
-        'billCode': billCode,
+        'billCode': '', // NÃO publicar em plaintext — provedor recebe após aceitar
+        'hasBillCode': true,
         'amount': amount,
         'btcAmount': btcAmount,
         'btcPrice': btcPrice,
@@ -188,7 +230,12 @@ class NostrOrderService {
         'total': total,
         'status': 'pending',
         'createdAt': DateTime.now().toIso8601String(),
-      });
+      };
+      if (billCodeSelf.isNotEmpty) {
+        contentMap['billCode_self'] = billCodeSelf;
+      }
+      
+      final content = jsonEncode(contentMap);
 
       // Criar evento Nostr
       final event = Event.from(
@@ -1121,13 +1168,17 @@ class NostrOrderService {
         return false;
       }
 
-      final content = jsonEncode({
+      final resolvedProviderId = providerId ?? order.providerId;
+      
+      // Build content map with encrypted billCode
+      final contentMap = <String, dynamic>{
         'type': 'bro_order',
-        'version': '1.0',
+        'version': '1.1',
         'orderId': order.id,
         'userPubkey': keychain.public,
         'billType': order.billType,
-        'billCode': order.billCode,
+        'billCode': '', // Nunca publicar em plaintext
+        'hasBillCode': order.billCode.isNotEmpty,
         'amount': order.amount,
         'btcAmount': order.btcAmount,
         'btcPrice': order.btcPrice,
@@ -1135,10 +1186,34 @@ class NostrOrderService {
         'platformFee': order.platformFee,
         'total': order.total,
         'status': newStatus,
-        'providerId': providerId ?? order.providerId,
+        'providerId': resolvedProviderId,
         'createdAt': order.createdAt.toIso8601String(),
         'updatedAt': DateTime.now().toIso8601String(),
-      });
+      };
+      
+      // Self-encrypt billCode para recuperação pelo dono
+      if (order.billCode.isNotEmpty) {
+        try {
+          contentMap['billCode_self'] = _nip44.encryptToSelf(order.billCode, keychain.private, keychain.public);
+        } catch (e) {
+          broLog('⚠️ republish: falha ao encriptar billCode_self: $e');
+        }
+      }
+      
+      // Se a ordem foi aceita e temos providerId, encriptar billCode para o provedor
+      if (order.billCode.isNotEmpty && resolvedProviderId != null && resolvedProviderId.isNotEmpty) {
+        final activeStatuses = ['accepted', 'awaiting_confirmation', 'payment_received', 'completed'];
+        if (activeStatuses.contains(newStatus)) {
+          try {
+            contentMap['billCode_nip44'] = _nip44.encryptBetween(order.billCode, keychain.private, resolvedProviderId);
+            broLog('🔐 billCode encriptado para provedor ${resolvedProviderId.substring(0, 8)}');
+          } catch (e) {
+            broLog('⚠️ republish: falha ao encriptar billCode para provedor: $e');
+          }
+        }
+      }
+      
+      final content = jsonEncode(contentMap);
 
       final event = Event.from(
         kind: kindBroOrder,

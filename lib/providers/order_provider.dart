@@ -1560,8 +1560,8 @@ class OrderProvider with ChangeNotifier {
 
   /// v388: One-time migration � republish active orders with plain text billCode.
   /// Old orders had encrypted billCode in Nostr. Now we publish plain text.
-  /// Buyer has plain text locally, so republish pushes it to relays.
-  Future<void> _migrateBillCodeToPlainText() async {
+  /// v419: Re-publish active orders with encrypted billCode (NIP-44).
+  Future<void> _migrateBillCodeToEncrypted() async {
     if (_didMigratePlainTextBillCode) return;
     _didMigratePlainTextBillCode = true;
     
@@ -3253,8 +3253,8 @@ class OrderProvider with ChangeNotifier {
         _immediateNotify(); // v269: notificar UI imediatamente quando status muda
       }
       
-      // v388: One-time migration of old encrypted billCode to plain text
-      await _migrateBillCodeToPlainText();
+      // v419: Re-publish active orders with encrypted billCode
+      await _migrateBillCodeToEncrypted();
       
       // AUTO-LIQUIDA��O v234: Tamb�m verificar no sync do usu�rio
       await _checkAutoLiquidation();

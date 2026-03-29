@@ -634,7 +634,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                         (order['metadata']?['pubkey']) ?? 
                         '';
     
-    broLog('📋 billCode encontrado: ${billCode.isNotEmpty ? billCode.substring(0, min(20, billCode.length)) + "..." : "VAZIO"}');
+    broLog('📋 billCode presente: ${billCode.isNotEmpty}');
     broLog('👤 userPubkey encontrado: ${userPubkey.isNotEmpty ? userPubkey.substring(0, min(16, userPubkey.length)) + "..." : "VAZIO"}');
     
     showDialog(
@@ -653,8 +653,8 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
               _buildDetailRow(l.t('prov_dash_status_label'), status),
               _buildDetailRow(l.t('prov_dash_btc_label'), '${order['btcAmount'] ?? 0} BTC'),
               
-              // Código da conta - CRÍTICO para o provedor
-              if (billCode.isNotEmpty) ...[  
+              // Código da conta - só mostra após aceitação (billCode é criptografado no relay)
+              if (billCode.isNotEmpty && const ['accepted', 'awaiting_confirmation', 'payment_received', 'completed'].contains(status)) ...[  
                 const SizedBox(height: 16),
                 Text(
                   l.t('prov_dash_bill_code'),
@@ -707,8 +707,8 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                     ],
                   ),
                 ),
-              ] else ...[
-                // Mostrar aviso se não houver código
+              ] else if (const ['accepted', 'awaiting_confirmation', 'payment_received', 'completed'].contains(status) && billCode.isEmpty) ...[
+                // Mostrar aviso se não houver código (apenas para ordens aceitas)
                 const SizedBox(height: 16),
                 Container(
                   width: double.infinity,

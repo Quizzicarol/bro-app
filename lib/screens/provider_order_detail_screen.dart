@@ -799,7 +799,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                      _orderDetails!['bill_code'] as String? ?? '';
     
     // DEBUG: Log para verificar se billCode está presente
-    broLog('🔍 _buildContent: billType=$billType, status=$status, billCode=${billCode.isNotEmpty ? "${billCode.substring(0, billCode.length > 20 ? 20 : billCode.length)}..." : "EMPTY"}');
+    broLog('🔍 _buildContent: billType=$billType, status=$status, billCode=${billCode.isNotEmpty ? "present (${billCode.length} chars)" : "EMPTY"}');
     
     // SEMPRE construir payment_data a partir do billCode se existir
     Map<String, dynamic>? paymentData;

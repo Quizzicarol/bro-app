@@ -495,11 +495,12 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
 
   Future<void> _pickReceipt() async {
     try {
+      // v426: Relays strfry têm maxEventSize=64KB, imagem precisa caber
       final XFile? image = await _picker.pickImage(
         source: ImageSource.gallery,
-        maxWidth: 1920,
-        maxHeight: 1080,
-        imageQuality: 85,
+        maxWidth: 600,
+        maxHeight: 600,
+        imageQuality: 35,
       );
 
       if (image != null) {
@@ -514,11 +515,12 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
 
   Future<void> _takePhoto() async {
     try {
+      // v426: Relays strfry têm maxEventSize=64KB, imagem precisa caber
       final XFile? image = await _picker.pickImage(
         source: ImageSource.camera,
-        maxWidth: 1920,
-        maxHeight: 1080,
-        imageQuality: 85,
+        maxWidth: 600,
+        maxHeight: 600,
+        imageQuality: 35,
       );
 
       if (image != null) {
@@ -568,6 +570,16 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         // Converter imagem para base64 para publicar no Nostr
         final bytes = await _receiptImage!.readAsBytes();
         proofImageBase64 = base64Encode(bytes);
+        
+        // v426: strfry relays têm maxEventSize=64KB.
+        // Imagens picked com 600x600 q35 devem ser ~10-30KB base64.
+        // Se ainda assim exceder, avisar o usuário.
+        if (proofImageBase64.length > 45000) {
+          broLog('⚠️ [UPLOAD] Imagem muito grande: ${(proofImageBase64.length / 1024).toStringAsFixed(0)}KB base64 (máx ~44KB)');
+          _showError('Imagem muito grande para os relays (${(bytes.length / 1024).toStringAsFixed(0)}KB). Tire uma nova foto ou selecione uma imagem menor.');
+          setState(() => _isUploading = false);
+          return;
+        }
       }
 
       // ========== GERAR INVOICE AUTOMATICAMENTE ==========

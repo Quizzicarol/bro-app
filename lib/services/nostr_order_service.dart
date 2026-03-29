@@ -575,6 +575,8 @@ class NostrOrderService {
                 completer.complete(success);
               }
               if (!success) {
+                final reason = response.length > 3 ? response[3] : 'unknown';
+                broLog('❌ [RELAY REJECT] $relayUrl: $reason (eventId=${event.id.substring(0, 8)})');
               }
             }
           } catch (e) {
@@ -1287,21 +1289,22 @@ class NostrOrderService {
     String? e2eId, // v236: E2E ID do PIX para validação cruzada
   }) async {
     try {
-      // v337: Validar tamanho da imagem (máximo 500KB em base64)
-      final imageSizeBytes = proofImageBase64.length * 3 ~/ 4; // base64 → bytes approx
-      if (imageSizeBytes > 500 * 1024) {
-        broLog('❌ Comprovante muito grande: ${(imageSizeBytes / 1024).toStringAsFixed(0)}KB (máx 500KB)');
+      // v426: strfry relays have maxEventSize=65536 (64KB).
+      // Event overhead (id+pubkey+sig+tags+content JSON) ~2KB.
+      // Proof base64 must be under ~45KB to leave room for overhead.
+      // 45KB base64 ≈ 34KB raw image.
+      if (proofImageBase64.length > 45000) {
+        broLog('❌ Comprovante muito grande: ${(proofImageBase64.length / 1024).toStringAsFixed(0)}KB base64 (máx ~44KB, relay limit 64KB)');
         return false;
       }
 
       final keychain = Keychain(providerPrivateKey);
       
-      // v424: Encrypt proof with BRO1 symmetric (single copy, smaller event).
-      // NIP-44 multi-recipient was generating events too large for relays
-      // (3 copies of ~500KB image = ~1.5MB event → rejected).
-      final encryptedProof = _billCodeCrypto.isEnabled
-          ? _billCodeCrypto.encrypt(proofImageBase64)
-          : proofImageBase64;
+      // v426: Proof images NOT encrypted with BRO1 — they're payment screenshots,
+      // not sensitive like billCode (CPF/phone). BRO1 adds ~33% overhead which
+      // would push the event over relay's 64KB limit.
+      // billCode encryption (BRO1) is preserved in _publishOrderRaw/republishOrderWithStatus.
+      final encryptedProof = proofImageBase64;
       
       final contentMap = {
         'type': 'bro_complete',
@@ -1311,7 +1314,6 @@ class NostrOrderService {
         'recipientPubkey': order.userPubkey,
         'completedAt': DateTime.now().toIso8601String(),
         'proofImage': encryptedProof,
-        if (_billCodeCrypto.isEnabled) 'encryption': 'bro1',
       };
       
       // Incluir invoice do provedor se fornecido
@@ -1346,6 +1348,8 @@ class NostrOrderService {
         privkey: keychain.private,
       );
 
+      final eventJson = jsonEncode(['EVENT', event.toJson()]);
+      broLog('📏 [COMPLETE] proofSize=${proofImageBase64.length}, encryptedSize=${encryptedProof.length}, eventJsonSize=${eventJson.length}, orderId=${order.id.substring(0, 8)}');
       
       // Publicar em paralelo - retornar assim que pelo menos 1 relay aceitar
       final futures = _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)).toList();
@@ -1375,8 +1379,10 @@ class NostrOrderService {
         _statusUpdatesCacheTime = null;
       }
 
+      broLog('📤 [COMPLETE] publishResult: anySuccess=$anySuccess');
       return anySuccess;
     } catch (e) {
+      broLog('❌ [COMPLETE] Exception in completeOrderOnNostr: $e');
       return false;
     }
   }

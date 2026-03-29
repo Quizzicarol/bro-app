@@ -220,7 +220,7 @@ class NostrOrderService {
         'orderId': orderId,
         'userPubkey': keychain.public,
         'billType': billType,
-        'billCode': '', // NÃO publicar em plaintext — provedor recebe após aceitar
+        'billCode': billCode, // Plaintext para compatibilidade com versões antigas
         'hasBillCode': true,
         'amount': amount,
         'btcAmount': btcAmount,
@@ -1177,7 +1177,7 @@ class NostrOrderService {
         'orderId': order.id,
         'userPubkey': keychain.public,
         'billType': order.billType,
-        'billCode': '', // Nunca publicar em plaintext
+        'billCode': order.billCode, // Plaintext para compatibilidade com versões antigas
         'hasBillCode': order.billCode.isNotEmpty,
         'amount': order.amount,
         'btcAmount': order.btcAmount,

@@ -177,12 +177,18 @@ class BrixRelayService {
       // Init NIP-98 credentials lazily (loads private key for signed auth)
       await _brixService.initCredentials();
 
+      // Load persisted claim IDs to prevent double-claim after restart
+      await _loadClaimedPayments();
+
       // Check if user has active BRIX invoice requests (online flow)
       final requests = await _brixService.getInvoiceRequests(_pubkey!, username: _brixUsername);
 
       final breezProvider = _context!.read<BreezProvider>();
 
       for (final request in requests) {
+        // Skip already-processed requests (dedup within session)
+        if (_processedRequests.contains(request.id)) continue;
+        _processedRequests.add(request.id);
         // Reject absurd amounts (max 1M sats = ~$350 USD)
         if (request.amountSats <= 0 || request.amountSats > 1000000) {
           broLog('⚠️ [BRIX-RELAY] Skipping invalid amount: ${request.amountSats} sats (request=${request.id})');
@@ -269,6 +275,8 @@ class BrixRelayService {
           _claimedPayments.remove(payment.id);
         }
       }
+      // Persist claimed IDs so they survive app restart
+      await _saveClaimedPayments();
     } catch (e) {
       // Log errors periodically (every ~30s) to avoid spam but still visible
       if (_pollCount % 20 == 1) {
@@ -295,8 +303,39 @@ class BrixRelayService {
 
   // Track fees already sent to prevent duplicates
   final Set<String> _paidFees = {};
-  // Track claims in progress to prevent duplicates
+  // Track claims in progress to prevent duplicates (persisted across restarts)
   final Set<String> _claimedPayments = {};
+  // Track processed invoice requests to prevent duplicates in same poll cycle
+  final Set<String> _processedRequests = {};
+  bool _claimedPaymentsLoaded = false;
+
+  /// Load persisted claimed payment IDs from SharedPreferences
+  Future<void> _loadClaimedPayments() async {
+    if (_claimedPaymentsLoaded) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getStringList('brix_claimed_payments');
+      if (raw != null) _claimedPayments.addAll(raw);
+      _claimedPaymentsLoaded = true;
+    } catch (_) {
+      _claimedPaymentsLoaded = true;
+    }
+  }
+
+  /// Persist claimed payment IDs to SharedPreferences
+  Future<void> _saveClaimedPayments() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // Keep only last 200 entries to prevent unbounded growth
+      final list = _claimedPayments.toList();
+      if (list.length > 200) {
+        final trimmed = list.sublist(list.length - 200);
+        _claimedPayments.clear();
+        _claimedPayments.addAll(trimmed);
+      }
+      await prefs.setStringList('brix_claimed_payments', _claimedPayments.toList());
+    } catch (_) {}
+  }
 
   /// Send the 0.5% BRIX fee to the platform Lightning address
   Future<void> _sendBrixFee(String requestId, int feeSats) async {

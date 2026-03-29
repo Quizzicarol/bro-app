@@ -1293,7 +1293,9 @@ class NostrOrderService {
         );
         broLog('🔐 proofImage criptografado com NIP-44 para provedor/self (${encryptedProofImageProvider.length} chars)');
       } catch (e) {
-        broLog('⚠️ Falha ao criptografar proofImage: $e — enviando em plaintext');
+        broLog('❌ Falha ao criptografar proofImage: $e — NÃO enviar em plaintext (dados sensíveis)');
+        // DO NOT fallback to plaintext — proof images contain bank screenshots with CPF/sensitive data
+        return false;
       }
       
       final contentMap = {
@@ -1305,7 +1307,7 @@ class NostrOrderService {
         'completedAt': DateTime.now().toIso8601String(),
       };
       
-      // Adicionar proofImage (criptografado ou plaintext como fallback)
+      // Only send encrypted proof images — never plaintext
       if (encryptedProofImage != null) {
         contentMap['proofImage_nip44'] = encryptedProofImage;
         contentMap['proofImage'] = '[encrypted:nip44v2]'; // Marcador para clientes antigos
@@ -1319,7 +1321,9 @@ class NostrOrderService {
           contentMap['proofImage_nip44_provider'] = encryptedProofImageProvider;
         }
       } else {
-        contentMap['proofImage'] = proofImageBase64;
+        // Encryption is mandatory — should not reach here (caught above)
+        broLog('❌ proofImage encryption produced null — aborting');
+        return false;
       }
       
       // Incluir invoice do provedor se fornecido

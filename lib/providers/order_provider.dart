@@ -3253,8 +3253,8 @@ class OrderProvider with ChangeNotifier {
         _immediateNotify(); // v269: notificar UI imediatamente quando status muda
       }
       
-      // v419: Re-publish active orders with encrypted billCode
-      await _migrateBillCodeToEncrypted();
+      // v423: Migration disabled — billCode is published in plaintext
+      // await _migrateBillCodeToEncrypted();
       
       // AUTO-LIQUIDA��O v234: Tamb�m verificar no sync do usu�rio
       await _checkAutoLiquidation();

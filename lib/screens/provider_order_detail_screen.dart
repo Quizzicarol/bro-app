@@ -869,49 +869,6 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             if (paymentData != null && paymentData.isNotEmpty) ...[
               _buildPaymentDataCard(billType, paymentData),
               const SizedBox(height: 16),
-            ] else ...[
-              // Indicador de que o billCode está sendo obtido
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1A1A1A),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                ),
-                child: Column(
-                  children: [
-                    const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.orange,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      AppLocalizations.of(context)!.t('prov_det_loading_pix'),
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.orange,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      AppLocalizations.of(context)!.t('prov_det_loading_pix_hint'),
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white54,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
             ],
             _buildReceiptSection(),
           ]

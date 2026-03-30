@@ -2884,16 +2884,18 @@ class OrderProvider with ChangeNotifier {
     try {
       final privateKey = _nostrService.privateKey;
       if (privateKey == null) {
+        broLog('❌ [PUBLISH] privateKey é null — NostrService não inicializado');
         return;
       }
       
+      broLog('📡 [PUBLISH] Publicando ordem ${order.id.substring(0, 8)} nos relays...');
       final eventId = await _nostrOrderService.publishOrder(
         order: order,
         privateKey: privateKey,
       );
       
       if (eventId != null) {
-        
+        broLog('✅ [PUBLISH] Ordem ${order.id.substring(0, 8)} publicada: eventId=${eventId.substring(0, 8)}');
         // Atualizar ordem com eventId
         final index = _orders.indexWhere((o) => o.id == order.id);
         if (index != -1) {
@@ -2901,8 +2903,10 @@ class OrderProvider with ChangeNotifier {
           await _saveOrders();
         }
       } else {
+        broLog('❌ [PUBLISH] Falha ao publicar ordem ${order.id.substring(0, 8)} — nenhum relay aceitou');
       }
     } catch (e) {
+      broLog('❌ [PUBLISH] Exceção ao publicar ordem: $e');
     }
   }
 

@@ -195,6 +195,8 @@ class NostrOrderService {
           ? _billCodeCrypto.encrypt(billCode)
           : billCode;
       
+      broLog('📡 [_publishOrderRaw] orderId=${orderId.substring(0, 8)}, billType=$billType, amount=$amount, crypto=${_billCodeCrypto.isEnabled ? "BRO1" : "plain"}');
+      
       final contentMap = {
         'type': 'bro_order',
         'version': '1.0',
@@ -213,6 +215,7 @@ class NostrOrderService {
       };
       
       final content = jsonEncode(contentMap);
+      broLog('📡 [_publishOrderRaw] event content size: ${content.length} bytes');
 
       // Criar evento Nostr
       final event = Event.from(
@@ -232,13 +235,21 @@ class NostrOrderService {
       
       // Publicar em todos os relays EM PARALELO
       final results = await Future.wait(
-        _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
+        _relays.map((relay) => _publishToRelay(relay, event).catchError((e) {
+          broLog('❌ [_publishOrderRaw] $relay catchError: $e');
+          return false;
+        })),
       );
       final successCount = results.where((r) => r).length;
+      broLog('📡 [_publishOrderRaw] Resultado: $successCount/${_relays.length} relays aceitaram');
 
+      for (int i = 0; i < _relays.length; i++) {
+        broLog('  ${results[i] ? "✅" : "❌"} ${_relays[i]}');
+      }
       
       return successCount > 0 ? event.id : null;
     } catch (e) {
+      broLog('❌ [_publishOrderRaw] Exceção: $e');
       return null;
     }
   }

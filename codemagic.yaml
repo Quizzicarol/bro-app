@@ -83,6 +83,7 @@ workflows:
             exit 0
           fi
           cp "$APK_PATH" "bro-${TAG}.apk"
+          cp "$APK_PATH" "bro-latest.apk"
           gh release delete "$TAG" --repo "$REPO" --yes --cleanup-tag 2>/dev/null || true
           gh release create "$TAG" --repo "$REPO" \
             --title "Bro ${TAG}" \
@@ -91,7 +92,8 @@ workflows:
           📱 Release automática via Codemagic.
           Instale via Obtainium apontando para este repositório." \
             --latest \
-            "bro-${TAG}.apk"
+            "bro-${TAG}.apk" \
+            "bro-latest.apk"
         
     artifacts:
       - build/**/outputs/**/*.apk

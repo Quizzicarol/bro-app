@@ -342,6 +342,9 @@ class OrderProvider with ChangeNotifier {
     // e nunca recebeu pagamento real.
     await _fixIncorrectlyPaidOrders();
     
+    // v432: Republicar ordens pendentes que nunca chegaram aos relays
+    await _republishUnpublishedOrders();
+    
     // Depois sincronizar do Nostr (em background)
     if (_currentUserPubkey != null) {
       _syncFromNostrBackground();
@@ -675,6 +678,32 @@ class OrderProvider with ChangeNotifier {
             broLog('v432: Erro ao republicar ${orderId.substring(0, 8)}: $e');
           }
         }
+      }
+    }
+  }
+
+  /// v432: Republicar ordens pending que nunca foram publicadas nos relays
+  /// Detecta ordens sem eventId (publish falhou) e tenta republicar
+  Future<void> _republishUnpublishedOrders() async {
+    final privateKey = _nostrService.privateKey;
+    if (privateKey == null || privateKey.isEmpty) return;
+    
+    final unpublished = _orders.where((o) =>
+      o.status == 'pending' &&
+      o.eventId == null &&
+      o.userPubkey == _currentUserPubkey
+    ).toList();
+    
+    if (unpublished.isEmpty) return;
+    
+    broLog('v432: _republishUnpublishedOrders: ${unpublished.length} ordens sem eventId');
+    
+    for (final order in unpublished) {
+      try {
+        broLog('v432: Republicando ${order.id.substring(0, 8)} (pending, sem eventId)...');
+        await _publishOrderToNostr(order);
+      } catch (e) {
+        broLog('v432: Erro ao republicar ${order.id.substring(0, 8)}: $e');
       }
     }
   }

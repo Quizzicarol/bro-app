@@ -1,6 +1,5 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:bro_app/services/clipboard_service.dart';
 import 'package:provider/provider.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -173,7 +172,7 @@ class _DepositScreenState extends State<DepositScreen> {
   }
   
   void _copyToClipboard(String text, String label) {
-    copyWithAutoClear(text);
+    Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('$label copiado!'),

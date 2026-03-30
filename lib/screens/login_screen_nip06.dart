@@ -1,7 +1,6 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
-import 'package:bro_app/services/clipboard_service.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
 import '../services/nostr_service.dart';
@@ -56,7 +55,7 @@ class _LoginScreenNip06State extends State<LoginScreenNip06> {
   /// Copiar seed para clipboard
   void _copySeed() {
     if (_generatedSeed != null) {
-      copyWithAutoClear(_generatedSeed!);
+      Clipboard.setData(ClipboardData(text: _generatedSeed!));
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('📋 Seed copiada! Guarde em local seguro!'),

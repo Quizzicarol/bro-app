@@ -348,8 +348,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     });
   }
 
-  bool _republishAttempted = false;
-
   void _startStatusPolling() {
     // PERFORMANCE: Intervalo aumentado de 5s para 15s
     // O syncOrdersFromNostr tem throttle interno que evita syncs < 10s
@@ -358,17 +356,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       if (!mounted) {
         timer.cancel();
         return;
-      }
-
-      // v428: Se a ordem nunca foi publicada (eventId == null), tentar republicar
-      if (!_republishAttempted && _currentStatus == 'pending') {
-        final orderProvider = Provider.of<OrderProvider>(context, listen: false);
-        final order = orderProvider.getOrderById(widget.orderId);
-        if (order != null && order.eventId == null) {
-          _republishAttempted = true;
-          broLog('⚠️ Ordem ${widget.orderId.substring(0, 8)} sem eventId — tentando republicar...');
-          await orderProvider.republishOrder(widget.orderId);
-        }
       }
       
       // CORREÇÃO: Sincronizar com Nostr para buscar atualizações (aceites, comprovantes)

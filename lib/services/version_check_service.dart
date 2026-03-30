@@ -17,11 +17,11 @@ class VersionCheckService {
   VersionCheckService._internal();
 
   /// Repo público de releases
-  static const String _repoOwner = 'Quizzicarol';
-  static const String _repoName = 'bro-app';
-  /// Usar releases API para verificar versão mais recente
+  static const String _repoOwner = 'Brostr';
+  static const String _repoName = 'bro';
+  /// v406: Usar tags API em vez de releases/latest (no repo só existem tags, não Releases)
   static const String _githubApiUrl = 
-      'https://api.github.com/repos/$_repoOwner/$_repoName/releases?per_page=5';
+      'https://api.github.com/repos/$_repoOwner/$_repoName/tags?per_page=10';
 
   /// URL do TestFlight para iOS
   static const String _testFlightUrl = 'https://testflight.apple.com/join/rkHbPQ94';
@@ -62,17 +62,19 @@ class VersionCheckService {
         return false;
       }
       
-      final releases = json.decode(response.body) as List<dynamic>;
-      if (releases.isEmpty) {
-        broLog('⚠️ Nenhuma release encontrada no GitHub');
+      final tags = json.decode(response.body) as List<dynamic>;
+      if (tags.isEmpty) {
+        broLog('⚠️ Nenhuma tag encontrada no GitHub');
         return false;
       }
       
-      // Encontrar a release com o maior build number
+      // v406: Encontrar a tag com o maior build number
+      // Formato de tags: v1.0.132+393, v1.0.132+391, v1.0.132+368, etc.
       int highestBuild = 0;
       String highestTag = '';
-      for (final release in releases) {
-        final tagName = release['tag_name'] as String? ?? '';
+      for (final tag in tags) {
+        final tagName = tag['name'] as String? ?? '';
+        // Aceitar formatos: v1.0.132+393, v1.0.132-b238, v1.0.132-393-stable
         final buildMatch = RegExp(r'[+\-b](\d+)').firstMatch(tagName);
         if (buildMatch != null) {
           final build = int.tryParse(buildMatch.group(1)!) ?? 0;
@@ -87,8 +89,8 @@ class VersionCheckService {
       final versionMatch = RegExp(r'v?([\d.]+)').firstMatch(highestTag);
       _latestVersion = versionMatch?.group(1) ?? highestTag;
       
-      // URL de download — release page do repo
-      _downloadUrl = 'https://github.com/$_repoOwner/$_repoName/releases/latest';
+      // v406: URL de download — releases page do repo
+      _downloadUrl = 'https://github.com/$_repoOwner/$_repoName/releases';
       _releaseNotes = '';
       
       _updateAvailable = highestBuild > currentBuild;

@@ -100,8 +100,33 @@ class NostrService {
     };
   }
 
-  // REMOVED: createOrderEvent — was dead code that leaked billCode in plaintext.
-  // All order publishing now goes through NostrOrderService._publishOrderRaw() with NIP-44 encryption.
+  // Criar evento de ordem
+  Map<String, dynamic> createOrderEvent({
+    required String privateKey,
+    required String billType,
+    required String billCode,
+    required double amount,
+    required double btcAmount,
+  }) {
+    final content = jsonEncode({
+      'type': 'order',
+      'billType': billType,
+      'billCode': billCode,
+      'amount': amount,
+      'btcAmount': btcAmount,
+      'timestamp': DateTime.now().toIso8601String(),
+    });
+
+    return createEvent(
+      privateKey: privateKey,
+      kind: 1000, // Custom kind for orders
+      content: content,
+      tags: [
+        ['t', 'bro'],
+        ['t', 'order'],
+      ],
+    );
+  }
 
   /// Converte nsec (bech32) para hex, ou retorna a chave se já for hex
   String normalizePrivateKey(String key) {

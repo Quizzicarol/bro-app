@@ -9,7 +9,6 @@ import '../services/nostr_service.dart';
 import '../services/nostr_order_service.dart';
 import '../services/local_collateral_service.dart';
 import '../services/platform_fee_service.dart';
-import '../services/brix_service.dart';
 import '../models/order.dart';
 import '../config.dart';
 
@@ -342,9 +341,6 @@ class OrderProvider with ChangeNotifier {
     // e nunca recebeu pagamento real.
     await _fixIncorrectlyPaidOrders();
     
-    // v432: Republicar ordens pendentes que nunca chegaram aos relays
-    await _republishUnpublishedOrders();
-    
     // Depois sincronizar do Nostr (em background)
     if (_currentUserPubkey != null) {
       _syncFromNostrBackground();
@@ -475,9 +471,7 @@ class OrderProvider with ChangeNotifier {
     // Executar em background sem bloquear a UI
     Future.microtask(() async {
       try {
-        // v435: Republicar ordens não publicadas em cada sync
-        await _republishUnpublishedOrders();
-        // PERFORMANCE: Republicar e sincronizar EM PARALELO (não sequencial)
+        // PERFORMANCE: Republicar e sincronizar EM PARALELO (n�?£o sequencial)
         final privateKey = _nostrService.privateKey;
         await Future.wait([
           if (privateKey != null) republishLocalOrdersToNostr(),
@@ -572,7 +566,7 @@ class OrderProvider with ChangeNotifier {
           // Se ordem tem o providerId de teste antigo, REMOVER (ser�?¡ corrigido pelo Nostr)
           if (order.providerId == 'provider_test_001') {
             // Setar providerId como null para que seja recuperado do Nostr
-            _orders[i] = order.copyWith(clearProviderId: true);
+            _orders[i] = order.copyWith(providerId: null);
             needsMigration = true;
           }
         }
@@ -630,82 +624,29 @@ class OrderProvider with ChangeNotifier {
     
     
     bool needsCorrection = false;
-    final ordersToRepublish = <String>[];
     
     for (final order in paidOrders) {
-      bool isFalsePositive = false;
-      
-      // v432: Se providerId == userPubkey (auto-referência), é definitivamente falso positivo
-      if (order.providerId != null && order.providerId == order.userPubkey) {
-        broLog('v432: _fixIncorrectlyPaidOrders: ${order.id.substring(0, 8)} providerId==userPubkey (auto-referência)');
-        isFalsePositive = true;
-      }
-      
-      // Se NÃO tem paymentHash, é falso positivo
+      // Se N�?�?O tem paymentHash, �?© falso positivo!
       if (order.paymentHash == null || order.paymentHash!.isEmpty) {
-        broLog('v432: _fixIncorrectlyPaidOrders: ${order.id.substring(0, 8)} sem paymentHash');
-        isFalsePositive = true;
-      }
-      
-      if (isFalsePositive) {
+        
         final index = _orders.indexWhere((o) => o.id == order.id);
         if (index != -1) {
-          // v432: Limpar status E providerId corrompido
-          _orders[index] = _orders[index].copyWith(status: 'pending', clearProviderId: true);
+          _orders[index] = _orders[index].copyWith(status: 'pending');
           needsCorrection = true;
-          ordersToRepublish.add(order.id);
         }
+      } else {
       }
     }
     
     if (needsCorrection) {
       await _saveOrders();
       
-      // v432: Republicar no Nostr usando republishOrderWithStatus para substituir
-      // evento corrompido no relay (que tinha status payment_received e providerId errado)
-      final privateKey = _nostrService.privateKey;
-      if (privateKey != null && privateKey.isNotEmpty) {
-        for (final orderId in ordersToRepublish) {
-          final order = _orders.firstWhere((o) => o.id == orderId, orElse: () => _orders.first);
-          if (order.id != orderId) continue;
-          try {
-            broLog('v432: Republicando ${orderId.substring(0, 8)} com status=pending, providerId=null');
-            await _nostrOrderService.republishOrderWithStatus(
-              privateKey: privateKey,
-              order: order,
-              newStatus: 'pending',
-              providerId: null,
-            );
-          } catch (e) {
-            broLog('v432: Erro ao republicar ${orderId.substring(0, 8)}: $e');
-          }
+      // Republicar no Nostr com status correto
+      for (final order in _orders.where((o) => o.status == 'pending')) {
+        try {
+          await _publishOrderToNostr(order);
+        } catch (e) {
         }
-      }
-    }
-  }
-
-  /// v432: Republicar ordens pending que nunca foram publicadas nos relays
-  /// Detecta ordens sem eventId (publish falhou) e tenta republicar
-  Future<void> _republishUnpublishedOrders() async {
-    final privateKey = _nostrService.privateKey;
-    if (privateKey == null || privateKey.isEmpty) return;
-    
-    final unpublished = _orders.where((o) =>
-      o.status == 'pending' &&
-      o.eventId == null &&
-      o.userPubkey == _currentUserPubkey
-    ).toList();
-    
-    if (unpublished.isEmpty) return;
-    
-    broLog('v432: _republishUnpublishedOrders: ${unpublished.length} ordens sem eventId');
-    
-    for (final order in unpublished) {
-      try {
-        broLog('v432: Republicando ${order.id.substring(0, 8)} (pending, sem eventId)...');
-        await _publishOrderToNostr(order);
-      } catch (e) {
-        broLog('v432: Erro ao republicar ${order.id.substring(0, 8)}: $e');
       }
     }
   }
@@ -1017,36 +958,9 @@ class OrderProvider with ChangeNotifier {
       
       _immediateNotify();
       
-      // 🔥 PUBLICAR NO NOSTR COM RETRY
-      // Aguardar publish para garantir que a ordem chegue nos relays
-      bool published = false;
-      for (int attempt = 1; attempt <= 3; attempt++) {
-        await _publishOrderToNostr(order);
-        // Verificar se publish funcionou (eventId preenchido)
-        final idx = _orders.indexWhere((o) => o.id == order.id);
-        if (idx != -1 && _orders[idx].eventId != null) {
-          broLog('✅ Ordem publicada no Nostr (tentativa $attempt)');
-          published = true;
-          break;
-        }
-        broLog('⚠️ Publish tentativa $attempt falhou, ${attempt < 3 ? "retentando em 2s..." : "desistindo"}');
-        if (attempt < 3) await Future.delayed(const Duration(seconds: 2));
-      }
-      
-      // v435: Log claro se publish falhou — será retentado no próximo sync
-      if (!published) {
-        broLog('❌ ALERTA: Ordem ${order.id.substring(0, 8)} salva localmente mas NÃO publicada nos relays. Será retentada automaticamente.');
-      }
-
-      // Notificar provedores ativos via FCM push (fire-and-forget)
-      final pubkey = _currentUserPubkey;
-      if (pubkey != null && pubkey.isNotEmpty) {
-        BrixService().initCredentials().then((_) {
-          BrixService().notifyProviders(billType, pubkey).then((ok) {
-            broLog('[ORDER] Provider notification ${ok ? "sent" : "failed"} for $billType');
-          });
-        });
-      }
+      // ðŸ�?�¥ PUBLICAR NO NOSTR IMEDIATAMENTE
+      // A ordem j�?¡ est�?¡ com pagamento sendo processado
+      _publishOrderToNostr(order);
       
       return order;
     } catch (e) {
@@ -1635,8 +1549,8 @@ class OrderProvider with ChangeNotifier {
 
   /// v388: One-time migration � republish active orders with plain text billCode.
   /// Old orders had encrypted billCode in Nostr. Now we publish plain text.
-  /// v419: Re-publish active orders with encrypted billCode (NIP-44).
-  Future<void> _migrateBillCodeToEncrypted() async {
+  /// Buyer has plain text locally, so republish pushes it to relays.
+  Future<void> _migrateBillCodeToPlainText() async {
     if (_didMigratePlainTextBillCode) return;
     _didMigratePlainTextBillCode = true;
     
@@ -1654,7 +1568,7 @@ class OrderProvider with ChangeNotifier {
     ).toList();
 
     if (candidates.isEmpty) return;
-    broLog('v388: Re-syncing ${candidates.length} orders with current encryption state');
+    broLog('v388: Migrating ${candidates.length} orders to plain text billCode');
 
     for (final order in candidates) {
       try {
@@ -1931,8 +1845,8 @@ class OrderProvider with ChangeNotifier {
   }
 
   /// Provedor aceita uma ordem - publica aceita�?§�?£o no Nostr e atualiza localmente
-  Future<bool> acceptOrderAsProvider(String orderId, {int maxAttempts = 2}) async {
-    broLog('ðŸ�?�µ [acceptOrderAsProvider] INICIADO para $orderId (maxAttempts=$maxAttempts)');
+  Future<bool> acceptOrderAsProvider(String orderId) async {
+    broLog('ðŸ�?�µ [acceptOrderAsProvider] INICIADO para $orderId');
     _isLoading = true;
     _error = null;
     _immediateNotify();
@@ -2949,18 +2863,16 @@ class OrderProvider with ChangeNotifier {
     try {
       final privateKey = _nostrService.privateKey;
       if (privateKey == null) {
-        broLog('❌ [PUBLISH] privateKey é null — NostrService não inicializado');
         return;
       }
       
-      broLog('📡 [PUBLISH] Publicando ordem ${order.id.substring(0, 8)} nos relays...');
       final eventId = await _nostrOrderService.publishOrder(
         order: order,
         privateKey: privateKey,
       );
       
       if (eventId != null) {
-        broLog('✅ [PUBLISH] Ordem ${order.id.substring(0, 8)} publicada: eventId=${eventId.substring(0, 8)}');
+        
         // Atualizar ordem com eventId
         final index = _orders.indexWhere((o) => o.id == order.id);
         if (index != -1) {
@@ -2968,30 +2880,9 @@ class OrderProvider with ChangeNotifier {
           await _saveOrders();
         }
       } else {
-        broLog('❌ [PUBLISH] Falha ao publicar ordem ${order.id.substring(0, 8)} — nenhum relay aceitou');
       }
     } catch (e) {
-      broLog('❌ [PUBLISH] Exceção ao publicar ordem: $e');
     }
-  }
-
-  /// v428: Republica uma ordem que falhou no publish original
-  Future<void> republishOrder(String orderId) async {
-    final index = _orders.indexWhere((o) => o.id == orderId);
-    if (index == -1) return;
-    final order = _orders[index];
-    if (order.eventId != null) return; // já publicada
-    broLog('🔄 Republicando ordem ${orderId.substring(0, 8)}...');
-    for (int attempt = 1; attempt <= 3; attempt++) {
-      await _publishOrderToNostr(order);
-      final updated = _orders.indexWhere((o) => o.id == orderId);
-      if (updated != -1 && _orders[updated].eventId != null) {
-        broLog('✅ Republicação bem-sucedida (tentativa $attempt)');
-        return;
-      }
-      if (attempt < 3) await Future.delayed(const Duration(seconds: 2));
-    }
-    broLog('❌ Republicação falhou após 3 tentativas');
   }
 
   /// Buscar ordens pendentes de todos os usu�?¡rios (para providers verem)
@@ -3351,8 +3242,8 @@ class OrderProvider with ChangeNotifier {
         _immediateNotify(); // v269: notificar UI imediatamente quando status muda
       }
       
-      // v423: Migration disabled — billCode is published in plaintext
-      // await _migrateBillCodeToEncrypted();
+      // v388: One-time migration of old encrypted billCode to plain text
+      await _migrateBillCodeToPlainText();
       
       // AUTO-LIQUIDA��O v234: Tamb�m verificar no sync do usu�rio
       await _checkAutoLiquidation();

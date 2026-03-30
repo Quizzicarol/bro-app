@@ -8,7 +8,6 @@ import 'package:bro_app/services/log_utils.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../config.dart';
 import '../models/order.dart';
-import 'billcode_crypto_service.dart';
 import 'nip04_service.dart';
 import 'nip44_service.dart';
 
@@ -26,9 +25,6 @@ class NostrOrderService {
 
   // Serviço de criptografia NIP-44
   final _nip44 = Nip44Service();
-
-  // Serviço de criptografia simétrica para billCode
-  final _billCodeCrypto = BillCodeCryptoService();
 
   // Chave privada para descriptografia (configurada pelo order_provider)
   String? _decryptionKey;
@@ -59,17 +55,6 @@ class NostrOrderService {
     if (_blockedOrdersLoaded) return;
     try {
       final prefs = await SharedPreferences.getInstance();
-      // v435: Reset blocklist poisoned by v434 aggressive filters
-      const blocklistVersion = 'blocklist_version';
-      final version = prefs.getInt(blocklistVersion) ?? 0;
-      if (version < 436) {
-        await prefs.remove(_blockedOrdersKey);
-        await prefs.setInt(blocklistVersion, 436);
-        _blockedOrderIds = {};
-        _blockedOrdersLoaded = true;
-        broLog('🔄 Blocklist resetada (v435b: reset completo)');
-        return;
-      }
       final list = prefs.getStringList(_blockedOrdersKey) ?? [];
       _blockedOrderIds = list.toSet();
       _blockedOrdersLoaded = true;
@@ -167,22 +152,9 @@ class NostrOrderService {
   static const String broTag = 'bro-order';
   static const String broAppTag = 'bro-app';
 
-  /// Retorna billCode de um evento Nostr
-  /// Tenta: BRO1 encrypted → plain text legacy
+  /// Retorna billCode de um evento Nostr (plain text)
   String _getBillCode(Map<String, dynamic> content) {
-    final raw = content['billCode']?.toString() ?? '';
-    if (raw.isEmpty) return '';
-    
-    // Se é BRO1 encrypted, decriptar
-    if (BillCodeCryptoService.isEncrypted(raw)) {
-      final decrypted = _billCodeCrypto.decrypt(raw);
-      if (decrypted.isNotEmpty) return decrypted;
-      broLog('⚠️ _getBillCode: falha ao decriptar BRO1');
-      return '';
-    }
-    
-    // Plain text (ordens legacy)
-    return raw;
+    return content['billCode']?.toString() ?? '';
   }
 
   /// Publica uma ordem nos relays (raw)
@@ -201,22 +173,13 @@ class NostrOrderService {
     try {
       final keychain = Keychain(privateKey);
       
-      // Encriptar billCode se a chave estiver configurada, senão plaintext
-      // v433: Não re-encriptar se já está em formato BRO1:
-      final alreadyEncryptedRaw = billCode.startsWith('BRO1:');
-      final encryptedBillCode = _billCodeCrypto.isEnabled && !alreadyEncryptedRaw
-          ? _billCodeCrypto.encrypt(billCode)
-          : billCode;
-      
-      broLog('📡 [_publishOrderRaw] orderId=${orderId.substring(0, 8)}, billType=$billType, amount=$amount, crypto=${_billCodeCrypto.isEnabled ? "BRO1" : "plain"}');
-      
-      final contentMap = {
+      final content = jsonEncode({
         'type': 'bro_order',
         'version': '1.0',
         'orderId': orderId,
         'userPubkey': keychain.public,
         'billType': billType,
-        'billCode': encryptedBillCode,
+        'billCode': billCode,
         'amount': amount,
         'btcAmount': btcAmount,
         'btcPrice': btcPrice,
@@ -225,10 +188,7 @@ class NostrOrderService {
         'total': total,
         'status': 'pending',
         'createdAt': DateTime.now().toIso8601String(),
-      };
-      
-      final content = jsonEncode(contentMap);
-      broLog('📡 [_publishOrderRaw] event content size: ${content.length} bytes');
+      });
 
       // Criar evento Nostr
       final event = Event.from(
@@ -248,21 +208,13 @@ class NostrOrderService {
       
       // Publicar em todos os relays EM PARALELO
       final results = await Future.wait(
-        _relays.map((relay) => _publishToRelay(relay, event).catchError((e) {
-          broLog('❌ [_publishOrderRaw] $relay catchError: $e');
-          return false;
-        })),
+        _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
       );
       final successCount = results.where((r) => r).length;
-      broLog('📡 [_publishOrderRaw] Resultado: $successCount/${_relays.length} relays aceitaram');
 
-      for (int i = 0; i < _relays.length; i++) {
-        broLog('  ${results[i] ? "✅" : "❌"} ${_relays[i]}');
-      }
       
       return successCount > 0 ? event.id : null;
     } catch (e) {
-      broLog('❌ [_publishOrderRaw] Exceção: $e');
       return null;
     }
   }
@@ -599,8 +551,6 @@ class NostrOrderService {
                 completer.complete(success);
               }
               if (!success) {
-                final reason = response.length > 3 ? response[3] : 'unknown';
-                broLog('❌ [RELAY REJECT] $relayUrl: $reason (eventId=${event.id.substring(0, 8)})');
               }
             }
           } catch (e) {
@@ -1171,35 +1121,13 @@ class NostrOrderService {
         return false;
       }
 
-      var resolvedProviderId = providerId ?? order.providerId;
-      
-      // v432: GUARD — payment_received NUNCA deve ser publicado como kind 30078
-      // Somente status updates (kind 30080) podem ter payment_received
-      if (newStatus == 'payment_received') {
-        broLog('v432: republishOrderWithStatus: BLOQUEADO status=payment_received para ${order.id.substring(0, 8)}');
-        return false;
-      }
-      
-      // v432: GUARD — providerId auto-referencial (== userPubkey) é corrupção
-      if (resolvedProviderId != null && resolvedProviderId == keychain.public) {
-        broLog('v432: republishOrderWithStatus: Limpando providerId auto-referencial em ${order.id.substring(0, 8)}');
-        resolvedProviderId = null;
-      }
-      
-      // Encriptar billCode se a chave estiver configurada
-      // v433: Não re-encriptar se já está em formato BRO1:
-      final alreadyEncrypted = order.billCode.startsWith('BRO1:');
-      final encryptedBillCode = _billCodeCrypto.isEnabled && order.billCode.isNotEmpty && !alreadyEncrypted
-          ? _billCodeCrypto.encrypt(order.billCode)
-          : order.billCode;
-      
-      final contentMap = <String, dynamic>{
+      final content = jsonEncode({
         'type': 'bro_order',
         'version': '1.0',
         'orderId': order.id,
         'userPubkey': keychain.public,
         'billType': order.billType,
-        'billCode': encryptedBillCode,
+        'billCode': order.billCode,
         'amount': order.amount,
         'btcAmount': order.btcAmount,
         'btcPrice': order.btcPrice,
@@ -1207,12 +1135,10 @@ class NostrOrderService {
         'platformFee': order.platformFee,
         'total': order.total,
         'status': newStatus,
-        if (resolvedProviderId != null) 'providerId': resolvedProviderId,
+        'providerId': providerId ?? order.providerId,
         'createdAt': order.createdAt.toIso8601String(),
         'updatedAt': DateTime.now().toIso8601String(),
-      };
-      
-      final content = jsonEncode(contentMap);
+      });
 
       final event = Event.from(
         kind: kindBroOrder,
@@ -1246,7 +1172,6 @@ class NostrOrderService {
     required String providerPrivateKey,
   }) async {
     try {
-      broLog('🔵 [acceptOrderOnNostr] Iniciando para ordem ${order.id.substring(0, 8)}, eventId=${order.eventId?.substring(0, 8) ?? "null"}');
       
       final keychain = Keychain(providerPrivateKey);
       
@@ -1271,7 +1196,6 @@ class NostrOrderService {
         tags.insert(1, ['e', order.eventId!]);
       }
       
-      broLog('🔵 [acceptOrderOnNostr] Criando evento kind=$kindBroAccept, tags=${tags.length}');
 
       final event = Event.from(
         kind: kindBroAccept,
@@ -1280,23 +1204,30 @@ class NostrOrderService {
         privkey: keychain.private,
       );
 
-      broLog('🔵 [acceptOrderOnNostr] Evento criado: id=${event.id?.substring(0, 8) ?? "null"}');
       
-      // Publicar em todos os relays em paralelo
-      final results = await Future.wait(
-        _relays.map((relay) => _publishToRelay(relay, event).catchError((e) {
-          broLog('❌ [acceptOrderOnNostr] $relay catchError: $e');
-          return false;
-        })),
-      );
+      // Publicar em paralelo - retornar assim que pelo menos 1 relay aceitar
+      // Não esperar todos os relays (evita timeout quando um relay é lento)
+      final futures = _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)).toList();
       
-      final successCount = results.where((r) => r).length;
-      broLog('🔵 [acceptOrderOnNostr] Resultado: $successCount/${_relays.length} relays aceitaram');
-      for (int i = 0; i < _relays.length; i++) {
-        broLog('  ${results[i] ? "✅" : "❌"} ${_relays[i]}');
+      // Esperar o primeiro sucesso ou todos falharem
+      bool anySuccess = false;
+      for (final future in futures) {
+        try {
+          final result = await future;
+          if (result) {
+            anySuccess = true;
+            break;
+          }
+        } catch (_) {}
       }
       
-      final anySuccess = successCount > 0;
+      // Se nenhum retornou true via loop (pode ter saído cedo), verificar os restantes em background
+      if (!anySuccess) {
+        final results = await Future.wait(
+          futures.map((f) => f.catchError((_) => false)),
+        );
+        anySuccess = results.any((s) => s);
+      }
 
       // Adicionar à blocklist local imediatamente (não esperar próximo sync)
       if (anySuccess) {
@@ -1308,7 +1239,6 @@ class NostrOrderService {
 
       return anySuccess;
     } catch (e, stack) {
-      broLog('❌ [acceptOrderOnNostr] EXCEÇÃO: $e\n$stack');
       return false;
     }
   }
@@ -1324,32 +1254,73 @@ class NostrOrderService {
     String? e2eId, // v236: E2E ID do PIX para validação cruzada
   }) async {
     try {
-      // v426: strfry relays have maxEventSize=65536 (64KB).
-      // Event overhead (id+pubkey+sig+tags+content JSON) ~2KB.
-      // Proof base64 must be under ~45KB to leave room for overhead.
-      // 45KB base64 ≈ 34KB raw image.
-      if (proofImageBase64.length > 45000) {
-        broLog('❌ Comprovante muito grande: ${(proofImageBase64.length / 1024).toStringAsFixed(0)}KB base64 (máx ~44KB, relay limit 64KB)');
+      // v337: Validar tamanho da imagem (máximo 500KB em base64)
+      final imageSizeBytes = proofImageBase64.length * 3 ~/ 4; // base64 → bytes approx
+      if (imageSizeBytes > 500 * 1024) {
+        broLog('❌ Comprovante muito grande: ${(imageSizeBytes / 1024).toStringAsFixed(0)}KB (máx 500KB)');
         return false;
       }
 
       final keychain = Keychain(providerPrivateKey);
       
-      // v426: Proof images NOT encrypted with BRO1 — they're payment screenshots,
-      // not sensitive like billCode (CPF/phone). BRO1 adds ~33% overhead which
-      // would push the event over relay's 64KB limit.
-      // billCode encryption (BRO1) is preserved in _publishOrderRaw/republishOrderWithStatus.
-      final encryptedProof = proofImageBase64;
+      // Criptografar comprovante para: usuário, admin E provedor (self)
+      String? encryptedProofImage;
+      String? encryptedProofImageAdmin;
+      String? encryptedProofImageProvider;
+      try {
+        if (order.userPubkey != null && order.userPubkey!.isNotEmpty) {
+          encryptedProofImage = _nip44.encryptBetween(
+            proofImageBase64,
+            keychain.private,
+            order.userPubkey!,
+          );
+          broLog('🔐 proofImage criptografado com NIP-44 para usuário (${encryptedProofImage.length} chars)');
+        }
+        // Criptografar para o admin/mediador (para disputas)
+        if (AppConfig.adminPubkey.isNotEmpty) {
+          encryptedProofImageAdmin = _nip44.encryptBetween(
+            proofImageBase64,
+            keychain.private,
+            AppConfig.adminPubkey,
+          );
+          broLog('🔐 proofImage criptografado com NIP-44 para admin (${encryptedProofImageAdmin.length} chars)');
+        }
+        // Self-encrypt para que o provedor possa rever seu próprio comprovante
+        encryptedProofImageProvider = _nip44.encryptToSelf(
+          proofImageBase64,
+          keychain.private,
+          keychain.public,
+        );
+        broLog('🔐 proofImage criptografado com NIP-44 para provedor/self (${encryptedProofImageProvider.length} chars)');
+      } catch (e) {
+        broLog('⚠️ Falha ao criptografar proofImage: $e — enviando em plaintext');
+      }
       
       final contentMap = {
         'type': 'bro_complete',
         'orderId': order.id,
         'orderEventId': order.eventId,
         'providerId': keychain.public,
-        'recipientPubkey': order.userPubkey,
+        'recipientPubkey': order.userPubkey, // Para quem é destinado
         'completedAt': DateTime.now().toIso8601String(),
-        'proofImage': encryptedProof,
       };
+      
+      // Adicionar proofImage (criptografado ou plaintext como fallback)
+      if (encryptedProofImage != null) {
+        contentMap['proofImage_nip44'] = encryptedProofImage;
+        contentMap['proofImage'] = '[encrypted:nip44v2]'; // Marcador para clientes antigos
+        contentMap['encryption'] = 'nip44v2';
+        // Cópia criptografada para admin (usado em disputas)
+        if (encryptedProofImageAdmin != null) {
+          contentMap['proofImage_nip44_admin'] = encryptedProofImageAdmin;
+        }
+        // Cópia criptografada para o próprio provedor (para rever o comprovante)
+        if (encryptedProofImageProvider != null) {
+          contentMap['proofImage_nip44_provider'] = encryptedProofImageProvider;
+        }
+      } else {
+        contentMap['proofImage'] = proofImageBase64;
+      }
       
       // Incluir invoice do provedor se fornecido
       if (providerInvoice != null && providerInvoice.isNotEmpty) {
@@ -1383,8 +1354,6 @@ class NostrOrderService {
         privkey: keychain.private,
       );
 
-      final eventJson = jsonEncode(['EVENT', event.toJson()]);
-      broLog('📏 [COMPLETE] proofSize=${proofImageBase64.length}, encryptedSize=${encryptedProof.length}, eventJsonSize=${eventJson.length}, orderId=${order.id.substring(0, 8)}');
       
       // Publicar em paralelo - retornar assim que pelo menos 1 relay aceitar
       final futures = _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)).toList();
@@ -1414,10 +1383,8 @@ class NostrOrderService {
         _statusUpdatesCacheTime = null;
       }
 
-      broLog('📤 [COMPLETE] publishResult: anySuccess=$anySuccess');
       return anySuccess;
     } catch (e) {
-      broLog('❌ [COMPLETE] Exception in completeOrderOnNostr: $e');
       return false;
     }
   }
@@ -1489,24 +1456,11 @@ class NostrOrderService {
       // v261: DEFENSE-IN-DEPTH — Se o próprio evento 30078 já tem status terminal
       // (porque o dono re-publicou com status atualizado via republishOrderWithStatus),
       // filtrar IMEDIATAMENTE sem precisar da query de status separada.
-      // v435: Só blocklist permanente para status REALMENTE terminais
-      const permanentTerminal = ['completed', 'cancelled', 'liquidated', 'disputed'];
-      if (permanentTerminal.contains(order.status)) {
+      // Isso resolve o bug onde orders aceitas/completadas continuavam aparecendo
+      // quando a query de status (kind 30079/30080/30081) falhava por timeout.
+      const terminalInEvent = ['accepted', 'awaiting_confirmation', 'completed', 'cancelled', 'liquidated', 'disputed'];
+      if (terminalInEvent.contains(order.status)) {
         _addToBlocklist({order.id});
-        blockedCount++;
-        continue;
-      }
-      // v435: Status não-terminais: filtrar em runtime sem blocklist permanente
-      // (podem ser corrigidos/re-publicados como pending)
-      const runtimeFilterOnly = ['accepted', 'awaiting_confirmation', 'payment_received'];
-      if (runtimeFilterOnly.contains(order.status)) {
-        blockedCount++;
-        continue;
-      }
-      
-      // v432: Ordem com providerId já setado no relay = já foi aceita/reivindicada
-      // v435: NÃO adicionar à blocklist permanente — providerId pode ser limpo em re-publish
-      if (order.providerId != null && order.providerId!.isNotEmpty) {
         blockedCount++;
         continue;
       }
@@ -1515,7 +1469,6 @@ class NostrOrderService {
     }
     
     broLog('📋 fetchPendingOrders: ${allOrders.length} ordens válidas ($nullOrders rejeitadas, $blockedCount bloqueadas localmente, $skippedByTagCount skipped por tag)');
-
     
     // Filtrar ordens expiradas ANTES do fetch de status (economiza queries)
     final now = DateTime.now();
@@ -1577,12 +1530,12 @@ class NostrOrderService {
       broLog('  📦 Ordem ${order.id.substring(0, 8)}: status=${order.status}, update=$updateStatus, amount=${order.amount}');
     }
     
-    // PASSO 3: Salvar ordens com status TERMINAL na blocklist local
-    // v435: Só blocklist permanente para status realmente terminais
+    // PASSO 3: Salvar ordens com status terminal na blocklist local
     final newBlockedIds = <String>{};
     for (final entry in statusUpdates.entries) {
       final status = entry.value['status'] as String?;
-      if (status == 'completed' || status == 'liquidated' || 
+      if (status == 'accepted' || status == 'awaiting_confirmation' || 
+          status == 'completed' || status == 'liquidated' || 
           status == 'cancelled' || status == 'disputed') {
         newBlockedIds.add(entry.key);
       }
@@ -2205,11 +2158,6 @@ class NostrOrderService {
           }
         }
       }
-    }
-    
-    // BRO1: Descriptografar proofImage com chave simétrica
-    if (proofImage != null && BillCodeCryptoService.isEncrypted(proofImage)) {
-      proofImage = _billCodeCrypto.decrypt(proofImage);
     }
     
     // Se proofImage é o marcador de criptografia, não usar como imagem
@@ -4149,22 +4097,10 @@ class NostrOrderService {
                 final proofImageNip44 = content['proofImage_nip44'] as String?;
                 
                 if (proofImage != null && proofImage.isNotEmpty && proofImage != '[encrypted:nip44v2]') {
-                  // Check if it's BRO1 encrypted
-                  if (BillCodeCryptoService.isEncrypted(proofImage)) {
-                    final decrypted = _billCodeCrypto.decrypt(proofImage);
-                    if (decrypted.isNotEmpty) {
-                      result['proofImage'] = decrypted;
-                      result['encrypted'] = false;
-                      broLog('✅ Comprovante BRO1 descriptografado para ${orderId.substring(0, 8)}');
-                    } else {
-                      result['encrypted'] = true;
-                    }
-                  } else {
-                    // Plaintext legacy
-                    result['proofImage'] = proofImage;
-                    result['encrypted'] = false;
-                    broLog('✅ Comprovante plaintext encontrado para ${orderId.substring(0, 8)}');
-                  }
+                  // Plaintext - perfeito
+                  result['proofImage'] = proofImage;
+                  result['encrypted'] = false;
+                  broLog('✅ Comprovante plaintext encontrado para ${orderId.substring(0, 8)}');
                 } else if (privateKey != null) {
                   // Tentar descriptografar com a chave privada fornecida
                   final proofImageNip44Admin = content['proofImage_nip44_admin'] as String?;

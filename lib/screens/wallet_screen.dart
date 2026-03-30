@@ -154,35 +154,16 @@ class _WalletScreenState extends State<WalletScreen> {
           o.paymentHash != null &&
           o.paymentHash!.startsWith('wallet_') &&
           o.status != 'draft' &&
-          o.status != 'pending' &&
-          o.status != 'completed' && // Não injetar — o pagamento real ao provedor (SDK) já aparece
-          o.status != 'awaiting_confirmation' && // Não injetar — o pagamento real ao provedor pode já existir
-          o.status != 'cancelled' &&
-          o.status != 'liquidated'
+          o.status != 'pending'
         ).toList();
         
         // Verificar se já existe no allPayments (evitar duplicatas)
-        // Inclui também checar se qualquer pagamento SDK já correlaciona com esta ordem
         final existingHashes = allPayments
             .map((p) => p['paymentHash']?.toString() ?? '')
             .toSet();
         
-        // Construir set de orderIds que já têm pagamento real no SDK (pela descrição "Bro - Ordem XXXXXXXX")
-        final ordersWithRealPayment = <String>{};
-        for (final p in allPayments) {
-          final desc = p['description']?.toString() ?? '';
-          if (desc.contains('Bro - Ordem ')) {
-            final orderIdFromDesc = desc.split('Bro - Ordem ').last.trim();
-            if (orderIdFromDesc.isNotEmpty) {
-              ordersWithRealPayment.add(orderIdFromDesc);
-            }
-          }
-        }
-        
         for (final order in walletPaidOrders) {
           if (existingHashes.contains(order.paymentHash)) continue;
-          // Se já existe um pagamento real do SDK correlacionado, não injetar sintético
-          if (ordersWithRealPayment.any((id) => order.id.startsWith(id) || id.startsWith(order.id.substring(0, 8)))) continue;
           
           final satsAmount = (order.btcAmount * 100000000).round();
           final billLabel = order.billType == 'pix' ? 'PIX' : 'Boleto';
@@ -2896,14 +2877,9 @@ class _WalletScreenState extends State<WalletScreen> {
         icon = Icons.receipt_long;
       } else if (description.contains('Ordem') || description.contains('conta')) {
         // Pagamento de conta (descrição contém info de ordem)
-        // Label unificado com número da ordem para clareza
-        if (correlatedOrderId != null) {
-          label = AppLocalizations.of(context).tp('wallet_bill_payment_id', {'orderId': correlatedOrderId.substring(0, 8)});
-        } else {
-          label = AppLocalizations.of(context).t('wallet_bill_payment');
-        }
+        label = AppLocalizations.of(context).t('wallet_bill_payment');
         iconColor = Colors.red;
-        icon = Icons.receipt_long;
+        icon = Icons.arrow_upward;
       } else {
         label = AppLocalizations.of(context).t('wallet_sent');
         iconColor = Colors.red;

@@ -3,8 +3,6 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
-import '../providers/order_provider.dart';
 import '../services/provider_service.dart';
 import '../services/storage_service.dart';
 import '../widgets/gradient_button.dart';
@@ -584,34 +582,16 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
       ),
     );
 
-    if (confirm == true && mounted) {
-      // Mostrar loading visual
-      setState(() => _isLoading = true);
-      
-      final orderProvider = context.read<OrderProvider>();
-      // v435: Retry agora é interno ao acceptOrderAsProvider
-      final success = await orderProvider.acceptOrderAsProvider(orderId);
-      final errorMsg = orderProvider.error;
-      
-      if (!mounted) return;
-      setState(() => _isLoading = false);
-      
-      if (success) {
+    if (confirm == true && _providerId != null) {
+      final success = await _providerService.acceptOrder(orderId, _providerId!);
+      if (success && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(l.t('prov_dash_order_accepted')),
-            backgroundColor: const Color(0xFF4CAF50),
+            backgroundColor: Color(0xFF4CAF50),
           ),
         );
         await _loadProviderData();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao aceitar ordem: ${errorMsg ?? "Tente novamente"}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
-        );
       }
     }
   }
@@ -629,6 +609,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
   void _showOrderDetails(Map<String, dynamic> order) {
     final l = AppLocalizations.of(context)!;
     // Debug: mostrar todos os campos da ordem
+    broLog('📦 Order data: $order');
     broLog('📦 Order keys: ${order.keys.toList()}');
     
     // Tentar pegar billCode de várias fontes possíveis
@@ -653,7 +634,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                         (order['metadata']?['pubkey']) ?? 
                         '';
     
-    broLog('📋 billCode presente: ${billCode.isNotEmpty}');
+    broLog('📋 billCode encontrado: ${billCode.isNotEmpty ? billCode.substring(0, min(20, billCode.length)) + "..." : "VAZIO"}');
     broLog('👤 userPubkey encontrado: ${userPubkey.isNotEmpty ? userPubkey.substring(0, min(16, userPubkey.length)) + "..." : "VAZIO"}');
     
     showDialog(
@@ -672,8 +653,8 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
               _buildDetailRow(l.t('prov_dash_status_label'), status),
               _buildDetailRow(l.t('prov_dash_btc_label'), '${order['btcAmount'] ?? 0} BTC'),
               
-              // Código da conta - só mostra após aceitação (billCode é criptografado no relay)
-              if (billCode.isNotEmpty && const ['accepted', 'awaiting_confirmation', 'payment_received', 'completed'].contains(status)) ...[  
+              // Código da conta - CRÍTICO para o provedor
+              if (billCode.isNotEmpty) ...[  
                 const SizedBox(height: 16),
                 Text(
                   l.t('prov_dash_bill_code'),
@@ -726,8 +707,8 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                     ],
                   ),
                 ),
-              ] else if (const ['accepted', 'awaiting_confirmation', 'payment_received', 'completed'].contains(status) && billCode.isEmpty) ...[
-                // Mostrar aviso se não houver código (apenas para ordens aceitas)
+              ] else ...[
+                // Mostrar aviso se não houver código
                 const SizedBox(height: 16),
                 Container(
                   width: double.infinity,

@@ -453,8 +453,16 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     broLog('🔵 [ACCEPT] Publicando aceitação no Nostr...');
     final orderProvider = context.read<OrderProvider>();
     
-    // v435: Retry agora é interno ao acceptOrderAsProvider
-    final success = await orderProvider.acceptOrderAsProvider(widget.orderId);
+    bool success = false;
+    for (int attempt = 1; attempt <= 2; attempt++) {
+      broLog('🔵 [ACCEPT] Tentativa $attempt/2...');
+      success = await orderProvider.acceptOrderAsProvider(widget.orderId);
+      if (success) break;
+      if (attempt < 2) {
+        broLog('⚠️ [ACCEPT] Tentativa $attempt falhou, retentando em 2s...');
+        await Future.delayed(const Duration(seconds: 2));
+      }
+    }
     
     broLog('🔵 [ACCEPT] Resultado final: success=$success');
     
@@ -487,12 +495,11 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
 
   Future<void> _pickReceipt() async {
     try {
-      // v426: Relays strfry têm maxEventSize=64KB, imagem precisa caber
       final XFile? image = await _picker.pickImage(
         source: ImageSource.gallery,
-        maxWidth: 600,
-        maxHeight: 600,
-        imageQuality: 35,
+        maxWidth: 1920,
+        maxHeight: 1080,
+        imageQuality: 85,
       );
 
       if (image != null) {
@@ -507,12 +514,11 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
 
   Future<void> _takePhoto() async {
     try {
-      // v426: Relays strfry têm maxEventSize=64KB, imagem precisa caber
       final XFile? image = await _picker.pickImage(
         source: ImageSource.camera,
-        maxWidth: 600,
-        maxHeight: 600,
-        imageQuality: 35,
+        maxWidth: 1920,
+        maxHeight: 1080,
+        imageQuality: 85,
       );
 
       if (image != null) {
@@ -562,16 +568,6 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         // Converter imagem para base64 para publicar no Nostr
         final bytes = await _receiptImage!.readAsBytes();
         proofImageBase64 = base64Encode(bytes);
-        
-        // v426: strfry relays têm maxEventSize=64KB.
-        // Imagens picked com 600x600 q35 devem ser ~10-30KB base64.
-        // Se ainda assim exceder, avisar o usuário.
-        if (proofImageBase64.length > 45000) {
-          broLog('⚠️ [UPLOAD] Imagem muito grande: ${(proofImageBase64.length / 1024).toStringAsFixed(0)}KB base64 (máx ~44KB)');
-          _showError('Imagem muito grande para os relays (${(bytes.length / 1024).toStringAsFixed(0)}KB). Tire uma nova foto ou selecione uma imagem menor.');
-          setState(() => _isUploading = false);
-          return;
-        }
       }
 
       // ========== GERAR INVOICE AUTOMATICAMENTE ==========
@@ -803,7 +799,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                      _orderDetails!['bill_code'] as String? ?? '';
     
     // DEBUG: Log para verificar se billCode está presente
-    broLog('🔍 _buildContent: billType=$billType, status=$status, billCode=${billCode.isNotEmpty ? "present (${billCode.length} chars)" : "EMPTY"}');
+    broLog('🔍 _buildContent: billType=$billType, status=$status, billCode=${billCode.isNotEmpty ? "${billCode.substring(0, billCode.length > 20 ? 20 : billCode.length)}..." : "EMPTY"}');
     
     // SEMPRE construir payment_data a partir do billCode se existir
     Map<String, dynamic>? paymentData;
@@ -872,6 +868,49 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             // Mostrar código de pagamento APENAS quando Bro precisa pagar
             if (paymentData != null && paymentData.isNotEmpty) ...[
               _buildPaymentDataCard(billType, paymentData),
+              const SizedBox(height: 16),
+            ] else ...[
+              // Indicador de que o billCode está sendo obtido
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1A1A),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                ),
+                child: Column(
+                  children: [
+                    const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.orange,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      AppLocalizations.of(context)!.t('prov_det_loading_pix'),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.orange,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      AppLocalizations.of(context)!.t('prov_det_loading_pix_hint'),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 16),
             ],
             _buildReceiptSection(),

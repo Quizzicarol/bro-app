@@ -2,10 +2,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:bro_app/services/clipboard_service.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
+import '../config.dart';
 import '../providers/order_provider.dart';
 import '../providers/breez_provider_export.dart';
 import '../providers/breez_liquid_provider.dart';
@@ -146,9 +146,14 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
     
     try {
       final nostrService = NostrOrderService();
-      // Usar chave do usuário logado para descriptografar evidências NIP-44
-      final orderProvider = context.read<OrderProvider>();
-      final adminPrivKey = orderProvider.nostrPrivateKey;
+      // 🔓 Usar ADMIN_PRIVKEY para descriptografar evidências NIP-44
+      String? adminPrivKey;
+      if (AppConfig.adminPrivkey.isNotEmpty) {
+        adminPrivKey = AppConfig.adminPrivkey;
+      } else {
+        final orderProvider = context.read<OrderProvider>();
+        adminPrivKey = orderProvider.nostrPrivateKey;
+      }
       final evidence = await nostrService.fetchDisputeEvidence(orderId, adminPrivateKey: adminPrivKey);
       
       if (mounted) {
@@ -220,12 +225,19 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
     setState(() => _loadingProof = true);
     
     try {
-      // Usar chave do usuário logado para descriptografar NIP-44
+      // Obter chave privada do admin para descriptografar NIP-44
+      // Prioridade: ADMIN_PRIVKEY (dart-define) > chave do usuário logado
       String? adminPrivKey;
-      try {
-        final orderProvider = context.read<OrderProvider>();
-        adminPrivKey = orderProvider.nostrPrivateKey;
-      } catch (_) {}
+      if (AppConfig.adminPrivkey.isNotEmpty) {
+        adminPrivKey = AppConfig.adminPrivkey;
+        broLog('🔑 Usando ADMIN_PRIVKEY para descriptografia de comprovante');
+      } else {
+        try {
+          final orderProvider = context.read<OrderProvider>();
+          adminPrivKey = orderProvider.nostrPrivateKey;
+          broLog('🔑 Usando chave do usuário logado para descriptografia (ADMIN_PRIVKEY não configurado)');
+        } catch (_) {}
+      }
       
       final nostrService = NostrOrderService();
       final result = await nostrService.fetchProofForOrder(
@@ -267,7 +279,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
   }
   
   void _copyToClipboard(String text, String label) {
-    copyWithAutoClear(text);
+    Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('$label copiado!'), backgroundColor: Colors.green, duration: const Duration(seconds: 2)),
     );

@@ -424,34 +424,6 @@ class BrixService {
       return [];
     }
   }
-
-  /// Set provider status on BRIX server for push notifications
-  Future<bool> setProviderStatus(bool isProvider, String pubkey) async {
-    try {
-      final response = await _dio.post('/brix/set-provider-status',
-        data: {'is_provider': isProvider},
-        options: _signedOptions('/brix/set-provider-status', 'POST', pubkey: pubkey),
-      );
-      return response.data?['success'] == true;
-    } catch (e) {
-      broLog('[BRIX] Error setting provider status: $e');
-      return false;
-    }
-  }
-
-  /// Notify all active providers about a new order
-  Future<bool> notifyProviders(String billType, String pubkey) async {
-    try {
-      final response = await _dio.post('/brix/notify-providers',
-        data: {'bill_type': billType},
-        options: _signedOptions('/brix/notify-providers', 'POST', pubkey: pubkey),
-      );
-      return response.data?['success'] == true;
-    } catch (e) {
-      broLog('[BRIX] Error notifying providers: $e');
-      return false;
-    }
-  }
 }
 
 class BrixUsernameCheckResult {

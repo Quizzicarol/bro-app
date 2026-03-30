@@ -1218,6 +1218,7 @@ class NostrOrderService {
     required String providerPrivateKey,
   }) async {
     try {
+      broLog('🔵 [acceptOrderOnNostr] Iniciando para ordem ${order.id.substring(0, 8)}, eventId=${order.eventId?.substring(0, 8) ?? "null"}');
       
       final keychain = Keychain(providerPrivateKey);
       
@@ -1242,6 +1243,7 @@ class NostrOrderService {
         tags.insert(1, ['e', order.eventId!]);
       }
       
+      broLog('🔵 [acceptOrderOnNostr] Criando evento kind=$kindBroAccept, tags=${tags.length}');
 
       final event = Event.from(
         kind: kindBroAccept,
@@ -1250,30 +1252,23 @@ class NostrOrderService {
         privkey: keychain.private,
       );
 
+      broLog('🔵 [acceptOrderOnNostr] Evento criado: id=${event.id?.substring(0, 8) ?? "null"}');
       
-      // Publicar em paralelo - retornar assim que pelo menos 1 relay aceitar
-      // Não esperar todos os relays (evita timeout quando um relay é lento)
-      final futures = _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)).toList();
+      // Publicar em todos os relays em paralelo
+      final results = await Future.wait(
+        _relays.map((relay) => _publishToRelay(relay, event).catchError((e) {
+          broLog('❌ [acceptOrderOnNostr] $relay catchError: $e');
+          return false;
+        })),
+      );
       
-      // Esperar o primeiro sucesso ou todos falharem
-      bool anySuccess = false;
-      for (final future in futures) {
-        try {
-          final result = await future;
-          if (result) {
-            anySuccess = true;
-            break;
-          }
-        } catch (_) {}
+      final successCount = results.where((r) => r).length;
+      broLog('🔵 [acceptOrderOnNostr] Resultado: $successCount/${_relays.length} relays aceitaram');
+      for (int i = 0; i < _relays.length; i++) {
+        broLog('  ${results[i] ? "✅" : "❌"} ${_relays[i]}');
       }
       
-      // Se nenhum retornou true via loop (pode ter saído cedo), verificar os restantes em background
-      if (!anySuccess) {
-        final results = await Future.wait(
-          futures.map((f) => f.catchError((_) => false)),
-        );
-        anySuccess = results.any((s) => s);
-      }
+      final anySuccess = successCount > 0;
 
       // Adicionar à blocklist local imediatamente (não esperar próximo sync)
       if (anySuccess) {
@@ -1285,6 +1280,7 @@ class NostrOrderService {
 
       return anySuccess;
     } catch (e, stack) {
+      broLog('❌ [acceptOrderOnNostr] EXCEÇÃO: $e\n$stack');
       return false;
     }
   }

@@ -585,21 +585,40 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
     );
 
     if (confirm == true && mounted) {
+      // Mostrar loading visual
+      setState(() => _isLoading = true);
+      
       final orderProvider = context.read<OrderProvider>();
       bool success = false;
+      String? errorMsg;
       for (int attempt = 1; attempt <= 2; attempt++) {
+        broLog('🔵 _acceptOrder tentativa $attempt para $orderId');
         success = await orderProvider.acceptOrderAsProvider(orderId);
         if (success) break;
+        errorMsg = orderProvider.error;
+        broLog('❌ _acceptOrder tentativa $attempt falhou: $errorMsg');
         if (attempt < 2) await Future.delayed(const Duration(seconds: 2));
       }
-      if (success && mounted) {
+      
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      
+      if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(l.t('prov_dash_order_accepted')),
-            backgroundColor: Color(0xFF4CAF50),
+            backgroundColor: const Color(0xFF4CAF50),
           ),
         );
         await _loadProviderData();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao aceitar ordem: ${errorMsg ?? "Tente novamente"}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
       }
     }
   }

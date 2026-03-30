@@ -59,6 +59,17 @@ class NostrOrderService {
     if (_blockedOrdersLoaded) return;
     try {
       final prefs = await SharedPreferences.getInstance();
+      // v435: Reset blocklist poisoned by v434 aggressive filters
+      const blocklistVersion = 'blocklist_version';
+      final version = prefs.getInt(blocklistVersion) ?? 0;
+      if (version < 436) {
+        await prefs.remove(_blockedOrdersKey);
+        await prefs.setInt(blocklistVersion, 436);
+        _blockedOrderIds = {};
+        _blockedOrdersLoaded = true;
+        broLog('🔄 Blocklist resetada (v435b: reset completo)');
+        return;
+      }
       final list = prefs.getStringList(_blockedOrdersKey) ?? [];
       _blockedOrderIds = list.toSet();
       _blockedOrdersLoaded = true;
@@ -1478,18 +1489,24 @@ class NostrOrderService {
       // v261: DEFENSE-IN-DEPTH — Se o próprio evento 30078 já tem status terminal
       // (porque o dono re-publicou com status atualizado via republishOrderWithStatus),
       // filtrar IMEDIATAMENTE sem precisar da query de status separada.
-      // Isso resolve o bug onde orders aceitas/completadas continuavam aparecendo
-      // quando a query de status (kind 30079/30080/30081) falhava por timeout.
-      const terminalInEvent = ['accepted', 'awaiting_confirmation', 'completed', 'cancelled', 'liquidated', 'disputed', 'payment_received'];
-      if (terminalInEvent.contains(order.status)) {
+      // v435: Só blocklist permanente para status REALMENTE terminais
+      const permanentTerminal = ['completed', 'cancelled', 'liquidated', 'disputed'];
+      if (permanentTerminal.contains(order.status)) {
         _addToBlocklist({order.id});
+        blockedCount++;
+        continue;
+      }
+      // v435: Status não-terminais: filtrar em runtime sem blocklist permanente
+      // (podem ser corrigidos/re-publicados como pending)
+      const runtimeFilterOnly = ['accepted', 'awaiting_confirmation', 'payment_received'];
+      if (runtimeFilterOnly.contains(order.status)) {
         blockedCount++;
         continue;
       }
       
       // v432: Ordem com providerId já setado no relay = já foi aceita/reivindicada
+      // v435: NÃO adicionar à blocklist permanente — providerId pode ser limpo em re-publish
       if (order.providerId != null && order.providerId!.isNotEmpty) {
-        _addToBlocklist({order.id});
         blockedCount++;
         continue;
       }
@@ -1498,6 +1515,7 @@ class NostrOrderService {
     }
     
     broLog('📋 fetchPendingOrders: ${allOrders.length} ordens válidas ($nullOrders rejeitadas, $blockedCount bloqueadas localmente, $skippedByTagCount skipped por tag)');
+
     
     // Filtrar ordens expiradas ANTES do fetch de status (economiza queries)
     final now = DateTime.now();
@@ -1559,12 +1577,12 @@ class NostrOrderService {
       broLog('  📦 Ordem ${order.id.substring(0, 8)}: status=${order.status}, update=$updateStatus, amount=${order.amount}');
     }
     
-    // PASSO 3: Salvar ordens com status terminal na blocklist local
+    // PASSO 3: Salvar ordens com status TERMINAL na blocklist local
+    // v435: Só blocklist permanente para status realmente terminais
     final newBlockedIds = <String>{};
     for (final entry in statusUpdates.entries) {
       final status = entry.value['status'] as String?;
-      if (status == 'accepted' || status == 'awaiting_confirmation' || 
-          status == 'completed' || status == 'liquidated' || 
+      if (status == 'completed' || status == 'liquidated' || 
           status == 'cancelled' || status == 'disputed') {
         newBlockedIds.add(entry.key);
       }

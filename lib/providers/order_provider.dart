@@ -475,7 +475,9 @@ class OrderProvider with ChangeNotifier {
     // Executar em background sem bloquear a UI
     Future.microtask(() async {
       try {
-        // PERFORMANCE: Republicar e sincronizar EM PARALELO (n�?£o sequencial)
+        // v435: Republicar ordens não publicadas em cada sync
+        await _republishUnpublishedOrders();
+        // PERFORMANCE: Republicar e sincronizar EM PARALELO (não sequencial)
         final privateKey = _nostrService.privateKey;
         await Future.wait([
           if (privateKey != null) republishLocalOrdersToNostr(),
@@ -1017,16 +1019,23 @@ class OrderProvider with ChangeNotifier {
       
       // 🔥 PUBLICAR NO NOSTR COM RETRY
       // Aguardar publish para garantir que a ordem chegue nos relays
+      bool published = false;
       for (int attempt = 1; attempt <= 3; attempt++) {
         await _publishOrderToNostr(order);
         // Verificar se publish funcionou (eventId preenchido)
         final idx = _orders.indexWhere((o) => o.id == order.id);
         if (idx != -1 && _orders[idx].eventId != null) {
           broLog('✅ Ordem publicada no Nostr (tentativa $attempt)');
+          published = true;
           break;
         }
         broLog('⚠️ Publish tentativa $attempt falhou, ${attempt < 3 ? "retentando em 2s..." : "desistindo"}');
         if (attempt < 3) await Future.delayed(const Duration(seconds: 2));
+      }
+      
+      // v435: Log claro se publish falhou — será retentado no próximo sync
+      if (!published) {
+        broLog('❌ ALERTA: Ordem ${order.id.substring(0, 8)} salva localmente mas NÃO publicada nos relays. Será retentada automaticamente.');
       }
 
       // Notificar provedores ativos via FCM push (fire-and-forget)
@@ -1922,8 +1931,8 @@ class OrderProvider with ChangeNotifier {
   }
 
   /// Provedor aceita uma ordem - publica aceita�?§�?£o no Nostr e atualiza localmente
-  Future<bool> acceptOrderAsProvider(String orderId) async {
-    broLog('ðŸ�?�µ [acceptOrderAsProvider] INICIADO para $orderId');
+  Future<bool> acceptOrderAsProvider(String orderId, {int maxAttempts = 2}) async {
+    broLog('ðŸ�?�µ [acceptOrderAsProvider] INICIADO para $orderId (maxAttempts=$maxAttempts)');
     _isLoading = true;
     _error = null;
     _immediateNotify();

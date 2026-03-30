@@ -589,16 +589,9 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
       setState(() => _isLoading = true);
       
       final orderProvider = context.read<OrderProvider>();
-      bool success = false;
-      String? errorMsg;
-      for (int attempt = 1; attempt <= 2; attempt++) {
-        broLog('🔵 _acceptOrder tentativa $attempt para $orderId');
-        success = await orderProvider.acceptOrderAsProvider(orderId);
-        if (success) break;
-        errorMsg = orderProvider.error;
-        broLog('❌ _acceptOrder tentativa $attempt falhou: $errorMsg');
-        if (attempt < 2) await Future.delayed(const Duration(seconds: 2));
-      }
+      // v435: Retry agora é interno ao acceptOrderAsProvider
+      final success = await orderProvider.acceptOrderAsProvider(orderId);
+      final errorMsg = orderProvider.error;
       
       if (!mounted) return;
       setState(() => _isLoading = false);

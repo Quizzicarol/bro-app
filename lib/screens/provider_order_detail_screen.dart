@@ -453,16 +453,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     broLog('🔵 [ACCEPT] Publicando aceitação no Nostr...');
     final orderProvider = context.read<OrderProvider>();
     
-    bool success = false;
-    for (int attempt = 1; attempt <= 2; attempt++) {
-      broLog('🔵 [ACCEPT] Tentativa $attempt/2...');
-      success = await orderProvider.acceptOrderAsProvider(widget.orderId);
-      if (success) break;
-      if (attempt < 2) {
-        broLog('⚠️ [ACCEPT] Tentativa $attempt falhou, retentando em 2s...');
-        await Future.delayed(const Duration(seconds: 2));
-      }
-    }
+    // v435: Retry agora é interno ao acceptOrderAsProvider
+    final success = await orderProvider.acceptOrderAsProvider(widget.orderId);
     
     broLog('🔵 [ACCEPT] Resultado final: success=$success');
     

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import '../providers/order_provider.dart';
 import '../services/provider_service.dart';
 import '../services/storage_service.dart';
 import '../widgets/gradient_button.dart';
@@ -582,8 +584,14 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
       ),
     );
 
-    if (confirm == true && _providerId != null) {
-      final success = await _providerService.acceptOrder(orderId, _providerId!);
+    if (confirm == true && mounted) {
+      final orderProvider = context.read<OrderProvider>();
+      bool success = false;
+      for (int attempt = 1; attempt <= 2; attempt++) {
+        success = await orderProvider.acceptOrderAsProvider(orderId);
+        if (success) break;
+        if (attempt < 2) await Future.delayed(const Duration(seconds: 2));
+      }
       if (success && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

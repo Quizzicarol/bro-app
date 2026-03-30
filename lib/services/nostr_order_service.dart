@@ -191,7 +191,9 @@ class NostrOrderService {
       final keychain = Keychain(privateKey);
       
       // Encriptar billCode se a chave estiver configurada, senão plaintext
-      final encryptedBillCode = _billCodeCrypto.isEnabled
+      // v433: Não re-encriptar se já está em formato BRO1:
+      final alreadyEncryptedRaw = billCode.startsWith('BRO1:');
+      final encryptedBillCode = _billCodeCrypto.isEnabled && !alreadyEncryptedRaw
           ? _billCodeCrypto.encrypt(billCode)
           : billCode;
       
@@ -1174,7 +1176,9 @@ class NostrOrderService {
       }
       
       // Encriptar billCode se a chave estiver configurada
-      final encryptedBillCode = _billCodeCrypto.isEnabled && order.billCode.isNotEmpty
+      // v433: Não re-encriptar se já está em formato BRO1:
+      final alreadyEncrypted = order.billCode.startsWith('BRO1:');
+      final encryptedBillCode = _billCodeCrypto.isEnabled && order.billCode.isNotEmpty && !alreadyEncrypted
           ? _billCodeCrypto.encrypt(order.billCode)
           : order.billCode;
       
@@ -1476,7 +1480,7 @@ class NostrOrderService {
       // filtrar IMEDIATAMENTE sem precisar da query de status separada.
       // Isso resolve o bug onde orders aceitas/completadas continuavam aparecendo
       // quando a query de status (kind 30079/30080/30081) falhava por timeout.
-      const terminalInEvent = ['accepted', 'awaiting_confirmation', 'completed', 'cancelled', 'liquidated', 'disputed'];
+      const terminalInEvent = ['accepted', 'awaiting_confirmation', 'completed', 'cancelled', 'liquidated', 'disputed', 'payment_received'];
       if (terminalInEvent.contains(order.status)) {
         _addToBlocklist({order.id});
         blockedCount++;
@@ -1484,16 +1488,10 @@ class NostrOrderService {
       }
       
       // v432: Ordem com providerId já setado no relay = já foi aceita/reivindicada
-      // Provedores devem ignorar (exceto se providerId é auto-referente ao criador — bug)
       if (order.providerId != null && order.providerId!.isNotEmpty) {
-        if (order.providerId != order.userPubkey) {
-          // Legitimamente aceita por outro provedor
-          _addToBlocklist({order.id});
-          blockedCount++;
-          continue;
-        }
-        // providerId == userPubkey é auto-referência corrupta, NÃO bloquear
-        // Será corrigida pelo _fixIncorrectlyPaidOrders do dono
+        _addToBlocklist({order.id});
+        blockedCount++;
+        continue;
       }
       
       allOrders.add(order);

@@ -2,6 +2,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:bro_app/services/clipboard_service.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
@@ -266,7 +267,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
   }
   
   void _copyToClipboard(String text, String label) {
-    Clipboard.setData(ClipboardData(text: text));
+    copyWithAutoClear(text);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('$label copiado!'), backgroundColor: Colors.green, duration: const Duration(seconds: 2)),
     );

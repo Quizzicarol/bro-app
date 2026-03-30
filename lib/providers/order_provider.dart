@@ -1579,7 +1579,7 @@ class OrderProvider with ChangeNotifier {
     ).toList();
 
     if (candidates.isEmpty) return;
-    broLog('v388: Migrating ${candidates.length} orders to plain text billCode');
+    broLog('v388: Re-syncing ${candidates.length} orders with current encryption state');
 
     for (final order in candidates) {
       try {

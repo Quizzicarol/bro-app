@@ -1,5 +1,6 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:bro_app/services/clipboard_service.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
@@ -168,7 +169,7 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
   }
 
   void _copyToClipboard(String text, String label) {
-    Clipboard.setData(ClipboardData(text: text));
+    copyWithAutoClear(text);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(AppLocalizations.of(context).tp('nip06_copied', {'label': label})),

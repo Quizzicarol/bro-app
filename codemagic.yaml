@@ -73,6 +73,8 @@ workflows:
             echo "GITHUB_TOKEN not set, skipping GitHub release"
             exit 0
           fi
+          export GH_TOKEN="$GITHUB_TOKEN"
+          REPO="Quizzicarol/bro-app"
           VERSION=$(grep "^version:" pubspec.yaml | sed 's/version: //')
           TAG="v${VERSION}"
           APK_PATH=$(find build -name "*.apk" -path "*release*" | head -1)
@@ -81,8 +83,8 @@ workflows:
             exit 0
           fi
           cp "$APK_PATH" "bro-${TAG}.apk"
-          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
-          gh release create "$TAG" \
+          gh release delete "$TAG" --repo "$REPO" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" --repo "$REPO" \
             --title "Bro ${TAG}" \
             --notes "## Bro ${TAG}
 

@@ -609,7 +609,6 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
   void _showOrderDetails(Map<String, dynamic> order) {
     final l = AppLocalizations.of(context)!;
     // Debug: mostrar todos os campos da ordem
-    broLog('📦 Order data: $order');
     broLog('📦 Order keys: ${order.keys.toList()}');
     
     // Tentar pegar billCode de várias fontes possíveis

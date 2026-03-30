@@ -959,9 +959,19 @@ class OrderProvider with ChangeNotifier {
       
       _immediateNotify();
       
-      // ðŸ�?�¥ PUBLICAR NO NOSTR IMEDIATAMENTE
-      // A ordem j�?¡ est�?¡ com pagamento sendo processado
-      _publishOrderToNostr(order);
+      // 🔥 PUBLICAR NO NOSTR COM RETRY
+      // Aguardar publish para garantir que a ordem chegue nos relays
+      for (int attempt = 1; attempt <= 3; attempt++) {
+        await _publishOrderToNostr(order);
+        // Verificar se publish funcionou (eventId preenchido)
+        final idx = _orders.indexWhere((o) => o.id == order.id);
+        if (idx != -1 && _orders[idx].eventId != null) {
+          broLog('✅ Ordem publicada no Nostr (tentativa $attempt)');
+          break;
+        }
+        broLog('⚠️ Publish tentativa $attempt falhou, ${attempt < 3 ? "retentando em 2s..." : "desistindo"}');
+        if (attempt < 3) await Future.delayed(const Duration(seconds: 2));
+      }
 
       // Notificar provedores ativos via FCM push (fire-and-forget)
       final pubkey = _currentUserPubkey;
@@ -2894,6 +2904,25 @@ class OrderProvider with ChangeNotifier {
       }
     } catch (e) {
     }
+  }
+
+  /// v428: Republica uma ordem que falhou no publish original
+  Future<void> republishOrder(String orderId) async {
+    final index = _orders.indexWhere((o) => o.id == orderId);
+    if (index == -1) return;
+    final order = _orders[index];
+    if (order.eventId != null) return; // já publicada
+    broLog('🔄 Republicando ordem ${orderId.substring(0, 8)}...');
+    for (int attempt = 1; attempt <= 3; attempt++) {
+      await _publishOrderToNostr(order);
+      final updated = _orders.indexWhere((o) => o.id == orderId);
+      if (updated != -1 && _orders[updated].eventId != null) {
+        broLog('✅ Republicação bem-sucedida (tentativa $attempt)');
+        return;
+      }
+      if (attempt < 3) await Future.delayed(const Duration(seconds: 2));
+    }
+    broLog('❌ Republicação falhou após 3 tentativas');
   }
 
   /// Buscar ordens pendentes de todos os usu�?¡rios (para providers verem)

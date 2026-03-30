@@ -23,6 +23,12 @@
 2. **payment-forward.js not started**: Must call `paymentForward.start()` in server.js
 3. **server_invoice not stored**: lnurl.js must store bolt11 in `server_invoice` column
 
+## Nostr Protocol Reference
+- Bro uses custom Nostr event kinds: 30078 (order), 30079 (accept), 30080 (payment proof/cancel), 30081 (complete)
+- These are **parameterized replaceable events** (30000-39999 range) using `#d` tag = orderId
+- Always use `#t` tag `bro-order` for orders
+- See `.github/skills/nostr/SKILL.md` for full Nostr protocol reference
+
 ## Other Rules
 - FCM MUST be data-only (no `notification` field)
 - NEVER change marketing version (1.0.133) without asking. Only increment build number.

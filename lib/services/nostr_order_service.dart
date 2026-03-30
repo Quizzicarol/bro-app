@@ -1158,7 +1158,20 @@ class NostrOrderService {
         return false;
       }
 
-      final resolvedProviderId = providerId ?? order.providerId;
+      var resolvedProviderId = providerId ?? order.providerId;
+      
+      // v432: GUARD — payment_received NUNCA deve ser publicado como kind 30078
+      // Somente status updates (kind 30080) podem ter payment_received
+      if (newStatus == 'payment_received') {
+        broLog('v432: republishOrderWithStatus: BLOQUEADO status=payment_received para ${order.id.substring(0, 8)}');
+        return false;
+      }
+      
+      // v432: GUARD — providerId auto-referencial (== userPubkey) é corrupção
+      if (resolvedProviderId != null && resolvedProviderId == keychain.public) {
+        broLog('v432: republishOrderWithStatus: Limpando providerId auto-referencial em ${order.id.substring(0, 8)}');
+        resolvedProviderId = null;
+      }
       
       // Encriptar billCode se a chave estiver configurada
       final encryptedBillCode = _billCodeCrypto.isEnabled && order.billCode.isNotEmpty
@@ -1179,7 +1192,7 @@ class NostrOrderService {
         'platformFee': order.platformFee,
         'total': order.total,
         'status': newStatus,
-        'providerId': resolvedProviderId,
+        if (resolvedProviderId != null) 'providerId': resolvedProviderId,
         'createdAt': order.createdAt.toIso8601String(),
         'updatedAt': DateTime.now().toIso8601String(),
       };
@@ -1468,6 +1481,19 @@ class NostrOrderService {
         _addToBlocklist({order.id});
         blockedCount++;
         continue;
+      }
+      
+      // v432: Ordem com providerId já setado no relay = já foi aceita/reivindicada
+      // Provedores devem ignorar (exceto se providerId é auto-referente ao criador — bug)
+      if (order.providerId != null && order.providerId!.isNotEmpty) {
+        if (order.providerId != order.userPubkey) {
+          // Legitimamente aceita por outro provedor
+          _addToBlocklist({order.id});
+          blockedCount++;
+          continue;
+        }
+        // providerId == userPubkey é auto-referência corrupta, NÃO bloquear
+        // Será corrigida pelo _fixIncorrectlyPaidOrders do dono
       }
       
       allOrders.add(order);

@@ -567,7 +567,7 @@ class OrderProvider with ChangeNotifier {
           // Se ordem tem o providerId de teste antigo, REMOVER (ser�?¡ corrigido pelo Nostr)
           if (order.providerId == 'provider_test_001') {
             // Setar providerId como null para que seja recuperado do Nostr
-            _orders[i] = order.copyWith(providerId: null);
+            _orders[i] = order.copyWith(clearProviderId: true);
             needsMigration = true;
           }
         }
@@ -625,28 +625,55 @@ class OrderProvider with ChangeNotifier {
     
     
     bool needsCorrection = false;
+    final ordersToRepublish = <String>[];
     
     for (final order in paidOrders) {
-      // Se N�?�?O tem paymentHash, �?© falso positivo!
+      bool isFalsePositive = false;
+      
+      // v432: Se providerId == userPubkey (auto-referência), é definitivamente falso positivo
+      if (order.providerId != null && order.providerId == order.userPubkey) {
+        broLog('v432: _fixIncorrectlyPaidOrders: ${order.id.substring(0, 8)} providerId==userPubkey (auto-referência)');
+        isFalsePositive = true;
+      }
+      
+      // Se NÃO tem paymentHash, é falso positivo
       if (order.paymentHash == null || order.paymentHash!.isEmpty) {
-        
+        broLog('v432: _fixIncorrectlyPaidOrders: ${order.id.substring(0, 8)} sem paymentHash');
+        isFalsePositive = true;
+      }
+      
+      if (isFalsePositive) {
         final index = _orders.indexWhere((o) => o.id == order.id);
         if (index != -1) {
-          _orders[index] = _orders[index].copyWith(status: 'pending');
+          // v432: Limpar status E providerId corrompido
+          _orders[index] = _orders[index].copyWith(status: 'pending', clearProviderId: true);
           needsCorrection = true;
+          ordersToRepublish.add(order.id);
         }
-      } else {
       }
     }
     
     if (needsCorrection) {
       await _saveOrders();
       
-      // Republicar no Nostr com status correto
-      for (final order in _orders.where((o) => o.status == 'pending')) {
-        try {
-          await _publishOrderToNostr(order);
-        } catch (e) {
+      // v432: Republicar no Nostr usando republishOrderWithStatus para substituir
+      // evento corrompido no relay (que tinha status payment_received e providerId errado)
+      final privateKey = _nostrService.privateKey;
+      if (privateKey != null && privateKey.isNotEmpty) {
+        for (final orderId in ordersToRepublish) {
+          final order = _orders.firstWhere((o) => o.id == orderId, orElse: () => _orders.first);
+          if (order.id != orderId) continue;
+          try {
+            broLog('v432: Republicando ${orderId.substring(0, 8)} com status=pending, providerId=null');
+            await _nostrOrderService.republishOrderWithStatus(
+              privateKey: privateKey,
+              order: order,
+              newStatus: 'pending',
+              providerId: null,
+            );
+          } catch (e) {
+            broLog('v432: Erro ao republicar ${orderId.substring(0, 8)}: $e');
+          }
         }
       }
     }

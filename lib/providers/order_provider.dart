@@ -957,11 +957,16 @@ class OrderProvider with ChangeNotifier {
         createdAt: DateTime.now(),
       );
       
-      // v489: PUBLICAR NO NOSTR PRIMEIRO — só salvar localmente se publicou
-      // Evita ordens fantasma que aparecem no dashboard mas não estão nos relays
+      // v491: PUBLICAR NO NOSTR PRIMEIRO — só salvar localmente se publicou
+      // FIX: Inserir na lista ANTES de chamar _publishOrderToNostr, 
+      // pois ele precisa encontrar a ordem em _orders para gravar o eventId
       bool published = false;
       for (int attempt = 1; attempt <= 3; attempt++) {
         try {
+          // Inserir na lista para que _publishOrderToNostr encontre e atualize eventId
+          if (!_orders.any((o) => o.id == order.id)) {
+            _orders.insert(0, order);
+          }
           await _publishOrderToNostr(order);
           final idx = _orders.indexWhere((o) => o.id == order.id);
           if (idx != -1 && _orders[idx].eventId != null) {
@@ -969,11 +974,10 @@ class OrderProvider with ChangeNotifier {
             broLog('✅ Ordem publicada no Nostr (tentativa $attempt)');
             break;
           }
-          // _publishOrderToNostr pode ter adicionado à lista sem eventId — remover
+          // Publish retornou sem eventId — remover e tentar de novo
           _orders.removeWhere((o) => o.id == order.id);
           broLog('⚠️ Publish tentativa $attempt: sem eventId retornado');
         } catch (e) {
-          // Limpar se _publishOrderToNostr adicionou parcialmente
           _orders.removeWhere((o) => o.id == order.id);
           broLog('⚠️ Publish tentativa $attempt falhou: $e');
         }
@@ -981,20 +985,19 @@ class OrderProvider with ChangeNotifier {
       }
       
       if (!published) {
+        // Limpar qualquer resto
+        _orders.removeWhere((o) => o.id == order.id);
         broLog('❌ Ordem ${order.id.substring(0, 8)} NÃO publicada nos relays após 3 tentativas');
         _error = 'Falha ao publicar ordem nos relays Nostr';
         return null;
       }
       
-      // Só agora salvar localmente — ordem confirmada nos relays
-      if (!_orders.any((o) => o.id == order.id)) {
-        _orders.insert(0, order);
-      }
-      _currentOrder = order;
+      // Ordem já está em _orders com eventId (salvo por _publishOrderToNostr)
+      _currentOrder = _orders.firstWhere((o) => o.id == order.id);
       await _saveOrders();
       _immediateNotify();
       
-      return order;
+      return _currentOrder;
     } catch (e) {
       _error = e.toString();
       return null;

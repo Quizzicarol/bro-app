@@ -86,6 +86,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     _startStatusPolling();
     _fetchResolutionIfNeeded();
     _fetchMediatorMessagesForUser();
+    // v490: Listener reativo — quando OrderProvider atualiza (sync, push, etc.),
+    // a tela recarrega os dados automaticamente
+    _setupProviderListener();
   }
 
   /// v403: Carrega status do OrderProvider sincronamente para evitar inconsistência
@@ -107,7 +110,51 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     _statusCheckTimer?.cancel();
     _countdownTimer?.cancel();
     _paymentCheckTimer?.cancel();
+    _orderProvider?.removeListener(_onProviderUpdated);
     super.dispose();
+  }
+
+  OrderProvider? _orderProvider;
+  
+  /// v490: Assina mudanças no OrderProvider para reagir automaticamente 
+  /// quando o sync Nostr traz dados novos (proofImage, status, etc.)
+  void _setupProviderListener() {
+    _orderProvider = Provider.of<OrderProvider>(context, listen: false);
+    _orderProvider!.addListener(_onProviderUpdated);
+  }
+  
+  void _onProviderUpdated() {
+    if (!mounted) return;
+    final order = _orderProvider?.getOrderById(widget.orderId);
+    if (order == null) return;
+    
+    final orderMap = order.toJson();
+    final newStatus = order.status;
+    
+    // Atualizar dados na tela se houver mudança
+    final statusChanged = newStatus != _currentStatus;
+    final hasNewProof = order.metadata?['proofImage'] != null && 
+        order.metadata!['proofImage'] is String &&
+        !(order.metadata!['proofImage'] as String).startsWith('[encrypted:') &&
+        (_orderDetails?['metadata'] == null || 
+         (_orderDetails!['metadata'] as Map<String, dynamic>?)?.containsKey('proofImage') != true ||
+         ((_orderDetails!['metadata'] as Map<String, dynamic>?)?['proofImage'] as String?)?.startsWith('[encrypted:') == true);
+    
+    if (statusChanged || hasNewProof) {
+      final bestStatus = _isStatusMoreRecent(newStatus, _currentStatus) ? newStatus : _currentStatus;
+      setState(() {
+        _orderDetails = orderMap;
+        _currentStatus = bestStatus;
+        _expiresAt = _calculateExpiresAt(orderMap);
+      });
+      if (statusChanged) {
+        broLog('📡 [LISTENER] Status atualizado via Provider: $newStatus');
+        if (bestStatus == 'awaiting_confirmation') _startCountdownTimer();
+      }
+      if (hasNewProof) {
+        broLog('📡 [LISTENER] proofImage recebido via Provider');
+      }
+    }
   }
 
   /// Verifica se newStatus é mais recente que currentStatus na progressão de ordem
@@ -132,6 +179,22 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   Future<void> _loadOrderDetails() async {
     try {
       Map<String, dynamic>? order;
+      
+      // v490: SEMPRE sincronizar com Nostr para buscar proof/status mais recentes
+      // Sem isso, proof de 65KB pode não ter chegado no sync automático inicial
+      if (mounted) {
+        try {
+          final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+          await orderProvider.syncOrdersFromNostr(force: true).timeout(
+            const Duration(seconds: 8),
+            onTimeout: () {
+              broLog('⏱️ Sync timeout no _loadOrderDetails, continuando com dados locais');
+            },
+          );
+        } catch (e) {
+          broLog('⚠️ Sync falhou no _loadOrderDetails: $e');
+        }
+      }
       
       // v450: Buscar do OrderProvider PRIMEIRO (memória, mais recente)
       // O OrderProvider tem os dados atualizados via Nostr sync em memória.
@@ -182,6 +245,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         if (_currentStatus == 'awaiting_confirmation' && _expiresAt != null) {
           _startCountdownTimer();
         }
+        
+        // v490: FALLBACK — Se a ordem está em awaiting_confirmation ou completed
+        // mas NÃO tem proof, buscar diretamente do relay via fetchProofForOrder
+        final metadata = order?['metadata'] as Map<String, dynamic>?;
+        final proofImg = metadata?['proofImage'] as String?;
+        final hasValidProof = proofImg != null && proofImg.isNotEmpty && !proofImg.startsWith('[encrypted:');
+        if (!hasValidProof && (bestStatus == 'awaiting_confirmation' || bestStatus == 'completed' || bestStatus == 'liquidated')) {
+          _fetchProofDirectly();
+        }
+        
         // Auto-pagamento de ordens liquidadas é feito pelo OrderProvider no sync
       } else {
         if (!mounted) return;
@@ -199,6 +272,59 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       });
     }
   }
+  
+  /// v490: Busca proof diretamente dos relays quando sync normal não trouxe
+  /// Isso acontece com proofs grandes (~65KB) que podem causar timeout no sync batch
+  Future<void> _fetchProofDirectly() async {
+    if (!mounted) return;
+    try {
+      final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+      final privateKey = orderProvider.nostrPrivateKey;
+      final providerId = _orderDetails?['providerId'] as String?;
+      
+      broLog('🔍 [PROOF] Buscando proof diretamente dos relays para ${widget.orderId.substring(0, 8)}...');
+      
+      final nostrService = NostrOrderService();
+      final result = await nostrService.fetchProofForOrder(
+        widget.orderId,
+        providerPubkey: providerId,
+        privateKey: privateKey,
+      ).timeout(const Duration(seconds: 15));
+      
+      final proof = result['proofImage'] as String?;
+      final encrypted = result['encrypted'] as bool? ?? false;
+      
+      if (proof != null && proof.isNotEmpty && !encrypted && mounted) {
+        broLog('✅ [PROOF] Comprovante obtido diretamente do relay (${proof.length} chars)');
+        
+        // Salvar no cache persistente e no OrderProvider
+        orderProvider.cacheProofImage(widget.orderId, proof);
+        orderProvider.updateOrderMetadataLocal(widget.orderId, {
+          'proofImage': proof,
+          'paymentProof': proof,
+        });
+        
+        // Forçar rebuild da tela
+        if (mounted) {
+          setState(() {
+            if (_orderDetails != null) {
+              final meta = Map<String, dynamic>.from(
+                (_orderDetails!['metadata'] as Map<String, dynamic>?) ?? {},
+              );
+              meta['proofImage'] = proof;
+              meta['paymentProof'] = proof;
+              _orderDetails!['metadata'] = meta;
+            }
+          });
+        }
+      } else {
+        broLog('⚠️ [PROOF] Fetch direto não retornou proof válido (proof=${proof?.length}, encrypted=$encrypted)');
+      }
+    } catch (e) {
+      broLog('⚠️ [PROOF] Erro ao buscar proof diretamente: $e');
+    }
+  }
+
 /// Busca resolução de disputa do Nostr (se a ordem tiver passado por disputa)
   Future<void> _fetchResolutionIfNeeded() async {
     // Aguardar dados da ordem carregarem
@@ -391,9 +517,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       // CORREÇÃO: Sincronizar com Nostr para buscar atualizações (aceites, comprovantes)
       final orderProvider = Provider.of<OrderProvider>(context, listen: false);
       
-      // Forçar sincronização com Nostr a cada polling
+      // v490: Forçar sincronização com Nostr a cada polling (bypass throttle de 30s)
       try {
-        await orderProvider.syncOrdersFromNostr();
+        await orderProvider.syncOrdersFromNostr(force: true);
       } catch (e) {
         broLog('⚠️ Erro ao sincronizar Nostr no polling: $e');
       }
@@ -425,11 +551,18 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           _startCountdownTimer();
         }
 
-        // Parar polling em estados FINAIS (completed, cancelled, liquidated)
-        // NOTA: disputed NÃO para o polling — precisa detectar resolução da mediação
+        // v490: Parar polling em estados FINAIS apenas se proof já foi carregado
+        // Se proof ainda não chegou, continuar polling para buscar do relay
         if (status == 'completed' || status == 'cancelled' || status == 'liquidated') {
-          timer.cancel();
-          _countdownTimer?.cancel();
+          final hasProof = order?.metadata?['proofImage'] != null &&
+              (order!.metadata!['proofImage'] as String).isNotEmpty &&
+              !(order.metadata!['proofImage'] as String).startsWith('[encrypted:');
+          if (hasProof || status == 'cancelled') {
+            timer.cancel();
+            _countdownTimer?.cancel();
+          } else {
+            broLog('🔄 [POLLING] Status terminal ($status) mas proof ainda não carregado, continuando polling...');
+          }
         }
       }
 

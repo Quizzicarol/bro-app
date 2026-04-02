@@ -171,13 +171,15 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   /// Inicia polling automático para verificar updates de status
   /// Isso permite que o Bro veja quando o usuário confirma o pagamento
   void _startStatusPolling() {
-    // Polling a cada 10 segundos quando em awaiting_confirmation
+    // Polling a cada 10 segundos para TODOS os estados não-terminais
     _statusPollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) async {
       final currentStatus = _orderDetails?['status'] ?? '';
       
-      if (currentStatus == 'awaiting_confirmation' && mounted) {
-        broLog('🔄 [POLLING] Verificando status da ordem ${widget.orderId.substring(0, 8)}...');
-        await _loadOrderDetails();
+      // Polling para qualquer estado ativo (não apenas awaiting_confirmation)
+      const terminalStatuses = {'completed', 'liquidated', 'cancelled', 'expired', 'disputed'};
+      if (!terminalStatuses.contains(currentStatus) && mounted) {
+        broLog('🔄 [POLLING] Verificando status da ordem ${widget.orderId.substring(0, 8)} (status=$currentStatus)...');
+        await _loadOrderDetails(forceSync: true);
         
         // CORREÇÃO v234: Recalcular _timeRemaining a cada tick pra manter o countdown atualizado
         if (_receiptSubmittedAt != null && mounted) {
@@ -226,10 +228,9 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     try {
       final orderProvider = context.read<OrderProvider>();
       
-      // IMPORTANTE: Fazer sync com Nostr para buscar updates de status
-      // Isso permite que o Bro veja quando o usuário confirmou
-      final currentStatus = _orderDetails?['status'] ?? '';
-      if (currentStatus == 'awaiting_confirmation' || forceSync) {
+      // IMPORTANTE: Sempre sincronizar com Nostr para buscar updates de status
+      // Isso permite que o Bro veja quando o usuário confirmou pagamento
+      if (forceSync) {
         broLog('🔄 [SYNC] Sincronizando com Nostr para buscar updates...');
         await orderProvider.syncOrdersFromNostr().timeout(
           const Duration(seconds: 5),
@@ -497,9 +498,9 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     try {
       final XFile? image = await _picker.pickImage(
         source: ImageSource.gallery,
-        maxWidth: 1920,
-        maxHeight: 1080,
-        imageQuality: 85,
+        maxWidth: 800,
+        maxHeight: 600,
+        imageQuality: 60,
       );
 
       if (image != null) {
@@ -516,9 +517,9 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     try {
       final XFile? image = await _picker.pickImage(
         source: ImageSource.camera,
-        maxWidth: 1920,
-        maxHeight: 1080,
-        imageQuality: 85,
+        maxWidth: 800,
+        maxHeight: 600,
+        imageQuality: 60,
       );
 
       if (image != null) {
@@ -568,6 +569,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         // Converter imagem para base64 para publicar no Nostr
         final bytes = await _receiptImage!.readAsBytes();
         proofImageBase64 = base64Encode(bytes);
+        final sizeKB = (proofImageBase64.length * 3 / 4 / 1024).round();
+        broLog('📸 Comprovante: ${sizeKB}KB em base64 (${proofImageBase64.length} chars)');
       }
 
       // ========== GERAR INVOICE AUTOMATICAMENTE ==========
@@ -577,19 +580,14 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       final btcAmount = (_orderDetails!['btcAmount'] as num?)?.toDouble() ?? 0;
       
       // Converter btcAmount para sats (btcAmount está em BTC, * 100_000_000 = sats)
-      final totalSats = (btcAmount * 100000000).round();
+      final baseSats = (btcAmount * 100000000).round();
       
-      // CORRIGIDO: Provedor recebe valor total MENOS taxa da plataforma (2%)
-      // A taxa da plataforma é paga separadamente pelo usuário
-      var providerReceiveSats = totalSats;
+      // v449: Provedor recebe base + 3% de ganho. A taxa de plataforma (2%) é paga pelo usuário separadamente.
+      final providerFeeSats = (baseSats * AppConfig.providerFeePercent).round();
+      var providerReceiveSats = baseSats + (providerFeeSats < 1 && baseSats > 0 ? 1 : providerFeeSats);
       
-      // Taxa mínima de 1 sat para ordens muito pequenas
-      if (providerReceiveSats < 1 && totalSats > 0) {
-        providerReceiveSats = 1;
-      }
-      
-      broLog('💰 Ordem: R\$ ${amount.toStringAsFixed(2)} = $totalSats sats');
-      broLog('💰 Provedor vai receber: $providerReceiveSats sats (valor total da ordem)');
+      broLog('💰 Ordem: R\$ ${amount.toStringAsFixed(2)} = $baseSats sats base + $providerFeeSats sats (3%)');
+      broLog('💰 Provedor vai receber: $providerReceiveSats sats (base + ganho 3%)');
       
       String? generatedInvoice;
       
@@ -1640,9 +1638,9 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
 
       // Calcular valor em sats
       final order = orderProvider.getOrderById(widget.orderId);
-      final totalSats = order?.btcAmount.round() ?? 0;
+      final baseSats = ((order?.btcAmount ?? 0) * 100000000).round();
 
-      if (totalSats <= 0) {
+      if (baseSats <= 0) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(AppLocalizations.of(context)!.t('prov_det_invalid_amount')), backgroundColor: Colors.red),
@@ -1652,10 +1650,14 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         return;
       }
 
+      // v449: Include 3% provider fee in invoice amount
+      final regenFeeSats = (baseSats * AppConfig.providerFeePercent).round();
+      final totalSats = baseSats + (regenFeeSats < 1 && baseSats > 0 ? 1 : regenFeeSats);
+
       String? newInvoice;
 
       if (breezProvider.isInitialized) {
-        broLog('⚡ [RegenInvoice] Gerando invoice de $totalSats sats via Spark...');
+        broLog('⚡ [RegenInvoice] Gerando invoice de $totalSats sats ($baseSats base + $regenFeeSats fee) via Spark...');
         final result = await breezProvider.createInvoice(
           amountSats: totalSats,
           description: 'Bro - Ordem ${widget.orderId.substring(0, 8)} (novo)',

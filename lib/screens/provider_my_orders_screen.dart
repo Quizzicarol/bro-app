@@ -48,18 +48,17 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
   }
 
   List<Order> _getMyOrders(OrderProvider orderProvider) {
-    // Obter pubkey Nostr do usuário logado (para comparar com providerId real)
+    // SEGURANÇA: Usar SOMENTE a pubkey do usuário logado, nunca widget.providerId
     final nostrPubkey = _nostrService.publicKey;
+    if (nostrPubkey == null || nostrPubkey.isEmpty) return [];
     
     // Filtrar ordens que este provedor aceitou e ainda não completou
     return orderProvider.orders.where((order) {
-      // Aceitar tanto o providerId passado quanto a pubkey Nostr real
-      final isMyOrder = order.providerId == widget.providerId || 
-                        (nostrPubkey != null && order.providerId == nostrPubkey);
+      final isMyOrder = order.providerId == nostrPubkey;
       final isActiveStatus = order.status == 'accepted' || 
                             order.status == 'awaiting_confirmation';
       
-      broLog('🔍 Ordem ${_safeSubstring(order.id, 0, 8)}: providerId=${order.providerId}, myId=${widget.providerId}, nostrPubkey=${_safeSubstring(nostrPubkey, 0, 8)}, isMyOrder=$isMyOrder, isActive=$isActiveStatus');
+      broLog('🔍 Ordem ${_safeSubstring(order.id, 0, 8)}: providerId=${order.providerId}, nostrPubkey=${_safeSubstring(nostrPubkey, 0, 8)}, isMyOrder=$isMyOrder, isActive=$isActiveStatus');
       
       return isMyOrder && isActiveStatus;
     }).toList();

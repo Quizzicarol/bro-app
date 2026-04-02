@@ -465,7 +465,7 @@ class BroApp extends StatelessWidget {
           // v441: Connect real-time order subscription to trigger sync
           OrderRealtimeService().onOrderEvent = () {
             broLog('[RT] Triggering immediate sync from real-time event');
-            orderProvider.syncOrdersFromNostr();
+            orderProvider.syncOrdersFromNostr(force: true);
           };
           
           // Callback para pagamentos RECEBIDOS (menos comum no fluxo atual)
@@ -511,6 +511,36 @@ class BroApp extends StatelessWidget {
             
             if (providerInvoice == null || providerInvoice.isEmpty) {
               broLog('❌ [AutoPay-Main] Sem providerInvoice para ${orderId.substring(0, 8)}');
+              return false;
+            }
+            
+            // v449: Validar invoice amount antes de pagar (segurança contra invoice inflado)
+            final baseSats = (order.btcAmount * 100000000).round();
+            final expectedWithFee = baseSats + (baseSats * AppConfig.providerFeePercent).round();
+            final maxAllowed = (expectedWithFee * 1.03).ceil();
+            final minAllowed = (expectedWithFee * 0.97).floor();
+            try {
+              if (breezProvider.isInitialized) {
+                final decoded = await breezProvider.decodeInvoice(providerInvoice);
+                if (decoded != null && decoded['success'] == true) {
+                  final invoiceSats = int.tryParse(decoded['invoice']?['amountSats']?.toString() ?? '0') ?? 0;
+                  if (invoiceSats <= 0) {
+                    broLog('🚨 [AutoPay-Main] BLOQUEADO: invoice com 0 sats! Aguardando invoice válido.');
+                    return false;
+                  }
+                  if (invoiceSats > maxAllowed) {
+                    broLog('🚨 [AutoPay-Main] BLOQUEADO: invoice inflado! $invoiceSats > $maxAllowed (esperado ~$expectedWithFee). Aguardando novo invoice do provedor.');
+                    return false;
+                  }
+                  if (invoiceSats < minAllowed) {
+                    broLog('⚠️ [AutoPay-Main] ADIADO: invoice abaixo do esperado ($invoiceSats < $minAllowed). Provedor com versão antiga? Aguardando atualização.');
+                    return false;
+                  }
+                  broLog('✅ [AutoPay-Main] Invoice validado: $invoiceSats sats (esperado ~$expectedWithFee, range $minAllowed-$maxAllowed)');
+                }
+              }
+            } catch (e) {
+              broLog('🚨 [AutoPay-Main] Erro ao decodificar invoice — bloqueando por segurança: $e');
               return false;
             }
             

@@ -581,6 +581,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     required double btcAmount,
   }) async {
     if (_isProcessing) return;
+    setState(() => _isProcessing = true);
     final amountSats = int.parse(sats);
     final lightningProvider = context.read<LightningProvider>();
     final orderProvider = context.read<OrderProvider>();
@@ -590,6 +591,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     try {
       walletBalance = await lightningProvider.getBalance();
     } catch (e) {
+      if (mounted) setState(() => _isProcessing = false);
       _showError(AppLocalizations.of(context).tp('payment_error_check_balance', {'error': e.toString()}));
       return;
     }
@@ -602,6 +604,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final msg = lockedSats > 0 
           ? AppLocalizations.of(context).tp('payment_insufficient_balance_detailed', {'total': walletBalance.toString(), 'locked': lockedSats.toString(), 'available': availableBalance.toString(), 'needed': amountSats.toString()})
           : AppLocalizations.of(context).tp('payment_insufficient_balance_simple', {'available': walletBalance.toString(), 'needed': amountSats.toString()});
+      if (mounted) setState(() => _isProcessing = false);
       _showError(msg);
       return;
     }
@@ -621,13 +624,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
             currentBalance: walletBalance,
             afterPayment: remainingAfterPayment,
           );
-          if (confirmed != true) return;
+          if (confirmed != true) {
+            if (mounted) setState(() => _isProcessing = false);
+            return;
+          }
         }
       }
     }
 
     // 3. Criar invoice para si mesmo e pagar (garante registro na cadeia Lightning)
-    setState(() => _isProcessing = true);
 
     // Mostrar loading
     showDialog(
@@ -682,7 +687,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         amount: billAmount,
         btcAmount: btcAmount,
         btcPrice: btcPrice,
-      ).timeout(const Duration(seconds: 15), onTimeout: () {
+      ).timeout(const Duration(seconds: 25), onTimeout: () {
         return null;
       });
 
@@ -693,6 +698,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
       }
 
       broLog('✅ Ordem criada: ${order.id}');
+
+      // CRÍTICO: Salvar paymentHash + status ATOMICAMENTE antes de navegar
+      // Garante que a transação aparece no histórico mesmo se Nostr falhar ou app crashar
+      orderProvider.setOrderPaymentHashAndStatusLocal(
+        orderId: order.id,
+        paymentHash: paymentHash,
+        invoice: invoice,
+        status: 'payment_received',
+      );
 
       // Fechar loading e navegar IMEDIATAMENTE
       if (mounted) Navigator.of(context).pop();
@@ -749,22 +763,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
     required String userPubkey,
   }) async {
     try {
-      // Salvar paymentHash (com timeout)
+      // paymentHash e status já foram salvos localmente antes da navegação.
+      // Aqui apenas publicamos no Nostr (pode ser lento, não bloqueia a UI).
       if (paymentHash.isNotEmpty) {
         await orderProvider.setOrderPaymentHash(orderId, paymentHash, invoice)
             .timeout(const Duration(seconds: 15), onTimeout: () {
-          broLog('⚠️ Timeout ao salvar paymentHash (15s) - continuando...');
+          broLog('⚠️ Timeout ao publicar paymentHash no Nostr (15s) - já salvo local');
         });
       }
-
-      // v259: NÃO publicar payment_received no Nostr para wallet payments!
-      // A ordem deve permanecer 'pending' nos relays para que provedores possam vê-la.
-      // payment_received só faz sentido quando o provedor confirma recebimento Lightning.
-      // Apenas salvar o status LOCALMENTE para a UI mostrar o progresso.
-      orderProvider.updateOrderStatusLocalOnly(
-        orderId: orderId,
-        status: 'payment_received',
-      );
 
       // Registrar taxa da plataforma (2%)
       try {

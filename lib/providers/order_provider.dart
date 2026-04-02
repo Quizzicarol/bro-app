@@ -957,18 +957,8 @@ class OrderProvider with ChangeNotifier {
         createdAt: DateTime.now(),
       );
       
-      // LOG DE VALIDA�?�?��?�?O
-      
-      _orders.insert(0, order);
-      _currentOrder = order;
-      
-      // Salvar localmente - USAR _saveOrders() para garantir filtro de seguran�?§a!
-      await _saveOrders();
-      
-      _immediateNotify();
-      
-      // 🔥 PUBLICAR NO NOSTR COM RETRY
-      // v437: await + retry para garantir que a ordem chegue nos relays
+      // v489: PUBLICAR NO NOSTR PRIMEIRO — só salvar localmente se publicou
+      // Evita ordens fantasma que aparecem no dashboard mas não estão nos relays
       bool published = false;
       for (int attempt = 1; attempt <= 3; attempt++) {
         try {
@@ -979,15 +969,30 @@ class OrderProvider with ChangeNotifier {
             broLog('✅ Ordem publicada no Nostr (tentativa $attempt)');
             break;
           }
+          // _publishOrderToNostr pode ter adicionado à lista sem eventId — remover
+          _orders.removeWhere((o) => o.id == order.id);
           broLog('⚠️ Publish tentativa $attempt: sem eventId retornado');
         } catch (e) {
+          // Limpar se _publishOrderToNostr adicionou parcialmente
+          _orders.removeWhere((o) => o.id == order.id);
           broLog('⚠️ Publish tentativa $attempt falhou: $e');
         }
         if (attempt < 3) await Future.delayed(const Duration(seconds: 2));
       }
+      
       if (!published) {
-        broLog('❌ Ordem ${order.id.substring(0, 8)} criada localmente mas NÃO publicada nos relays após 3 tentativas');
+        broLog('❌ Ordem ${order.id.substring(0, 8)} NÃO publicada nos relays após 3 tentativas');
+        _error = 'Falha ao publicar ordem nos relays Nostr';
+        return null;
       }
+      
+      // Só agora salvar localmente — ordem confirmada nos relays
+      if (!_orders.any((o) => o.id == order.id)) {
+        _orders.insert(0, order);
+      }
+      _currentOrder = order;
+      await _saveOrders();
+      _immediateNotify();
       
       return order;
     } catch (e) {
@@ -2632,10 +2637,13 @@ class OrderProvider with ChangeNotifier {
 
       for (final order in unpaidAsProvider) {
         try {
-          final amountSats = (order.btcAmount * 100000000).round();
-          if (amountSats <= 0) continue;
+          final baseSats = (order.btcAmount * 100000000).round();
+          if (baseSats <= 0) continue;
+          // v449: Include 3% provider fee in invoice
+          final providerFeeSats = (baseSats * AppConfig.providerFeePercent).round();
+          final amountSats = baseSats + (providerFeeSats < 1 && baseSats > 0 ? 1 : providerFeeSats);
 
-          broLog('[InvoiceRefresh] Gerando invoice de $amountSats sats para ${order.id.substring(0, 8)}...');
+          broLog('[InvoiceRefresh] Gerando invoice de $amountSats sats ($baseSats base + $providerFeeSats fee) para ${order.id.substring(0, 8)}...');
           final invoice = await onGenerateProviderInvoice!(amountSats, order.id);
           if (invoice == null || invoice.isEmpty) {
             broLog('[InvoiceRefresh] ?? Falha ao gerar invoice para ${order.id.substring(0, 8)}');
@@ -3014,6 +3022,60 @@ class OrderProvider with ChangeNotifier {
     await _publishOrderToNostr(_orders[index]);
     
     _throttledNotify();
+  }
+
+  /// Salvar paymentHash localmente SEM publicar no Nostr (para wallet payments)
+  /// Garante que a transação aparece no histórico mesmo se Nostr estiver lento
+  void setOrderPaymentHashLocal(String orderId, String paymentHash, String invoice) {
+    if (paymentHash.isEmpty || invoice.isEmpty) {
+      broLog('❌ setOrderPaymentHashLocal: paymentHash ou invoice vazio - ignorando');
+      return;
+    }
+    
+    final index = _orders.indexWhere((o) => o.id == orderId);
+    if (index == -1) {
+      broLog('⚠️ setOrderPaymentHashLocal: ordem $orderId não encontrada');
+      return;
+    }
+    
+    _orders[index] = _orders[index].copyWith(
+      paymentHash: paymentHash,
+      invoice: invoice,
+    );
+    
+    _debouncedSave();
+    _throttledNotify();
+    broLog('✅ setOrderPaymentHashLocal: $orderId paymentHash=$paymentHash (local only)');
+  }
+
+  /// Operação ATÔMICA: salvar paymentHash + status localmente em uma única escrita
+  /// Evita estado inconsistente se o app crashar entre as duas operações
+  void setOrderPaymentHashAndStatusLocal({
+    required String orderId,
+    required String paymentHash,
+    required String invoice,
+    required String status,
+  }) {
+    if (paymentHash.isEmpty || invoice.isEmpty) {
+      broLog('❌ setOrderPaymentHashAndStatusLocal: paymentHash ou invoice vazio');
+      return;
+    }
+    
+    final index = _orders.indexWhere((o) => o.id == orderId);
+    if (index == -1) {
+      broLog('⚠️ setOrderPaymentHashAndStatusLocal: ordem $orderId não encontrada');
+      return;
+    }
+    
+    _orders[index] = _orders[index].copyWith(
+      paymentHash: paymentHash,
+      invoice: invoice,
+      status: status,
+    );
+    
+    _saveOnlyUserOrders();
+    _immediateNotify();
+    broLog('✅ setOrderPaymentHashAndStatusLocal: $orderId -> $status, hash=$paymentHash (atômico, save imediato)');
   }
 
   // ==================== NOSTR INTEGRATION ====================

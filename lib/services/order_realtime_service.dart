@@ -190,12 +190,9 @@ class OrderRealtimeService {
         // Trigger sync callback (always — to update order data)
         onOrderEvent?.call();
 
-        // Show local notification ONLY for recent events (< 10 min old)
-        if (isRecentEvent) {
-          _showNotificationForEvent(kind, eventType, status, orderId);
-        } else {
-          broLog('[RT] Skipping notification for old event (age=${eventAge}s)');
-        }
+        // v450: NÃO mostrar notificação local quando o app está aberto.
+        // O usuário já está vendo os dados na tela via sync.
+        // Notificações chegam via FCM quando o app está em background.
       }
     } catch (_) {}
   }

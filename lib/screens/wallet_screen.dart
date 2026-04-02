@@ -2888,14 +2888,10 @@ class _WalletScreenState extends State<WalletScreen> {
       // Verificar se é pagamento com saldo da carteira ou depósito Lightning
       final isWalletPayment = payment['isWalletPayment'] == true;
       if (isWalletPayment) {
-        // v257: Pagamento feito com saldo da carteira
-        if (correlatedOrderId != null) {
-          label = AppLocalizations.of(context).tp('wallet_payment_wallet_id', {'orderId': correlatedOrderId.substring(0, 8)});
-        } else {
-          label = '💰 $description';
-        }
-        iconColor = Colors.orange;
-        icon = Icons.account_balance_wallet;
+        // v449: Unificado com bill payment — mesma label independente do método
+        label = AppLocalizations.of(context).t('wallet_bill_payment');
+        iconColor = Colors.red;
+        icon = Icons.arrow_upward;
       } else if (description == 'Bro Wallet Payment' || description == 'Bro Payment') {
         // Já correlacionado por paymentHash acima
         if (correlatedOrderId != null) {

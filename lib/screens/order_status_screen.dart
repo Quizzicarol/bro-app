@@ -110,40 +110,69 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     super.dispose();
   }
 
+  /// Verifica se newStatus é mais recente que currentStatus na progressão de ordem
+  bool _isStatusMoreRecent(String newStatus, String currentStatus) {
+    if (newStatus == currentStatus) return false;
+    if (currentStatus == 'cancelled') return newStatus == 'disputed';
+    if (newStatus == 'cancelled') return true;
+    if (currentStatus == 'disputed') return newStatus == 'completed' || newStatus == 'cancelled';
+    const finalStatuses = ['completed', 'liquidated'];
+    if (finalStatuses.contains(currentStatus)) return false;
+    if (newStatus == 'disputed') return true;
+    const statusOrder = [
+      'draft', 'pending', 'payment_received', 'accepted', 
+      'processing', 'awaiting_confirmation', 'completed', 'liquidated',
+    ];
+    final currentIndex = statusOrder.indexOf(currentStatus);
+    final newIndex = statusOrder.indexOf(newStatus);
+    if (currentIndex == -1 || newIndex == -1) return true;
+    return newIndex > currentIndex;
+  }
+
   Future<void> _loadOrderDetails() async {
     try {
       Map<String, dynamic>? order;
       
-      // Primeiro tenta pelo OrderService (com tratamento de exceção)
-      try {
-        order = await _orderService.getOrder(widget.orderId);
-      } catch (serviceError) {
-        broLog('⚠️ OrderService falhou: $serviceError');
-        // Continua para tentar o OrderProvider
-      }
-      
-      // Se não encontrou, tenta buscar pelo OrderProvider (que tem as ordens em memória)
-      if (order == null && mounted) {
-        broLog('⚠️ Ordem não encontrada no OrderService, tentando OrderProvider...');
+      // v450: Buscar do OrderProvider PRIMEIRO (memória, mais recente)
+      // O OrderProvider tem os dados atualizados via Nostr sync em memória.
+      // SharedPreferences (OrderService) pode ter status desatualizado.
+      if (mounted) {
         try {
           final orderProvider = Provider.of<OrderProvider>(context, listen: false);
           final orderFromProvider = orderProvider.orders.firstWhere(
             (o) => o.id == widget.orderId,
-            orElse: () => throw Exception('Ordem não encontrada no OrderProvider'),
+            orElse: () => throw Exception('not found'),
           );
-          // Converter Order para Map
           order = orderFromProvider.toJson();
-          broLog('✅ Ordem encontrada no OrderProvider: ${widget.orderId}');
-        } catch (providerError) {
-          broLog('⚠️ OrderProvider também falhou: $providerError');
+          broLog('✅ Ordem carregada do OrderProvider: ${widget.orderId.substring(0, 8)} status=${order['status']}');
+        } catch (_) {
+          broLog('⚠️ Ordem não encontrada no OrderProvider, tentando OrderService...');
+        }
+      }
+      
+      // Fallback: buscar do OrderService (SharedPreferences/API)
+      if (order == null) {
+        try {
+          order = await _orderService.getOrder(widget.orderId);
+        } catch (serviceError) {
+          broLog('⚠️ OrderService também falhou: $serviceError');
         }
       }
       
       if (order != null) {
         if (!mounted) return;
+        
+        // v450: Usar o status MAIS RECENTE entre o que já temos (do OrderProvider em memória)
+        // e o que veio do OrderService (SharedPreferences, que pode estar desatualizado).
+        // Isso evita regredir de "awaiting_confirmation" para "pending".
+        final loadedStatus = order['status'] as String? ?? 'pending';
+        final bestStatus = _isStatusMoreRecent(loadedStatus, _currentStatus) 
+            ? loadedStatus 
+            : _currentStatus;
+        
         setState(() {
           _orderDetails = order;
-          _currentStatus = order!['status'] ?? 'pending';
+          _currentStatus = bestStatus;
           // Calcular expiração baseada em proofReceivedAt (metadado real)
           _expiresAt = _calculateExpiresAt(order!);
           _isLoading = false;
@@ -4119,8 +4148,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return;
       }
       
-      // SEGURANÇA v448: Validar que o valor da invoice corresponde ao esperado da ordem
-      // Previne ataque onde provedor envia invoice com valor inflado
+      // SEGURANÇA v449: Validar que o valor da invoice corresponde ao esperado da ordem
+      // Invoice deve ser base + 3% provider fee. Tolerância de 5% para arredondamentos.
       try {
         final breezForDecode = context.read<BreezProvider>();
         if (breezForDecode.isInitialized) {
@@ -4129,32 +4158,84 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             final invoiceAmountSats = int.tryParse(
               decoded['invoice']?['amountSats']?.toString() ?? '0'
             ) ?? 0;
-            // Tolerância de 5% para cobrir arredondamentos de câmbio
-            final expectedSats = widget.amountSats;
-            final maxAllowed = (expectedSats * 1.05).ceil();
-            if (invoiceAmountSats > 0 && invoiceAmountSats > maxAllowed) {
-              broLog('🚨 SEGURANÇA: Invoice com valor inflado! invoice=$invoiceAmountSats esperado=$expectedSats max=$maxAllowed');
+            // Expected: base + 3% provider fee
+            final baseSats = widget.amountSats;
+            final expectedWithFee = baseSats + (baseSats * AppConfig.providerFeePercent).round();
+            final maxAllowed = (expectedWithFee * 1.03).ceil();
+            final minAllowed = (expectedWithFee * 0.97).floor(); // Mínimo 97% do esperado
+            if (invoiceAmountSats <= 0 || invoiceAmountSats > maxAllowed || invoiceAmountSats < minAllowed) {
+              final isInflated = invoiceAmountSats > maxAllowed;
+              broLog('🚨 SEGURANÇA: Invoice com valor ${isInflated ? "inflado" : "incorreto"}! invoice=$invoiceAmountSats esperado=$expectedWithFee');
               if (mounted) {
                 ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Invoice amount mismatch: ${invoiceAmountSats} sats vs expected ${expectedSats} sats'),
-                    backgroundColor: Colors.red,
-                    duration: const Duration(seconds: 5),
+                final retry = await showDialog<bool>(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (ctx) => AlertDialog(
+                    backgroundColor: const Color(0xFF1A1A1A),
+                    title: Row(
+                      children: [
+                        Icon(Icons.warning_amber_rounded, color: isInflated ? Colors.red : Colors.orange),
+                        const SizedBox(width: 8),
+                        const Expanded(child: Text('Invoice com valor incorreto', style: TextStyle(color: Colors.white, fontSize: 16))),
+                      ],
+                    ),
+                    content: Text(
+                      isInflated 
+                        ? 'O provedor enviou um invoice de $invoiceAmountSats sats, mas o esperado é ~$expectedWithFee sats. O valor está acima do permitido.\n\nPor segurança, o pagamento foi bloqueado. Tente novamente — o provedor pode gerar um novo invoice.'
+                        : 'O provedor enviou um invoice de $invoiceAmountSats sats, mas o esperado é ~$expectedWithFee sats. O valor está abaixo do correto.\n\nIsso pode significar que o provedor está usando uma versão antiga do app. Tente novamente em alguns minutos.',
+                      style: const TextStyle(color: Colors.white70, fontSize: 14),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(false),
+                        child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
+                      ),
+                      ElevatedButton(
+                        onPressed: () => Navigator.of(ctx).pop(true),
+                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF6B6B)),
+                        child: const Text('Tentar novamente'),
+                      ),
+                    ],
                   ),
                 );
-                setState(() {
-                  _isConfirming = false;
-                  _currentStatus = 'awaiting_confirmation';
-                });
+                if (retry == true) {
+                  // Retry: resetar flag para permitir re-entrada no _handleConfirmPayment
+                  setState(() {
+                    _isConfirming = false;
+                  });
+                  Future.delayed(const Duration(milliseconds: 500), () {
+                    if (mounted) _handleConfirmPayment();
+                  });
+                } else {
+                  setState(() {
+                    _isConfirming = false;
+                    _currentStatus = 'awaiting_confirmation';
+                  });
+                }
               }
               return;
             }
+            broLog('✅ Invoice validado: $invoiceAmountSats sats (esperado ~$expectedWithFee, range $minAllowed-$maxAllowed)');
           }
         }
       } catch (e) {
-        broLog('⚠️ Erro ao validar valor da invoice: $e');
-        // Continuar com pagamento — a validação é defesa extra, não bloqueante
+        broLog('🚨 Erro ao validar invoice — bloqueando pagamento por segurança: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Erro ao validar invoice. Tente novamente.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 4),
+            ),
+          );
+          setState(() {
+            _isConfirming = false;
+            _currentStatus = 'awaiting_confirmation';
+          });
+        }
+        return;
       }
       
       // PAGAR O PROVEDOR

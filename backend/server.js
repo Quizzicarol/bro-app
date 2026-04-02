@@ -13,10 +13,12 @@ const ordersRoutes = require('./routes/orders');
 const collateralRoutes = require('./routes/collateral');
 const escrowRoutes = require('./routes/escrow');
 const agentRoutes = require('./routes/agent');
+const pushRoutes = require('./routes/push');
 
 // Serviços
 const { checkExpiredOrders } = require('./services/orderExpirationService');
 const disputeAgent = require('./services/disputeAgentService');
+const pushService = require('./services/pushService');
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -52,6 +54,12 @@ app.use(cors({
 // ============================================
 // Rate Limiting
 // ============================================
+
+// SECURITY v446: Trust first proxy for correct client IP in rate limiting
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
+
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
   max: 200, // máximo 200 requests por IP por janela
@@ -73,12 +81,13 @@ app.use(generalLimiter);
 // ============================================
 // Body Parsers
 // ============================================
-app.use(bodyParser.json({ limit: '5mb' })); // Limitar tamanho do body
+app.use(bodyParser.json({ limit: '500kb' })); // Limitar tamanho do body
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Log de requisições
+// Log de requisições (sanitizado — sem IDs/tokens)
 app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  const safePath = req.url.split('?')[0].replace(/\/[a-f0-9]{64}/g, '/:id').replace(/\/[a-f0-9-]{36}/g, '/:uuid');
+  console.log(`[${new Date().toISOString()}] ${req.method} ${safePath}`);
   next();
 });
 
@@ -86,12 +95,21 @@ app.use((req, res, next) => {
 // Rotas públicas (sem auth)
 // ============================================
 
-// Health check — NÃO requer auth
-app.get('/health', (req, res) => {
+// Health check — NÃO requer auth (rate limited)
+app.get('/health', generalLimiter, (req, res) => {
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
     uptime: process.uptime()
+  });
+});
+
+// Push status — NÃO requer auth (rate limited)
+app.get('/push/status', generalLimiter, (req, res) => {
+  const pushService = require('./services/pushService');
+  res.json({
+    enabled: pushService.isEnabled(),
+    tokens_registered: pushService.getTokenCount(),
   });
 });
 
@@ -109,6 +127,7 @@ app.use('/orders', requireAuth, ordersRoutes);
 app.use('/collateral', requireAuth, collateralRoutes);
 app.use('/escrow', requireAuth, escrowRoutes);
 app.use('/agent', requireAuth, agentRoutes);
+app.use('/push', requireAuth, pushRoutes);
 
 // Job para verificar ordens expiradas (roda a cada 5 minutos)
 cron.schedule('*/5 * * * *', async () => {
@@ -142,5 +161,10 @@ app.listen(PORT, () => {
   
   // Iniciar agente de disputas (Nostr listener + análise AI)
   disputeAgent.init();
-  console.log(`🤖 Agente de disputas ativo (Nostr listener + análise)\n`);
+  console.log(`🤖 Agente de disputas ativo (Nostr listener + análise)`);
+  
+  // Inicializar serviço de push notifications
+  pushService.init();
+  console.log('');
+
 });

@@ -44,6 +44,14 @@ class OrderProvider with ChangeNotifier {
   Timer? _notifyDebounceTimer; // Debounce para notifyListeners
   bool _notifyPending = false; // Flag para notify pendente
 
+  // v437: Tracking de nudges enviados (orderId → último nudge) para throttle
+  final Map<String, DateTime> _nudgedOrders = {};
+  static const int _nudgeCooldownMinutes = 30;
+
+  // v448: Flag para saber se o sync inicial já completou
+  // Enquanto false, UI mostra "sincronizando" ao invés de "nenhuma troca"
+  bool _hasCompletedInitialSync = false;
+
   // v406: Cache write-once de proofImage decriptografado por orderId
   // Uma vez que proof é decriptografado com sucesso, NUNCA pode ser perdido
   final Map<String, String> _proofImageCache = {};
@@ -120,6 +128,7 @@ class OrderProvider with ChangeNotifier {
   Order? get currentOrder => _currentOrder;
   bool get isLoading => _isLoading;
   String? get error => _error;
+  bool get hasCompletedInitialSync => _hasCompletedInitialSync;
   
   /// Getter p�?ºblico para a pubkey do usu�?¡rio atual (usado para verifica�?§�?µes externas)
   String? get currentUserPubkey => _currentUserPubkey;
@@ -958,9 +967,27 @@ class OrderProvider with ChangeNotifier {
       
       _immediateNotify();
       
-      // ðŸ�?�¥ PUBLICAR NO NOSTR IMEDIATAMENTE
-      // A ordem j�?¡ est�?¡ com pagamento sendo processado
-      _publishOrderToNostr(order);
+      // 🔥 PUBLICAR NO NOSTR COM RETRY
+      // v437: await + retry para garantir que a ordem chegue nos relays
+      bool published = false;
+      for (int attempt = 1; attempt <= 3; attempt++) {
+        try {
+          await _publishOrderToNostr(order);
+          final idx = _orders.indexWhere((o) => o.id == order.id);
+          if (idx != -1 && _orders[idx].eventId != null) {
+            published = true;
+            broLog('✅ Ordem publicada no Nostr (tentativa $attempt)');
+            break;
+          }
+          broLog('⚠️ Publish tentativa $attempt: sem eventId retornado');
+        } catch (e) {
+          broLog('⚠️ Publish tentativa $attempt falhou: $e');
+        }
+        if (attempt < 3) await Future.delayed(const Duration(seconds: 2));
+      }
+      if (!published) {
+        broLog('❌ Ordem ${order.id.substring(0, 8)} criada localmente mas NÃO publicada nos relays após 3 tentativas');
+      }
       
       return order;
     } catch (e) {
@@ -1387,43 +1414,64 @@ class OrderProvider with ChangeNotifier {
           }
           
           int statusUpdated = 0;
+          final privateKey = _nostrService.privateKey; // v438: needed for billCode NIP-44 decrypt
           for (final entry in providerUpdates.entries) {
             final orderId = entry.key;
             final update = entry.value;
             final newStatus = update['status'] as String?;
-            
-            if (newStatus == null) {
-              broLog('   âš ï¸ Update sem status para orderId=${orderId.substring(0, 8)}');
-              continue;
-            }
-            
+
+            // v438: Handle billCode_nip44 decryption (provider receives encrypted billCode)
+            final billCodeNip44 = update['billCode_nip44'] as String?;
+            final billCodeSenderPubkey = update['billCode_senderPubkey'] as String?;
+
             final existingIndex = _orders.indexWhere((o) => o.id == orderId);
-            if (existingIndex == -1) {
-              broLog('   âš ï¸ Ordem ${orderId.substring(0, 8)} n�?£o encontrada em _orders');
-              continue;
-            }
-            
+            if (existingIndex == -1) continue;
+
             final existing = _orders[existingIndex];
-            broLog('   Comparando: orderId=${orderId.substring(0, 8)} local=${existing.status} nostr=$newStatus');
+
+            // v438: Decrypt billCode_nip44 if present (provider side)
+            if (billCodeNip44 != null && billCodeNip44.isNotEmpty && privateKey != null) {
+              final senderPub = billCodeSenderPubkey ?? existing.userPubkey;
+              if (senderPub != null && senderPub.isNotEmpty) {
+                try {
+                  final decryptedBillCode = _nostrOrderService.decryptNip44(billCodeNip44, privateKey, senderPub);
+                  final meta = Map<String, dynamic>.from(existing.metadata ?? {});
+                  meta['billCode_nip44'] = billCodeNip44;
+                  meta['billCode_senderPubkey'] = billCodeSenderPubkey;
+                  _orders[existingIndex] = _orders[existingIndex].copyWith(
+                    billCode: decryptedBillCode,
+                    metadata: meta,
+                  );
+                  broLog('🔐 Provider: billCode NIP-44 decrypted for ${orderId.substring(0, 8)}');
+                } catch (e) {
+                  broLog('⚠️ Provider: failed to decrypt billCode NIP-44: $e');
+                }
+              }
+            }
+
+            if (newStatus == null) continue; // billCode-only update, no status change
+
+            // Re-read existing after potential billCode update
+            final current = _orders[existingIndex];
+            broLog('   Comparando: orderId=${orderId.substring(0, 8)} local=${current.status} nostr=$newStatus');
             
-            // Verificar se �?© completed e local �?© awaiting_confirmation
-            if (newStatus == 'completed' && existing.status == 'awaiting_confirmation') {
-              _orders[existingIndex] = existing.copyWith(
+            // Verificar se completed e local awaiting_confirmation
+            if (newStatus == 'completed' && current.status == 'awaiting_confirmation') {
+              _orders[existingIndex] = current.copyWith(
                 status: 'completed',
                 completedAt: DateTime.now(),
               );
               statusUpdated++;
-              broLog('   â�?�?� Atualizado ${orderId.substring(0, 8)} para completed!');
-            } else if (_isStatusMoreRecent(newStatus, existing.status)) {
-              // Caso gen�?©rico
-              _orders[existingIndex] = existing.copyWith(
+              broLog('   Atualizado ${orderId.substring(0, 8)} para completed!');
+            } else if (_isStatusMoreRecent(newStatus, current.status)) {
+              _orders[existingIndex] = current.copyWith(
                 status: newStatus,
-                completedAt: newStatus == 'completed' ? DateTime.now() : existing.completedAt,
+                completedAt: newStatus == 'completed' ? DateTime.now() : current.completedAt,
               );
               statusUpdated++;
-              broLog('   â�?�?� Atualizado ${orderId.substring(0, 8)} para $newStatus');
+              broLog('   Atualizado ${orderId.substring(0, 8)} para $newStatus');
             } else {
-              broLog('   â­ï¸ Sem mudan�?§a para ${orderId.substring(0, 8)}: $newStatus n�?£o �?© mais recente que ${existing.status}');
+              broLog('   Sem mudanca para ${orderId.substring(0, 8)}: $newStatus nao mais recente que ${current.status}');
             }
           }
           
@@ -1465,6 +1513,18 @@ class OrderProvider with ChangeNotifier {
       // v133: Renovar invoices para ordens liquidadas (provider side)
       await _renewInvoicesForLiquidatedAsProvider();
       
+      // v438: Also send encrypted billCode for accepted orders in provider sync
+      try {
+        await _sendEncryptedBillCodeForAcceptedOrders().timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            broLog('⏱️ _sendEncryptedBillCodeForAcceptedOrders timeout (30s) [provider sync]');
+          },
+        );
+      } catch (e) {
+        broLog('⚠️ _sendEncryptedBillCodeForAcceptedOrders exception [provider sync]: $e');
+      }
+
       // SEGURAN�?�?�A: N�?�?O salvar ordens de outros usu�?¡rios no storage local!
       // Apenas salvar as ordens que pertencem ao usu�?¡rio atual
       // As ordens de outros ficam apenas em mem�?³ria (para visualiza�?§�?£o do provedor)
@@ -1550,6 +1610,64 @@ class OrderProvider with ChangeNotifier {
   /// v388: One-time migration � republish active orders with plain text billCode.
   /// Old orders had encrypted billCode in Nostr. Now we publish plain text.
   /// Buyer has plain text locally, so republish pushes it to relays.
+  /// v438: Send NIP-44 encrypted billCode to provider after order is accepted.
+  /// Buyer-side: for each accepted order with a known providerId that hasn't
+  /// had its encrypted billCode sent yet, publish a kind 30080 event with
+  /// billCode_nip44 = NIP-44(buyer_priv, provider_pub, billCode).
+  /// This is the FALLBACK path (runs on sync). FCM background is the fast path.
+  /// Uses metadata flag 'billCode_nip44_sent' to avoid re-sending.
+  Future<void> _sendEncryptedBillCodeForAcceptedOrders() async {
+    if (_currentUserPubkey == null) return;
+    final privateKey = _nostrService.privateKey;
+    if (privateKey == null || privateKey.isEmpty) return;
+
+    // Only process orders where I'm the buyer, order is accepted+, has billCode, has providerId
+    final candidates = _orders.where((o) =>
+      o.userPubkey == _currentUserPubkey &&
+      o.billCode.isNotEmpty &&
+      o.providerId != null &&
+      o.providerId!.isNotEmpty &&
+      o.providerId != _currentUserPubkey && // not self-orders
+      (o.metadata?['billCode_nip44_sent'] != true) &&
+      const ['accepted', 'payment_received', 'processing', 'awaiting_confirmation', 'completed'].contains(o.status)
+    ).toList();
+
+    if (candidates.isEmpty) return;
+    broLog('🔐 v438: ${candidates.length} order(s) need encrypted billCode delivery');
+
+    for (final order in candidates) {
+      try {
+        final ok = await _nostrOrderService.publishEncryptedBillCode(
+          privateKey: privateKey,
+          orderId: order.id,
+          billCode: order.billCode,
+          providerPubkey: order.providerId!,
+          orderUserPubkey: _currentUserPubkey!,
+        );
+        if (ok) {
+          // Mark as sent so we don't re-send
+          final idx = _orders.indexWhere((o) => o.id == order.id);
+          if (idx != -1) {
+            final meta = Map<String, dynamic>.from(_orders[idx].metadata ?? {});
+            meta['billCode_nip44_sent'] = true;
+            _orders[idx] = _orders[idx].copyWith(metadata: meta);
+          }
+          broLog('🔐 v438: billCode NIP-44 sent for ${order.id.substring(0, 8)}');
+
+          // Push notify the provider that billCode is ready
+          _apiService.notifyUser(
+            targetPubkey: order.providerId!,
+            type: 'order_update',
+            subtype: 'billcode_encrypted',
+            orderId: order.id,
+          );
+        }
+      } catch (e) {
+        broLog('⚠️ v438: failed to send encrypted billCode for ${order.id.substring(0, 8)}: $e');
+      }
+    }
+  }
+
   Future<void> _migrateBillCodeToPlainText() async {
     if (_didMigratePlainTextBillCode) return;
     _didMigratePlainTextBillCode = true;
@@ -1628,6 +1746,12 @@ class OrderProvider with ChangeNotifier {
       _debouncedSave();
       _throttledNotify();
       broLog('v259: updateOrderStatusLocalOnly: $orderId -> $status (SEM publicar no Nostr)');
+      
+      // v437: Adicionar à blocklist para impedir que apareça como disponível
+      const terminalStatuses = ['cancelled', 'completed', 'liquidated'];
+      if (terminalStatuses.contains(status)) {
+        _nostrOrderService.addToBlocklistPublic({orderId});
+      }
     }
   }
 
@@ -1712,12 +1836,15 @@ class OrderProvider with ChangeNotifier {
     _immediateNotify();
 
     try {
-      // GUARDA v1.0.129+232: 'completed' S� pode ser publicado se a ordem est� num estado avan�ado
-      // Isso evita auto-complete indevido quando a ordem ainda est� em pending/payment_received
+      broLog('[updateOrderStatus] orderId=${orderId.length > 8 ? orderId.substring(0, 8) : orderId} status=$status providerId=${providerId != null && providerId.length > 8 ? providerId.substring(0, 8) : providerId}');
+
+      // GUARDA v1.0.129+232: 'completed' S~ pode ser publicado se a ordem est~ num estado avan~ado
+      // Isso evita auto-complete indevido quando a ordem ainda est~ em pending/payment_received
       if (status == 'completed') {
         final existingOrder = getOrderById(orderId);
         final currentStatus = existingOrder?.status ?? '';
         final effectiveProviderId = providerId ?? existingOrder?.providerId;
+        broLog('[updateOrderStatus] guard: currentStatus="$currentStatus" effectiveProviderId=${effectiveProviderId != null && effectiveProviderId.length > 8 ? effectiveProviderId.substring(0, 8) : effectiveProviderId} orderFound=${existingOrder != null}');
         
         // Se a ordem est� em est�gios iniciais (pending, payment_received) E n�o tem provider,
         // � definitivamente um auto-complete indevido - BLOQUEAR
@@ -1783,14 +1910,17 @@ class OrderProvider with ChangeNotifier {
         );
         
         if (nostrSuccess) {
+          broLog('[updateOrderStatus] Nostr publish OK');
         } else {
+          broLog('[updateOrderStatus] Nostr publish FALHOU');
           _error = 'Falha ao publicar no Nostr';
           _isLoading = false;
           _immediateNotify();
           return false; // CR�?TICO: Retornar false se Nostr falhar
         }
       } else {
-        _error = 'Chave privada n�?£o dispon�?­vel';
+        broLog('[updateOrderStatus] privateKey NULL ou vazio!');
+        _error = 'Chave privada indisponivel';
         _isLoading = false;
         _immediateNotify();
         return false;
@@ -1924,11 +2054,21 @@ class OrderProvider with ChangeNotifier {
         return false;
       }
 
-      // CORRE��O v1.0.129+223: Remover da lista de dispon�veis IMEDIATAMENTE
+      // CORREÇÃO v1.0.129+223: Remover da lista de disponíveis IMEDIATAMENTE
       // Sem isso, a ordem ficava em _availableOrdersForProvider com status stale
-      // e continuava aparecendo na aba "Dispon�veis" mesmo ap�s aceita/completada
+      // e continuava aparecendo na aba "Disponíveis" mesmo após aceita/completada
       _availableOrdersForProvider.removeWhere((o) => o.id == orderId);
-      broLog('??? [acceptOrderAsProvider] Removido de _availableOrdersForProvider');
+      broLog('✅ [acceptOrderAsProvider] Removido de _availableOrdersForProvider');
+
+      // Push notify the buyer that their order was accepted
+      if (order.userPubkey != null && order.userPubkey!.isNotEmpty) {
+        _apiService.notifyUser(
+          targetPubkey: order.userPubkey!,
+          type: 'order_update',
+          subtype: 'accepted',
+          orderId: orderId,
+        );
+      }
       
       // Atualizar localmente
       final index = _orders.indexWhere((o) => o.id == orderId);
@@ -2041,6 +2181,16 @@ class OrderProvider with ChangeNotifier {
         // Salvar localmente usando _saveOrders() com filtro de segurança�?§a
         await _saveOrders();
         
+      }
+
+      // Push notify the buyer that payment proof was submitted
+      if (order.userPubkey != null && order.userPubkey!.isNotEmpty) {
+        _apiService.notifyUser(
+          targetPubkey: order.userPubkey!,
+          type: 'order_update',
+          subtype: 'payment_received',
+          orderId: orderId,
+        );
       }
 
       return true;
@@ -2453,19 +2603,29 @@ class OrderProvider with ChangeNotifier {
     _isRenewingInvoices = true;
 
     try {
+      // v447: Also renew invoices for 'awaiting_confirmation' orders where invoice is likely expired (>2h old)
       final unpaidAsProvider = _orders.where((order) {
-        if (order.status != 'liquidated') return false;
+        if (order.status != 'liquidated' && order.status != 'awaiting_confirmation') return false;
         final providerId = order.providerId ?? order.metadata?['providerId'] ?? order.metadata?['provider_id'] ?? '';
         if (providerId != _currentUserPubkey) return false;
         if (order.metadata?['invoiceRefreshed'] == true) return false;
         if (order.metadata?['providerPaymentReceived'] == true) return false;
         if (order.metadata?['autoPaymentCompleted'] == true) return false;
+        // For awaiting_confirmation, only refresh if completed >2h ago (invoice likely expired)
+        if (order.status == 'awaiting_confirmation') {
+          final completedAt = order.metadata?['completedAt']?.toString();
+          if (completedAt == null) return false;
+          try {
+            final completedTime = DateTime.parse(completedAt);
+            if (DateTime.now().difference(completedTime).inHours < 2) return false;
+          } catch (_) { return false; }
+        }
         return true;
       }).toList();
 
       if (unpaidAsProvider.isEmpty) return;
 
-      broLog('[InvoiceRefresh] ${unpaidAsProvider.length} ordens liquidadas precisam de invoice refresh');
+      broLog('[InvoiceRefresh] ${unpaidAsProvider.length} ordens precisam de invoice refresh');
 
       final privateKey = _nostrService.privateKey;
       if (privateKey == null) return;
@@ -2863,16 +3023,18 @@ class OrderProvider with ChangeNotifier {
     try {
       final privateKey = _nostrService.privateKey;
       if (privateKey == null) {
+        broLog('⚠️ _publishOrderToNostr: privateKey is null for ${order.id.substring(0, 8)}');
         return;
       }
       
+      broLog('📡 _publishOrderToNostr: publishing ${order.id.substring(0, 8)} (status=${order.status}, billCode=${order.billCode.isNotEmpty ? "SET" : "EMPTY"})');
       final eventId = await _nostrOrderService.publishOrder(
         order: order,
         privateKey: privateKey,
       );
       
       if (eventId != null) {
-        
+        broLog('✅ _publishOrderToNostr: ${order.id.substring(0, 8)} published, eventId=${eventId.substring(0, 8)}');
         // Atualizar ordem com eventId
         final index = _orders.indexWhere((o) => o.id == order.id);
         if (index != -1) {
@@ -2880,8 +3042,10 @@ class OrderProvider with ChangeNotifier {
           await _saveOrders();
         }
       } else {
+        broLog('❌ _publishOrderToNostr: ${order.id.substring(0, 8)} FAILED — all relays returned null');
       }
     } catch (e) {
+      broLog('❌ _publishOrderToNostr: ${order.id.substring(0, 8)} exception: $e');
     }
   }
 
@@ -3242,8 +3406,69 @@ class OrderProvider with ChangeNotifier {
         _immediateNotify(); // v269: notificar UI imediatamente quando status muda
       }
       
+      // v444: FIX — Fetch dispute resolutions for orders stuck in 'disputed' status.
+      // The main sync queries kinds [30079, 30080, 30081] but dispute resolutions
+      // use kind 1 with tag #t: bro-resolucao, so they're never fetched by the sync loop.
+      // This check finds disputed orders and fetches their resolutions individually.
+      try {
+        final disputedOrders = _orders.where((o) => o.status == 'disputed').toList();
+        if (disputedOrders.isNotEmpty) {
+          broLog('⚖️ syncOrdersFromNostr: ${disputedOrders.length} ordens em disputa, verificando resoluções...');
+          for (final order in disputedOrders) {
+            try {
+              final resolution = await _nostrOrderService.fetchDisputeResolution(order.id)
+                  .timeout(const Duration(seconds: 10), onTimeout: () => null);
+              if (resolution != null) {
+                final resolutionType = resolution['resolution'] as String?;
+                String? newStatus;
+                if (resolutionType == 'resolved_user') {
+                  newStatus = 'cancelled'; // User wins — provider is cancelled
+                } else if (resolutionType == 'resolved_provider') {
+                  newStatus = 'completed'; // Provider wins — order is completed
+                }
+                if (newStatus != null) {
+                  final idx = _orders.indexWhere((o) => o.id == order.id);
+                  if (idx != -1) {
+                    _orders[idx] = _orders[idx].copyWith(
+                      status: newStatus,
+                      metadata: {
+                        ...?_orders[idx].metadata,
+                        'wasDisputed': true,
+                        'disputeResolvedAt': DateTime.now().toIso8601String(),
+                        if (newStatus == 'completed') 'disputePaymentPending': true,
+                      },
+                    );
+                    broLog('⚖️ Disputa resolvida via sync: ${order.id.substring(0, 8)} → $newStatus ($resolutionType)');
+                    statusUpdated++;
+                  }
+                }
+              }
+            } catch (e) {
+              broLog('⚠️ fetchDisputeResolution error for ${order.id.substring(0, 8)}: $e');
+            }
+          }
+          if (statusUpdated > 0) {
+            _immediateNotify();
+          }
+        }
+      } catch (e) {
+        broLog('⚠️ dispute resolution sync exception: $e');
+      }
+      
       // v388: One-time migration of old encrypted billCode to plain text
       await _migrateBillCodeToPlainText();
+
+      // v438: Send NIP-44 encrypted billCode for accepted orders (buyer side)
+      try {
+        await _sendEncryptedBillCodeForAcceptedOrders().timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            broLog('⏱️ _sendEncryptedBillCodeForAcceptedOrders timeout (30s)');
+          },
+        );
+      } catch (e) {
+        broLog('⚠️ _sendEncryptedBillCodeForAcceptedOrders exception: $e');
+      }
       
       // AUTO-LIQUIDA��O v234: Tamb�m verificar no sync do usu�rio
       await _checkAutoLiquidation();
@@ -3277,6 +3502,56 @@ class OrderProvider with ChangeNotifier {
         broLog('v259: _fixCorruptedUserPubkeys exception: $e');
       }
       
+      // v437: Re-publicar ordens pending que falharam na publicação inicial
+      try {
+        await _republishUnpublishedPendingOrders().timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            broLog('⏱️ _republishUnpublishedPendingOrders timeout (30s)');
+          },
+        );
+      } catch (e) {
+        broLog('⚠️ _republishUnpublishedPendingOrders exception: $e');
+      }
+      
+      // v436: Re-publicar confirmações de ordens completed que não chegaram ao relay
+      // Caso o pagamento Lightning tenha sido feito mas o publish Nostr falhou,
+      // essa etapa garante que o provedor receba a notificação no próximo sync
+      try {
+        await _republishUnconfirmedCompletions().timeout(
+          const Duration(seconds: 15),
+          onTimeout: () {
+            broLog('⏱️ _republishUnconfirmedCompletions timeout (15s)');
+          },
+        );
+      } catch (e) {
+        broLog('⚠️ _republishUnconfirmedCompletions exception: $e');
+      }
+      
+      // v437: Responder a nudges do provider (re-publicar completed se existir localmente)
+      try {
+        await _handleIncomingRepublishRequests().timeout(
+          const Duration(seconds: 15),
+          onTimeout: () {
+            broLog('⏱️ _handleIncomingRepublishRequests timeout (15s)');
+          },
+        );
+      } catch (e) {
+        broLog('⚠️ _handleIncomingRepublishRequests exception: $e');
+      }
+      
+      // v437: Provider auto-nudge — pedir republish para ordens presas
+      try {
+        await _autoNudgeStuckOrders().timeout(
+          const Duration(seconds: 15),
+          onTimeout: () {
+            broLog('⏱️ _autoNudgeStuckOrders timeout (15s)');
+          },
+        );
+      } catch (e) {
+        broLog('⚠️ _autoNudgeStuckOrders exception: $e');
+      }
+      
       // Ordenar por data (mais recente primeiro)
       _orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       
@@ -3284,12 +3559,188 @@ class OrderProvider with ChangeNotifier {
       // Isso evita que ordens de outros usu�?¡rios sejam persistidas localmente
       _debouncedSave();
       _lastUserSyncTime = DateTime.now();
+      if (!_hasCompletedInitialSync) {
+        _hasCompletedInitialSync = true;
+      }
       _throttledNotify();
       
     } catch (e) {
     } finally {
       _isSyncingUser = false;
       _syncUserStartedAt = null; // v259: clear stale tracker
+    }
+  }
+
+  /// v437: Provider auto-nudge — detecta ordens presas em awaiting_confirmation
+  /// e publica bro_republish_request para o customer re-publicar o completed.
+  /// Totalmente automático, roda a cada sync. Throttle de 30min por ordem.
+  Future<void> _autoNudgeStuckOrders() async {
+    final privateKey = _nostrService.privateKey;
+    if (privateKey == null || privateKey.isEmpty) return;
+    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return;
+
+    final now = DateTime.now();
+    final stuckThreshold = now.subtract(const Duration(minutes: 10));
+    final cutoff = now.subtract(const Duration(hours: 48));
+
+    // Ordens onde sou provider, status awaiting_confirmation, > 10min, < 48h
+    final stuck = _orders.where((o) {
+      if (o.status != 'awaiting_confirmation') return false;
+      if (o.providerId != _currentUserPubkey) return false;
+      if (o.userPubkey == _currentUserPubkey) return false; // Não nudge a si mesmo
+      if (o.createdAt.isBefore(cutoff)) return false;
+      if (o.createdAt.isAfter(stuckThreshold)) return false; // Muito recente
+      // Throttle: não nudge se já fez nos últimos 30min
+      final lastNudge = _nudgedOrders[o.id];
+      if (lastNudge != null && now.difference(lastNudge).inMinutes < _nudgeCooldownMinutes) return false;
+      return true;
+    }).toList();
+
+    if (stuck.isEmpty) return;
+
+    broLog('🔔 _autoNudgeStuckOrders: ${stuck.length} ordens presas, enviando republish request');
+
+    for (final order in stuck) {
+      try {
+        final success = await _nostrOrderService.publishRepublishRequest(
+          privateKey: privateKey,
+          orderId: order.id,
+          customerPubkey: order.userPubkey!,
+        );
+        if (success) {
+          _nudgedOrders[order.id] = now;
+          broLog('✅ Nudge enviado para ${order.id.substring(0, 8)} → customer ${order.userPubkey!.substring(0, 8)}');
+        }
+      } catch (e) {
+        broLog('⚠️ Nudge falhou para ${order.id.substring(0, 8)}: $e');
+      }
+    }
+  }
+
+  /// v437: Customer auto-respond — detecta bro_republish_request do provider
+  /// e re-publica o completed para ordens que já estão completed localmente.
+  Future<void> _handleIncomingRepublishRequests() async {
+    final requests = _nostrOrderService.pendingRepublishRequests;
+    if (requests.isEmpty) return;
+
+    final privateKey = _nostrService.privateKey;
+    if (privateKey == null || privateKey.isEmpty) {
+      _nostrOrderService.clearRepublishRequests();
+      return;
+    }
+
+    broLog('📩 _handleIncomingRepublishRequests: ${requests.length} pedidos recebidos');
+
+    for (final orderId in requests) {
+      final order = _orders.firstWhere(
+        (o) => o.id == orderId,
+        orElse: () => Order(id: '', billType: '', billCode: '', amount: 0, btcAmount: 0, btcPrice: 0, providerFee: 0, platformFee: 0, total: 0, status: '', createdAt: DateTime.now()),
+      );
+      if (order.id.isEmpty) continue;
+
+      // Só re-publicar se a ordem está completed localmente
+      if (order.status != 'completed') {
+        broLog('⏭️ Nudge para ${orderId.substring(0, 8)}: status local é ${order.status}, ignorando');
+        continue;
+      }
+      // Só re-publicar se somos o criador da ordem
+      if (order.userPubkey != _currentUserPubkey) continue;
+
+      try {
+        await _nostrOrderService.updateOrderStatus(
+          privateKey: privateKey,
+          orderId: order.id,
+          newStatus: 'completed',
+          providerId: order.providerId,
+          orderUserPubkey: order.userPubkey,
+        );
+        broLog('✅ Re-publicado completed via nudge para ${orderId.substring(0, 8)}');
+      } catch (e) {
+        broLog('⚠️ Falha re-publish via nudge para ${orderId.substring(0, 8)}: $e');
+      }
+    }
+
+    _nostrOrderService.clearRepublishRequests();
+  }
+
+  /// v436: Re-publicar confirmações de ordens completed que falharam no Nostr
+  /// Quando o usuário confirma (paga invoice) mas o publish Nostr falha,
+  /// o provedor nunca recebe a atualização. Essa função re-publica
+  /// v437: Re-publica ordens 'pending' que foram criadas localmente
+  /// mas cuja publicação Nostr falhou (sem eventId e sem providerId).
+  Future<void> _republishUnpublishedPendingOrders() async {
+    final privateKey = _nostrService.privateKey;
+    if (privateKey == null || privateKey.isEmpty) return;
+
+    // Diagnóstico: listar TODAS as ordens não-terminais
+    final nonTerminal = _orders.where((o) => !['completed', 'cancelled', 'liquidated'].contains(o.status)).toList();
+    broLog('🔍 _republishUnpublished: ${nonTerminal.length} ordens não-terminais de ${_orders.length} total');
+    for (final o in nonTerminal) {
+      broLog('🔍  order ${o.id.substring(0, 8)}: status=${o.status}, eventId=${o.eventId != null && o.eventId!.isNotEmpty ? "SET" : "NULL"}, userPubkey=${o.userPubkey?.substring(0, 8) ?? "null"}, currentUser=${_currentUserPubkey?.substring(0, 8) ?? "null"}, providerId=${o.providerId ?? "null"}');
+    }
+
+    // v437: Re-publicar ordens ativas sem eventId (publish falhou na criação)
+    final candidates = _orders.where((o) =>
+      !['completed', 'cancelled', 'liquidated'].contains(o.status) &&
+      (o.eventId == null || o.eventId!.isEmpty) &&
+      o.userPubkey == _currentUserPubkey
+    ).toList();
+
+    if (candidates.isEmpty) return;
+    broLog('🔄 _republishUnpublishedPendingOrders: ${candidates.length} ordens sem eventId para publicar');
+
+    for (final order in candidates) {
+      try {
+        final success = await _nostrOrderService.republishOrderWithStatus(
+          privateKey: privateKey,
+          order: order,
+          newStatus: order.status,
+          providerId: order.providerId,
+        );
+        if (success) {
+          broLog('✅ Ordem ${order.id.substring(0, 8)} publicada (status=${order.status})');
+        } else {
+          broLog('❌ Ordem ${order.id.substring(0, 8)} publish FALHOU');
+        }
+      } catch (e) {
+        broLog('⚠️ Retry publish ${order.id.substring(0, 8)} falhou: $e');
+      }
+    }
+  }
+
+  /// v436: Garante que o counterparty receba a confirmação de completed.
+  /// o status completed para todas as ordens recentes onde somos o criador.
+  Future<void> _republishUnconfirmedCompletions() async {
+    final privateKey = _nostrService.privateKey;
+    if (privateKey == null || privateKey.isEmpty) return;
+    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return;
+    
+    // Encontrar ordens onde: somos o criador, status local é completed, últimas 48h
+    final cutoff = DateTime.now().subtract(const Duration(hours: 48));
+    final candidates = _orders.where((o) {
+      if (o.status != 'completed') return false;
+      if (o.userPubkey != _currentUserPubkey) return false; // Só ordens que criamos
+      if (o.createdAt.isBefore(cutoff)) return false; // Só recentes
+      return true;
+    }).toList();
+    
+    if (candidates.isEmpty) return;
+    
+    broLog('🔄 _republishUnconfirmedCompletions: ${candidates.length} ordens completed para re-publicar');
+    
+    for (final order in candidates) {
+      try {
+        await _nostrOrderService.updateOrderStatus(
+          privateKey: privateKey,
+          orderId: order.id,
+          newStatus: 'completed',
+          providerId: order.providerId,
+          orderUserPubkey: order.userPubkey,
+        );
+        broLog('✅ Re-publicado completed para ${order.id.substring(0, 8)}');
+      } catch (e) {
+        broLog('⚠️ Falha ao re-publicar completed para ${order.id.substring(0, 8)}: $e');
+      }
     }
   }
 

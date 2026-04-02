@@ -63,8 +63,8 @@ class Nip44Service {
     final chachaNonce = messageKey.sublist(32, 44);
     final hmacKey = messageKey.sublist(44, 76);
     
-    // Criptografar com ChaCha20
-    final cipher = ChaCha20Engine();
+    // Criptografar com ChaCha20 (IETF RFC 7539 — 12-byte nonce)
+    final cipher = ChaCha7539Engine();
     cipher.init(true, ParametersWithIV(KeyParameter(chachaKey), chachaNonce));
     
     final ciphertext = Uint8List(paddedPlaintext.length);
@@ -113,8 +113,8 @@ class Nip44Service {
       throw Exception('HMAC inválido - mensagem pode ter sido adulterada');
     }
     
-    // Descriptografar
-    final cipher = ChaCha20Engine();
+    // Descriptografar (IETF RFC 7539 — 12-byte nonce)
+    final cipher = ChaCha7539Engine();
     cipher.init(false, ParametersWithIV(KeyParameter(chachaKey), chachaNonce));
     
     final plaintext = Uint8List(ciphertext.length);

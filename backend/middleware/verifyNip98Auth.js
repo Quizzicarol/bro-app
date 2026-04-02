@@ -14,8 +14,21 @@
 
 const { verifyEvent } = require('nostr-tools/pure');
 
-// Tolerância de timestamp: 60 segundos
-const TIMESTAMP_TOLERANCE = 60;
+// Tolerância de timestamp: 30 segundos
+const TIMESTAMP_TOLERANCE = 30;
+
+// Replay protection: track seen event IDs with TTL
+const seenEventIds = new Map(); // eventId → expiresAt (timestamp ms)
+const REPLAY_WINDOW_MS = (TIMESTAMP_TOLERANCE + 5) * 1000; // slightly beyond tolerance
+const REPLAY_CLEANUP_INTERVAL = 60000; // cleanup every 60s
+
+// Periodic cleanup of expired event IDs
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, expiresAt] of seenEventIds) {
+    if (now > expiresAt) seenEventIds.delete(id);
+  }
+}, REPLAY_CLEANUP_INTERVAL);
 
 /**
  * Middleware que exige autenticação Nostr válida.
@@ -143,22 +156,31 @@ function verifyNip98Event(event, req) {
     return { valid: false, reason: `Timestamp expirado (diff: ${Math.abs(now - eventTime)}s)` };
   }
   
-  // 5. Validar URL (tag 'u') — opcional mas recomendado
+  // 4b. Replay protection — reject reused event IDs
+  if (seenEventIds.has(event.id)) {
+    return { valid: false, reason: 'Replay detected: event ID already used' };
+  }
+  seenEventIds.set(event.id, Date.now() + REPLAY_WINDOW_MS);
+  
+  // 5. Validar URL (tag 'u') — REQUIRED for security
   const urlTag = (event.tags || []).find(t => t[0] === 'u');
-  if (urlTag) {
-    const eventUrl = urlTag[1];
-    const requestUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
-    // Comparação flexível: apenas verificar se o path bate
-    const eventPath = new URL(eventUrl).pathname;
-    const requestPath = req.originalUrl.split('?')[0];
-    if (eventPath !== requestPath) {
-      return { valid: false, reason: `URL path mismatch: event=${eventPath} request=${requestPath}` };
-    }
+  if (!urlTag || !urlTag[1]) {
+    return { valid: false, reason: 'NIP-98: tag "u" (URL) é obrigatória' };
+  }
+  const eventUrl = urlTag[1];
+  // Comparação flexível: apenas verificar se o path bate
+  const eventPath = new URL(eventUrl).pathname;
+  const requestPath = req.originalUrl.split('?')[0];
+  if (eventPath !== requestPath) {
+    return { valid: false, reason: `URL path mismatch: event=${eventPath} request=${requestPath}` };
   }
   
-  // 6. Validar método (tag 'method') — opcional
+  // 6. Validar método (tag 'method') — REQUIRED for security
   const methodTag = (event.tags || []).find(t => t[0] === 'method');
-  if (methodTag && methodTag[1].toUpperCase() !== req.method.toUpperCase()) {
+  if (!methodTag || !methodTag[1]) {
+    return { valid: false, reason: 'NIP-98: tag "method" é obrigatória' };
+  }
+  if (methodTag[1].toUpperCase() !== req.method.toUpperCase()) {
     return { valid: false, reason: `Método mismatch: ${methodTag[1]} vs ${req.method}` };
   }
   

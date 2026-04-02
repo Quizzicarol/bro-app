@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:pointycastle/export.dart';
+import 'package:pointycastle/stream/chacha7539.dart';
 
 /// Serviço de criptografia simétrica para billCode.
 ///
@@ -46,11 +47,12 @@ class BillCodeCryptoService {
   String encrypt(String billCode) {
     if (!isEnabled || billCode.isEmpty) return billCode;
 
+    try {
     final nonce = _secureRandom(12);
     final key = _deriveKey(base64.encode(nonce));
 
-    // ChaCha20
-    final cipher = ChaCha20Engine();
+    // ChaCha20-IETF (RFC 8439) — uses 12-byte nonce
+    final cipher = ChaCha7539Engine();
     cipher.init(true, ParametersWithIV(KeyParameter(key), nonce));
 
     final plainBytes = utf8.encode(billCode);
@@ -71,6 +73,9 @@ class BillCodeCryptoService {
     payload.setRange(12 + ciphertext.length, payload.length, mac);
 
     return '$encryptedPrefix${base64.encode(payload)}';
+    } catch (_) {
+      return billCode; // fallback to plaintext on any crypto failure
+    }
   }
 
   /// Decripta um billCode. Aceita tanto "BRO1:..." quanto plaintext.
@@ -108,7 +113,7 @@ class BillCodeCryptoService {
       if (!valid) return ''; // HMAC falhou
 
       // Decriptar
-      final cipher = ChaCha20Engine();
+      final cipher = ChaCha7539Engine();
       cipher.init(false, ParametersWithIV(KeyParameter(key), nonce));
       final plainBytes = Uint8List(ciphertext.length);
       cipher.processBytes(ciphertext, 0, ciphertext.length, plainBytes, 0);

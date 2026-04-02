@@ -10,7 +10,10 @@ function parseStrictNumber(val) {
   if (val === null || val === undefined || val === '') return NaN;
   const str = String(val);
   if (!/^-?\d+(\.\d+)?$/.test(str)) return NaN;
-  return Number(str);
+  const num = Number(str);
+  // SECURITY v445: Prevent precision loss
+  if (!isFinite(num)) return NaN;
+  return num;
 }
 
 // POST /escrow/create - Criar escrow com Bitcoin do usuário
@@ -25,6 +28,10 @@ router.post('/create', async (req, res) => {
         error: 'Campos obrigatórios faltando',
         required: ['orderId', 'btcAmount']
       });
+    }
+    // SECURITY v445: Validate orderId format
+    if (typeof orderId !== 'string' || orderId.length > 64 || !/^[a-zA-Z0-9_-]+$/.test(orderId)) {
+      return res.status(400).json({ error: 'orderId inválido' });
     }
     // v270: Validação de range (v398: rejeitar notação científica)
     const btcAmountParsed = parseStrictNumber(btcAmount);
@@ -67,6 +74,10 @@ router.post('/release', async (req, res) => {
         error: 'Campos obrigatórios faltando',
         required: ['orderId']
       });
+    }
+    // SECURITY v445: Validate orderId format
+    if (typeof orderId !== 'string' || orderId.length > 64 || !/^[a-zA-Z0-9_-]+$/.test(orderId)) {
+      return res.status(400).json({ error: 'orderId inválido' });
     }
 
     const escrow = escrows.get(orderId);
@@ -144,15 +155,31 @@ router.post('/release', async (req, res) => {
 router.get('/:orderId', (req, res) => {
   try {
     const { orderId } = req.params;
+
+    // SECURITY v445: Validate orderId format
+    if (!orderId || orderId.length > 64 || !/^[a-zA-Z0-9_-]+$/.test(orderId)) {
+      return res.status(400).json({ error: 'orderId inválido' });
+    }
+
     const escrow = escrows.get(orderId);
 
     if (!escrow) {
       return res.status(404).json({ error: 'Escrow não encontrado' });
     }
 
-    // SEGURANÇA: Verificar que o caller é parte do escrow
-    if (req.verifiedPubkey && escrow.userId !== req.verifiedPubkey && escrow.providerId !== req.verifiedPubkey) {
-      return res.status(403).json({ error: 'Sem permissão para ver este escrow' });
+    // SECURITY v445: Check caller is escrow owner OR order provider (escrow.providerId may not be set)
+    if (req.verifiedPubkey) {
+      const isOwner = escrow.userId === req.verifiedPubkey;
+      const isProvider = escrow.providerId === req.verifiedPubkey;
+      // Fallback: check order's providerId since escrow doesn't track it
+      let isOrderProvider = false;
+      if (!isProvider) {
+        const order = orders.get(orderId);
+        isOrderProvider = order && order.providerId === req.verifiedPubkey;
+      }
+      if (!isOwner && !isProvider && !isOrderProvider) {
+        return res.status(403).json({ error: 'Sem permissão para ver este escrow' });
+      }
     }
 
     res.json({

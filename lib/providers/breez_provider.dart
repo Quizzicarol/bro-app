@@ -1150,6 +1150,10 @@ class BreezProvider with ChangeNotifier {
         errMsg = 'Não foi possível interpretar o código. Use uma invoice Lightning válida.';
       } else if (errMsg.contains('time lock') || errMsg.contains('time_lock') || errMsg.contains('timelock')) {
         errMsg = 'Fundos temporariamente bloqueados. Aguarde alguns minutos e tente novamente. Se persistir, sincronize a carteira em Configurações.';
+      } else if (errMsg.contains('AlreadyExists') || errMsg.contains('preimage request already exists')) {
+        // v448: Spark SDK retorna AlreadyExists quando o pagamento já foi feito/tentado
+        // Tratar como "already paid" para que o fluxo de confirmação reconheça
+        errMsg = 'Invoice already paid (AlreadyExists)';
       } else if (errMsg.contains('sparkError') || errMsg.contains('SdkError')) {
         errMsg = 'Erro na rede Lightning. Verifique sua conexão e tente novamente.';
       }

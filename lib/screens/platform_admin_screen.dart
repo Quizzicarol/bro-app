@@ -2264,7 +2264,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
       
       // 1. Publicar resolução no Nostr
       final nostrOrderService = NostrOrderService();
-      final published = await nostrOrderService.publishDisputeResolution(
+      bool published = await nostrOrderService.publishDisputeResolution(
         privateKey: privateKey,
         orderId: orderId,
         resolution: resolution,
@@ -2273,9 +2273,24 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
         providerId: providerId,
       );
       
-      // 2. Atualizar status da ordem LOCALMENTE (sem publicar no Nostr como mediador)
+      // 2. Atualizar status da ordem localmente E publicar no Nostr
       final newOrderStatus = resolution == 'resolved_user' ? 'cancelled' : 'completed';
       orderProvider.updateOrderStatusLocalOnly(orderId: orderId, status: newOrderStatus);
+      
+      // Publicar status update via Nostr (kind 30080) para outra parte receber
+      try {
+        final statusPublished = await nostrOrderService.updateOrderStatus(
+          privateKey: privateKey,
+          orderId: orderId,
+          newStatus: newOrderStatus,
+          providerId: providerId.isNotEmpty ? providerId : null,
+          orderUserPubkey: userPubkey.isNotEmpty ? userPubkey : null,
+        ).timeout(const Duration(seconds: 15), onTimeout: () => false);
+        published = published || statusPublished;
+        broLog('📤 Status $newOrderStatus publicado no Nostr: $statusPublished');
+      } catch (e) {
+        broLog('⚠️ Falha ao publicar status no Nostr: $e');
+      }
       
       // 3. NOVO: Persistir resolução localmente (independente do relay)
       await StorageService().markDisputeResolved(orderId, resolution);

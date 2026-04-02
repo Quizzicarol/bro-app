@@ -1,14 +1,14 @@
 # Codemagic CI/CD Configuration for Bro App
 # Docs: https://docs.codemagic.io/yaml-quick-start/building-a-flutter-app/
-# NOTE: Codemagic environment groups must include ADMIN_PUBKEY, ADMIN_PASSWORD_HASH,
-#       and ADMIN_PRIVKEY in the bro_secrets group for admin login and proof decryption.
+# NOTE: Codemagic environment groups must include ADMIN_PUBKEY and ADMIN_PASSWORD_HASH
+#       in the bro_secrets group for admin login.
 
 workflows:
   # ============================================
   # BUILD COMPLETO - Android + iOS
   # ============================================
   full-release:
-    name: 🚀 Android + iOS (Testers)
+    name: ðŸš€ Android + iOS (Testers)
     max_build_duration: 120
     instance_type: mac_mini_m2
     
@@ -41,7 +41,7 @@ workflows:
       
     scripts:
       - name: Generate env.json from CI variables
-        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","ADMIN_PASSWORD_HASH":"%s","ADMIN_PRIVKEY":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" "$ADMIN_PASSWORD_HASH" "$ADMIN_PRIVKEY" > "$CM_BUILD_DIR/env.json"
+        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","ADMIN_PASSWORD_HASH":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" "$ADMIN_PASSWORD_HASH" > "$CM_BUILD_DIR/env.json"
 
       - name: Decode google-services.json
         script: echo "$GOOGLE_SERVICES_JSON" | base64 --decode > "$CM_BUILD_DIR/android/app/google-services.json"
@@ -74,11 +74,11 @@ workflows:
       app_store_connect:
         auth: integration
         submit_to_testflight: true
-        submit_to_app_store: false  # Desabilitado até adicionar screenshots
-        # Enviar automaticamente para testadores externos (link público)
-        # NOTA: Crie o grupo "Beta Público" no App Store Connect primeiro!
+        submit_to_app_store: false  # Desabilitado atÃ© adicionar screenshots
+        # Enviar automaticamente para testadores externos (link pÃºblico)
+        # NOTA: Crie o grupo "Beta PÃºblico" no App Store Connect primeiro!
         # beta_groups:
-        #   - Beta Público
+        #   - Beta PÃºblico
       email:
         recipients:
           - your-email@example.com  # TODO: configure
@@ -87,12 +87,12 @@ workflows:
           failure: true
 
   # ============================================
-  # DISTRIBUIÇÃO PARA TESTERS (SEM LOJA)
+  # DISTRIBUIÃ‡ÃƒO PARA TESTERS (SEM LOJA)
   # Gera APK release assinado para Android
-  # MANUAL - Use apenas se precisar só do APK
+  # MANUAL - Use apenas se precisar sÃ³ do APK
   # ============================================
   testers-build:
-    name: 📱 Android APK (Manual)
+    name: ðŸ“± Android APK (Manual)
     max_build_duration: 60
     instance_type: mac_mini_m2
     
@@ -106,7 +106,7 @@ workflows:
       
     scripts:
       - name: Generate env.json from CI variables
-        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","ADMIN_PASSWORD_HASH":"%s","ADMIN_PRIVKEY":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" "$ADMIN_PASSWORD_HASH" "$ADMIN_PRIVKEY" > "$CM_BUILD_DIR/env.json"
+        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","ADMIN_PASSWORD_HASH":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" "$ADMIN_PASSWORD_HASH" > "$CM_BUILD_DIR/env.json"
 
       - name: Decode google-services.json
         script: echo "$GOOGLE_SERVICES_JSON" | base64 --decode > "$CM_BUILD_DIR/android/app/google-services.json"
@@ -133,7 +133,7 @@ workflows:
   # MANUAL - Requer credenciais do Google Play configuradas
   # ============================================
   android-release:
-    name: 🤖 Android Play Store (Manual)
+    name: ðŸ¤– Android Play Store (Manual)
     max_build_duration: 60
     instance_type: mac_mini_m2
     
@@ -163,7 +163,7 @@ workflows:
         script: flutter pub get
         
       - name: Generate env.json from CI variables
-        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","ADMIN_PASSWORD_HASH":"%s","ADMIN_PRIVKEY":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" "$ADMIN_PASSWORD_HASH" "$ADMIN_PRIVKEY" > "$CM_BUILD_DIR/env.json"
+        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","ADMIN_PASSWORD_HASH":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" "$ADMIN_PASSWORD_HASH" > "$CM_BUILD_DIR/env.json"
 
       - name: Build APK Release
         script: flutter build apk --release --dart-define-from-file=env.json
@@ -184,10 +184,10 @@ workflows:
 
   # ============================================
   # iOS - TestFlight / App Store
-  # MANUAL - Use full-release para builds automáticos
+  # MANUAL - Use full-release para builds automÃ¡ticos
   # ============================================
   ios-release:
-    name: 🍎 iOS TestFlight (Manual)
+    name: ðŸŽ iOS TestFlight (Manual)
     max_build_duration: 90
     instance_type: mac_mini_m2
     
@@ -221,7 +221,7 @@ workflows:
           pod install
           
       - name: Generate env.json from CI variables
-        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","ADMIN_PASSWORD_HASH":"%s","ADMIN_PRIVKEY":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" "$ADMIN_PASSWORD_HASH" "$ADMIN_PRIVKEY" > "$CM_BUILD_DIR/env.json"
+        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","ADMIN_PASSWORD_HASH":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" "$ADMIN_PASSWORD_HASH" > "$CM_BUILD_DIR/env.json"
 
       - name: Build iOS
         script: flutter build ipa --release --dart-define-from-file=env.json --export-options-plist=/Users/builder/export_options.plist
@@ -240,7 +240,7 @@ workflows:
   # DEBUG BUILD (para desenvolvimento)
   # ============================================
   debug-build:
-    name: 🔧 Debug Build
+    name: ðŸ”§ Debug Build
     max_build_duration: 60
     instance_type: mac_mini_m2
     
@@ -262,7 +262,7 @@ workflows:
           
     scripts:
       - name: Generate env.json from CI variables
-        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","ADMIN_PASSWORD_HASH":"%s","ADMIN_PRIVKEY":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" "$ADMIN_PASSWORD_HASH" "$ADMIN_PRIVKEY" > "$CM_BUILD_DIR/env.json"
+        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","ADMIN_PASSWORD_HASH":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" "$ADMIN_PASSWORD_HASH" > "$CM_BUILD_DIR/env.json"
 
       - name: Decode google-services.json
         script: echo "$GOOGLE_SERVICES_JSON" | base64 --decode > "$CM_BUILD_DIR/android/app/google-services.json"

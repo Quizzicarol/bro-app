@@ -8,6 +8,7 @@ import 'package:bro_app/services/log_utils.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../config.dart';
 import '../models/order.dart';
+import 'billcode_crypto_service.dart';
 import 'nip04_service.dart';
 import 'nip44_service.dart';
 
@@ -42,6 +43,12 @@ class NostrOrderService {
   // Quando 3 funções chamam em paralelo, a primeira faz o fetch real,
   // as outras esperam pelo mesmo resultado sem criar novas conexões
   Completer<Map<String, Map<String, dynamic>>>? _statusUpdatesFetching;
+
+  // v437: Republish requests recebidos durante fetchOrderUpdatesForUser
+  // Provider publica bro_republish_request → customer detecta no sync
+  final List<String> _pendingRepublishRequests = [];
+  List<String> get pendingRepublishRequests => List.unmodifiable(_pendingRepublishRequests);
+  void clearRepublishRequests() => _pendingRepublishRequests.clear();
 
   // BLOCKLIST LOCAL: IDs de ordens em estado terminal (completed, cancelled, etc)
   // Persistida em SharedPreferences para sobreviver a reinicializações
@@ -83,6 +90,9 @@ class NostrOrderService {
       broLog('⚠️ Erro ao salvar blocklist: $e');
     }
   }
+
+  /// v437: Público para que OrderProvider possa bloquear ordens canceladas localmente
+  Future<void> addToBlocklistPublic(Set<String> orderIds) => _addToBlocklist(orderIds);
 
   /// Helper: Verifica se newStatus é progressão válida em relação a currentStatus
   /// Mesma lógica de _isStatusMoreRecent do OrderProvider, mas local
@@ -152,9 +162,12 @@ class NostrOrderService {
   static const String broTag = 'bro-order';
   static const String broAppTag = 'bro-app';
 
-  /// Retorna billCode de um evento Nostr (plain text)
+  final BillCodeCryptoService _billCodeCrypto = BillCodeCryptoService();
+
+  /// Retorna billCode de um evento Nostr, decriptando BRO1 se necessário
   String _getBillCode(Map<String, dynamic> content) {
-    return content['billCode']?.toString() ?? '';
+    final raw = content['billCode']?.toString() ?? '';
+    return _billCodeCrypto.decrypt(raw);
   }
 
   /// Publica uma ordem nos relays (raw)
@@ -173,13 +186,17 @@ class NostrOrderService {
     try {
       final keychain = Keychain(privateKey);
       
+      final encryptedBillCode = billCode; // v437: BRO1 encryption DESATIVADA até todos dispositivos atualizarem
+      // TODO: Reativar quando provider-side tiver decrypt: _billCodeCrypto.encrypt(billCode)
+      broLog('📡 _publishOrderRaw: orderId=${orderId.substring(0, 8)}, billType=$billType, billCode=${billCode.isNotEmpty ? "SET" : "EMPTY"}, encrypted=DISABLED');
+      
       final content = jsonEncode({
         'type': 'bro_order',
         'version': '1.0',
         'orderId': orderId,
         'userPubkey': keychain.public,
         'billType': billType,
-        'billCode': billCode,
+        'billCode': encryptedBillCode,
         'amount': amount,
         'btcAmount': btcAmount,
         'btcPrice': btcPrice,
@@ -208,13 +225,17 @@ class NostrOrderService {
       
       // Publicar em todos os relays EM PARALELO
       final results = await Future.wait(
-        _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
+        _relays.map((relay) => _publishToRelay(relay, event).catchError((e) {
+          broLog('❌ _publishOrderRaw: relay $relay failed: $e');
+          return false;
+        })),
       );
       final successCount = results.where((r) => r).length;
 
-      
+      broLog('📡 _publishOrderRaw: ${orderId.substring(0, 8)} published to $successCount/${_relays.length} relays');
       return successCount > 0 ? event.id : null;
     } catch (e) {
+      broLog('❌ _publishOrderRaw: exception for ${orderId.substring(0, 8)}: $e');
       return null;
     }
   }
@@ -332,6 +353,123 @@ class NostrOrderService {
       return successCount > 0;
     } catch (e) {
       broLog('❌ updateOrderStatus EXCEPTION: $e');
+      return false;
+    }
+  }
+
+  /// v437: Publica pedido de republish para o customer
+  /// Quando o provider detecta ordem presa em awaiting_confirmation,
+  /// publica este evento para que o app do customer re-publique o completed
+  Future<bool> publishRepublishRequest({
+    required String privateKey,
+    required String orderId,
+    required String customerPubkey,
+  }) async {
+    try {
+      final keychain = Keychain(privateKey);
+      final signerPubkey = keychain.public;
+
+      final content = jsonEncode({
+        'type': 'bro_republish_request',
+        'orderId': orderId,
+        'providerId': signerPubkey,
+        'userPubkey': customerPubkey,
+        'publishedBy': signerPubkey,
+        'updatedAt': DateTime.now().toIso8601String(),
+      });
+
+      final tags = [
+        ['d', '${orderId}_${signerPubkey.substring(0, 8)}_republish'],
+        ['t', broTag],
+        ['t', 'bro-republish-request'],
+        ['r', orderId],
+        ['p', customerPubkey],
+      ];
+
+      final event = Event.from(
+        kind: kindBroPaymentProof,
+        tags: tags,
+        content: content,
+        privkey: keychain.private,
+      );
+
+      final results = await Future.wait(
+        _relays.map((relay) async {
+          try {
+            return await _publishToRelay(relay, event);
+          } catch (_) {
+            return false;
+          }
+        }),
+      );
+
+      final successCount = results.where((r) => r).length;
+      broLog('📤 publishRepublishRequest: orderId=${orderId.substring(0, 8)} → $successCount/${_relays.length} relays');
+      return successCount > 0;
+    } catch (e) {
+      broLog('❌ publishRepublishRequest EXCEPTION: $e');
+      return false;
+    }
+  }
+
+  /// v438: Publica billCode encriptado via NIP-44 para o provider que aceitou a ordem.
+  /// Buyer envia após detectar aceitação (kind 30079).
+  /// Provider descriptografa com ECDH(provider_priv, buyer_pub).
+  /// Retrocompat: kind 30078 ainda tem billCode plaintext para versões antigas.
+  Future<bool> publishEncryptedBillCode({
+    required String privateKey,
+    required String orderId,
+    required String billCode,
+    required String providerPubkey,
+    required String orderUserPubkey,
+  }) async {
+    try {
+      final keychain = Keychain(privateKey);
+      final signerPubkey = keychain.public;
+
+      // NIP-44 ECDH: only the provider can decrypt
+      final encryptedBillCode = _nip44.encryptBetween(billCode, privateKey, providerPubkey);
+
+      final content = jsonEncode({
+        'type': 'bro_billcode_encrypted',
+        'orderId': orderId,
+        'billCode_nip44': encryptedBillCode,
+        'encryption': 'nip44v2',
+        'userPubkey': orderUserPubkey,
+        'publishedBy': signerPubkey,
+        'updatedAt': DateTime.now().toIso8601String(),
+      });
+
+      final tags = [
+        ['d', '${orderId}_${signerPubkey.substring(0, 8)}_billcode'],
+        ['t', broTag],
+        ['t', 'bro-billcode'],
+        ['r', orderId],
+        ['p', providerPubkey],
+      ];
+
+      final event = Event.from(
+        kind: kindBroPaymentProof, // 30080 — same kind as other updates
+        tags: tags,
+        content: content,
+        privkey: keychain.private,
+      );
+
+      final results = await Future.wait(
+        _relays.map((relay) async {
+          try {
+            return await _publishToRelay(relay, event);
+          } catch (_) {
+            return false;
+          }
+        }),
+      );
+
+      final successCount = results.where((r) => r).length;
+      broLog('🔐 publishEncryptedBillCode: orderId=${orderId.substring(0, 8)} → $successCount/${_relays.length} relays (nip44, provider=${providerPubkey.substring(0, 8)})');
+      return successCount > 0;
+    } catch (e) {
+      broLog('❌ publishEncryptedBillCode EXCEPTION: $e');
       return false;
     }
   }
@@ -547,16 +685,20 @@ class NostrOrderService {
             final response = jsonDecode(message);
             if (response[0] == 'OK' && response[1] == event.id) {
               final success = response[2] == true;
+              if (!success) {
+                final reason = response.length > 3 ? response[3] : 'unknown';
+                broLog('❌ Relay $relayUrl rejected event: $reason');
+              }
               if (!completer.isCompleted) {
                 completer.complete(success);
               }
-              if (!success) {
-              }
             }
           } catch (e) {
+            broLog('⚠️ Relay $relayUrl parse error: $e');
           }
         },
         onError: (e) {
+          broLog('❌ Relay $relayUrl stream error: $e');
           if (!completer.isCompleted) completer.complete(false);
         },
         onDone: () {
@@ -566,12 +708,16 @@ class NostrOrderService {
 
       // Enviar evento
       final eventJson = ['EVENT', event.toJson()];
-      channel.sink.add(jsonEncode(eventJson));
+      final payload = jsonEncode(eventJson);
+      broLog('📡 _publishToRelay $relayUrl: sending ${(payload.length / 1024).toStringAsFixed(0)}KB event');
+      channel.sink.add(payload);
 
       return await completer.future;
     } on TimeoutException catch (e) {
+      broLog('⏰ _publishToRelay $relayUrl: timeout after 15s');
       return false;
     } catch (e) {
+      broLog('❌ _publishToRelay $relayUrl: exception $e');
       return false;
     } finally {
       timeout?.cancel();
@@ -1127,7 +1273,7 @@ class NostrOrderService {
         'orderId': order.id,
         'userPubkey': keychain.public,
         'billType': order.billType,
-        'billCode': order.billCode,
+        'billCode': order.billCode, // v437: BRO1 encryption DESATIVADA até todos dispositivos atualizarem
         'amount': order.amount,
         'btcAmount': order.btcAmount,
         'btcPrice': order.btcPrice,
@@ -1306,18 +1452,14 @@ class NostrOrderService {
       };
       
       // Adicionar proofImage (criptografado ou plaintext como fallback)
+      // SECURITY v444: Only include user-encrypted copy in main event.
+      // Admin and provider copies are omitted to keep event under relay size limits.
+      // (3 copies × 175KB = 525KB exceeds most relay limits of 128-512KB)
+      // Admin copy can be re-encrypted on demand during disputes.
       if (encryptedProofImage != null) {
         contentMap['proofImage_nip44'] = encryptedProofImage;
         contentMap['proofImage'] = '[encrypted:nip44v2]'; // Marcador para clientes antigos
         contentMap['encryption'] = 'nip44v2';
-        // Cópia criptografada para admin (usado em disputas)
-        if (encryptedProofImageAdmin != null) {
-          contentMap['proofImage_nip44_admin'] = encryptedProofImageAdmin;
-        }
-        // Cópia criptografada para o próprio provedor (para rever o comprovante)
-        if (encryptedProofImageProvider != null) {
-          contentMap['proofImage_nip44_provider'] = encryptedProofImageProvider;
-        }
       } else {
         contentMap['proofImage'] = proofImageBase64;
       }
@@ -1945,8 +2087,16 @@ class NostrOrderService {
             
             // CORREÇÃO v1.0.129: Para eventos de resolução de disputa,
             // o pubkey do evento é do mediador, não do provedor/usuário.
-            // Não validar papel do pubkey para estes eventos.
+            // SEGURANÇA: Validar que o pubkey é do admin autorizado.
             if (eventType == 'bro_dispute_resolution') {
+              // SEGURANÇA: Apenas o admin pode resolver disputas
+              final eventPubkey = event['pubkey'] as String?;
+              if (eventPubkey == null || 
+                  (AppConfig.adminPubkey.isNotEmpty && eventPubkey != AppConfig.adminPubkey)) {
+                broLog('⚠️ REJEITADO: bro_dispute_resolution de pubkey não-admin ${eventPubkey?.substring(0, 8)}');
+                continue;
+              }
+              
               // Extrair status da resolução
               final resolutionStatus = content['status'] as String?;
               if (resolutionStatus == null) continue;
@@ -2024,6 +2174,30 @@ class NostrOrderService {
             if (existingIsCancelled) continue;
             
             if (existingUpdate == null || isCancel || createdAt >= existingCreatedAt) {
+              // v438: bro_billcode_encrypted — only carries billCode_nip44, doesn't change status.
+              // Merge into existing update (or create a skeleton) so provider gets the encrypted billCode.
+              if (eventType == 'bro_billcode_encrypted') {
+                final billCodeNip44 = content['billCode_nip44'] as String?;
+                if (billCodeNip44 != null && billCodeNip44.isNotEmpty) {
+                  final prev = updates[orderId];
+                  if (prev != null) {
+                    prev['billCode_nip44'] = billCodeNip44;
+                    prev['billCode_encryption'] = 'nip44v2';
+                    prev['billCode_senderPubkey'] = event['pubkey'] as String?;
+                  } else {
+                    updates[orderId] = {
+                      'orderId': orderId,
+                      'status': null, // no status change
+                      'billCode_nip44': billCodeNip44,
+                      'billCode_encryption': 'nip44v2',
+                      'billCode_senderPubkey': event['pubkey'] as String?,
+                      'created_at': createdAt,
+                    };
+                  }
+                }
+                continue; // don't process as normal status update
+              }
+
               // Determinar status baseado no tipo de evento
               String? status = content['status'] as String?;
               if (eventType == 'bro_accept' || eventKind == kindBroAccept) {
@@ -2065,6 +2239,9 @@ class NostrOrderService {
               
               // NOVO: Incluir providerInvoice para pagamento automático
               final providerInvoice = content['providerInvoice'] as String?;
+
+              // v438: billCode encriptado via NIP-44 (post-acceptance)
+              final billCodeNip44 = content['billCode_nip44'] as String?;
               
               // providerId pode vir do content ou do pubkey do evento (para accepts)
               final providerId = content['providerId'] as String? ?? event['pubkey'] as String?;
@@ -2086,6 +2263,7 @@ class NostrOrderService {
                 'encryption': encryption ?? previousUpdate?['encryption'] ?? accum?['encryption'],
                 'providerInvoice': providerInvoice ?? previousUpdate?['providerInvoice'] ?? accum?['providerInvoice'],
                 'completedAt': content['completedAt'] ?? previousUpdate?['completedAt'] ?? accum?['completedAt'],
+                'billCode_nip44': billCodeNip44 ?? previousUpdate?['billCode_nip44'] ?? accum?['billCode_nip44'],
                 'created_at': createdAt,
               };
             }
@@ -2164,6 +2342,22 @@ class NostrOrderService {
     if (proofImage != null && proofImage.startsWith('[encrypted:')) {
       proofImage = null;
     }
+
+    // v438: Descriptografar billCode NIP-44 (enviado pelo buyer post-acceptance)
+    String? decryptedBillCode;
+    final billCodeNip44 = update['billCode_nip44'] as String?;
+    final billCodeEncryption = update['billCode_encryption'] as String?;
+    if (billCodeNip44 != null && billCodeNip44.isNotEmpty && userPrivateKey != null) {
+      final senderPubkey = update['billCode_senderPubkey'] as String? ?? order.userPubkey;
+      if (senderPubkey != null && senderPubkey.isNotEmpty) {
+        try {
+          decryptedBillCode = _nip44.decryptBetween(billCodeNip44, userPrivateKey, senderPubkey);
+          broLog('🔐 billCode descriptografado via NIP-44 para ordem ${order.id.substring(0, 8)}');
+        } catch (e) {
+          broLog('⚠️ Falha ao descriptografar billCode NIP-44: $e');
+        }
+      }
+    }
     
     // NOTA: Não bloqueamos mais "completed" do provedor porque:
     // 1. O pagamento ao provedor só acontece via invoice Lightning que ele gera
@@ -2171,7 +2365,12 @@ class NostrOrderService {
     // 3. O provedor marcar "completed" não causa dano financeiro
     // 4. Bloquear causa problemas de sincronização entre dispositivos
     
-    if (newStatus != null && newStatus != order.status) {
+    // v448: Aplicar metadata SEMPRE que houver update, mesmo se status não mudou.
+    // CORREÇÃO: Antes, se newStatus == order.status (ex: ambos 'awaiting_confirmation'),
+    // o bloco de metadata era pulado inteiramente — proofImage, providerInvoice e
+    // receipt_submitted_at nunca eram aplicados. Isso causava timer travado, comprovante
+    // não aparecendo e confirmação falhando.
+    if (newStatus != null) {
       
       // CORREÇÃO v1.0.129: NUNCA regredir status
       // Se o status atual é mais avançado que o novo, manter o atual
@@ -2198,13 +2397,18 @@ class NostrOrderService {
       if (providerInvoice != null && providerInvoice.isNotEmpty) {
         updatedMetadata['providerInvoice'] = providerInvoice;
       }
+      // v438: Preservar billCode NIP-44 para re-descriptografia futura
+      if (billCodeNip44 != null && billCodeNip44.isNotEmpty) {
+        updatedMetadata['billCode_nip44'] = billCodeNip44;
+        updatedMetadata['billCode_senderPubkey'] = update['billCode_senderPubkey'] as String? ?? order.userPubkey;
+      }
       
       return Order(
         id: order.id,
         eventId: order.eventId,
         userPubkey: order.userPubkey,
         billType: order.billType,
-        billCode: order.billCode,
+        billCode: decryptedBillCode ?? order.billCode, // v438: prefer NIP-44 decrypted over plaintext
         amount: order.amount,
         btcAmount: order.btcAmount,
         btcPrice: order.btcPrice,
@@ -2215,6 +2419,32 @@ class NostrOrderService {
         providerId: providerId ?? order.providerId,
         createdAt: order.createdAt,
         metadata: updatedMetadata, // IMPORTANTE: Incluir metadata com proofImage!
+      );
+    }
+    
+    // v438: Even if no status change, apply decrypted billCode if available
+    if (decryptedBillCode != null && decryptedBillCode.isNotEmpty) {
+      final updatedMetadata = Map<String, dynamic>.from(order.metadata ?? {});
+      if (billCodeNip44 != null) {
+        updatedMetadata['billCode_nip44'] = billCodeNip44;
+        updatedMetadata['billCode_senderPubkey'] = update['billCode_senderPubkey'] as String? ?? order.userPubkey;
+      }
+      return Order(
+        id: order.id,
+        eventId: order.eventId,
+        userPubkey: order.userPubkey,
+        billType: order.billType,
+        billCode: decryptedBillCode,
+        amount: order.amount,
+        btcAmount: order.btcAmount,
+        btcPrice: order.btcPrice,
+        providerFee: order.providerFee,
+        platformFee: order.platformFee,
+        total: order.total,
+        status: order.status,
+        providerId: providerId ?? order.providerId,
+        createdAt: order.createdAt,
+        metadata: updatedMetadata,
       );
     }
     
@@ -2490,6 +2720,16 @@ class NostrOrderService {
             // CORREÇÃO v348: Ignorar eventos de reembolso do admin completamente
             // bro_admin_reimbursement NÃO é status update — não deve afetar lista de ordens
             if (contentType == 'bro_admin_reimbursement') continue;
+            // v437: Detectar pedidos de republish do provider
+            // Provider publica bro_republish_request quando ordem está presa em awaiting_confirmation
+            // Customer re-publica o completed se existir localmente
+            if (contentType == 'bro_republish_request') {
+              if (orderId != null) {
+                _pendingRepublishRequests.add(orderId);
+                broLog('📩 fetchOrderUpdatesForUser: bro_republish_request recebido para ${orderId.substring(0, 8)}');
+              }
+              continue;
+            }
             if (contentType == 'bro_dispute_resolution') {
               // Se este usuário é o mediador (adminPubkey == userPubkey),
               // ignorar o evento para não poluir a lista do mediador
@@ -2625,25 +2865,58 @@ class NostrOrderService {
             try {
               final content = event['parsedContent'] ?? jsonDecode(event['content']);
               final eventOrderId = content['orderId'] as String?;
+              final eventType = content['type'] as String?;
               final status = content['status'] as String?;
               final createdAt = event['created_at'] as int? ?? 0;
               
-              if (eventOrderId == null || status == null) continue;
+              if (eventOrderId == null) continue;
               if (!orderIdSet.contains(eventOrderId)) continue;
+
+              // v438: bro_billcode_encrypted — merge billCode_nip44 without changing status
+              if (eventType == 'bro_billcode_encrypted') {
+                final billCodeNip44 = content['billCode_nip44'] as String?;
+                if (billCodeNip44 != null && billCodeNip44.isNotEmpty) {
+                  final existing = updates[eventOrderId];
+                  if (existing != null) {
+                    existing['billCode_nip44'] = billCodeNip44;
+                    existing['billCode_senderPubkey'] = event['pubkey'] as String?;
+                  } else {
+                    updates[eventOrderId] = {
+                      'orderId': eventOrderId,
+                      'status': null,
+                      'billCode_nip44': billCodeNip44,
+                      'billCode_senderPubkey': event['pubkey'] as String?,
+                      'created_at': createdAt,
+                    };
+                  }
+                }
+                continue;
+              }
+              
+              if (status == null) continue;
               
               final existingUpdate = updates[eventOrderId];
               final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
+              final existingStatus = existingUpdate?['status'] as String?;
               
-              if (existingUpdate == null || createdAt > existingCreatedAt) {
-                final existingStatus = existingUpdate?['status'] as String?;
+              final isNewer = existingUpdate == null || createdAt > existingCreatedAt;
+              if (isNewer) {
                 if (existingStatus != null && !_isStatusProgression(status, existingStatus)) continue;
-                
-                updates[eventOrderId] = {
-                  'orderId': eventOrderId,
-                  'status': status,
-                  'created_at': createdAt,
-                };
+              } else {
+                continue;
               }
+              
+              // Preserve billCode_nip44 from previous update or bro_billcode_encrypted event
+              final previousBillCode = existingUpdate?['billCode_nip44'] as String?;
+              final previousSenderPubkey = existingUpdate?['billCode_senderPubkey'] as String?;
+              
+              updates[eventOrderId] = {
+                'orderId': eventOrderId,
+                'status': status,
+                'created_at': createdAt,
+                if (previousBillCode != null) 'billCode_nip44': previousBillCode,
+                if (previousSenderPubkey != null) 'billCode_senderPubkey': previousSenderPubkey,
+              };
             } catch (_) {}
           }
         }
@@ -3395,7 +3668,8 @@ class NostrOrderService {
   }) async {
     try {
       final keychain = Keychain(privateKey);
-      
+      broLog('📤 publishDisputeResolution START: orderId=$orderId resolution=$resolution adminPubkey=${keychain.public.substring(0, 8)}');
+
       final content = jsonEncode({
         'type': 'bro_dispute_resolution',
         'orderId': orderId,

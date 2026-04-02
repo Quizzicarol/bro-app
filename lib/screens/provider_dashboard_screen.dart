@@ -1,10 +1,13 @@
 ﻿import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter/services.dart';
+import '../providers/order_provider.dart';
 import '../services/provider_service.dart';
 import '../services/storage_service.dart';
+import '../services/billcode_crypto_service.dart';
 import '../widgets/gradient_button.dart';
 
 class ProviderDashboardScreen extends StatefulWidget {
@@ -583,7 +586,9 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
     );
 
     if (confirm == true && _providerId != null) {
-      final success = await _providerService.acceptOrder(orderId, _providerId!);
+      // v437: Aceitar via Nostr (API /orders/accept está morta)
+      final orderProvider = context.read<OrderProvider>();
+      final success = await orderProvider.acceptOrderAsProvider(orderId);
       if (success && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -592,6 +597,13 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
           ),
         );
         await _loadProviderData();
+      } else if (!success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(l.t('prov_dash_accept_error')),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
@@ -613,7 +625,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
     broLog('📦 Order keys: ${order.keys.toList()}');
     
     // Tentar pegar billCode de várias fontes possíveis
-    String billCode = order['billCode'] ?? 
+    String rawBillCode = order['billCode'] ?? 
                       order['bill_code'] ?? 
                       order['pixCode'] ?? 
                       order['pix_code'] ?? 
@@ -622,6 +634,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                       (order['metadata']?['pixCode']) ?? 
                       (order['metadata']?['code']) ?? 
                       '';
+    String billCode = BillCodeCryptoService().decrypt(rawBillCode);
     
     final status = order['status'] ?? '';
     

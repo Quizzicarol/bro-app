@@ -184,6 +184,14 @@ class ProviderEducationScreen extends StatelessWidget {
             color: Colors.purple,
             isHeader: false,
           ),
+          const Divider(color: Colors.white12, height: 1),
+          _buildTierRow(
+            tier: l.t('prov_edu_tier_master'),
+            guarantee: 'R\$ 3.000',
+            maxOrder: 'ilimitado',
+            color: Colors.amber,
+            isHeader: false,
+          ),
         ],
       ),
     );

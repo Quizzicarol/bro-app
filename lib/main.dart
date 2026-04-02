@@ -1,8 +1,10 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:convert';
+import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
 import 'package:breez_sdk_spark_flutter/breez_sdk_spark.dart' as spark;
@@ -50,6 +52,7 @@ import 'widgets/alfa_banner.dart';
 import 'services/nostr_service.dart';
 import 'services/background_notification_service.dart';
 import 'services/nostr_order_service.dart';
+import 'services/order_realtime_service.dart';
 import 'services/brix_service.dart';
 import 'services/brix_relay_service.dart';
 import 'config.dart';
@@ -64,6 +67,52 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
   broLog('[FCM-BG] Background message: ${message.data}');
+
+  // v441: Handle order_update push — show notification to prompt user to open app
+  if (message.data['type'] == 'order_update') {
+    try {
+      final plugin = FlutterLocalNotificationsPlugin();
+      const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const settings = InitializationSettings(android: androidSettings, iOS: DarwinInitializationSettings());
+      await plugin.initialize(settings);
+      
+      // v448: Dedup — skip if already notified for this order+subtype
+      final orderId = message.data['order_id'] ?? '';
+      final subtype = message.data['subtype'] ?? 'update';
+      final dedupKey = '$subtype:$orderId';
+      final prefs = await SharedPreferences.getInstance();
+      final notifiedJson = prefs.getString('bro_notified_transitions') ?? '[]';
+      final notified = Set<String>.from(jsonDecode(notifiedJson) as List);
+      if (notified.contains(dedupKey)) {
+        broLog('[FCM-BG] Duplicate notification skipped: $dedupKey');
+        return;
+      }
+      notified.add(dedupKey);
+      if (notified.length > 300) {
+        final keep = notified.toList().sublist(notified.length - 300);
+        notified.clear();
+        notified.addAll(keep);
+      }
+      await prefs.setString('bro_notified_transitions', jsonEncode(notified.toList()));
+      
+      String title = '📋 Atualização de ordem';
+      String body = 'Abra o app para ver as novidades';
+      if (subtype == 'accepted') { title = '🤝 Ordem aceita!'; body = 'Um Bro aceitou sua ordem'; }
+      else if (subtype == 'billcode_encrypted') { title = '🔐 Código PIX recebido'; body = 'Código de pagamento disponível'; }
+      else if (subtype == 'payment_received') { title = '📸 Comprovante recebido!'; body = 'Verifique o comprovante e confirme'; }
+      else if (subtype == 'completed') { title = '✅ Ordem concluída!'; body = 'Troca finalizada com sucesso'; }
+      else if (subtype == 'disputed') { title = '⚠️ Disputa aberta'; body = 'Uma disputa foi aberta'; }
+      await plugin.show(
+        DateTime.now().millisecondsSinceEpoch % 2147483647,
+        title, body,
+        const NotificationDetails(
+          android: AndroidNotificationDetails('bro_orders_rt', 'Order Updates', importance: Importance.high, priority: Priority.high),
+          iOS: DarwinNotificationDetails(),
+        ),
+      );
+    } catch (_) {}
+    return;
+  }
 
   if (message.data['type'] != 'brix_invoice_request') return;
 
@@ -226,6 +275,11 @@ void main() async {
         });
       });
 
+      // Register with main backend for order push notifications
+      ApiService().registerPushToken(token).then((ok) {
+        broLog('[FCM] Backend push token registered: $ok');
+      });
+
       // Re-register when Firebase rotates the FCM token
       FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
         broLog('[FCM] Token refreshed, re-registering...');
@@ -234,15 +288,20 @@ void main() async {
             broLog('[FCM] BRIX push token re-registered after refresh: $ok');
           });
         });
+        ApiService().registerPushToken(newToken);
         // Reset relay service FCM state so it also re-registers
         BrixRelayService().resetFcmRegistration();
       });
 
-      // Listen for foreground FCM messages (BRIX wake-up)
+      // Listen for foreground FCM messages (BRIX wake-up + order updates)
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
         broLog('[FCM] Foreground message: ${message.data}');
         if (message.data['type'] == 'brix_invoice_request') {
           BrixRelayService().triggerPoll();
+        } else if (message.data['type'] == 'order_update') {
+          broLog('[FCM] Order update push — triggering sync');
+          // Sync will be triggered when OrderProvider is available
+          OrderRealtimeService().onOrderEvent?.call();
         }
       });
 
@@ -251,6 +310,8 @@ void main() async {
         broLog('[FCM] App opened from notification: ${message.data}');
         if (message.data['type'] == 'brix_invoice_request') {
           BrixRelayService().triggerPoll();
+        } else if (message.data['type'] == 'order_update') {
+          OrderRealtimeService().onOrderEvent?.call();
         }
       });
     }
@@ -258,6 +319,14 @@ void main() async {
     // v262: Iniciar background notifications (polling Nostr a cada 15min)
     await initBackgroundNotifications();
     broLog('🔔 Background notifications ativado');
+
+    // v441: Start real-time Nostr subscription for order events
+    if (userPubkey != null) {
+      OrderRealtimeService().start(userPubkey!, onEvent: () {
+        broLog('[RT] Order event received — will sync on next poll');
+      });
+      broLog('⚡ Order real-time subscription ativado');
+    }
   }
 
   // Verificar se já viu onboarding
@@ -392,6 +461,12 @@ class BroApp extends StatelessWidget {
 
           // RECONCILIACAO AUTOMATICA: Conectar callback de pagamento ao OrderProvider
           final orderProvider = context.read<OrderProvider>();
+
+          // v441: Connect real-time order subscription to trigger sync
+          OrderRealtimeService().onOrderEvent = () {
+            broLog('[RT] Triggering immediate sync from real-time event');
+            orderProvider.syncOrdersFromNostr();
+          };
           
           // Callback para pagamentos RECEBIDOS (menos comum no fluxo atual)
           breezProvider.onPaymentReceived = (String paymentId, int amountSats, String? paymentHash) {

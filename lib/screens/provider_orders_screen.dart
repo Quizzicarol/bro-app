@@ -339,7 +339,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         }
       }
       if (seenIdsChanged) _saveSeenOrderIds();
-      
+
       // ========== REGISTRAR GANHOS DE ORDENS COMPLETADAS ==========
       // Verificar ordens completadas e registrar ganhos que ainda não foram registrados
       final providerBalanceProvider = context.read<ProviderBalanceProvider>();

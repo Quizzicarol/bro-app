@@ -39,8 +39,13 @@ const CONFIG = {
 // In-memory dispute store
 // ============================================
 
-// Map of orderId -> dispute analysis
+// Map of orderId -> dispute analysis (capped to prevent memory exhaustion)
 const disputeAnalyses = new Map();
+const MAX_DISPUTE_ANALYSES = 1000;
+
+// SECURITY v445: Track in-progress analyses to prevent concurrent LLM calls (with TTL)
+const analysesInProgress = new Map(); // orderId -> timestamp
+const IN_PROGRESS_TTL_MS = 120000; // 2 minutes max
 
 // Counter for auto-resolves today
 let autoResolvesToday = 0;
@@ -196,13 +201,25 @@ class DisputeAgentService {
     if (!orderId) return null;
 
     console.log(`🔍 [DisputeAgent] Analyzing dispute for order ${orderId.substring(0, 8)}...`);
-
+    // SECURITY v445: Prevent concurrent analysis for same orderId (with TTL)
+    if (analysesInProgress.has(orderId)) {
+      const startedAt = analysesInProgress.get(orderId);
+      if (Date.now() - startedAt < IN_PROGRESS_TTL_MS) {
+        console.log(`   \u23F3 Analysis already in progress for ${orderId.substring(0, 8)}, skipping`);
+        return disputeAnalyses.get(orderId) || null;
+      }
+      // TTL expired — stale entry, allow re-analysis
+      analysesInProgress.delete(orderId);
+    }
     // Check if already analyzed
     if (disputeAnalyses.has(orderId) && !disputeAnalyses.get(orderId).needsReanalysis) {
       console.log(`   ⏭️ Already analyzed, skipping`);
       return disputeAnalyses.get(orderId);
     }
 
+    // SECURITY v445: Mark as in-progress to prevent concurrent LLM calls
+    analysesInProgress.set(orderId, Date.now());
+    try {
     // Build context
     const context = {
       alreadyResolved: disputeAnalyses.has(orderId) && disputeAnalyses.get(orderId).resolvedBy,
@@ -241,6 +258,12 @@ class DisputeAgentService {
       needsReanalysis: false,
     };
 
+    // Evict oldest entry if at capacity (and not updating existing)
+    if (!disputeAnalyses.has(orderId) && disputeAnalyses.size >= MAX_DISPUTE_ANALYSES) {
+      const oldestKey = disputeAnalyses.keys().next().value;
+      if (oldestKey) disputeAnalyses.delete(oldestKey);
+    }
+
     disputeAnalyses.set(orderId, analysis);
     analysisHistory.push({ orderId, ...finalResult, analyzedAt: analysis.analyzedAt });
     
@@ -254,6 +277,9 @@ class DisputeAgentService {
     console.log(`   📊 [DisputeAgent] ${tierLabel} | Confidence: ${(finalResult.confidence * 100).toFixed(0)}% | Suggestion: ${finalResult.suggestion} | ${finalResult.reason}`);
 
     return analysis;
+    } finally {
+      analysesInProgress.delete(orderId);
+    }
   }
 
   /**
@@ -312,35 +338,67 @@ class DisputeAgentService {
   }
 
   /**
-   * Build LLM prompt for dispute analysis
+   * Sanitize user input for LLM prompt — prevent prompt injection.
+   * Strips control chars, truncates, and escapes delimiters.
+   */
+  _sanitizeForPrompt(val, maxLen = 200) {
+    if (val === null || val === undefined) return 'N/A';
+    const str = String(val)
+      .replace(/[\x00-\x1f\x7f]/g, '') // strip control chars
+      .replace(/[`${}\\]/g, '')         // strip template/escape chars
+      .replace(/["']/g, '')              // SECURITY v445: strip quotes to prevent JSON injection
+      .replace(/[\[\]{}]/g, '')          // SECURITY v445: strip brackets/braces
+      .trim();
+    return str.length > maxLen ? str.substring(0, maxLen) + '…' : str;
+  }
+
+  /**
+   * Build LLM prompt for dispute analysis.
+   * SECURITY: All user-supplied fields are sanitized to prevent prompt injection.
    */
   _buildLlmPrompt(dispute, heuristicResult) {
+    // Sanitize all user-controlled fields
+    const s = (v, len) => this._sanitizeForPrompt(v, len);
+    const safeOrderId = s(dispute.orderId, 64);
+    const safePaymentType = s(dispute.payment_type, 20);
+    const safeAmountBrl = s(dispute.amount_brl, 20);
+    const safeAmountSats = s(dispute.amount_sats, 20);
+    const safeOpenedBy = s(dispute.openedBy, 20);
+    const safeReason = s(dispute.reason, 200);
+    const safeDescription = s(dispute.description, 500);
+    const safePrevStatus = s(dispute.previous_status, 30);
+    const hasEvidence = dispute.user_evidence_nip44 ? 'SIM' : 'NÃO';
+    const hasPixKey = dispute.pix_key ? 'Informada' : 'Não informada';
+
     return `Você é um agente de mediação de disputas para o Bro, um app P2P de pagamento de contas no Brasil usando Bitcoin/Lightning.
 
 CONTEXTO DA DISPUTA:
-- Ordem: ${dispute.orderId || 'N/A'}
-- Tipo de pagamento: ${dispute.payment_type || 'N/A'}
-- Valor: R$ ${dispute.amount_brl || 'N/A'} (${dispute.amount_sats || 'N/A'} sats)
-- Aberta por: ${dispute.openedBy || 'N/A'}
-- Motivo: ${dispute.reason || 'N/A'}
-- Descrição: ${dispute.description || 'Sem descrição'}
-- Status anterior: ${dispute.previous_status || 'N/A'}
-- Tem evidência (foto/comprovante): ${dispute.user_evidence_nip44 ? 'SIM' : 'NÃO'}
-- Chave Pix do pagamento: ${dispute.pix_key ? 'Informada' : 'Não informada'}
+- Ordem: ${safeOrderId}
+- Tipo de pagamento: ${safePaymentType}
+- Valor: R$ ${safeAmountBrl} (${safeAmountSats} sats)
+- Aberta por: ${safeOpenedBy}
+- Motivo: ${safeReason}
+- Descrição: ${safeDescription}
+- Status anterior: ${safePrevStatus}
+- Tem evidência (foto/comprovante): ${hasEvidence}
+- Chave Pix do pagamento: ${hasPixKey}
 
 ANÁLISE HEURÍSTICA PRÉVIA:
-- Regra: ${heuristicResult.ruleId}
-- Sugestão: ${heuristicResult.suggestion || 'Nenhuma'}
+- Regra: ${s(heuristicResult.ruleId, 50)}
+- Sugestão: ${s(heuristicResult.suggestion, 30) || 'Nenhuma'}
 - Confiança: ${(heuristicResult.confidence * 100).toFixed(0)}%
-- Razão: ${heuristicResult.reason}
+- Razão: ${s(heuristicResult.reason, 200)}
 
 REGRAS DE MEDIAÇÃO:
 1. Se o provedor não respondeu em tempo hábil, favorecer o USUÁRIO
 2. Se o usuário não tem evidência de pagamento, favorecer o PROVEDOR
-3. Se há comprovante de pagamento válido, favorecer o USUÁRIO
+3. Se há comprovante de pagamento válido COM código de autenticação e E2E, favorecer o USUÁRIO
 4. Se a disputa é sobre valor incorreto, analisar se a diferença é significativa
 5. Se ambas as partes têm evidências conflitantes, ESCALAR para humano
 6. Proteger o lado mais vulnerável quando em dúvida
+7. Uma IMAGEM de comprovante sem código E2E e sem código de autenticação NÃO é prova válida de pagamento PIX
+8. Todo comprovante PIX real contém: código de autenticação, E2E, nome do destinatário, valor, data/hora
+9. Se o provedor enviou apenas imagem sem dados verificáveis, considerar como evidência FRACA ou fabricada
 
 Responda APENAS no formato JSON:
 {
@@ -407,6 +465,13 @@ Responda APENAS no formato JSON:
       
       // Clamp confidence
       parsed.confidence = Math.max(0, Math.min(1, parsed.confidence));
+      
+      // SECURITY v445: Validate string fields from LLM response
+      parsed.reason = typeof parsed.reason === 'string' ? parsed.reason.substring(0, 500) : 'N/A';
+      parsed.analysis = typeof parsed.analysis === 'string' ? parsed.analysis.substring(0, 1000) : 'N/A';
+      parsed.risk_factors = Array.isArray(parsed.risk_factors) 
+        ? parsed.risk_factors.filter(f => typeof f === 'string').slice(0, 10) 
+        : [];
       
       // Validate suggestion
       if (!['resolved_user', 'resolved_provider', 'escalate'].includes(parsed.suggestion)) {

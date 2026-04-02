@@ -10,7 +10,10 @@ function parseStrictInt(val) {
   if (val === null || val === undefined || val === '') return NaN;
   const str = String(val);
   if (!/^-?\d+$/.test(str)) return NaN;
-  return Number(str);
+  const num = Number(str);
+  // SECURITY v445: Prevent integer overflow/precision loss
+  if (!Number.isSafeInteger(num)) return NaN;
+  return num;
 }
 
 // POST /collateral/deposit - Criar invoice para depósito de garantia
@@ -82,8 +85,20 @@ router.post('/lock', async (req, res) => {
       });
     }
 
-    // TODO: Em produção, verificar se provedor tem saldo suficiente
-    // e bloquear o valor no banco de dados
+    // Validate lockedSats
+    const lockedSatsParsed = parseStrictInt(lockedSats);
+    if (isNaN(lockedSatsParsed) || lockedSatsParsed <= 0 || lockedSatsParsed > 10000000) {
+      return res.status(400).json({ error: 'lockedSats deve ser entre 1 e 10.000.000' });
+    }
+
+    // SECURITY: Verify provider has sufficient paid collateral to lock
+    const providerCollaterals = Array.from(collaterals.values())
+      .filter(c => c.providerId === providerId && c.status === 'paid');
+    const availableSats = providerCollaterals.reduce((sum, c) => sum + c.amountSats, 0);
+    
+    if (lockedSatsParsed > availableSats) {
+      return res.status(400).json({ error: 'Saldo de garantia insuficiente' });
+    }
 
     console.log(`🔒 Garantia bloqueada: Provedor ${providerId} | Ordem ${orderId} | ${lockedSats} sats`);
 
@@ -132,7 +147,10 @@ router.post('/unlock', async (req, res) => {
 router.get('/:providerId', (req, res) => {
   try {
     const { providerId } = req.params;
-
+    // SECURITY v445: Validate providerId format (64-char hex pubkey)
+    if (!providerId || !/^[0-9a-f]{64}$/i.test(providerId)) {
+      return res.status(400).json({ error: 'providerId inv\u00e1lido' });
+    }
     // SEGURANÇA: Verificar que o caller é o próprio provedor
     if (req.verifiedPubkey && req.verifiedPubkey !== providerId) {
       return res.status(403).json({ error: 'Sem permissão para ver garantias de outro provedor' });

@@ -48,15 +48,18 @@ class ProviderService {
       final orders = await _nostrOrderService.fetchProviderOrders(providerId);
       broLog('📋 Encontradas ${orders.length} ordens do provedor no Nostr');
       
-      // Filtrar apenas ordens ativas (não completed, não cancelled, não liquidated)
-      final activeOrders = orders.where((order) {
+      // v436: Mostrar TODAS as ordens incluindo completed para o provedor ver confirmações
+      // Antes filtrava completed/cancelled/liquidated, o que fazia ordens confirmadas
+      // desaparecerem do dashboard sem o provedor saber
+      // Manter apenas filtro de cancelled (ninguém precisa ver ordens canceladas)
+      final visibleOrders = orders.where((order) {
         final status = order.status;
-        return status != 'completed' && status != 'cancelled' && status != 'liquidated';
+        return status != 'cancelled';
       }).toList();
       
-      broLog('📋 ${activeOrders.length} ordens ativas após filtro');
+      broLog('📋 ${visibleOrders.length} ordens visíveis (excluídas: cancelled)');
       
-      return activeOrders.map((order) => order.toJson()).toList();
+      return visibleOrders.map((order) => order.toJson()).toList();
     } catch (e) {
       broLog('❌ Erro ao buscar minhas ordens: $e');
       return [];

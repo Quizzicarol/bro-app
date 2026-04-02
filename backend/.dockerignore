@@ -1,0 +1,12 @@
+node_modules
+.env
+.env.*
+*.log
+*.db
+*.sqlite
+.DS_Store
+*firebase*adminsdk*.json
+firebase-service-account.json
+*.backup
+logs/
+backups/

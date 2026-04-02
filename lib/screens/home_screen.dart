@@ -1046,6 +1046,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               final myOrders = orderProvider.myCreatedOrders;
               
               if (myOrders.isEmpty) {
+                // v448: Se ainda não completou o sync inicial, mostrar "sincronizando"
+                if (!orderProvider.hasCompletedInitialSync) {
+                  return Container(
+                    padding: const EdgeInsets.all(32),
+                    width: double.infinity,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0x99FFFFFF)),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          AppLocalizations.of(context).t('home_syncing_history'),
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0x99FFFFFF),
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  );
+                }
                 return Container(
                   padding: const EdgeInsets.all(20),
                   child: const EmptyTransactionState(),

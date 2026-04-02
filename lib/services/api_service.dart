@@ -873,4 +873,42 @@ class ApiService {
       'data': data,
     };
   }
+
+  // ===== PUSH NOTIFICATION ENDPOINTS =====
+
+  /// Register FCM token with the backend for order push notifications
+  Future<bool> registerPushToken(String fcmToken) async {
+    try {
+      final response = await _dio.post('/push/register-token', data: {
+        'fcm_token': fcmToken,
+      });
+      final ok = response.data?['ok'] == true;
+      broLog('[PUSH] Backend token registered: $ok (push_enabled=${response.data?['push_enabled']})');
+      return ok;
+    } catch (e) {
+      broLog('[PUSH] Backend token registration failed: $e');
+      return false;
+    }
+  }
+
+  /// Send a push notification to another user via the backend
+  Future<bool> notifyUser({
+    required String targetPubkey,
+    required String type,
+    String? subtype,
+    String? orderId,
+  }) async {
+    try {
+      final response = await _dio.post('/push/notify', data: {
+        'target_pubkey': targetPubkey,
+        'type': type,
+        if (subtype != null) 'subtype': subtype,
+        if (orderId != null) 'order_id': orderId,
+      });
+      return response.data?['ok'] == true;
+    } catch (e) {
+      broLog('[PUSH] Notify failed: $e');
+      return false;
+    }
+  }
 }

@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
-import '../config.dart';
 import '../providers/order_provider.dart';
 import '../providers/breez_provider_export.dart';
 import '../providers/breez_liquid_provider.dart';
@@ -146,14 +145,9 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
     
     try {
       final nostrService = NostrOrderService();
-      // 🔓 Usar ADMIN_PRIVKEY para descriptografar evidências NIP-44
-      String? adminPrivKey;
-      if (AppConfig.adminPrivkey.isNotEmpty) {
-        adminPrivKey = AppConfig.adminPrivkey;
-      } else {
-        final orderProvider = context.read<OrderProvider>();
-        adminPrivKey = orderProvider.nostrPrivateKey;
-      }
+      // 🔓 Usar chave do admin logado para descriptografar evidências NIP-44
+      final orderProvider = context.read<OrderProvider>();
+      final adminPrivKey = orderProvider.nostrPrivateKey;
       final evidence = await nostrService.fetchDisputeEvidence(orderId, adminPrivateKey: adminPrivKey);
       
       if (mounted) {
@@ -225,19 +219,12 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
     setState(() => _loadingProof = true);
     
     try {
-      // Obter chave privada do admin para descriptografar NIP-44
-      // Prioridade: ADMIN_PRIVKEY (dart-define) > chave do usuário logado
+      // 🔓 Usar chave do admin logado para descriptografar NIP-44
       String? adminPrivKey;
-      if (AppConfig.adminPrivkey.isNotEmpty) {
-        adminPrivKey = AppConfig.adminPrivkey;
-        broLog('🔑 Usando ADMIN_PRIVKEY para descriptografia de comprovante');
-      } else {
-        try {
-          final orderProvider = context.read<OrderProvider>();
-          adminPrivKey = orderProvider.nostrPrivateKey;
-          broLog('🔑 Usando chave do usuário logado para descriptografia (ADMIN_PRIVKEY não configurado)');
-        } catch (_) {}
-      }
+      try {
+        final orderProvider = context.read<OrderProvider>();
+        adminPrivKey = orderProvider.nostrPrivateKey;
+      } catch (_) {}
       
       final nostrService = NostrOrderService();
       final result = await nostrService.fetchProofForOrder(
@@ -1721,6 +1708,34 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
     }
 
     // ═══════════════════════════════════════════
+    // 2b. VERIFICAÇÃO DE CÓDIGO DE AUTENTICAÇÃO
+    // Comprovantes bancários reais SEMPRE têm código de autenticação.
+    // Se o comprovante é apenas uma imagem SEM dados verificáveis, é suspeito.
+    // ═══════════════════════════════════════════
+    final authCode = widget.dispute['authCode'] as String? ?? 
+                     widget.dispute['authentication_code'] as String? ?? '';
+    final transactionId = widget.dispute['transactionId'] as String? ?? 
+                          widget.dispute['transaction_id'] as String? ?? '';
+    
+    if (proofImageExists && isPix) {
+      if (authCode.isEmpty && transactionId.isEmpty && (proofMissingE2e || proofHasInvalidE2e)) {
+        score -= 0.20;
+        findings.add({'icon': '🚨', 'text': 'VERIFICAÇÃO OBRIGATÓRIA: O comprovante NÃO tem nenhum código verificável (E2E, autenticação, ou ID de transação). '
+            'Comprovantes PIX reais SEMPRE contêm: (1) Código E2E, (2) Código de autenticação, (3) ID da transação, (4) Nome do destinatário. '
+            'ABRA A IMAGEM e verifique se esses dados estão presentes. Se a imagem não tem esses campos, é fabricada.', 'severity': 'red'});
+      }
+      
+      // Instrução explícita para o admin
+      findings.add({'icon': '🔎', 'text': 'CHECKLIST para verificar na imagem do comprovante:\n'
+          '• Código de autenticação (sequência alfanumérica única)\n'
+          '• Nome do banco emissor\n'
+          '• Nome do destinatário (deve corresponder ao dono da chave PIX)\n'
+          '• Data e hora da transação (deve ser compatível com a ordem)\n'
+          '• Valor exato (deve corresponder ao valor da ordem)\n'
+          'Se QUALQUER desses itens estiver ausente ou inconsistente, o comprovante é FALSO.', 'severity': 'blue'});
+    }
+
+    // ═══════════════════════════════════════════
     // 3. ANÁLISE DA DISPUTA (QUEM ABRIU E POR QUÊ)
     // ═══════════════════════════════════════════
     final isNoResponse = disputeReason.contains('não respondeu') || 
@@ -2511,6 +2526,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
       // 1. Publicar resolução no Nostr (kind 1, tag bro-resolucao)
       //    Timeout de 20s para não travar a tela
       bool published = false;
+      broLog('🔄 _executeResolution: orderId=$orderId resolution=$resolution userPubkey=${userPubkey.isNotEmpty ? userPubkey.substring(0, 8) : "EMPTY"} providerId=${providerId.isNotEmpty ? providerId.substring(0, 8) : "EMPTY"}');
       try {
         published = await nostrService.publishDisputeResolution(
           privateKey: privateKey,
@@ -2524,11 +2540,31 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
         broLog('⚠️ publishDisputeResolution timeout/erro: $e');
       }
       
-      // 2. Atualizar status da ordem LOCALMENTE (sem publicar no Nostr como mediador)
+      // 2. Atualizar status da ordem localmente E publicar no Nostr
       final newStatus = resolution == 'resolved_user' ? 'cancelled' : 'completed';
       try {
+        // Primeiro: atualizar local
         orderProvider.updateOrderStatusLocalOnly(orderId: orderId, status: newStatus);
         broLog('✅ Status local da ordem atualizado para $newStatus');
+        
+        // Segundo: publicar status update no Nostr (kind 30080) para a outra parte receber
+        try {
+          final nostrPublished = await nostrService.updateOrderStatus(
+            privateKey: privateKey,
+            orderId: orderId,
+            newStatus: newStatus,
+            providerId: providerId.isNotEmpty ? providerId : null,
+            orderUserPubkey: userPubkey.isNotEmpty ? userPubkey : null,
+          ).timeout(const Duration(seconds: 15), onTimeout: () => false);
+          if (nostrPublished) {
+            broLog('✅ Status $newStatus publicado no Nostr para ${orderId.substring(0, 8)}');
+            published = published || true; // Se ao menos o status update publicou, contar como sucesso
+          } else {
+            broLog('⚠️ Falha ao publicar status $newStatus no Nostr');
+          }
+        } catch (e2) {
+          broLog('⚠️ Erro ao publicar status no Nostr: $e2');
+        }
       } catch (e) {
         broLog('⚠️ Erro ao atualizar status local: $e');
       }

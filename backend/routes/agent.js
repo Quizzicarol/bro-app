@@ -13,12 +13,17 @@ const disputeAgent = require('../services/disputeAgentService');
 // Admin pubkey from env
 const ADMIN_PUBKEY = process.env.ADMIN_PUBKEY || '';
 
+// SECURITY v445: Validate ADMIN_PUBKEY format at startup
+if (ADMIN_PUBKEY && !/^[0-9a-f]{64}$/.test(ADMIN_PUBKEY)) {
+  console.error('\u274C ADMIN_PUBKEY is not a valid 64-char hex pubkey! Agent routes will be disabled.');
+}
+
 /**
  * Middleware: Verify caller is the admin
  */
 function requireAdmin(req, res, next) {
-  if (!ADMIN_PUBKEY) {
-    return res.status(503).json({ error: 'ADMIN_PUBKEY not configured' });
+  if (!ADMIN_PUBKEY || !/^[0-9a-f]{64}$/.test(ADMIN_PUBKEY)) {
+    return res.status(503).json({ error: 'ADMIN_PUBKEY not configured or invalid' });
   }
   if (req.verifiedPubkey !== ADMIN_PUBKEY) {
     return res.status(403).json({ error: 'Admin access required' });
@@ -133,6 +138,11 @@ router.post('/analyze', requireAdmin, (req, res) => {
     const { dispute } = req.body;
     if (!dispute || !dispute.orderId) {
       return res.status(400).json({ error: 'dispute object with orderId is required' });
+    }
+
+    // Validate orderId format (max 64 chars, alphanumeric + hyphens/underscores)
+    if (typeof dispute.orderId !== 'string' || dispute.orderId.length > 64 || !/^[a-zA-Z0-9_-]+$/.test(dispute.orderId)) {
+      return res.status(400).json({ error: 'Invalid orderId format' });
     }
 
     // Run async analysis

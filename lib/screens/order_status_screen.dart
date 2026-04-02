@@ -22,6 +22,7 @@ import '../providers/platform_balance_provider.dart';
 import '../config.dart';
 import '../l10n/app_localizations.dart';
 import '../services/notification_service.dart';
+import '../services/billcode_crypto_service.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter/services.dart';
@@ -1692,7 +1693,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     final fullOrder = orderProvider.getOrderById(widget.orderId);
     
     // Calcular fees e valores
-    final billCode = fullOrder?.billCode ?? _orderDetails?['billCode'] ?? '';
+    final rawBillCode = fullOrder?.billCode ?? _orderDetails?['billCode'] ?? '';
+    final billCode = BillCodeCryptoService().decrypt(rawBillCode);
     final providerFeeBrl = fullOrder?.providerFee ?? 
         ((_orderDetails?['providerFee'] as num?)?.toDouble() ?? 0.0);
     final btcPrice = fullOrder?.btcPrice ?? 
@@ -4117,6 +4119,44 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return;
       }
       
+      // SEGURANÇA v448: Validar que o valor da invoice corresponde ao esperado da ordem
+      // Previne ataque onde provedor envia invoice com valor inflado
+      try {
+        final breezForDecode = context.read<BreezProvider>();
+        if (breezForDecode.isInitialized) {
+          final decoded = await breezForDecode.decodeInvoice(providerInvoice);
+          if (decoded != null && decoded['success'] == true) {
+            final invoiceAmountSats = int.tryParse(
+              decoded['invoice']?['amountSats']?.toString() ?? '0'
+            ) ?? 0;
+            // Tolerância de 5% para cobrir arredondamentos de câmbio
+            final expectedSats = widget.amountSats;
+            final maxAllowed = (expectedSats * 1.05).ceil();
+            if (invoiceAmountSats > 0 && invoiceAmountSats > maxAllowed) {
+              broLog('🚨 SEGURANÇA: Invoice com valor inflado! invoice=$invoiceAmountSats esperado=$expectedSats max=$maxAllowed');
+              if (mounted) {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Invoice amount mismatch: ${invoiceAmountSats} sats vs expected ${expectedSats} sats'),
+                    backgroundColor: Colors.red,
+                    duration: const Duration(seconds: 5),
+                  ),
+                );
+                setState(() {
+                  _isConfirming = false;
+                  _currentStatus = 'awaiting_confirmation';
+                });
+              }
+              return;
+            }
+          }
+        }
+      } catch (e) {
+        broLog('⚠️ Erro ao validar valor da invoice: $e');
+        // Continuar com pagamento — a validação é defesa extra, não bloqueante
+      }
+      
       // PAGAR O PROVEDOR
       broLog('⚡ Pagando invoice do provedor: ${providerInvoice.substring(0, 30)}...');
       bool paymentSuccess = false;
@@ -4165,7 +4205,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 if (paymentError.toLowerCase().contains('already paid') ||
                     paymentError.toLowerCase().contains('already settled') ||
                     paymentError.toLowerCase().contains('invoice already') ||
-                    paymentError.toLowerCase().contains('duplicate payment')) {
+                    paymentError.toLowerCase().contains('duplicate payment') ||
+                    paymentError.toLowerCase().contains('alreadyexists') ||
+                    paymentError.toLowerCase().contains('preimage request already exists')) {
                   broLog('✅ Invoice já foi pago anteriormente — tratando como sucesso');
                   paymentSuccess = true;
                   break;
@@ -4178,7 +4220,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               if (paymentError.toLowerCase().contains('already paid') ||
                   paymentError.toLowerCase().contains('already settled') ||
                   paymentError.toLowerCase().contains('invoice already') ||
-                  paymentError.toLowerCase().contains('duplicate payment')) {
+                  paymentError.toLowerCase().contains('duplicate payment') ||
+                  paymentError.toLowerCase().contains('alreadyexists') ||
+                  paymentError.toLowerCase().contains('preimage request already exists')) {
                 broLog('✅ Invoice já foi pago anteriormente (exception) — tratando como sucesso');
                 paymentSuccess = true;
                 break;

@@ -13,7 +13,10 @@ function parseStrictNumber(val) {
   const str = String(val);
   // Só permite dígitos, ponto decimal opcional, sinal negativo opcional
   if (!/^-?\d+(\.\d+)?$/.test(str)) return NaN;
-  return Number(str);
+  const num = Number(str);
+  // SECURITY v445: Prevent precision loss
+  if (!isFinite(num)) return NaN;
+  return num;
 }
 
 // POST /orders/create - Criar nova ordem após pagamento Lightning
@@ -139,6 +142,12 @@ router.get('/available', (req, res) => {
 router.get('/:orderId', (req, res) => {
   try {
     const { orderId } = req.params;
+
+    // SECURITY v445: Validate orderId format
+    if (!orderId || orderId.length > 64 || !/^[a-zA-Z0-9_-]+$/.test(orderId)) {
+      return res.status(400).json({ error: 'orderId inv\u00e1lido' });
+    }
+
     const order = orders.get(orderId);
 
     if (!order) {
@@ -167,6 +176,11 @@ router.get('/user/:userId', (req, res) => {
   try {
     const { userId } = req.params;
     
+    // SECURITY v445: Validate userId format (64-char hex pubkey)
+    if (!userId || !/^[0-9a-f]{64}$/i.test(userId)) {
+      return res.status(400).json({ error: 'userId inválido' });
+    }
+    
     // SEGURANÇA: Verificar que o caller é o próprio usuário
     if (req.verifiedPubkey && req.verifiedPubkey !== userId) {
       return res.status(403).json({ error: 'Sem permissão para ver ordens de outro usuário' });
@@ -191,8 +205,10 @@ router.get('/user/:userId', (req, res) => {
 // POST /orders/:orderId/cancel - Cancelar ordem
 router.post('/:orderId/cancel', async (req, res) => {
   try {
-    const { orderId } = req.params;
-    // SEGURANÇA: Usar pubkey verificada do NIP-98
+    const { orderId } = req.params;    // SECURITY v446: Validate orderId format
+    if (!orderId || orderId.length > 64 || !/^[a-zA-Z0-9_-]+$/.test(orderId)) {
+      return res.status(400).json({ error: 'orderId inv\u00e1lido' });
+    }    // SEGURANÇA: Usar pubkey verificada do NIP-98
     const userId = req.verifiedPubkey;
 
     const order = orders.get(orderId);
@@ -245,8 +261,10 @@ router.post('/:orderId/cancel', async (req, res) => {
 // POST /orders/:orderId/accept - Provedor aceita ordem
 router.post('/:orderId/accept', async (req, res) => {
   try {
-    const { orderId } = req.params;
-    const { collateralLocked } = req.body;
+    const { orderId } = req.params;    // SECURITY v446: Validate orderId format
+    if (!orderId || orderId.length > 64 || !/^[a-zA-Z0-9_-]+$/.test(orderId)) {
+      return res.status(400).json({ error: 'orderId inv\u00e1lido' });
+    }    const { collateralLocked } = req.body;
     // SEGURANÇA: Usar pubkey verificada como providerId
     const providerId = req.verifiedPubkey;
 
@@ -256,7 +274,7 @@ router.post('/:orderId/accept', async (req, res) => {
       return res.status(404).json({ error: 'Ordem não encontrada' });
     }
 
-    // Validar status (v398: proteção contra race condition com check atômico)
+    // Atomic status check — single synchronous block before any await
     if (order.status !== 'pending') {
       return res.status(409).json({ 
         error: 'Ordem já foi aceita ou não está mais disponível',
@@ -273,17 +291,7 @@ router.post('/:orderId/accept', async (req, res) => {
       return res.status(400).json({ error: 'Ordem expirada' });
     }
 
-    // v398: Marcar como aceita IMEDIATAMENTE para prevenir race condition
-    // Se outro provider já mudou o status entre o check e aqui, detectamos na re-verificação
-    const currentOrder = orders.get(orderId);
-    if (!currentOrder || currentOrder.status !== 'pending') {
-      return res.status(409).json({ 
-        error: 'Ordem já foi aceita por outro provedor',
-        currentStatus: currentOrder?.status
-      });
-    }
-
-    // Atualizar ordem
+    // Mark as accepted IMMEDIATELY (synchronous — no await between check and set)
     order.status = 'accepted';
     order.providerId = providerId;
     order.acceptedAt = new Date().toISOString();
@@ -307,8 +315,10 @@ router.post('/:orderId/accept', async (req, res) => {
 // POST /orders/:orderId/submit-proof - Provedor envia comprovante
 router.post('/:orderId/submit-proof', async (req, res) => {
   try {
-    const { orderId } = req.params;
-    const { proofUrl, proofData } = req.body;
+    const { orderId } = req.params;    // SECURITY v446: Validate orderId format
+    if (!orderId || orderId.length > 64 || !/^[a-zA-Z0-9_-]+$/.test(orderId)) {
+      return res.status(400).json({ error: 'orderId inv\u00e1lido' });
+    }    const { proofUrl, proofData } = req.body;
     // SEGURANÇA: Usar pubkey verificada como providerId
     const providerId = req.verifiedPubkey;
 
@@ -368,6 +378,10 @@ router.post('/:orderId/submit-proof', async (req, res) => {
 router.post('/:orderId/validate', async (req, res) => {
   try {
     const { orderId } = req.params;
+    // SECURITY v446: Validate orderId format
+    if (!orderId || orderId.length > 64 || !/^[a-zA-Z0-9_-]+$/.test(orderId)) {
+      return res.status(400).json({ error: 'orderId inv\u00e1lido' });
+    }
     const { approved, rejectionReason } = req.body;
     // SEGURANÇA v270: Verificar que o caller é o dono da ordem (usuário)
     const callerPubkey = req.verifiedPubkey;
@@ -407,7 +421,8 @@ router.post('/:orderId/validate', async (req, res) => {
       // Rejeitar pagamento
       order.status = 'rejected';
       order.metadata.rejectedAt = new Date().toISOString();
-      order.metadata.rejectionReason = rejectionReason;
+      order.metadata.rejectionReason = typeof rejectionReason === 'string' 
+        ? rejectionReason.substring(0, 500) : '';
       
       console.log(`❌ Pagamento rejeitado: ${orderId} | Razão: ${rejectionReason}`);
 

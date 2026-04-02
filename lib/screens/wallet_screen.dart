@@ -95,6 +95,17 @@ class _WalletScreenState extends State<WalletScreen> {
       // e já aparecem em payments como transações recebidas.
       // NÃO misturar com ProviderBalanceProvider que é apenas TRACKING LOCAL.
       
+      // Coletar IDs de ordens pagas com saldo da carteira (para dedup)
+      Set<String> walletPaidOrderPrefixes = {};
+      try {
+        final opRef = context.read<OrderProvider>();
+        for (final o in opRef.orders) {
+          if (o.paymentHash != null && o.paymentHash!.startsWith('wallet_')) {
+            if (o.id.length >= 8) walletPaidOrderPrefixes.add(o.id.substring(0, 8));
+          }
+        }
+      } catch (_) {}
+
       // Usar apenas pagamentos Lightning reais, FILTRANDO taxas internas da plataforma
       List<Map<String, dynamic>> allPayments = payments.where((p) {
         final description = p['description']?.toString() ?? '';
@@ -137,6 +148,24 @@ class _WalletScreenState extends State<WalletScreen> {
         if (!isReceived && (description.isEmpty || description == 'null')) {
           broLog('🔇 Ocultando pagamento sem descrição (provável taxa interna): $amount sats');
           return false;
+        }
+        
+        // OCULTAR: Auto-pagamentos Lightning de ordens pagas com saldo da carteira
+        // Evita duplicata entre synthetic wallet entry e outgoing auto-pay SDK tx
+        if (!isReceived && walletPaidOrderPrefixes.isNotEmpty) {
+          String? orderPrefix;
+          if (description.contains('Bro - Ordem ')) {
+            orderPrefix = description.split('Bro - Ordem ').last.trim();
+          } else if (description.contains('Bro - Pagamento de conta #')) {
+            orderPrefix = description.split('#').last.trim();
+          }
+          if (orderPrefix != null && orderPrefix.length >= 8) {
+            orderPrefix = orderPrefix.substring(0, 8);
+            if (walletPaidOrderPrefixes.contains(orderPrefix)) {
+              broLog('🔇 Ocultando auto-pay duplicado de wallet payment: $description ($amount sats)');
+              return false;
+            }
+          }
         }
         
         return true;
@@ -2814,16 +2843,17 @@ class _WalletScreenState extends State<WalletScreen> {
         iconColor = Colors.orange;
         icon = Icons.shopping_cart;
       }
-    } else if (description == 'BRIX Payment' || description.toLowerCase().contains('brix payment') || description.startsWith('BRIX: ')) {
-      // BRIX recebido
-      label = 'pagamento brix';
-      iconColor = Colors.amber;
-      icon = Icons.flash_on;
-    } else if (!isReceived && (description.toLowerCase().contains('@brostr.app') || description.toLowerCase().contains('@brix.app'))) {
-      // BRIX enviado (description from LNURL metadata: "Payment to user@brix.brostr.app")
-      label = 'envio brix';
-      iconColor = Colors.amber;
-      icon = Icons.flash_on;
+    } else if (description == 'BRIX Payment' || description.toLowerCase().contains('brix payment') || description.startsWith('BRIX: ') ||
+               (!isReceived && (description.toLowerCase().contains('@brostr.app') || description.toLowerCase().contains('@brix.app')))) {
+      if (isReceived) {
+        label = '⚡ brix recebido';
+        iconColor = Colors.green;
+        icon = Icons.flash_on;
+      } else {
+        label = '⚡ brix enviado';
+        iconColor = Colors.orange;
+        icon = Icons.flash_on;
+      }
     } else if (isBroEarning || isBroOrderPayment) {
       label = AppLocalizations.of(context).t('wallet_bro_earning');
       iconColor = Colors.green;

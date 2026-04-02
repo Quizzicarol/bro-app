@@ -8,7 +8,7 @@ workflows:
   # BUILD COMPLETO - Android + iOS
   # ============================================
   full-release:
-    name: ðŸš€ Android + iOS (Testers)
+    name: Android + iOS (Testers)
     max_build_duration: 120
     instance_type: mac_mini_m2
     
@@ -74,11 +74,11 @@ workflows:
       app_store_connect:
         auth: integration
         submit_to_testflight: true
-        submit_to_app_store: false  # Desabilitado atÃ© adicionar screenshots
-        # Enviar automaticamente para testadores externos (link pÃºblico)
-        # NOTA: Crie o grupo "Beta PÃºblico" no App Store Connect primeiro!
+        submit_to_app_store: false # Desabilitado at adicionar screenshots
+        # Enviar automaticamente para testadores externos (link pblico)
+        # NOTA: Crie o grupo "Beta Pblico" no App Store Connect primeiro!
         # beta_groups:
-        #   - Beta PÃºblico
+        # - Beta Pblico
       email:
         recipients:
           - your-email@example.com  # TODO: configure
@@ -87,12 +87,12 @@ workflows:
           failure: true
 
   # ============================================
-  # DISTRIBUIÃ‡ÃƒO PARA TESTERS (SEM LOJA)
+  # DISTRIBUIO PARA TESTERS (SEM LOJA)
   # Gera APK release assinado para Android
-  # MANUAL - Use apenas se precisar sÃ³ do APK
+  # MANUAL - Use apenas se precisar s do APK
   # ============================================
   testers-build:
-    name: ðŸ“± Android APK (Manual)
+    name: Android APK (Manual)
     max_build_duration: 60
     instance_type: mac_mini_m2
     
@@ -133,7 +133,7 @@ workflows:
   # MANUAL - Requer credenciais do Google Play configuradas
   # ============================================
   android-release:
-    name: ðŸ¤– Android Play Store (Manual)
+    name: Android Play Store (Manual)
     max_build_duration: 60
     instance_type: mac_mini_m2
     
@@ -184,10 +184,10 @@ workflows:
 
   # ============================================
   # iOS - TestFlight / App Store
-  # MANUAL - Use full-release para builds automÃ¡ticos
+  # MANUAL - Use full-release para builds automticos
   # ============================================
   ios-release:
-    name: ðŸŽ iOS TestFlight (Manual)
+    name: iOS TestFlight (Manual)
     max_build_duration: 90
     instance_type: mac_mini_m2
     
@@ -240,7 +240,7 @@ workflows:
   # DEBUG BUILD (para desenvolvimento)
   # ============================================
   debug-build:
-    name: ðŸ”§ Debug Build
+    name: Debug Build
     max_build_duration: 60
     instance_type: mac_mini_m2
     

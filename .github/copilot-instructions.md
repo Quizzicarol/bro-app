@@ -30,6 +30,7 @@
 - See `.github/skills/nostr/SKILL.md` for full Nostr protocol reference
 
 ## Other Rules
-- FCM MUST be data-only (no `notification` field)
+- FCM order_update uses notification+data for guaranteed background delivery
+- FCM brix_invoice_request MUST be data-only (needs silent background processing)
 - NEVER change marketing version (1.0.133) without asking. Only increment build number.
 - env.json is in .gitignore — NEVER track it

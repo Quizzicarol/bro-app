@@ -68,49 +68,11 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   broLog('[FCM-BG] Background message: ${message.data}');
 
-  // v441: Handle order_update push — show notification to prompt user to open app
+  // v492: order_update notifications are now delivered via FCM notification+data field
+  // The system (Android/iOS) shows the notification automatically — no local notification needed
+  // This fixes background notification delivery on BOTH platforms (data-only was "best effort")
   if (message.data['type'] == 'order_update') {
-    try {
-      final plugin = FlutterLocalNotificationsPlugin();
-      const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-      const settings = InitializationSettings(android: androidSettings, iOS: DarwinInitializationSettings());
-      await plugin.initialize(settings);
-      
-      // v448: Dedup — skip if already notified for this order+subtype
-      final orderId = message.data['order_id'] ?? '';
-      final subtype = message.data['subtype'] ?? 'update';
-      final dedupKey = '$subtype:$orderId';
-      final prefs = await SharedPreferences.getInstance();
-      final notifiedJson = prefs.getString('bro_notified_transitions') ?? '[]';
-      final notified = Set<String>.from(jsonDecode(notifiedJson) as List);
-      if (notified.contains(dedupKey)) {
-        broLog('[FCM-BG] Duplicate notification skipped: $dedupKey');
-        return;
-      }
-      notified.add(dedupKey);
-      if (notified.length > 300) {
-        final keep = notified.toList().sublist(notified.length - 300);
-        notified.clear();
-        notified.addAll(keep);
-      }
-      await prefs.setString('bro_notified_transitions', jsonEncode(notified.toList()));
-      
-      String title = '📋 Atualização de ordem';
-      String body = 'Abra o app para ver as novidades';
-      if (subtype == 'accepted') { title = '🤝 Ordem aceita!'; body = 'Um Bro aceitou sua ordem'; }
-      else if (subtype == 'billcode_encrypted') { title = '🔐 Código PIX recebido'; body = 'Código de pagamento disponível'; }
-      else if (subtype == 'payment_received') { title = '📸 Comprovante recebido!'; body = 'Verifique o comprovante e confirme'; }
-      else if (subtype == 'completed') { title = '✅ Ordem concluída!'; body = 'Troca finalizada com sucesso'; }
-      else if (subtype == 'disputed') { title = '⚠️ Disputa aberta'; body = 'Uma disputa foi aberta'; }
-      await plugin.show(
-        DateTime.now().millisecondsSinceEpoch % 2147483647,
-        title, body,
-        const NotificationDetails(
-          android: AndroidNotificationDetails('bro_orders_rt', 'Order Updates', importance: Importance.high, priority: Priority.high),
-          iOS: DarwinNotificationDetails(),
-        ),
-      );
-    } catch (_) {}
+    broLog('[FCM-BG] order_update received — system notification handles display');
     return;
   }
 

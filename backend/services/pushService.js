@@ -99,12 +99,13 @@ function registerToken(pubkey, fcmToken) {
 }
 
 /**
- * Send a data-only push notification to a pubkey
+ * Send a push notification to a pubkey
  * @param {string} targetPubkey - Recipient's Nostr pubkey
  * @param {object} data - Data payload (all values must be strings)
+ * @param {object|null} notification - Optional { title, body } for visible notification (guaranteed delivery)
  * @returns {boolean} success
  */
-async function sendPush(targetPubkey, data) {
+async function sendPush(targetPubkey, data, notification = null) {
   if (!messaging) {
     console.log(`[PUSH] Push skipped (Firebase not configured) → ${targetPubkey.substring(0, 16)}...`);
     return false;
@@ -117,8 +118,7 @@ async function sendPush(targetPubkey, data) {
   }
   
   try {
-    // Data-only message — no notification field (per copilot-instructions.md)
-    await messaging.send({
+    const message = {
       token: entry.token,
       data: data,
       android: {
@@ -134,7 +134,31 @@ async function sendPush(targetPubkey, data) {
           },
         },
       },
-    });
+    };
+
+    // Add notification field for guaranteed background delivery (order_update)
+    // BRIX invoice requests stay data-only for silent background processing
+    if (notification && notification.title) {
+      message.notification = {
+        title: notification.title,
+        body: notification.body || '',
+      };
+      message.android.notification = {
+        channelId: 'bro_orders_rt',
+        priority: 'high',
+        defaultSound: true,
+      };
+      message.apns.payload.aps = {
+        alert: {
+          title: notification.title,
+          body: notification.body || '',
+        },
+        sound: 'default',
+        'content-available': 1,
+      };
+    }
+
+    await messaging.send(message);
     
     console.log(`[PUSH] Sent to ${targetPubkey.substring(0, 16)}... type=${data.type}`);
     return true;

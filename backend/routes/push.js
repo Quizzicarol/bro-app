@@ -98,8 +98,23 @@ router.post('/notify', notifyLimiter, async (req, res) => {
   
   if (subtype) data.subtype = String(subtype);
   if (order_id) data.order_id = String(order_id);
-  
-  const sent = await pushService.sendPush(target_pubkey, data);
+
+  // Build notification for order_update → guaranteed background delivery
+  // BRIX invoice requests stay data-only (need silent background processing)
+  let notification = null;
+  if (type === 'order_update') {
+    const notifMap = {
+      accepted:           { title: '🤝 Ordem aceita!',        body: 'Um Bro aceitou sua ordem' },
+      billcode_encrypted: { title: '🔐 Código PIX recebido',  body: 'Código de pagamento disponível' },
+      payment_received:   { title: '📸 Comprovante recebido!', body: 'Verifique o comprovante e confirme' },
+      completed:          { title: '✅ Ordem concluída!',      body: 'Troca finalizada com sucesso' },
+      disputed:           { title: '⚠️ Disputa aberta',       body: 'Uma disputa foi aberta na sua ordem' },
+      cancelled:          { title: '❌ Ordem cancelada',       body: 'Uma ordem foi cancelada' },
+    };
+    notification = notifMap[subtype] || { title: '📋 Atualização de ordem', body: 'Abra o app para ver as novidades' };
+  }
+
+  const sent = await pushService.sendPush(target_pubkey, data, notification);
   res.json({ ok: sent });
 });
 

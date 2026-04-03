@@ -957,43 +957,56 @@ class OrderProvider with ChangeNotifier {
         createdAt: DateTime.now(),
       );
       
-      // v491: PUBLICAR NO NOSTR PRIMEIRO — só salvar localmente se publicou
-      // FIX: Inserir na lista ANTES de chamar _publishOrderToNostr, 
-      // pois ele precisa encontrar a ordem em _orders para gravar o eventId
+      // v492: PUBLICAR NO NOSTR — com timeout interno que garante cleanup correto.
+      // O .timeout() externo do payment_screen NÃO cancela o Future, causando
+      // ordens fantasma: publish completa em background, salva via _saveOrders()
+      // dentro de _publishOrderToNostr, mas o caller já desistiu e mostrou erro.
+      // FIX: timeout aqui dentro com cleanup atômico.
       bool published = false;
-      for (int attempt = 1; attempt <= 3; attempt++) {
-        try {
-          // Inserir na lista para que _publishOrderToNostr encontre e atualize eventId
-          if (!_orders.any((o) => o.id == order.id)) {
-            _orders.insert(0, order);
-          }
-          await _publishOrderToNostr(order);
-          final idx = _orders.indexWhere((o) => o.id == order.id);
-          if (idx != -1 && _orders[idx].eventId != null) {
-            published = true;
-            broLog('✅ Ordem publicada no Nostr (tentativa $attempt)');
-            break;
-          }
-          // Publish retornou sem eventId — remover e tentar de novo
-          _orders.removeWhere((o) => o.id == order.id);
-          broLog('⚠️ Publish tentativa $attempt: sem eventId retornado');
-        } catch (e) {
-          _orders.removeWhere((o) => o.id == order.id);
-          broLog('⚠️ Publish tentativa $attempt falhou: $e');
-        }
-        if (attempt < 3) await Future.delayed(const Duration(seconds: 2));
-      }
+      final orderId = order.id;
       
-      if (!published) {
-        // Limpar qualquer resto
-        _orders.removeWhere((o) => o.id == order.id);
-        broLog('❌ Ordem ${order.id.substring(0, 8)} NÃO publicada nos relays após 3 tentativas');
+      try {
+        await Future(() async {
+          for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+              if (!_orders.any((o) => o.id == orderId)) {
+                _orders.insert(0, order);
+              }
+              await _publishOrderToNostr(order);
+              final idx = _orders.indexWhere((o) => o.id == orderId);
+              if (idx != -1 && _orders[idx].eventId != null) {
+                published = true;
+                broLog('✅ Ordem publicada no Nostr (tentativa $attempt)');
+                return;
+              }
+              _orders.removeWhere((o) => o.id == orderId);
+              broLog('⚠️ Publish tentativa $attempt: sem eventId retornado');
+            } catch (e) {
+              _orders.removeWhere((o) => o.id == orderId);
+              broLog('⚠️ Publish tentativa $attempt falhou: $e');
+            }
+            if (attempt < 3) await Future.delayed(const Duration(seconds: 2));
+          }
+        }).timeout(const Duration(seconds: 20));
+      } catch (e) {
+        // Timeout ou erro — limpar TUDO (nenhum save parcial)
+        _orders.removeWhere((o) => o.id == orderId);
+        await _saveOrders(); // Garantir que nada ficou persistido
+        broLog('❌ Ordem ${orderId.substring(0, 8)} timeout/erro: $e');
         _error = 'Falha ao publicar ordem nos relays Nostr';
         return null;
       }
       
-      // Ordem já está em _orders com eventId (salvo por _publishOrderToNostr)
-      _currentOrder = _orders.firstWhere((o) => o.id == order.id);
+      if (!published) {
+        _orders.removeWhere((o) => o.id == orderId);
+        await _saveOrders();
+        broLog('❌ Ordem ${orderId.substring(0, 8)} NÃO publicada nos relays após 3 tentativas');
+        _error = 'Falha ao publicar ordem nos relays Nostr';
+        return null;
+      }
+      
+      // Ordem em _orders com eventId (salvo por _publishOrderToNostr)
+      _currentOrder = _orders.firstWhere((o) => o.id == orderId);
       await _saveOrders();
       _immediateNotify();
       

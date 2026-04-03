@@ -681,15 +681,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
       broLog('💰 Pagamento com saldo da carteira: $amountSats sats (hash: $paymentHash)');
 
       // Criar ordem diretamente (sem auto-pagamento Lightning)
+      // v492: Timeout agora é INTERNO ao createOrder (20s) — garante cleanup correto.
+      // O .timeout() externo NÃO cancela o Future e causava ordens fantasma.
       final order = await orderProvider.createOrder(
         billType: _billData!['billType'] as String,
         billCode: _codeController.text.trim(),
         amount: billAmount,
         btcAmount: btcAmount,
         btcPrice: btcPrice,
-      ).timeout(const Duration(seconds: 25), onTimeout: () {
-        return null;
-      });
+      );
 
       if (order == null) {
         if (mounted) Navigator.of(context).pop();

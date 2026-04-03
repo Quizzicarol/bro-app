@@ -70,9 +70,11 @@ const generalLimiter = rateLimit({
 
 const createLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minuto
-  max: 5, // máximo 5 criações por minuto por IP
+  max: 5, // máximo 5 criações por minuto
   standardHeaders: true,
   legacyHeaders: false,
+  // SECURITY v492: Rate limit by pubkey (not just IP) to prevent abuse from same identity
+  keyGenerator: (req) => req.verifiedPubkey || req.ip,
   message: { error: 'Limite de criação atingido. Tente novamente em 1 minuto.' },
 });
 

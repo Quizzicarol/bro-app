@@ -155,9 +155,10 @@ router.get('/:orderId', (req, res) => {
     }
 
     // v398: Apenas o criador ou o provedor da ordem podem ver detalhes completos
+    // SECURITY v492: Return 404 (not 403) to avoid leaking order existence
     const callerPubkey = req.verifiedPubkey;
     if (callerPubkey !== order.userId && callerPubkey !== order.providerId) {
-      return res.status(403).json({ error: 'Sem permissão para ver esta ordem' });
+      return res.status(404).json({ error: 'Ordem não encontrada' });
     }
 
     res.json({

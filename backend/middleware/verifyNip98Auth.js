@@ -125,7 +125,7 @@ function verifyNip98Event(event, req) {
   
   // 2. Kind deve ser 27235 (NIP-98) ou 22242 (formato usado pelo app)
   if (event.kind !== 27235 && event.kind !== 22242) {
-    return { valid: false, reason: `Kind inválido: ${event.kind} (esperado 27235 ou 22242)` };
+    return { valid: false, reason: 'Kind inválido' };
   }
   
   // 3. Verificar assinatura criptográfica
@@ -153,7 +153,8 @@ function verifyNip98Event(event, req) {
   const now = Math.floor(Date.now() / 1000);
   const eventTime = event.created_at;
   if (Math.abs(now - eventTime) > TIMESTAMP_TOLERANCE) {
-    return { valid: false, reason: `Timestamp expirado (diff: ${Math.abs(now - eventTime)}s)` };
+    // SECURITY v492: Don't leak exact diff to attacker
+    return { valid: false, reason: 'Timestamp expirado' };
   }
   
   // 4b. Replay protection — reject reused event IDs
@@ -172,7 +173,8 @@ function verifyNip98Event(event, req) {
   const eventPath = new URL(eventUrl).pathname;
   const requestPath = req.originalUrl.split('?')[0];
   if (eventPath !== requestPath) {
-    return { valid: false, reason: `URL path mismatch: event=${eventPath} request=${requestPath}` };
+    // SECURITY v492: Don't leak path details to attacker
+    return { valid: false, reason: 'URL path mismatch' };
   }
   
   // 6. Validar método (tag 'method') — REQUIRED for security
@@ -181,7 +183,8 @@ function verifyNip98Event(event, req) {
     return { valid: false, reason: 'NIP-98: tag "method" é obrigatória' };
   }
   if (methodTag[1].toUpperCase() !== req.method.toUpperCase()) {
-    return { valid: false, reason: `Método mismatch: ${methodTag[1]} vs ${req.method}` };
+    // SECURITY v492: Don't leak method details to attacker
+    return { valid: false, reason: 'HTTP method mismatch' };
   }
   
   return { valid: true, pubkey: event.pubkey };

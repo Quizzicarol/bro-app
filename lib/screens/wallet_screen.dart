@@ -143,10 +143,11 @@ class _WalletScreenState extends State<WalletScreen> {
           return false;
         }
         
-        // OCULTAR: Pagamentos enviados sem descrição (taxas de plataforma via LNURL)
-        // Pagamentos legítimos do usuário sempre têm descrição (Bro - Ordem X, Garantia, etc)
-        if (!isReceived && (description.isEmpty || description == 'null')) {
-          broLog('🔇 Ocultando pagamento sem descrição (provável taxa interna): $amount sats');
+        // OCULTAR: Pagamentos enviados sem descrição E pequenos (≤ 100 sats)
+        // São provavelmente taxas internas. Pagamentos BRIX via LNURL podem não ter
+        // descrição mas são valores reais do usuário — não filtrar.
+        if (!isReceived && (description.isEmpty || description == 'null') && amount <= 100) {
+          broLog('🔇 Ocultando pagamento pequeno sem descrição (provável taxa interna): $amount sats');
           return false;
         }
         

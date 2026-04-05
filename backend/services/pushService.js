@@ -12,9 +12,62 @@ let admin = null;
 let messaging = null;
 let initDone = false; // SECURITY v445: Prevent double-init
 
-// In-memory token storage: pubkey → { token, updatedAt }
+// Token storage: pubkey → { token, updatedAt }
+// Persisted to disk so tokens survive server restarts
 const tokenStore = new Map();
 const MAX_TOKENS = 10000; // Prevent memory exhaustion
+const TOKEN_FILE = process.env.NODE_ENV === 'production' 
+  ? '/data/push_tokens.json' 
+  : path.join(__dirname, '..', 'data', 'push_tokens.json');
+
+/**
+ * Load tokens from disk (called on init)
+ */
+function _loadTokens() {
+  try {
+    if (fs.existsSync(TOKEN_FILE)) {
+      const raw = fs.readFileSync(TOKEN_FILE, 'utf8');
+      const data = JSON.parse(raw);
+      if (typeof data === 'object' && data !== null) {
+        for (const [pubkey, entry] of Object.entries(data)) {
+          // Validate pubkey format (64-char hex) and entry structure
+          if (/^[0-9a-f]{64}$/.test(pubkey) && entry && typeof entry.token === 'string') {
+            tokenStore.set(pubkey, {
+              token: entry.token,
+              updatedAt: entry.updatedAt || Date.now(),
+            });
+          }
+        }
+        console.log(`[PUSH] Loaded ${tokenStore.size} tokens from disk`);
+      }
+    }
+  } catch (e) {
+    console.log(`[PUSH] Could not load tokens from disk: ${e.message}`);
+  }
+}
+
+/**
+ * Save tokens to disk (debounced to avoid excessive writes)
+ */
+let _saveTimeout = null;
+function _saveTokens() {
+  if (_saveTimeout) clearTimeout(_saveTimeout);
+  _saveTimeout = setTimeout(() => {
+    try {
+      const dir = path.dirname(TOKEN_FILE);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      const data = {};
+      for (const [pubkey, entry] of tokenStore) {
+        data[pubkey] = entry;
+      }
+      fs.writeFileSync(TOKEN_FILE, JSON.stringify(data), 'utf8');
+    } catch (e) {
+      console.error(`[PUSH] Could not save tokens to disk: ${e.message}`);
+    }
+  }, 2000); // Debounce 2s
+}
 
 /**
  * Initialize Firebase Admin SDK.
@@ -68,6 +121,9 @@ function init() {
     console.log(`[PUSH] Firebase Admin not available: ${e.message}`);
     console.log('[PUSH] Push notifications disabled (install firebase-admin to enable)');
   }
+
+  // Load persisted tokens regardless of Firebase status
+  _loadTokens();
 }
 
 /**
@@ -94,6 +150,7 @@ function registerToken(pubkey, fcmToken) {
     updatedAt: Date.now(),
   });
   
+  _saveTokens();
   console.log(`[PUSH] Token registered for ${pubkey.substring(0, 16)}... (${tokenStore.size} total)`);
   return true;
 }
@@ -169,6 +226,7 @@ async function sendPush(targetPubkey, data, notification = null) {
     if (e.code === 'messaging/registration-token-not-registered' ||
         e.code === 'messaging/invalid-registration-token') {
       tokenStore.delete(targetPubkey);
+      _saveTokens();
       console.log(`[PUSH] Removed invalid token for ${targetPubkey.substring(0, 16)}...`);
     }
     
@@ -204,6 +262,7 @@ function cleanupStaleTokens() {
     }
   }
   if (removed > 0) {
+    _saveTokens();
     console.log(`[PUSH] Cleanup: removed ${removed} stale tokens (${tokenStore.size} remaining)`);
   }
 }

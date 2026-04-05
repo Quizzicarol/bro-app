@@ -11,6 +11,7 @@ import '../services/local_collateral_service.dart';
 import '../services/platform_fee_service.dart';
 import '../models/order.dart';
 import '../config.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class OrderProvider with ChangeNotifier {
   final ApiService _apiService = ApiService();
@@ -64,6 +65,10 @@ class OrderProvider with ChangeNotifier {
   // v133: Callback para gerar invoice Lightning (provider side)
   // Usado para renovar invoices expirados em ordens liquidadas
   Future<String?> Function(int amountSats, String orderId)? onGenerateProviderInvoice;
+
+  // v493: FCM token re-registration (ensure token survives server restarts)
+  DateTime? _lastFcmReRegisterTime;
+  static const int _fcmReRegisterIntervalSeconds = 3600; // Re-register every 1h
 
   // Prefixo para salvar no SharedPreferences (ser�?¡ combinado com pubkey)
   static const String _ordersKeyPrefix = 'orders_';
@@ -957,42 +962,49 @@ class OrderProvider with ChangeNotifier {
         createdAt: DateTime.now(),
       );
       
-      // v492: PUBLICAR NO NOSTR — com timeout interno que garante cleanup correto.
-      // O .timeout() externo do payment_screen NÃO cancela o Future, causando
-      // ordens fantasma: publish completa em background, salva via _saveOrders()
-      // dentro de _publishOrderToNostr, mas o caller já desistiu e mostrou erro.
-      // FIX: timeout aqui dentro com cleanup atômico.
+      // v493: PUBLICAR NO NOSTR com flag de cancelamento.
+      // CRITICO: .timeout() em Dart NAO cancela o Future! O loop interno
+      // continua rodando em background e re-insere a ordem via _saveOrders().
+      // FIX: usar flag 'cancelled' que o loop verifica antes de cada tentativa.
       bool published = false;
+      bool cancelled = false;
       final orderId = order.id;
       
       try {
         await Future(() async {
+          // Inserir UMA VEZ antes do loop
+          _orders.insert(0, order);
+          
           for (int attempt = 1; attempt <= 3; attempt++) {
+            // CRUCIAL: se timeout ja disparou, nao continuar
+            if (cancelled) {
+              broLog('[createOrder] attempt $attempt abortado (cancelled)');
+              return;
+            }
             try {
-              if (!_orders.any((o) => o.id == orderId)) {
-                _orders.insert(0, order);
-              }
               await _publishOrderToNostr(order);
+              if (cancelled) return; // Checar de novo apos publish
               final idx = _orders.indexWhere((o) => o.id == orderId);
               if (idx != -1 && _orders[idx].eventId != null) {
                 published = true;
-                broLog('✅ Ordem publicada no Nostr (tentativa $attempt)');
+                broLog('[createOrder] Ordem publicada no Nostr (tentativa $attempt)');
                 return;
               }
-              _orders.removeWhere((o) => o.id == orderId);
-              broLog('⚠️ Publish tentativa $attempt: sem eventId retornado');
+              broLog('[createOrder] Publish tentativa $attempt: sem eventId retornado');
             } catch (e) {
-              _orders.removeWhere((o) => o.id == orderId);
-              broLog('⚠️ Publish tentativa $attempt falhou: $e');
+              broLog('[createOrder] Publish tentativa $attempt falhou: $e');
             }
             if (attempt < 3) await Future.delayed(const Duration(seconds: 2));
           }
         }).timeout(const Duration(seconds: 20));
       } catch (e) {
-        // Timeout ou erro — limpar TUDO (nenhum save parcial)
+        // Timeout ou erro: setar flag ANTES de limpar (Dart e single-threaded,
+        // entao quando catch roda, o loop esta suspenso em algum await.
+        // Ao retomar, verifica cancelled e para.)
+        cancelled = true;
         _orders.removeWhere((o) => o.id == orderId);
-        await _saveOrders(); // Garantir que nada ficou persistido
-        broLog('❌ Ordem ${orderId.substring(0, 8)} timeout/erro: $e');
+        await _saveOrders();
+        broLog('[createOrder] Ordem ${orderId.substring(0, 8)} timeout/erro: $e');
         _error = 'Falha ao publicar ordem nos relays Nostr';
         return null;
       }
@@ -1000,12 +1012,12 @@ class OrderProvider with ChangeNotifier {
       if (!published) {
         _orders.removeWhere((o) => o.id == orderId);
         await _saveOrders();
-        broLog('❌ Ordem ${orderId.substring(0, 8)} NÃO publicada nos relays após 3 tentativas');
+        broLog('[createOrder] Ordem ${orderId.substring(0, 8)} falhou apos 3 tentativas');
         _error = 'Falha ao publicar ordem nos relays Nostr';
         return null;
       }
       
-      // Ordem em _orders com eventId (salvo por _publishOrderToNostr)
+      // Publicou com sucesso
       _currentOrder = _orders.firstWhere((o) => o.id == orderId);
       await _saveOrders();
       _immediateNotify();
@@ -1528,6 +1540,9 @@ class OrderProvider with ChangeNotifier {
         broLog('v259: _fixCorruptedUserPubkeys exception: $e');
       }
       
+      // v493: Re-register FCM token periodically (survives server restarts)
+      await _ensureFcmTokenRegistered();
+
       // AUTO-LIQUIDA�?�?��?�?O: Verificar ordens awaiting_confirmation com prazo expirado
       await _checkAutoLiquidation();
       
@@ -1676,12 +1691,13 @@ class OrderProvider with ChangeNotifier {
           broLog('🔐 v438: billCode NIP-44 sent for ${order.id.substring(0, 8)}');
 
           // Push notify the provider that billCode is ready
-          _apiService.notifyUser(
+          final pushOk = await _apiService.notifyUser(
             targetPubkey: order.providerId!,
             type: 'order_update',
             subtype: 'billcode_encrypted',
             orderId: order.id,
           );
+          broLog('[PUSH] billcode_encrypted notify to ${order.providerId!.substring(0, 16)}: $pushOk');
         }
       } catch (e) {
         broLog('⚠️ v438: failed to send encrypted billCode for ${order.id.substring(0, 8)}: $e');
@@ -2083,12 +2099,13 @@ class OrderProvider with ChangeNotifier {
 
       // Push notify the buyer that their order was accepted
       if (order.userPubkey != null && order.userPubkey!.isNotEmpty) {
-        _apiService.notifyUser(
+        final pushOk = await _apiService.notifyUser(
           targetPubkey: order.userPubkey!,
           type: 'order_update',
           subtype: 'accepted',
           orderId: orderId,
         );
+        broLog('[PUSH] accepted notify to ${order.userPubkey!.substring(0, 16)}: $pushOk');
       }
       
       // Atualizar localmente
@@ -2206,12 +2223,13 @@ class OrderProvider with ChangeNotifier {
 
       // Push notify the buyer that payment proof was submitted
       if (order.userPubkey != null && order.userPubkey!.isNotEmpty) {
-        _apiService.notifyUser(
+        final pushOk = await _apiService.notifyUser(
           targetPubkey: order.userPubkey!,
           type: 'order_update',
           subtype: 'payment_received',
           orderId: orderId,
         );
+        broLog('[PUSH] payment_received notify to ${order.userPubkey!.substring(0, 16)}: $pushOk');
       }
 
       return true;
@@ -2423,6 +2441,31 @@ class OrderProvider with ChangeNotifier {
 
   /// Verifica ordens em 'awaiting_confirmation' com prazo de 36h expirado
   /// e executa auto-liquida�?§�?£o em background durante o sync
+  /// v493: Re-register FCM token with backend periodically
+  /// Ensures token survives server restarts (BRIX does this in _poll, we do it in sync)
+  Future<void> _ensureFcmTokenRegistered() async {
+    // Throttle: max once per hour
+    if (_lastFcmReRegisterTime != null) {
+      final elapsed = DateTime.now().difference(_lastFcmReRegisterTime!).inSeconds;
+      if (elapsed < _fcmReRegisterIntervalSeconds) return;
+    }
+    
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token == null || token.isEmpty) return;
+      
+      final ok = await _apiService.registerPushToken(token);
+      if (ok) {
+        _lastFcmReRegisterTime = DateTime.now();
+        broLog('[FCM] Token re-registered in sync');
+      } else {
+        broLog('[FCM] Token re-registration failed');
+      }
+    } catch (e) {
+      broLog('[FCM] Token re-registration error: $e');
+    }
+  }
+
   Future<void> _checkAutoLiquidation() async {
     if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return;
     

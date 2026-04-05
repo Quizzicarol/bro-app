@@ -114,7 +114,11 @@ router.post('/notify', notifyLimiter, async (req, res) => {
     notification = notifMap[subtype] || { title: '📋 Atualização de ordem', body: 'Abra o app para ver as novidades' };
   }
 
+  console.log(`[PUSH] /notify from=${senderPubkey.substring(0, 16)}... to=${target_pubkey.substring(0, 16)}... type=${type} subtype=${subtype || 'none'}`);
+
   const sent = await pushService.sendPush(target_pubkey, data, notification);
+  
+  console.log(`[PUSH] /notify result: sent=${sent} type=${type} subtype=${subtype || 'none'}`);
   res.json({ ok: sent });
 });
 

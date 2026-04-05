@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../services/order_service.dart';
+import '../services/api_service.dart';
 import '../services/lnaddress_service.dart';
 import '../providers/order_provider.dart';
 import '../providers/breez_provider.dart';
@@ -548,6 +549,19 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
       }
 
       if (success) {
+        // v493: Push notify the provider that order was cancelled
+        final existingOrder = Provider.of<OrderProvider>(context, listen: false).getOrderById(orderId);
+        final providerPubkey = existingOrder?.providerId;
+        if (providerPubkey != null && providerPubkey.isNotEmpty) {
+          final pushOk = await ApiService().notifyUser(
+            targetPubkey: providerPubkey,
+            type: 'order_update',
+            subtype: 'cancelled',
+            orderId: orderId,
+          );
+          broLog('[PUSH] cancelled notify to ${providerPubkey.substring(0, 16)}: $pushOk');
+        }
+        
         _loadOrders(); // Recarregar lista
         // Mostrar confirmação simples
         _showCancelConfirmation();

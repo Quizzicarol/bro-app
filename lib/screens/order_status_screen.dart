@@ -22,6 +22,7 @@ import '../providers/platform_balance_provider.dart';
 import '../config.dart';
 import '../l10n/app_localizations.dart';
 import '../services/notification_service.dart';
+import '../services/api_service.dart';
 import '../services/billcode_crypto_service.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:bro_app/services/log_utils.dart';
@@ -692,6 +693,20 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         setState(() {
           _currentStatus = 'cancelled';
         });
+        
+        // v493: Push notify the provider that order was cancelled
+        final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+        final existingOrder = orderProvider.getOrderById(widget.orderId);
+        final providerPubkey = existingOrder?.providerId ?? _orderDetails?['providerId'] as String?;
+        if (providerPubkey != null && providerPubkey.isNotEmpty) {
+          final pushOk = await ApiService().notifyUser(
+            targetPubkey: providerPubkey,
+            type: 'order_update',
+            subtype: 'cancelled',
+            orderId: widget.orderId,
+          );
+          broLog('[PUSH] cancelled notify to ${providerPubkey.substring(0, 16)}: $pushOk');
+        }
         
         // Mostrar confirmação simples
         ScaffoldMessenger.of(context).showSnackBar(
@@ -3074,6 +3089,18 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             duration: const Duration(seconds: 4),
           ),
         );
+
+        // v493: Push notify the provider that a dispute was opened
+        final providerPubkey = existingOrder?.providerId ?? _orderDetails?['providerId'] as String?;
+        if (providerPubkey != null && providerPubkey.isNotEmpty) {
+          final pushOk = await ApiService().notifyUser(
+            targetPubkey: providerPubkey,
+            type: 'order_update',
+            subtype: 'disputed',
+            orderId: widget.orderId,
+          );
+          broLog('[PUSH] disputed notify to ${providerPubkey.substring(0, 16)}: $pushOk');
+        }
         
         // Publicar notificação de disputa no Nostr (fire-and-forget)
         // Não bloqueia a UI — o admin será notificado em segundo plano
@@ -4506,6 +4533,17 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       }
       
       broLog('✅ Ordem marcada como completed com sucesso');
+
+      // v493: Push notify the provider that order was completed
+      if (providerId != null && providerId.isNotEmpty) {
+        final pushOk = await ApiService().notifyUser(
+          targetPubkey: providerId,
+          type: 'order_update',
+          subtype: 'completed',
+          orderId: widget.orderId,
+        );
+        broLog('[PUSH] completed notify to ${providerId.substring(0, 16)}: $pushOk');
+      }
       
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();

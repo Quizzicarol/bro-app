@@ -105,7 +105,17 @@ class NostrProfileService {
     
     try {
       channel = WebSocketChannel.connect(Uri.parse(relayUrl));
-      
+
+      // Aguardar conexao estabelecer (captura SocketException/No route to host
+      // que de outra forma escaparia como Unhandled Exception assincrona).
+      try {
+        await channel.ready.timeout(const Duration(seconds: 4));
+      } catch (e) {
+        broLog('Relay $relayUrl indisponivel: $e');
+        try { await channel.sink.close(); } catch (_) {}
+        return null;
+      }
+
       // Subscription ID aleatorio
       final subId = 'profile_${DateTime.now().millisecondsSinceEpoch}';
       

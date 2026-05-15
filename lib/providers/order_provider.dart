@@ -2939,10 +2939,45 @@ class OrderProvider with ChangeNotifier {
           final hasInvoiceCandidate = (meta['providerInvoice'] != null && meta['providerInvoice'].toString().isNotEmpty);
           if (!hasProof && !hasInvoiceCandidate) return false;
         }
+        // v592: hard cutoff — não tentar auto-pagar ordens muito antigas.
+        // Bug observado em carol/v587: order completed em 02/abril ficou
+        // re-tentando pagar invoice expirado todo dia (carteira mostrava
+        // "Pagamento de Conta failed" às 02h). Se a ordem tem mais de 48h
+        // e não foi auto-paga até agora, claramente foi paga manualmente
+        // (ou abandonada) — tratar como já reconciliada.
+        try {
+          final updatedAtStr = order.metadata?['updatedAt']?.toString()
+              ?? order.metadata?['lastUpdate']?.toString();
+          final ts = updatedAtStr != null
+              ? DateTime.tryParse(updatedAtStr)
+              : null;
+          final reference = ts ?? order.createdAt;
+          final ageHours = DateTime.now().difference(reference).inHours;
+          if (ageHours > 48) {
+            broLog('[AutoPay] Ordem ${order.id.substring(0, 8)} muito antiga (${ageHours}h) — marcando como reconciliada e pulando');
+            // Marcar in-memory + persistir para nunca mais tentar
+            final index = _orders.indexWhere((o) => o.id == order.id);
+            if (index != -1) {
+              _orders[index] = _orders[index].copyWith(
+                metadata: {
+                  ...(_orders[index].metadata ?? {}),
+                  'autoPaymentCompleted': true,
+                  'autoPaymentReconciledStale': true,
+                  'autoPaymentAt': DateTime.now().toIso8601String(),
+                },
+              );
+            }
+            return false;
+          }
+        } catch (_) {}
         return true;
       }).toList();
       
-      if (unpaidLiquidated.isEmpty) return;
+      if (unpaidLiquidated.isEmpty) {
+        // Persistir as marcações stale acima (se houver) sem chamar pagamento
+        await _saveOrders();
+        return;
+      }
       
       broLog('[AutoPay] ${unpaidLiquidated.length} ordens liquidadas pendentes de pagamento');
       

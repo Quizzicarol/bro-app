@@ -1,3 +1,11 @@
+> Notice: this repository was used temporarily while the original project was unavailable.
+> The active development and canonical version of Bro now live at:
+> https://github.com/Brostr/bro
+>
+> This repository may remain as a reference/migration copy only.
+
+
+
 <p align="center">
   <img src="https://github.com/user-attachments/assets/3d58e978-9322-453b-86c9-fa8a73801bc0" alt="Bro Logo" width="200">
 </p>

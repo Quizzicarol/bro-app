@@ -64,6 +64,28 @@ workflows:
             brew install gh
           fi
           REPO="Quizzicarol/bro-app"
+          # Validar o token ANTES de publicar. Se estiver inválido/expirado ou
+          # sem acesso ao repo, PULAR a publicação com aviso claro em vez de
+          # derrubar o build inteiro (os APKs já foram gerados como artefatos).
+          export GH_TOKEN
+          if ! GH_USER=$(gh api user --jq .login 2>/tmp/gh_err); then
+            echo "⚠️  GH_TOKEN inválido/expirado ou sem acesso (HTTP 401)."
+            echo "    Detalhe: $(cat /tmp/gh_err)"
+            echo "    → Gere um token com permissão Contents: Read and write em $REPO"
+            echo "      e atualize GH_TOKEN no grupo bro_secrets do Codemagic."
+            echo "⏭️  Pulando publicação no GitHub — build NÃO será marcado como falho."
+            exit 0
+          fi
+          echo "🔑 Autenticado no GitHub como: $GH_USER"
+          # Confirmar que o token enxerga o repo alvo (evita 401/404 depois)
+          if ! gh api "repos/$REPO" --jq .full_name >/tmp/gh_repo 2>/tmp/gh_err; then
+            echo "⚠️  O token '$GH_USER' NÃO tem acesso a $REPO."
+            echo "    Detalhe: $(cat /tmp/gh_err)"
+            echo "    → Confirme que $GH_USER é colaborador de $REPO e que o token"
+            echo "      (fine-grained) inclui esse repositório com Contents: write."
+            echo "⏭️  Pulando publicação no GitHub — build NÃO será marcado como falho."
+            exit 0
+          fi
           VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
           TAG="v${VERSION}"
           APK_SRC="build/app/outputs/flutter-apk/app-release.apk"

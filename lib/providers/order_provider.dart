@@ -3047,7 +3047,7 @@ class OrderProvider with ChangeNotifier {
   /// comprador JÁ reservou (base+5%): quando a taxa falhou, os 2% ficaram na
   /// carteira dele, então enviá-los agora é correto (não cobra a mais).
   ///
-  /// Janela de 30 dias limita risco de dupla cobrança caso o tracking local
+  /// Janela de 5 dias limita risco de dupla cobrança caso o tracking local
   /// (_paidOrderIds) tenha sido perdido numa reinstalação completa.
   Future<void> _reconcilePlatformFees() async {
     if (_isReconcilingFees) return;
@@ -3071,13 +3071,14 @@ class OrderProvider with ChangeNotifier {
         if (!autoPaid && !manualCompleted) return false;
         // Taxa já paga? pula (o próprio sendPlatformFee também tem esse guard)
         if (PlatformFeeService.isFeePaid(order.id)) return false;
-        // Janela de segurança: só ordens dos últimos 30 dias
+        // Janela de segurança: só ordens dos últimos 5 dias (limita risco de
+        // dupla cobrança se o tracking local foi perdido numa reinstalação).
         final refStr = order.metadata?['completedAt']?.toString()
             ?? order.metadata?['autoPaymentAt']?.toString()
             ?? order.metadata?['updatedAt']?.toString();
         final ref = refStr != null ? DateTime.tryParse(refStr) : null;
         final reference = ref ?? order.createdAt;
-        if (now.difference(reference).inDays > 30) return false;
+        if (now.difference(reference).inDays > 5) return false;
         return true;
       }).toList();
 

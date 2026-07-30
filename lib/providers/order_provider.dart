@@ -3033,6 +3033,79 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
+  // v622: Reconciliação de taxa da plataforma.
+  bool _isReconcilingFees = false;
+
+  /// v622: Varre ordens concluídas onde EU (comprador) paguei o provedor mas a
+  /// taxa da plataforma NÃO foi enviada, e envia a taxa pendente.
+  ///
+  /// PORQUÊ: a taxa era enviada num único momento (logo após pagar o provedor),
+  /// sem retry. Se o pagamento ao provedor tinha sido bloqueado (bug v489-v621)
+  /// ou o envio da taxa falhou por rede, a taxa se perdia para sempre — a ordem
+  /// já estava 'completed' e o código da taxa nunca mais rodava. Isso explica
+  /// "várias ordens mas só duas taxas entraram". A taxa sai do saldo que o
+  /// comprador JÁ reservou (base+5%): quando a taxa falhou, os 2% ficaram na
+  /// carteira dele, então enviá-los agora é correto (não cobra a mais).
+  ///
+  /// Janela de 30 dias limita risco de dupla cobrança caso o tracking local
+  /// (_paidOrderIds) tenha sido perdido numa reinstalação completa.
+  Future<void> _reconcilePlatformFees() async {
+    if (_isReconcilingFees) return;
+    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return;
+    if (AppConfig.platformLightningAddress.isEmpty) return;
+
+    _isReconcilingFees = true;
+    try {
+      final now = DateTime.now();
+      final pending = _orders.where((order) {
+        // Sou o comprador (quem paga a taxa)?
+        if (order.userPubkey != _currentUserPubkey) return false;
+        final providerId = order.providerId ?? order.metadata?['providerId'] ?? order.metadata?['provider_id'] ?? '';
+        if (providerId.toString().isEmpty || providerId == _currentUserPubkey) return false;
+        // Ordem concluída/liquidada (provedor deve ter sido pago)
+        if (order.status != 'completed' && order.status != 'liquidated') return false;
+        // Confirmar que o provedor foi pago: auto-liquidada exige
+        // autoPaymentCompleted; manual ('completed') só é marcada após pagar.
+        final autoPaid = order.metadata?['autoPaymentCompleted'] == true;
+        final manualCompleted = order.status == 'completed';
+        if (!autoPaid && !manualCompleted) return false;
+        // Taxa já paga? pula (o próprio sendPlatformFee também tem esse guard)
+        if (PlatformFeeService.isFeePaid(order.id)) return false;
+        // Janela de segurança: só ordens dos últimos 30 dias
+        final refStr = order.metadata?['completedAt']?.toString()
+            ?? order.metadata?['autoPaymentAt']?.toString()
+            ?? order.metadata?['updatedAt']?.toString();
+        final ref = refStr != null ? DateTime.tryParse(refStr) : null;
+        final reference = ref ?? order.createdAt;
+        if (now.difference(reference).inDays > 30) return false;
+        return true;
+      }).toList();
+
+      if (pending.isEmpty) return;
+
+      broLog('[FeeReconcile] ${pending.length} ordem(ns) com taxa da plataforma pendente');
+      for (final order in pending) {
+        try {
+          // v621: taxa = 2% da BASE (order.btcAmount), consistente com o autopay.
+          final baseSats = (order.btcAmount * 100000000).round();
+          if (baseSats <= 0) continue;
+          broLog('[FeeReconcile] Enviando taxa pendente da ordem ${order.id.substring(0, 8)} (base $baseSats sats)');
+          final ok = await PlatformFeeService.sendPlatformFee(
+            orderId: order.id,
+            totalSats: baseSats,
+          );
+          broLog('[FeeReconcile] Ordem ${order.id.substring(0, 8)}: ${ok ? "taxa enviada/já paga" : "falhou (retry no próximo sync)"}');
+        } catch (e) {
+          broLog('[FeeReconcile] Erro na ordem ${order.id.substring(0, 8)}: $e');
+        }
+      }
+    } catch (e) {
+      broLog('[FeeReconcile] Erro geral: $e');
+    } finally {
+      _isReconcilingFees = false;
+    }
+  }
+
   /// v133: Renova invoices para ordens liquidadas onde EU sou o PROVEDOR
   /// Gera nova invoice e publica no Nostr para o usu�rio poder pagar
   bool _isRenewingInvoices = false;
@@ -4020,6 +4093,9 @@ class OrderProvider with ChangeNotifier {
       
       // v132: Auto-pagamento de ordens liquidadas sem pagamento
       await _autoPayLiquidatedOrders();
+      
+      // v622: Reconciliar taxas da plataforma que ficaram para trás
+      await _reconcilePlatformFees();
       
       // v133: Renovar invoices para ordens liquidadas (provider side)
       await _renewInvoicesForLiquidatedAsProvider();

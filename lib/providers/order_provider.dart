@@ -2335,12 +2335,20 @@ class OrderProvider with ChangeNotifier {
         if (raceWinner != null) {
           _error = '❌ Esta ordem já foi aceita por outro provedor';
           _availableOrdersForProvider.removeWhere((o) => o.id == orderId);
-        } else {
-          _error = 'Falha ao publicar aceitação no Nostr';
+          _isLoading = false;
+          _immediateNotify();
+          return false;
         }
-        _isLoading = false;
-        _immediateNotify();
-        return false;
+        // v626: publish NÃO confirmado (ACK/verify deu timeout sob contenção de
+        // relay) MAS sem corrida perdida. NÃO abortar: o provedor escolheu
+        // aceitar e o evento frequentemente JÁ landou em ≥1 relay (o buyer
+        // recebe "bro encontrado"). Se abortássemos, a ordem SUMIA do provedor
+        // (não entrava em "Minhas Ordens") e o billcode nunca era solicitado.
+        // Solução: persistir o aceite localmente (otimista) e RE-PUBLICAR o
+        // evento 30079 em background até confirmar.
+        broLog('⚠️ [acceptOrderAsProvider] publish não confirmado (sem corrida) — aceite otimista + republish em background');
+        acceptVerified = true;
+        _retryAcceptPublishInBackground(order, privateKey);
       }
 
       // v541: Post-check removido. Ele chamava fetchOrderProviderPubkey que
@@ -2388,6 +2396,68 @@ class OrderProvider with ChangeNotifier {
       _immediateNotify();
       broLog('ðŸ�?�µ [acceptOrderAsProvider] FINALIZADO');
     }
+  }
+
+  /// v625: Verifica nos relays se ESTE provedor é o accepter da ordem.
+  /// Usado pela UI para confirmar o aceite após um timeout global, evitando
+  /// mostrar "erro" quando o evento de aceite JÁ landou em ≥1 relay.
+  Future<bool> isOrderAcceptedByMe(String orderId) async {
+    final myPub = _nostrService.publicKey?.toLowerCase();
+    if (myPub == null || myPub.isEmpty) return false;
+    // v626: primeiro checar o estado LOCAL (aceite otimista já persistido).
+    // Sob contenção de relay o aceite pode estar salvo localmente antes de
+    // confirmar na rede — não precisamos ir aos relays nesse caso.
+    final local = _orders.cast<Order?>().firstWhere(
+          (o) => o?.id == orderId,
+          orElse: () => null,
+        );
+    if (local != null &&
+        local.providerId?.toLowerCase() == myPub &&
+        local.status == 'accepted') {
+      return true;
+    }
+    try {
+      final accepter = await _nostrOrderService
+          .fetchOrderProviderPubkey(orderId)
+          .timeout(const Duration(seconds: 6), onTimeout: () => null);
+      return accepter != null && accepter.toLowerCase() == myPub;
+    } catch (e) {
+      broLog('⚠️ [isOrderAcceptedByMe] falhou: $e');
+      return false;
+    }
+  }
+
+  /// v626: Re-publica o evento de aceite (kind 30079) em background quando a
+  /// confirmação inicial falhou por contenção de relay (damus 503, ACK lento).
+  /// Garante que o buyer receba o aceite e o billcode seja gerado, sem travar
+  /// a UI do provedor. Fire-and-forget com backoff; para assim que confirma.
+  void _retryAcceptPublishInBackground(Order order, String providerPrivateKey) {
+    () async {
+      final myPub = _nostrService.publicKey?.toLowerCase();
+      for (int attempt = 1; attempt <= 5; attempt++) {
+        await Future.delayed(Duration(seconds: 5 * attempt));
+        try {
+          final ok = await _nostrOrderService.acceptOrderOnNostr(
+            order: order,
+            providerPrivateKey: providerPrivateKey,
+          );
+          if (ok) {
+            broLog('✅ [accept-republish] aceite confirmado (tentativa $attempt) para ${order.id.substring(0, 8)}');
+            return;
+          }
+          final landed = await _nostrOrderService
+              .fetchOrderProviderPubkey(order.id)
+              .timeout(const Duration(seconds: 6), onTimeout: () => null);
+          if (landed != null && myPub != null && landed.toLowerCase() == myPub) {
+            broLog('✅ [accept-republish] aceite já presente no relay (tentativa $attempt)');
+            return;
+          }
+        } catch (e) {
+          broLog('⚠️ [accept-republish] tentativa $attempt falhou: $e');
+        }
+      }
+      broLog('⚠️ [accept-republish] esgotou tentativas para ${order.id.substring(0, 8)} — sync/AUTO-REPAIR cobrirá');
+    }();
   }
 
   /// Provedor completa uma ordem - publica comprovante no Nostr e atualiza localmente
@@ -2634,7 +2704,15 @@ class OrderProvider with ChangeNotifier {
     }
     
     broLog('AUTO-REPAIR: ${ordersToRepair.length} ordens com eventos perdidos nos relays');
-    
+
+    // v625: marcar a sessão como FEITA agora, ANTES do batch. Se o timeout
+    // global (30s) abortar o loop no meio (relays lentos / damus 503), a flag
+    // continua setada e o auto-repair NÃO re-executa a cada sync. Sem isso ele
+    // republicava as mesmas ordens indefinidamente, saturando os relays e
+    // deixando TODO o app lento (aceite, pagamento, etc). As ordens que
+    // sobrarem são reparadas na próxima sessão (reabertura do app).
+    _autoRepairDoneThisSession = true;
+
     // v259: Limitar batch size para nao travar sync com dezenas de publishes
     final batch = ordersToRepair.length > _maxRepairBatchSize 
         ? ordersToRepair.sublist(0, _maxRepairBatchSize)

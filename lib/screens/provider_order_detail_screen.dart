@@ -543,6 +543,32 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           throw TimeoutException('Tempo esgotado ao aceitar ordem (45s)');
         },
       );
+    } on TimeoutException catch (_) {
+      // v625: o timeout global pode disparar mesmo com o aceite JÁ publicado
+      // em ≥1 relay (relays lentos / contenda). Antes de mostrar erro, CONFIRMAR
+      // nos relays se o aceite landou — evita "erro" seguido de "aceita"
+      // (falso negativo que confundia o provedor).
+      broLog('⏱️ [ACCEPT] Timeout — verificando se o aceite landou nos relays...');
+      bool landed = false;
+      try {
+        final op = context.read<OrderProvider>();
+        landed = await op.isOrderAcceptedByMe(widget.orderId);
+      } catch (_) {}
+      if (landed && mounted) {
+        broLog('✅ [ACCEPT] Aceite confirmado nos relays apesar do timeout');
+        setState(() {
+          _orderAccepted = true;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(AppLocalizations.of(context)!.t('prov_det_accepted_pay')),
+            backgroundColor: Colors.green,
+          ),
+        );
+        await _loadOrderDetails();
+      } else {
+        _showError('Erro ao aceitar ordem: tempo esgotado. Tente novamente.');
+      }
     } catch (e) {
       broLog('❌ [ACCEPT] ERRO: $e');
       _showError('Erro ao aceitar ordem: $e');

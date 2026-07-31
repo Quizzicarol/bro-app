@@ -135,19 +135,13 @@ class _WalletScreenState extends State<WalletScreen> {
         }
       } catch (_) {}
 
-      // v497: Log ALL SDK payments to diagnose missing BRIX
+      // v625: removido loop de log por-pagamento (v497 diag) — construía 1 broLog
+      // por transação a cada refresh (236+ linhas), travando a main thread.
       broLog('📋 Raw SDK payments count: ${payments.length}');
-      for (int i = 0; i < payments.length; i++) {
-        final rp = payments[i];
-        final h = rp['paymentHash']?.toString() ?? 'null';
-        final hShort = h.length > 16 ? h.substring(0, 16) : h;
-        broLog('   🔍 SDK#${i+1}: type=${rp['type']} dir=${rp['direction']} amount=${rp['amountSats']} desc="${rp['description']}" payType=${rp['paymentType']} hash=$hShort ts=${rp['timestamp'] ?? rp['createdAt']}');
-      }
 
       // Usar apenas pagamentos Lightning reais, FILTRANDO taxas internas da plataforma
       List<Map<String, dynamic>> allPayments = payments.where((p) {
         final description = p['description']?.toString() ?? '';
-        final amount = p['amountSats'] ?? p['amount'] ?? 0;
         final isReceived = p['type'] == 'received' || 
                            p['direction'] == 'incoming' ||
                            p['type'] == 'Receive';
@@ -156,21 +150,18 @@ class _WalletScreenState extends State<WalletScreen> {
         // 1. Filtrar por payment hash (mais confiável)
         final paymentHash = p['paymentHash']?.toString() ?? '';
         if (paymentHash.isNotEmpty && PlatformFeeService.feePaymentHashes.contains(paymentHash)) {
-          broLog('🔇 Ocultando taxa da plataforma (hash): $paymentHash ($amount sats)');
           return false;
         }
         // 2. Fallback: filtrar por descrição
         final descLower = description.toLowerCase();
         if (descLower.contains('platform fee') || 
             descLower.contains('bro platform fee')) {
-          broLog('🔇 Ocultando taxa da plataforma (desc): $description ($amount sats)');
           return false;
         }
         
         // OCULTAR: Lado RECEBIDO do auto-pagamento com saldo da carteira
         // É uma transação interna — só queremos mostrar o lado "enviado" como depósito
         if (isReceived && description == 'Bro Wallet Payment') {
-          broLog('🔇 Ocultando lado recebido do wallet payment: $amount sats');
           return false;
         }
 
@@ -181,7 +172,6 @@ class _WalletScreenState extends State<WalletScreen> {
         // uma transação real do user — é apenas reserva interna. Quando a
         // ordem for paga ao provedor, aparecerá uma saída separada.
         if (isReceived && description == 'Bro Payment') {
-          broLog('🔇 Ocultando depósito interno Bro Payment recebido: $amount sats');
           return false;
         }
         
@@ -197,7 +187,6 @@ class _WalletScreenState extends State<WalletScreen> {
           if (orderPrefix != null && orderPrefix.length >= 8) {
             orderPrefix = orderPrefix.substring(0, 8);
             if (walletPaidOrderPrefixes.contains(orderPrefix)) {
-              broLog('🔇 Ocultando auto-pay duplicado de wallet payment: $description ($amount sats)');
               return false;
             }
           }

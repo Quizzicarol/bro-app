@@ -1291,25 +1291,17 @@ class BreezProvider with ChangeNotifier {
 
       broLog('📋 Total de pagamentos no SDK: ${resp.payments.length}');
       
+      // v625: contagem sem log por-pagamento (evita ~470 broLog/ciclo → jank).
       int sparkCount = 0;
       int lightningCount = 0;
       int otherCount = 0;
       for (final p in resp.payments) {
-        final detailType = p.details?.runtimeType.toString() ?? 'null';
-        broLog('   💳 Payment: ${p.id.substring(0, 16)}... amount=${p.amount} status=${p.status} method=${p.method} details=$detailType');
         if (p.details is spark.PaymentDetails_Lightning) {
           lightningCount++;
-          final details = p.details as spark.PaymentDetails_Lightning;
-          broLog('      ⚡ Lightning: hash=${details.htlcDetails.paymentHash.substring(0, 16)}... description=${details.description ?? "null"}');
         } else if (p.details is spark.PaymentDetails_Spark) {
           sparkCount++;
-          final details = p.details as spark.PaymentDetails_Spark;
-          final inv = details.invoiceDetails?.invoice ?? '';
-          final invShort = inv.length > 30 ? inv.substring(0, 30) : inv;
-          broLog('      🔶 Spark: desc=${details.invoiceDetails?.description ?? "null"} invoice=$invShort...');
         } else {
           otherCount++;
-          broLog('      ❓ Other type: $detailType');
         }
       }
       broLog('📊 Payment types: Lightning=$lightningCount, Spark=$sparkCount, Other=$otherCount');

@@ -1546,8 +1546,23 @@ class OrderProvider with ChangeNotifier {
           addedFromProviderHistory++;
         } else if (existingIndex != -1) {
           // Ordem j�?¡ existe - atualizar se status do Nostr �?© mais avan�?§ado
-          final existing = _orders[existingIndex];
-          
+          var existing = _orders[existingIndex];
+
+          // v627: HEAL providerId nulo. Esta ordem veio de fetchProviderOrders
+          // (== EU sou o accepter), mas o cache local est�?¡ com providerId=null
+          // (aceite antigo cujo update local n�?£o persistiu, ou status=accepted
+          // herdado do evento republicado pelo buyer). Sem isso a ordem nunca
+          // aparece em myAcceptedOrders e o billcode n�?£o roteia.
+          // Reatribui `existing` para os copyWith de status abaixo n�?£o
+          // re-nulificarem o providerId a partir da refer�?ªncia antiga.
+          if ((existing.providerId == null || existing.providerId!.isEmpty) &&
+              _currentUserPubkey != null &&
+              existing.userPubkey != _currentUserPubkey) {
+            existing = existing.copyWith(providerId: _currentUserPubkey);
+            _orders[existingIndex] = existing;
+            broLog('�?��?��?? [syncProvider] HEAL providerId=me em ${existing.id.substring(0, 8)} (era null)');
+          }
+
           // CORRE�?�?��?�?O: Se Nostr diz 'cancelled', SEMPRE aceitar â�?��?� cancelamento �?© a�?§�?£o expl�?­cita
           if (provOrder.status == 'cancelled' && existing.status != 'cancelled') {
             _orders[existingIndex] = existing.copyWith(status: 'cancelled');
@@ -2334,6 +2349,11 @@ class OrderProvider with ChangeNotifier {
         // v579: distinguish race-loss from publish failure for clearer UX.
         if (raceWinner != null) {
           _error = '❌ Esta ordem já foi aceita por outro provedor';
+          // v627: ROLLBACK do aceite otimista — outro provedor venceu a corrida.
+          // Remover de _orders (copyWith não limpa providerId) para não ficar
+          // falsamente em "Minhas Ordens".
+          _orders.removeWhere((o) => o.id == orderId);
+          await _saveOnlyUserOrders();
           _availableOrdersForProvider.removeWhere((o) => o.id == orderId);
           _isLoading = false;
           _immediateNotify();

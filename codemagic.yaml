@@ -18,7 +18,6 @@ workflows:
     environment:
       groups:
         - bro_secrets
-        - Brostr
       android_signing:
         - bro_keystore_v2
       ios_signing:
@@ -277,7 +276,6 @@ workflows:
     environment:
       groups:
         - bro_secrets
-        - Brostr
       android_signing:
         - bro_keystore_v2
       flutter: stable

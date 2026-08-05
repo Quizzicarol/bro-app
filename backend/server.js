@@ -157,9 +157,9 @@ cron.schedule('*/5 * * * *', async () => {
 // que apontava para api.brostr.app e caía no 404 "Endpoint não encontrado".
 // Redireciona (302) sempre para o APK mais recente publicado no GitHub Releases.
 const LATEST_APK_URL =
-  'https://github.com/Quizzicarol/bro-app/releases/latest/download/bro-latest.apk';
+  'https://github.com/Brostr/bro/releases/latest/download/bro-latest.apk';
 const RELEASES_PAGE_URL =
-  'https://github.com/Quizzicarol/bro-app/releases/latest';
+  'https://github.com/Brostr/bro/releases/latest';
 
 app.get(
   [

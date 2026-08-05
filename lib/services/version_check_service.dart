@@ -17,9 +17,9 @@ class VersionCheckService {
   VersionCheckService._internal();
 
   /// Repo público de releases
-  static const String _repoOwner = 'Quizzicarol';
-  static const String _repoName = 'bro-app';
-  /// v438: Usar releases API (tem APKs como assets) — repo correto é Quizzicarol/bro-app
+  static const String _repoOwner = 'Brostr';
+  static const String _repoName = 'bro';
+  /// v438: Usar releases API (tem APKs como assets) — repo principal é Brostr/bro
   static const String _githubApiUrl = 
       'https://api.github.com/repos/$_repoOwner/$_repoName/releases?per_page=10';
 

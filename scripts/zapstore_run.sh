@@ -24,7 +24,7 @@ NAK="$HOME/bin/nak"
 APK="$HOME/bro-arm64.apk"
 ICON="$HOME/bro_icon.png"
 BLOSSOM="https://nostr.download"
-APK_URL="https://github.com/Quizzicarol/bro-app/releases/download/v1.0.133%2B619/bro-v1.0.133%2B619-arm64-v8a.apk"
+APK_URL="https://github.com/Brostr/bro/releases/download/v1.0.133%2B619/bro-v1.0.133%2B619-arm64-v8a.apk"
 # Known good icon hash on nostr.download (the normalised/stored form of Bro's icon).
 KNOWN_ICON_HASH="e24b5558a311db65252613cdeabe51b8a30957be989685a6db948a1c6fd8717b"
 export BLOSSOM_URL="$BLOSSOM"

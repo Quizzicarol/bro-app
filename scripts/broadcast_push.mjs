@@ -27,7 +27,7 @@ if (!ADMIN_NSEC && existsSync(NSEC_FILE)) {
 const TITLE = process.env.BROADCAST_TITLE || 'Nova versão do Bro disponível';
 const BODY =
   process.env.BROADCAST_BODY ||
-  'Atualize para a v1.0.133+546 em https://github.com/Quizzicarol/bro-app/releases/latest';
+  'Atualize para a v1.0.133+546 em https://github.com/Brostr/bro/releases/latest';
 
 if (!ADMIN_NSEC) {
   console.error('ERROR: set $env:ADMIN_NSEC="nsec1..." (or 64-char hex) before running.');

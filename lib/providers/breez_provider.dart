@@ -1126,7 +1126,7 @@ class BreezProvider with ChangeNotifier {
         broLog('📋 Invoice open-amount → enviando amount=$prepareAmount sats ao SDK');
       }
       final prepareReq = spark.PrepareSendPaymentRequest(
-        paymentRequest: bolt11,
+        paymentRequest: spark.PaymentRequest.input(input: bolt11),
         amount: prepareAmount,
         tokenIdentifier: null,
       );

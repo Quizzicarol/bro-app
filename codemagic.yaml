@@ -32,8 +32,8 @@ workflows:
       events:
         - push
       branch_patterns:
-        - pattern: 'release/*'
-          include: true
+        # release/* agora dispara SOMENTE o workflow ios-testers (iOS/TestFlight).
+        # Mantido aqui apenas main/master para o build completo Android + iOS.
         - pattern: 'main'
           include: true
         - pattern: 'master'
@@ -144,6 +144,72 @@ workflows:
         # NOTA: Crie o grupo "Beta Pblico" no App Store Connect primeiro!
         # beta_groups:
         # - Beta Pblico
+      email:
+        recipients:
+          - your-email@example.com  # TODO: configure
+        notify:
+          success: true
+          failure: true
+
+  # ============================================
+  # iOS APENAS (TestFlight) - para testar entre dispositivos
+  # Dispara automaticamente em push para release/*
+  # NAO builda APK/Android. NAO envia para a App Store (so TestFlight).
+  # ============================================
+  ios-testers:
+    name: iOS TestFlight (release/*)
+    max_build_duration: 90
+    instance_type: mac_mini_m2
+
+    integrations:
+      app_store_connect: Bro App
+
+    environment:
+      groups:
+        - bro_secrets
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: app.brostr
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: 'release/*'
+          include: true
+
+    scripts:
+      - name: Generate env.json from CI variables
+        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","ADMIN_PASSWORD_HASH":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" "$ADMIN_PASSWORD_HASH" > "$CM_BUILD_DIR/env.json"
+
+      - name: Decode GoogleService-Info.plist
+        script: echo "$GOOGLE_SERVICE_INFO_PLIST" | base64 --decode > "$CM_BUILD_DIR/ios/Runner/GoogleService-Info.plist"
+
+      - name: Get Flutter packages
+        script: flutter pub get
+
+      - name: Install CocoaPods
+        script: |
+          cd ios
+          pod install
+
+      - name: Set up iOS code signing
+        script: xcode-project use-profiles --project ios/Runner.xcodeproj
+
+      - name: Build iOS
+        script: flutter build ipa --release --dart-define-from-file=env.json --export-options-plist=/Users/builder/export_options.plist
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        submit_to_app_store: false
       email:
         recipients:
           - your-email@example.com  # TODO: configure

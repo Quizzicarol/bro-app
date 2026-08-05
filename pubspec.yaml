@@ -1,7 +1,7 @@
 name: bro_app
 description: "Bro - Plataforma P2P para pagamento de contas com Bitcoin via Lightning Network"
 publish_to: 'none'
-version: 1.0.133+627
+version: 1.0.133+628
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -16,6 +16,7 @@ dependencies:
   breez_sdk_spark_flutter:
     git:
       url: https://github.com/breez/breez-sdk-spark-flutter
+      ref: v0.19.2
   
   # Lightning Network - Breez SDK Liquid (Fallback quando Spark não funciona)
   flutter_breez_liquid:

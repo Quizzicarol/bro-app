@@ -49,6 +49,26 @@ workflows:
       - name: Get Flutter packages
         script: flutter pub get
         
+      - name: Patch breez spark passkey import (CocoaPods module fix)
+        script: |
+          set -e
+          # breez_sdk_spark_flutter 0.19.2 has `import PasskeyPRFHelperObjC` in
+          # PasskeyAssertionCore.swift. That Clang module only exists under
+          # SwiftPM. Under CocoaPods the ObjC PasskeyPRFHelper class is already
+          # part of the pod's own module, so guard the import with
+          # #if canImport(...) -> skipped under CocoaPods (class still visible),
+          # kept under SwiftPM. Runs every build after a fresh pub-cache clone.
+          patched=0
+          for f in "$HOME/.pub-cache/git/breez-sdk-spark-flutter-"*/ios/Classes/*.swift; do
+            [ -f "$f" ] || continue
+            if grep -q '^import PasskeyPRFHelperObjC' "$f" && ! grep -q 'canImport(PasskeyPRFHelperObjC)' "$f"; then
+              echo "Patching $f"
+              perl -0pi -e 's/^import PasskeyPRFHelperObjC$/#if canImport(PasskeyPRFHelperObjC)\nimport PasskeyPRFHelperObjC\n#endif/m' "$f"
+              patched=1
+            fi
+          done
+          echo "breez passkey patch complete (patched=$patched)"
+        
       - name: Build APK Release (Android)
         script: flutter build apk --release --dart-define-from-file=env.json
         
@@ -190,6 +210,26 @@ workflows:
 
       - name: Get Flutter packages
         script: flutter pub get
+
+      - name: Patch breez spark passkey import (CocoaPods module fix)
+        script: |
+          set -e
+          # breez_sdk_spark_flutter 0.19.2 has `import PasskeyPRFHelperObjC` in
+          # PasskeyAssertionCore.swift. That Clang module only exists under
+          # SwiftPM. Under CocoaPods the ObjC PasskeyPRFHelper class is already
+          # part of the pod's own module, so guard the import with
+          # #if canImport(...) -> skipped under CocoaPods (class still visible),
+          # kept under SwiftPM. Runs every build after a fresh pub-cache clone.
+          patched=0
+          for f in "$HOME/.pub-cache/git/breez-sdk-spark-flutter-"*/ios/Classes/*.swift; do
+            [ -f "$f" ] || continue
+            if grep -q '^import PasskeyPRFHelperObjC' "$f" && ! grep -q 'canImport(PasskeyPRFHelperObjC)' "$f"; then
+              echo "Patching $f"
+              perl -0pi -e 's/^import PasskeyPRFHelperObjC$/#if canImport(PasskeyPRFHelperObjC)\nimport PasskeyPRFHelperObjC\n#endif/m' "$f"
+              patched=1
+            fi
+          done
+          echo "breez passkey patch complete (patched=$patched)"
 
       - name: Install CocoaPods
         script: |

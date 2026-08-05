@@ -18,6 +18,7 @@ workflows:
     environment:
       groups:
         - bro_secrets
+        - Brostr
       android_signing:
         - bro_keystore_v2
       ios_signing:
@@ -76,6 +77,9 @@ workflows:
       - name: Publish APK to GitHub Release
         script: |
           set -e
+          # Token com escrita no Brostr/bro vem do grupo "Brostr" (variavel Brostr),
+          # sobrepondo o GH_TOKEN antigo (bro_secrets, so leitura).
+          if [ -n "$Brostr" ]; then GH_TOKEN="$Brostr"; export GH_TOKEN; fi
           if [ -z "$GH_TOKEN" ]; then
             echo "⚠️  GH_TOKEN not set in bro_secrets — skipping GitHub release."
             exit 0
@@ -273,6 +277,7 @@ workflows:
     environment:
       groups:
         - bro_secrets
+        - Brostr
       android_signing:
         - bro_keystore_v2
       flutter: stable
@@ -301,6 +306,9 @@ workflows:
       - name: Publish APK to GitHub Release
         script: |
           set -e
+          # Token com escrita no Brostr/bro vem do grupo "Brostr" (variavel Brostr),
+          # sobrepondo o GH_TOKEN antigo (bro_secrets, so leitura).
+          if [ -n "$Brostr" ]; then GH_TOKEN="$Brostr"; export GH_TOKEN; fi
           if [ -z "$GH_TOKEN" ]; then
             echo "⚠️  GH_TOKEN not set in bro_secrets — skipping GitHub release."
             exit 0

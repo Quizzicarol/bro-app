@@ -49,25 +49,26 @@ workflows:
       - name: Get Flutter packages
         script: flutter pub get
         
-      - name: Patch breez spark passkey import (CocoaPods module fix)
+      - name: Neutralize breez spark passkey (unused; breaks CocoaPods)
         script: |
           set -e
-          # breez_sdk_spark_flutter 0.19.2 has `import PasskeyPRFHelperObjC` in
-          # PasskeyAssertionCore.swift. That Clang module only exists under
-          # SwiftPM. Under CocoaPods the ObjC PasskeyPRFHelper class is already
-          # part of the pod's own module, so guard the import with
-          # #if canImport(...) -> skipped under CocoaPods (class still visible),
-          # kept under SwiftPM. Runs every build after a fresh pub-cache clone.
-          patched=0
-          for f in "$HOME/.pub-cache/git/breez-sdk-spark-flutter-"*/ios/Classes/*.swift; do
-            [ -f "$f" ] || continue
-            if grep -q '^import PasskeyPRFHelperObjC' "$f" && ! grep -q 'canImport(PasskeyPRFHelperObjC)' "$f"; then
-              echo "Patching $f"
-              perl -0pi -e 's/^import PasskeyPRFHelperObjC$/#if canImport(PasskeyPRFHelperObjC)\nimport PasskeyPRFHelperObjC\n#endif/m' "$f"
-              patched=1
+          # Bro uses mnemonic (BIP-39) seeds, not passkeys. The breez_sdk_spark_flutter
+          # 0.19.2 passkey plugin only compiles under SwiftPM; under CocoaPods it fails
+          # (missing PasskeyPRFHelperObjC module + optional-unwrap errors). Replace the
+          # passkey Swift files with a build-time stub that keeps plugin registration
+          # (pluginClass BreezSdkSparkPasskeyPlugin) valid. Runs after each pub-cache clone.
+          STUB="$CM_BUILD_DIR/ios/patches/BreezSdkSparkPasskeyPlugin.swift"
+          count=0
+          for d in "$HOME/.pub-cache/git/breez-sdk-spark-flutter-"*/ios/Classes; do
+            [ -d "$d" ] || continue
+            if [ -f "$d/BreezSdkSparkPasskeyPlugin.swift" ]; then
+              echo "Stubbing passkey in $d"
+              cp "$STUB" "$d/BreezSdkSparkPasskeyPlugin.swift"
+              printf '// Build-time stub (unused passkey core).\nimport Foundation\n' > "$d/PasskeyAssertionCore.swift"
+              count=$((count+1))
             fi
           done
-          echo "breez passkey patch complete (patched=$patched)"
+          echo "passkey stub complete (dirs=$count)"
         
       - name: Build APK Release (Android)
         script: flutter build apk --release --dart-define-from-file=env.json
@@ -211,25 +212,26 @@ workflows:
       - name: Get Flutter packages
         script: flutter pub get
 
-      - name: Patch breez spark passkey import (CocoaPods module fix)
+      - name: Neutralize breez spark passkey (unused; breaks CocoaPods)
         script: |
           set -e
-          # breez_sdk_spark_flutter 0.19.2 has `import PasskeyPRFHelperObjC` in
-          # PasskeyAssertionCore.swift. That Clang module only exists under
-          # SwiftPM. Under CocoaPods the ObjC PasskeyPRFHelper class is already
-          # part of the pod's own module, so guard the import with
-          # #if canImport(...) -> skipped under CocoaPods (class still visible),
-          # kept under SwiftPM. Runs every build after a fresh pub-cache clone.
-          patched=0
-          for f in "$HOME/.pub-cache/git/breez-sdk-spark-flutter-"*/ios/Classes/*.swift; do
-            [ -f "$f" ] || continue
-            if grep -q '^import PasskeyPRFHelperObjC' "$f" && ! grep -q 'canImport(PasskeyPRFHelperObjC)' "$f"; then
-              echo "Patching $f"
-              perl -0pi -e 's/^import PasskeyPRFHelperObjC$/#if canImport(PasskeyPRFHelperObjC)\nimport PasskeyPRFHelperObjC\n#endif/m' "$f"
-              patched=1
+          # Bro uses mnemonic (BIP-39) seeds, not passkeys. The breez_sdk_spark_flutter
+          # 0.19.2 passkey plugin only compiles under SwiftPM; under CocoaPods it fails
+          # (missing PasskeyPRFHelperObjC module + optional-unwrap errors). Replace the
+          # passkey Swift files with a build-time stub that keeps plugin registration
+          # (pluginClass BreezSdkSparkPasskeyPlugin) valid. Runs after each pub-cache clone.
+          STUB="$CM_BUILD_DIR/ios/patches/BreezSdkSparkPasskeyPlugin.swift"
+          count=0
+          for d in "$HOME/.pub-cache/git/breez-sdk-spark-flutter-"*/ios/Classes; do
+            [ -d "$d" ] || continue
+            if [ -f "$d/BreezSdkSparkPasskeyPlugin.swift" ]; then
+              echo "Stubbing passkey in $d"
+              cp "$STUB" "$d/BreezSdkSparkPasskeyPlugin.swift"
+              printf '// Build-time stub (unused passkey core).\nimport Foundation\n' > "$d/PasskeyAssertionCore.swift"
+              count=$((count+1))
             fi
           done
-          echo "breez passkey patch complete (patched=$patched)"
+          echo "passkey stub complete (dirs=$count)"
 
       - name: Install CocoaPods
         script: |

@@ -84,7 +84,7 @@ workflows:
           if ! command -v gh >/dev/null 2>&1; then
             brew install gh
           fi
-          REPO="Quizzicarol/bro-app"
+          REPO="Brostr/bro"
           # Validar o token ANTES de publicar. Se estiver inválido/expirado ou
           # sem acesso ao repo, PULAR a publicação com aviso claro em vez de
           # derrubar o build inteiro (os APKs já foram gerados como artefatos).
@@ -263,7 +263,7 @@ workflows:
   # ANDROID APK -> GitHub Release publico (latest)
   # Dispara em push para apk/*  (ex: apk/v628)
   # NAO builda iOS / nao toca no TestFlight. Publica universal + arm64
-  # no repo Quizzicarol/bro-app e marca como latest (fonte do Zapstore).
+  # no repo Brostr/bro e marca como latest (fonte do Zapstore).
   # ============================================
   android-public-release:
     name: Android APK -> GitHub Release (latest)
@@ -309,7 +309,7 @@ workflows:
           if ! command -v gh >/dev/null 2>&1; then
             brew install gh
           fi
-          REPO="Quizzicarol/bro-app"
+          REPO="Brostr/bro"
           # Validar o token ANTES de publicar. Se estiver inválido/expirado ou
           # sem acesso ao repo, PULAR a publicação com aviso claro em vez de
           # derrubar o build inteiro (os APKs já foram gerados como artefatos).

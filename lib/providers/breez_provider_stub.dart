@@ -32,7 +32,7 @@ class BreezProvider with ChangeNotifier {
   }
 
   Future<Map<String, dynamic>?> createInvoice({
-    required int amountSats,
+    int? amountSats,
     String? description,
   }) async {
     return {'success': false, 'error': 'Lightning não disponível nesta plataforma'};

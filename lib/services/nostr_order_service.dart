@@ -3918,6 +3918,16 @@ class NostrOrderService {
           );
           for (final event in events) {
             try {
+              // SEGURANÇA: só o admin pode redirecionar o invoice de reembolso.
+              // _fetchFromRelay já verifica a assinatura (Event.fromJson verify:true),
+              // então event['pubkey'] é autêntico — basta exigir que seja o admin.
+              // Sem isso, qualquer um poderia publicar um invoice falso e desviar
+              // o pagamento do usuário.
+              final eventPubkey = event['pubkey'] as String?;
+              if (AppConfig.adminPubkey.isNotEmpty && eventPubkey != AppConfig.adminPubkey) {
+                broLog('⚠️ REJEITADO reembolso de não-admin: ${eventPubkey?.substring(0, 8) ?? '?'} (ordem ${orderId.substring(0, 8)})');
+                continue;
+              }
               final content = event['parsedContent'] ?? jsonDecode(event['content']);
               if (content['type'] == 'bro_admin_reimbursement' && content['orderId'] == orderId) {
                 return content['adminInvoice'] as String?;
@@ -4287,6 +4297,21 @@ class NostrOrderService {
               
               if (createdAt > latestTimestamp) {
                 try {
+                  // SEGURANÇA: verificar a assinatura do evento (este caminho usa
+                  // WebSocket cru, sem passar pelo _fetchFromRelay que já valida).
+                  // Sem isso, um relay malicioso poderia servir um evento forjado.
+                  try {
+                    Event.fromJson(eventData, verify: true);
+                  } catch (_) {
+                    continue;
+                  }
+                  // SEGURANÇA: só o admin pode resolver disputa. Após a verificação
+                  // de assinatura acima, eventData['pubkey'] é autêntico.
+                  final eventPubkey = eventData['pubkey'] as String?;
+                  if (AppConfig.adminPubkey.isNotEmpty && eventPubkey != AppConfig.adminPubkey) {
+                    broLog('⚠️ REJEITADO resolução de não-admin: ${eventPubkey?.substring(0, 8) ?? '?'} (ordem ${orderId.substring(0, 8)})');
+                    continue;
+                  }
                   final contentMap = jsonDecode(eventData['content'] as String) as Map<String, dynamic>;
                   if (contentMap['type'] == 'bro_dispute_resolution') {
                     latestResolution = contentMap;

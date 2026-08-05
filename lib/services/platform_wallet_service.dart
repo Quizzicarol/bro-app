@@ -180,7 +180,7 @@ class PlatformWalletService {
       // Preparar pagamento
       final prepareResp = await _sdk!.prepareSendPayment(
         request: spark.PrepareSendPaymentRequest(
-          paymentRequest: providerInvoice,
+          paymentRequest: spark.PaymentRequest.input(input: providerInvoice),
           amount: null,
           tokenIdentifier: null,
         ),

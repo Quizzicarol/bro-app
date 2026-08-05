@@ -76,6 +76,12 @@ class OrderProvider with ChangeNotifier {
   // Setado pelo main.dart com acesso aos providers Lightning
   Future<bool> Function(String orderId, Order order)? onAutoPayLiquidation;
 
+  // Callback para auto-pagamento EM BACKGROUND do reembolso de disputa
+  // resolvida a favor do provedor. Setado pelo main.dart; busca o invoice de
+  // reembolso (assinado pelo admin) e paga. Antes isso só rodava ao ABRIR a
+  // tela da ordem — mas "ninguém volta na ordem", então nunca acontecia.
+  Future<bool> Function(String orderId, Order order)? onAutoPayDisputeReimbursement;
+
   // v133: Callback para gerar invoice Lightning (provider side)
   // Usado para renovar invoices expirados em ordens liquidadas
   Future<String?> Function(int amountSats, String orderId)? onGenerateProviderInvoice;
@@ -3131,6 +3137,82 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
+  // Auto-pagamento EM BACKGROUND do reembolso de disputa resolvida a favor do
+  // provedor. Roda no sync (não depende do comprador abrir a tela da ordem).
+  //
+  // SEGURANÇA: só paga invoice publicado pelo ADMIN. fetchDisputeResolution e
+  // fetchAdminReimbursementInvoice verificam a assinatura do evento e exigem
+  // pubkey == AppConfig.adminPubkey, então ninguém além do admin consegue
+  // redirecionar o invoice de uma ordem (completada ou não). O callback em
+  // main.dart ainda valida valor > 0, não-expirado e um teto de sanidade.
+  bool _isAutoPayingDisputes = false;
+
+  Future<void> _autoPayDisputeReimbursements() async {
+    if (onAutoPayDisputeReimbursement == null) return;
+    if (_isAutoPayingDisputes) return;
+    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return;
+
+    _isAutoPayingDisputes = true;
+    try {
+      // Candidatas: ordens onde EU sou o comprador, ainda não reembolsadas, e
+      // que passaram por disputa. Filtro barato por flags locais; a confirmação
+      // (resolved_provider, assinada pelo admin) é feita via Nostr abaixo.
+      final candidates = _orders.where((order) {
+        if (order.userPubkey != _currentUserPubkey) return false;
+        final providerId = order.providerId ?? order.metadata?['providerId'] ?? order.metadata?['provider_id'] ?? '';
+        if (providerId.toString().isEmpty) return false;
+        if (providerId == _currentUserPubkey) return false;
+        final meta = order.metadata ?? const {};
+        if (meta['disputeProviderPaid'] == true) return false;
+        final wasDisputed = order.status == 'disputed'
+            || meta['wasDisputed'] == true
+            || meta['disputePaymentPending'] == true;
+        return wasDisputed;
+      }).toList();
+
+      if (candidates.isEmpty) return;
+
+      broLog('[DisputeAutoPay] ${candidates.length} ordem(ns) disputada(s) candidata(s) a reembolso');
+
+      for (final order in candidates) {
+        try {
+          // Confirmar via Nostr (assinatura + pubkey==admin já validados dentro)
+          final resolution = await _nostrOrderService.fetchDisputeResolution(order.id);
+          if (resolution == null) continue;
+          if (resolution['resolution'] != 'resolved_provider') {
+            // Resolvida a favor do comprador → nada a pagar.
+            continue;
+          }
+          broLog('[DisputeAutoPay] Ordem ${order.id.substring(0, 8)} resolvida p/ provedor — pagando reembolso ao admin...');
+          final success = await onAutoPayDisputeReimbursement!(order.id, order);
+          if (success) {
+            final index = _orders.indexWhere((o) => o.id == order.id);
+            if (index != -1) {
+              _orders[index] = _orders[index].copyWith(
+                metadata: {
+                  ...(_orders[index].metadata ?? {}),
+                  'disputeProviderPaid': true,
+                  'disputeProviderPaidAt': DateTime.now().toIso8601String(),
+                  'wasDisputed': true,
+                },
+              );
+            }
+            broLog('[DisputeAutoPay] ✅ Reembolso da ordem ${order.id.substring(0, 8)} pago');
+          } else {
+            broLog('[DisputeAutoPay] ⏳ Reembolso da ordem ${order.id.substring(0, 8)} não concluído (tentará no próximo sync)');
+          }
+        } catch (e) {
+          broLog('[DisputeAutoPay] Erro na ordem ${order.id.substring(0, 8)}: $e');
+        }
+      }
+      await _saveOrders();
+    } catch (e) {
+      broLog('[DisputeAutoPay] Erro geral: $e');
+    } finally {
+      _isAutoPayingDisputes = false;
+    }
+  }
+
   // v622: Reconciliação de taxa da plataforma.
   bool _isReconcilingFees = false;
 
@@ -4192,6 +4274,9 @@ class OrderProvider with ChangeNotifier {
       
       // v132: Auto-pagamento de ordens liquidadas sem pagamento
       await _autoPayLiquidatedOrders();
+      
+      // Auto-pagamento em background do reembolso de disputa (resolved_provider)
+      await _autoPayDisputeReimbursements();
       
       // v622: Reconciliar taxas da plataforma que ficaram para trás
       await _reconcilePlatformFees();

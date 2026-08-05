@@ -806,6 +806,103 @@ class BroApp extends StatelessWidget {
             return false;
           };
 
+          // Callback para auto-pagamento EM BACKGROUND do reembolso de disputa
+          // resolvida a favor do provedor (roda no sync, sem abrir a ordem).
+          // SEGURANÇA: o invoice de reembolso só é aceito se assinado pelo ADMIN
+          // (validado em fetchAdminReimbursementInvoice). Aqui ainda validamos
+          // valor > 0, não-expirado e um teto de sanidade (defesa contra chave
+          // admin comprometida).
+          orderProvider.onAutoPayDisputeReimbursement = (String orderId, order) async {
+            broLog('⚡ [DisputeAutoPay-Main] Reembolso admin para ordem ${orderId.substring(0, 8)}');
+            final nostrService = NostrOrderService();
+            String? adminInvoice;
+            try {
+              adminInvoice = await nostrService.fetchAdminReimbursementInvoice(orderId);
+            } catch (e) {
+              broLog('⚠️ [DisputeAutoPay-Main] Erro ao buscar invoice de reembolso: $e');
+            }
+            if (adminInvoice == null || adminInvoice.isEmpty) {
+              broLog('❌ [DisputeAutoPay-Main] Sem invoice de reembolso admin para ${orderId.substring(0, 8)}');
+              return false;
+            }
+
+            // Validar invoice antes de pagar
+            try {
+              if (breezProvider.isInitialized) {
+                final decoded = await breezProvider.decodeInvoice(adminInvoice);
+                if (decoded != null && decoded['success'] == true) {
+                  final tsSecs = int.tryParse(decoded['invoice']?['timestamp']?.toString() ?? '0') ?? 0;
+                  final expSecs = int.tryParse(decoded['invoice']?['expiry']?.toString() ?? '0') ?? 0;
+                  if (tsSecs > 0 && expSecs > 0) {
+                    final expiresAt = DateTime.fromMillisecondsSinceEpoch((tsSecs + expSecs) * 1000);
+                    if (DateTime.now().isAfter(expiresAt)) {
+                      broLog('⏳ [DisputeAutoPay-Main] Invoice de reembolso EXPIRADO — pulando (admin renova).');
+                      return false;
+                    }
+                  }
+                  final invoiceSats = int.tryParse(decoded['invoice']?['amountSats']?.toString() ?? '0') ?? 0;
+                  if (invoiceSats <= 0) {
+                    broLog('🚨 [DisputeAutoPay-Main] BLOQUEADO: invoice reembolso 0 sats.');
+                    return false;
+                  }
+                  // Teto de sanidade: reembolso ~ base + taxa; 2x cobre folga de
+                  // roteamento. Só o admin assina, mas isto limita dano se a
+                  // chave admin vazar.
+                  final baseSats = (order.btcAmount * 100000000).round();
+                  final sanityCap = ((baseSats + (baseSats * AppConfig.providerFeePercent).round()) * 2).ceil();
+                  if (sanityCap > 0 && invoiceSats > sanityCap) {
+                    broLog('🚨 [DisputeAutoPay-Main] BLOQUEADO: invoice reembolso inflado! $invoiceSats > $sanityCap');
+                    return false;
+                  }
+                }
+              }
+            } catch (e) {
+              broLog('🚨 [DisputeAutoPay-Main] Erro ao decodificar invoice reembolso — bloqueando: $e');
+              return false;
+            }
+
+            for (int attempt = 1; attempt <= 3; attempt++) {
+              try {
+                Map<String, dynamic>? payResult;
+                if (breezProvider.isInitialized) {
+                  payResult = await breezProvider.payInvoice(adminInvoice);
+                } else if (liquidProvider.isInitialized) {
+                  payResult = await liquidProvider.payInvoice(adminInvoice);
+                } else {
+                  broLog('⚠️ [DisputeAutoPay-Main] Nenhuma carteira inicializada');
+                  return false;
+                }
+                if (payResult != null && payResult['success'] == true) {
+                  broLog('✅ [DisputeAutoPay-Main] Reembolso pago na tentativa $attempt');
+                  return true;
+                }
+                final payError = payResult?['error']?.toString().toLowerCase() ?? '';
+                if (payError.contains('alreadyexists') ||
+                    payError.contains('already paid') ||
+                    payError.contains('already settled') ||
+                    payError.contains('preimage request already exists')) {
+                  broLog('✅ [DisputeAutoPay-Main] Invoice já pago (AlreadyExists) — sucesso');
+                  return true;
+                }
+                broLog('⚠️ [DisputeAutoPay-Main] Tentativa $attempt falhou: ${payResult?['error']}');
+              } catch (e) {
+                final errStr = e.toString().toLowerCase();
+                if (errStr.contains('alreadyexists') ||
+                    errStr.contains('already paid') ||
+                    errStr.contains('preimage request already exists')) {
+                  broLog('✅ [DisputeAutoPay-Main] Invoice já pago (AlreadyExists exception) — sucesso');
+                  return true;
+                }
+                broLog('⚠️ [DisputeAutoPay-Main] Tentativa $attempt erro: $e');
+              }
+              if (attempt < 3) {
+                await Future.delayed(const Duration(seconds: 2));
+              }
+            }
+            broLog('❌ [DisputeAutoPay-Main] 3 tentativas falharam para ${orderId.substring(0, 8)}');
+            return false;
+          };
+
           // v133: Callback para gerar invoice Lightning (provider side)
           orderProvider.onGenerateProviderInvoice = (int amountSats, String orderId) async {
             try {

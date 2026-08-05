@@ -260,6 +260,116 @@ workflows:
           failure: true
 
   # ============================================
+  # ANDROID APK -> GitHub Release publico (latest)
+  # Dispara em push para apk/*  (ex: apk/v628)
+  # NAO builda iOS / nao toca no TestFlight. Publica universal + arm64
+  # no repo Quizzicarol/bro-app e marca como latest (fonte do Zapstore).
+  # ============================================
+  android-public-release:
+    name: Android APK -> GitHub Release (latest)
+    max_build_duration: 90
+    instance_type: mac_mini_m2
+
+    environment:
+      groups:
+        - bro_secrets
+      android_signing:
+        - bro_keystore_v2
+      flutter: stable
+      java: 17
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: 'apk/*'
+          include: true
+
+    scripts:
+      - name: Generate env.json from CI variables
+        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","ADMIN_PASSWORD_HASH":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" "$ADMIN_PASSWORD_HASH" > "$CM_BUILD_DIR/env.json"
+
+      - name: Decode google-services.json
+        script: echo "$GOOGLE_SERVICES_JSON" | base64 --decode > "$CM_BUILD_DIR/android/app/google-services.json"
+
+      - name: Get Flutter packages
+        script: flutter pub get
+
+      - name: Build APK Release (Android)
+        script: flutter build apk --release --dart-define-from-file=env.json
+
+      - name: Publish APK to GitHub Release
+        script: |
+          set -e
+          if [ -z "$GH_TOKEN" ]; then
+            echo "⚠️  GH_TOKEN not set in bro_secrets — skipping GitHub release."
+            exit 0
+          fi
+          # Install gh CLI if missing
+          if ! command -v gh >/dev/null 2>&1; then
+            brew install gh
+          fi
+          REPO="Quizzicarol/bro-app"
+          # Validar o token ANTES de publicar. Se estiver inválido/expirado ou
+          # sem acesso ao repo, PULAR a publicação com aviso claro em vez de
+          # derrubar o build inteiro (os APKs já foram gerados como artefatos).
+          export GH_TOKEN
+          if ! GH_USER=$(gh api user --jq .login 2>/tmp/gh_err); then
+            echo "⚠️  GH_TOKEN inválido/expirado ou sem acesso (HTTP 401)."
+            echo "    Detalhe: $(cat /tmp/gh_err)"
+            echo "    → Gere um token com permissão Contents: Read and write em $REPO"
+            echo "      e atualize GH_TOKEN no grupo bro_secrets do Codemagic."
+            echo "⏭️  Pulando publicação no GitHub — build NÃO será marcado como falho."
+            exit 0
+          fi
+          echo "🔑 Autenticado no GitHub como: $GH_USER"
+          # Confirmar que o token enxerga o repo alvo (evita 401/404 depois)
+          if ! gh api "repos/$REPO" --jq .full_name >/tmp/gh_repo 2>/tmp/gh_err; then
+            echo "⚠️  O token '$GH_USER' NÃO tem acesso a $REPO."
+            echo "    Detalhe: $(cat /tmp/gh_err)"
+            echo "    → Confirme que $GH_USER é colaborador de $REPO e que o token"
+            echo "      (fine-grained) inclui esse repositório com Contents: write."
+            echo "⏭️  Pulando publicação no GitHub — build NÃO será marcado como falho."
+            exit 0
+          fi
+          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          TAG="v${VERSION}"
+          APK_SRC="build/app/outputs/flutter-apk/app-release.apk"
+          APK_LATEST="bro-latest.apk"
+          APK_VERSIONED="bro-${TAG}.apk"
+          cp "$APK_SRC" "$APK_LATEST"
+          cp "$APK_SRC" "$APK_VERSIONED"
+          # Build a TRUE arm64-v8a-only APK for Zapstore (~135MB).
+          echo "📦 Building arm64-v8a APK for Zapstore..."
+          flutter build apk --release --split-per-abi --dart-define-from-file=env.json
+          APK_ARM64="bro-${TAG}-arm64-v8a.apk"
+          cp "build/app/outputs/flutter-apk/app-arm64-v8a-release.apk" "$APK_ARM64"
+          echo "🚀 Publishing $TAG to $REPO..."
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            echo "Release $TAG exists, uploading/replacing assets..."
+            gh release upload "$TAG" "$APK_LATEST" "$APK_VERSIONED" "$APK_ARM64" --repo "$REPO" --clobber
+            gh release edit "$TAG" --repo "$REPO" --latest
+          else
+            gh release create "$TAG" "$APK_LATEST" "$APK_VERSIONED" "$APK_ARM64" \
+              --repo "$REPO" \
+              --title "Bro $TAG" \
+              --notes "Build automático via Codemagic. APK assinado com keystore v2." \
+              --latest
+          fi
+          echo "✅ GitHub release published: https://github.com/$REPO/releases/tag/$TAG"
+
+    artifacts:
+      - build/**/outputs/**/*.apk
+
+    publishing:
+      email:
+        recipients:
+          - your-email@example.com  # TODO: configure
+        notify:
+          success: true
+          failure: true
+
+  # ============================================
   # DISTRIBUIO PARA TESTERS (SEM LOJA)
   # Gera APK release assinado para Android
   # MANUAL - Use apenas se precisar s do APK

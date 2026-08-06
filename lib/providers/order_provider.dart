@@ -2453,6 +2453,20 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
+  /// v629: Remove imediatamente uma ordem da lista "Disponíveis" quando a tela
+  /// de detalhe detecta que ela já foi aceita por OUTRO Bro (providerId válido
+  /// ou status avançado). Evita que a ordem stale continue aparecendo até o
+  /// próximo sync. Automático — sem ação manual do usuário.
+  void markOrderTakenByOther(String orderId) {
+    final before = _availableOrdersForProvider.length;
+    _availableOrdersForProvider.removeWhere((o) => o.id == orderId);
+    _nostrOrderService.addToBlocklistPublic({orderId});
+    if (_availableOrdersForProvider.length != before) {
+      broLog('🚫 [markOrderTakenByOther] Ordem ${orderId.substring(0, 8)} removida da lista disponível (já aceita por outro Bro)');
+      notifyListeners();
+    }
+  }
+
   /// v626: Re-publica o evento de aceite (kind 30079) em background quando a
   /// confirmação inicial falhou por contenção de relay (damus 503, ACK lento).
   /// Garante que o buyer receba o aceite e o billcode seja gerado, sem travar

@@ -24,6 +24,9 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
   bool _showMnemonic = false;
   bool _showPassphrase = false;
   String? _currentMnemonic;
+  bool? _seedRecoversIdentity;
+  bool _showIdentityKey = false;
+  String? _identityPrivateKey;
   String? _derivedPublicKey;
   String? _derivedPrivateKey;
   String? _error;
@@ -43,8 +46,30 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
 
   Future<void> _loadCurrentMnemonic() async {
     final mnemonic = await _storage.getBreezMnemonic();
+    final currentPubkey = await _storage.getNostrPublicKey();
+    bool? recoversIdentity;
+    if (mnemonic != null && mnemonic.isNotEmpty &&
+        currentPubkey != null && currentPubkey.isNotEmpty) {
+      try {
+        final derived = _nip06.deriveNostrKeys(mnemonic);
+        recoversIdentity = derived['publicKey'] == currentPubkey;
+      } catch (_) {
+        recoversIdentity = null;
+      }
+    }
+    if (!mounted) return;
     setState(() {
       _currentMnemonic = mnemonic;
+      _seedRecoversIdentity = recoversIdentity;
+    });
+  }
+
+  Future<void> _revealIdentityKey() async {
+    final pk = await _storage.getNostrPrivateKey();
+    if (!mounted) return;
+    setState(() {
+      _identityPrivateKey = pk;
+      _showIdentityKey = true;
     });
   }
 
@@ -211,6 +236,11 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Aviso: seed NAO recupera a identidade Nostr (conta nsec-primaria)
+              if (_seedRecoversIdentity == false) ...[
+                _buildIdentityWarningCard(),
+                const SizedBox(height: 16),
+              ],
               // Info card
               _buildInfoCard(),
               const SizedBox(height: 24),
@@ -262,6 +292,92 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
           ],
         ),
       ),
+      ),
+    );
+  }
+
+  Widget _buildIdentityWarningCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0x1AFF3B30),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0x55FF3B30)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: Color(0xFFFF3B30)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  AppLocalizations.of(context).t('nip06_identity_mismatch_title'),
+                  style: const TextStyle(
+                    color: Color(0xFFFF3B30),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            AppLocalizations.of(context).t('nip06_identity_mismatch_body'),
+            style: const TextStyle(color: Color(0xD9FFFFFF), fontSize: 13, height: 1.5),
+          ),
+          const SizedBox(height: 12),
+          if (!_showIdentityKey)
+            OutlinedButton.icon(
+              onPressed: _revealIdentityKey,
+              icon: const Icon(Icons.vpn_key, size: 18, color: Color(0xFFFF3B30)),
+              label: Text(
+                AppLocalizations.of(context).t('nip06_reveal_identity_key'),
+                style: const TextStyle(color: Color(0xFFFF3B30)),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Color(0x55FF3B30)),
+              ),
+            )
+          else if (_identityPrivateKey != null) ...[
+            Text(
+              AppLocalizations.of(context).t('nip06_identity_key_label'),
+              style: const TextStyle(
+                color: Color(0xFFFFC107),
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 6),
+            GestureDetector(
+              onTap: () => _copyToClipboard(
+                _identityPrivateKey!,
+                AppLocalizations.of(context).t('nip06_identity_key_label'),
+              ),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1A1A),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0x33FFFFFF)),
+                ),
+                child: Text(
+                  _identityPrivateKey!,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

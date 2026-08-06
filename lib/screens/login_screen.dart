@@ -737,6 +737,42 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<bool?> _confirmIdentityOverwrite(String currentPubkey, String newPubkey) {
+    String shortKey(String k) =>
+        k.length <= 12 ? k : '${k.substring(0, 6)}…${k.substring(k.length - 6)}';
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          AppLocalizations.of(ctx).t('login_overwrite_identity_title'),
+          style: const TextStyle(color: Color(0xFFFF3B30), fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          AppLocalizations.of(ctx).tp('login_overwrite_identity_body', {
+            'current': shortKey(currentPubkey),
+            'new': shortKey(newPubkey),
+          }),
+          style: const TextStyle(color: Color(0xD9FFFFFF), height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(AppLocalizations.of(ctx).t('cancel'),
+                style: const TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF3B30)),
+            child: Text(AppLocalizations.of(ctx).t('login_overwrite_identity_confirm'),
+                style: const TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _login() async {
     final input = _privateKeyController.text.trim();
 
@@ -819,6 +855,28 @@ class _LoginScreenState extends State<LoginScreen> {
         }
         broLog('═══════════════════════════════════════════════════════════');
         broLog('');
+      }
+
+      // Fase 2: proteger contra sobrescrever uma identidade JÁ existente neste
+      // dispositivo por engano (ex: colar a seed errada). Só avisa se já houver
+      // uma identidade salva e ela for DIFERENTE da que está entrando.
+      final existingPubkey = await _storage.getNostrPublicKey();
+      if (existingPubkey != null &&
+          existingPubkey.isNotEmpty &&
+          existingPubkey != publicKey) {
+        broLog('⚠️ Identidade existente ($existingPubkey) difere da nova ($publicKey)');
+        if (!mounted) return;
+        final proceed = await _confirmIdentityOverwrite(existingPubkey, publicKey);
+        if (proceed != true) {
+          broLog('🚫 Usuário cancelou troca de identidade');
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+              _statusMessage = null;
+            });
+          }
+          return;
+        }
       }
 
       broLog('✅ Login com Nostr. Pubkey: ${publicKey.substring(0, 16)}...');

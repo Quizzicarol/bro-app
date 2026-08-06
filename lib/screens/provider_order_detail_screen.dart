@@ -379,14 +379,20 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           _orderDetails = order;
           // Verificar se ordem já foi aceita (por qualquer provedor ou este provedor)
           final orderProviderId = order?['providerId'] ?? order?['provider_id'];
+          final orderOwnerPubkey = order?['userPubkey'] ?? order?['pubkey'];
           final orderStatus = order?['status'] ?? 'pending';
           
           // CORREÇÃO CRÍTICA: Ordem foi aceita se:
           // 1. Status indica aceitação (accepted/awaiting_confirmation/completed/liquidated)
           // 2. OU tem providerId definido (mesmo se status vier errado do Nostr)
+          // v629 FIX: providerId == userPubkey é um bug de serialização (o evento
+          // 30078 carrega a PRÓPRIA pubkey do comprador como providerId). Isso NÃO
+          // significa aceite — se não ignorarmos, NENHUM Bro consegue aceitar a
+          // ordem (vê banner "já aceita"). Um aceite real tem providerId != dono.
           final hasValidProviderId = orderProviderId != null && 
                                      orderProviderId.isNotEmpty && 
-                                     orderProviderId != 'provider_test_001';
+                                     orderProviderId != 'provider_test_001' &&
+                                     orderProviderId != orderOwnerPubkey;
           final hasAdvancedStatus = orderStatus == 'accepted' || 
                                     orderStatus == 'awaiting_confirmation' || 
                                     orderStatus == 'completed' ||
@@ -418,6 +424,14 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           broLog('🔍 Ordem ${widget.orderId.substring(0, 8)}: status=$orderStatus, providerId=$orderProviderId, _orderAccepted=$_orderAccepted');
           _isLoading = false;
         });
+        // v629: se a ordem já foi aceita por outro Bro, remover automaticamente
+        // da lista "Disponíveis" para não continuar aparecendo stale até o
+        // próximo sync. Automático — sem ação manual do usuário.
+        if (_orderAccepted && mounted) {
+          try {
+            context.read<OrderProvider>().markOrderTakenByOther(widget.orderId);
+          } catch (_) {}
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -437,6 +451,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     // PROTEÇÃO CRÍTICA: Verificar se ordem já foi aceita
     final currentStatus = _orderDetails?['status'] ?? 'pending';
     final currentProviderId = _orderDetails?['providerId'] ?? _orderDetails?['provider_id'];
+    // v629 FIX: ignorar providerId self-referencial (== dono da ordem)
+    final currentOwnerPubkey = _orderDetails?['userPubkey'] ?? _orderDetails?['pubkey'];
     
     broLog('🔵 [ACCEPT] Status atual: $currentStatus, providerId: $currentProviderId, _orderAccepted: $_orderAccepted');
     
@@ -462,7 +478,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       return;
     }
     
-    if (currentProviderId != null && currentProviderId.isNotEmpty) {
+    if (currentProviderId != null && currentProviderId.isNotEmpty &&
+        currentProviderId != currentOwnerPubkey) {
       broLog('🚫 BLOQUEIO DE SEGURANÇA: Ordem já tem providerId=$currentProviderId');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

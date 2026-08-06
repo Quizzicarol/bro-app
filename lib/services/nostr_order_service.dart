@@ -1472,7 +1472,12 @@ class NostrOrderService {
         'platformFee': order.platformFee,
         'total': order.total,
         'status': newStatus,
-        'providerId': providerId ?? order.providerId,
+        // v629 FIX: nunca gravar providerId == dono da ordem (keychain.public).
+        // Um providerId self-referencial faz TODO Bro achar que a ordem já foi
+        // aceita e bloqueia a aceitação. providerId válido = pubkey do provedor.
+        'providerId': (providerId ?? order.providerId) == keychain.public
+            ? null
+            : (providerId ?? order.providerId),
         'createdAt': order.createdAt.toIso8601String(),
         'updatedAt': DateTime.now().toIso8601String(),
       });

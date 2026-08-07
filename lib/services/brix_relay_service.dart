@@ -9,12 +9,14 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:bro_app/services/brix_service.dart';
 import 'package:bro_app/services/api_service.dart';
 import 'package:bro_app/services/storage_service.dart';
+import 'package:bro_app/services/secure_storage_service.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:bro_app/services/push_diag.dart';
 import 'package:bro_app/services/lnaddress_service.dart';
 import 'package:bro_app/services/platform_fee_service.dart';
 import 'package:bro_app/providers/breez_provider.dart';
 import 'package:bro_app/config.dart';
+import 'package:bro_app/config/payment_methods.dart';
 
 /// Global BRIX invoice relay service.
 /// Polls the BRIX server for incoming invoice requests and auto-generates
@@ -102,11 +104,23 @@ class BrixRelayService {
       // Register with main backend for order_update push notifications
       if (!_backendFcmRegistered) {
         try {
-          final ok = await ApiService().registerPushToken(token);
+          // v633: assert providerEnabled=true when in provider mode. The
+          // reliable retry loop previously registered WITHOUT the flag, so if
+          // the one-shot startup registration failed (network unavailable in
+          // the ~8s startup window), the provider NEVER got 'Nova ordem'
+          // broadcasts — the backend preserves the (absent → false) flag.
+          // Now the loop itself enforces provider status.
+          final isProvider = await SecureStorageService.isProviderMode(userPubkey: _pubkey);
+          final ok = isProvider
+              ? await ApiService().registerPushToken(token, providerEnabled: true)
+              : await ApiService().registerPushToken(token);
           if (ok) {
             _backendFcmRegistered = true;
-            broLog('[BRIX-RELAY] FCM token registered successfully (backend)');
-            PushDiag.log('relay: backend register OK');
+            broLog('[BRIX-RELAY] FCM token registered successfully (backend, provider=$isProvider)');
+            PushDiag.log('relay: backend register OK provider=$isProvider');
+            if (isProvider) {
+              unawaited(_resyncProviderFilters());
+            }
           } else {
             broLog('[BRIX-RELAY] Backend FCM registration returned false');
             PushDiag.log('relay: backend register FALSE');
@@ -134,6 +148,48 @@ class BrixRelayService {
       }
     } catch (e) {
       PushDiag.log('relay: diagnose ERR $e');
+    }
+  }
+
+  /// v633: Re-send provider payment-method + accepted-currency filters to the
+  /// backend. The UI syncs these fire-and-forget only when the filter changes;
+  /// if that single call failed (network), the provider could stop receiving
+  /// matching 'Nova ordem' broadcasts. Re-asserting on every fresh backend
+  /// registration heals it automatically (no user action needed).
+  Future<void> _resyncProviderFilters() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('bro_provider_selected_methods');
+      if (raw == null || raw.isEmpty) return; // nothing saved → backend keeps 'all'
+      final methods = (jsonDecode(raw) as List).map((e) => e.toString()).toList();
+      if (methods.isEmpty) return;
+      await ApiService().setProviderPaymentMethods(methods);
+      final accepted = <String>[];
+      for (final g in PaymentMethods.kGroups) {
+        if (g.currency == 'BRL') continue; // BRL always delivered by backend
+        if (g.ids.every(methods.contains)) accepted.add(g.currency);
+      }
+      await ApiService().setProviderAcceptedCurrencies(accepted);
+      PushDiag.log('relay: provider filters resynced (methods=${methods.length}, cur=${accepted.length})');
+    } catch (e) {
+      broLog('[BRIX-RELAY] provider filter resync failed: $e');
+    }
+  }
+
+  /// v633: Periodic re-assert of provider status. Protects against the backend
+  /// dropping the providerEnabled flag on restart / token rotation. Idempotent.
+  Future<void> _reassertProviderStatusPeriodic() async {
+    try {
+      if (_pubkey == null || _pubkey!.isEmpty) return;
+      final isProvider = await SecureStorageService.isProviderMode(userPubkey: _pubkey);
+      if (!isProvider) return;
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token == null || token.isEmpty) return;
+      await ApiService().registerPushToken(token, providerEnabled: true);
+      await _resyncProviderFilters();
+      PushDiag.log('relay: periodic provider re-assert OK');
+    } catch (e) {
+      broLog('[BRIX-RELAY] periodic provider re-assert failed: $e');
     }
   }
 
@@ -232,6 +288,13 @@ class BrixRelayService {
     // v620: % 24 com poll de 5s = ~120s (antes % 80 = ~6,7min por causa do 5s).
     if (_backendFcmRegistered && _pollCount % 24 == 1) {
       unawaited(_verifyBackendRegistration());
+    }
+
+    // v633: A cada ~10min, re-afirma providerEnabled + filtros no backend.
+    // Protege contra o backend perder a flag em restart/rotacao de token, o
+    // que silenciava os broadcasts de 'Nova ordem' (causa das ordens perdidas).
+    if (_backendFcmRegistered && _pollCount % 120 == 61) {
+      unawaited(_reassertProviderStatusPeriodic());
     }
 
     try {

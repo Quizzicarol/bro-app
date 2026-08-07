@@ -28,6 +28,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter/services.dart';
 import '../widgets/dispute_chat.dart';
+import '../utils/image_compress.dart';
 
 /// Tela exibida após pagamento confirmado
 /// Mostra status da ordem e aguarda provedor aceitar
@@ -3134,7 +3135,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                               final bytes = await file.readAsBytes();
                               setModalState(() {
                                 _evidencePhoto = file;
-                                _evidenceBase64 = base64Encode(bytes);
+                                _evidenceBase64 = compressImageToBase64ForNip44(bytes);
                               });
                             }
                           },
@@ -3162,7 +3163,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                               final bytes = await file.readAsBytes();
                               setModalState(() {
                                 _evidencePhoto = file;
-                                _evidenceBase64 = base64Encode(bytes);
+                                _evidenceBase64 = compressImageToBase64ForNip44(bytes);
                               });
                             }
                           },

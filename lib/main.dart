@@ -358,8 +358,15 @@ void main() async {
           broLog('[FCM] BRIX re-registration failed: $e');
         }
         try {
-          final backendOk = await ApiService().registerPushToken(newToken);
-          broLog('[FCM] Backend push token re-registered after refresh: $backendOk');
+          // v633: preserve provider status on token rotation. Previously this
+          // re-registration omitted providerEnabled, and if the backend had
+          // never received the flag (startup race), the rotated token stayed
+          // non-provider → provider stopped getting 'Nova ordem' broadcasts.
+          final isProv = await SecureStorageService.isProviderMode(userPubkey: userPubkey);
+          final backendOk = isProv
+              ? await ApiService().registerPushToken(newToken, providerEnabled: true)
+              : await ApiService().registerPushToken(newToken);
+          broLog('[FCM] Backend push token re-registered after refresh: $backendOk (provider=$isProv)');
         } catch (e) {
           broLog('[FCM] Backend re-registration failed: $e');
         }

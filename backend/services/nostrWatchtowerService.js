@@ -584,23 +584,32 @@ class NostrWatchtowerService {
           };
 
           const routing = STATUS_NOTIFY[status] || 'other';
-          let targetPubkey = null;
 
-          if (routing === 'user' && isValidPubkey(userPubkey)) {
-            targetPubkey = userPubkey;
-          } else if (routing === 'provider' && isValidPubkey(providerId)) {
-            targetPubkey = providerId;
-          } else if (routing === 'other') {
-            // Notify the party that DIDN'T publish (for cancel/dispute)
-            if (senderPubkey === providerId && isValidPubkey(userPubkey)) {
+          // v633: Disputas — notificar AMBAS as partes envolvidas + o
+          // admin/mediador, não apenas a contraparte. O fluxo antigo ('other')
+          // avisava só quem NÃO abriu a disputa; agora garantimos que usuário,
+          // provedor e admin fiquem cientes para agilizar a mediação.
+          if (status === 'disputed') {
+            await this._notifyDisputeParties(orderId, shortId, senderPubkey, userPubkey, providerId);
+          } else {
+            let targetPubkey = null;
+
+            if (routing === 'user' && isValidPubkey(userPubkey)) {
               targetPubkey = userPubkey;
-            } else if (senderPubkey === userPubkey && isValidPubkey(providerId)) {
+            } else if (routing === 'provider' && isValidPubkey(providerId)) {
               targetPubkey = providerId;
+            } else if (routing === 'other') {
+              // Notify the party that DIDN'T publish (for cancel)
+              if (senderPubkey === providerId && isValidPubkey(userPubkey)) {
+                targetPubkey = userPubkey;
+              } else if (senderPubkey === userPubkey && isValidPubkey(providerId)) {
+                targetPubkey = providerId;
+              }
             }
-          }
 
-          if (targetPubkey) {
-            await this._sendOrderPush(targetPubkey, senderPubkey, status, orderId, shortId, routing);
+            if (targetPubkey) {
+              await this._sendOrderPush(targetPubkey, senderPubkey, status, orderId, shortId, routing);
+            }
           }
 
           // v584: limpa tracking de invoice pendente quando ordem termina
@@ -689,6 +698,43 @@ class NostrWatchtowerService {
   _isHistoricalEvent(event) {
     if (!event || typeof event.created_at !== 'number') return false;
     return event.created_at < (this._bootTime - this._BOOT_GRACE_SEC);
+  }
+
+  /**
+   * v633: Notify BOTH parties of a dispute plus the admin/mediator.
+   * Uses per-recipient dedup keys so the single-target dedup in _sendOrderPush
+   * doesn't collapse the fan-out to one push. The event publisher is excluded
+   * (they opened the dispute and already know).
+   */
+  async _notifyDisputeParties(orderId, shortId, senderPubkey, userPubkey, providerId) {
+    const notif = NOTIFICATION_MAP.disputed ||
+      { title: '⚖️ Disputa aberta', body: 'Uma disputa foi aberta nesta ordem' };
+
+    const isValid = (pk) => typeof pk === 'string' && /^[0-9a-f]{64}$/.test(pk);
+    const targets = new Set();
+    if (isValid(userPubkey)) targets.add(userPubkey.toLowerCase());
+    if (isValid(providerId)) targets.add(providerId.toLowerCase());
+    const admin = (process.env.ADMIN_PUBKEY || '').toLowerCase();
+    if (/^[0-9a-f]{64}$/.test(admin)) targets.add(admin);
+
+    const sender = (senderPubkey || '').toLowerCase();
+    let sent = 0;
+    for (const target of targets) {
+      if (target === sender) continue; // publisher already knows
+      const key = `${orderId}:disputed:${target}`;
+      if (this._seenPushes.has(key)) continue;
+      this._seenPushes.add(key);
+      const ok = await this._sendPush(target, {
+        type: 'order_update',
+        sender_pubkey: senderPubkey,
+        subtype: 'disputed',
+        order_id: orderId,
+        source: 'watchtower',
+      }, notif);
+      if (ok) sent++;
+    }
+    console.log(`🗼 [Watchtower] Dispute ${shortId || orderId.substring(0, 8)}: notified ${sent}/${targets.size} parties`);
+    return sent > 0;
   }
 
   /**

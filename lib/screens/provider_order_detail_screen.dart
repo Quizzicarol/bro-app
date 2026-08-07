@@ -20,6 +20,7 @@ import '../services/api_service.dart';
 import '../config.dart';
 import '../l10n/app_localizations.dart';
 import '../widgets/dispute_chat.dart';
+import '../utils/image_compress.dart';
 /// Tela de detalhes da ordem para o provedor
 /// Mostra dados de pagamento (PIX/boleto) e permite aceitar e enviar comprovante
 class ProviderOrderDetailScreen extends StatefulWidget {
@@ -760,11 +761,16 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       String e2eId = _e2eIdController.text.trim(); // v236
       
       if (_receiptImage != null) {
-        // Converter imagem para base64 para publicar no Nostr
+        // Converter imagem para base64 para publicar no Nostr.
+        // CRÍTICO: recomprimir para caber no limite do NIP-44 (65535 bytes de
+        // plaintext). Sem isso, imagens grandes eram cifradas com o campo de
+        // tamanho estourado e chegavam TRUNCADAS ao usuário → "Could not
+        // decompress image". A criptografia NIP-44 é mantida — só garantimos
+        // que a imagem cabe antes de cifrar.
         final bytes = await _receiptImage!.readAsBytes();
-        proofImageBase64 = base64Encode(bytes);
+        proofImageBase64 = compressImageToBase64ForNip44(bytes);
         final sizeKB = (proofImageBase64.length * 3 / 4 / 1024).round();
-        broLog('📸 Comprovante: ${sizeKB}KB em base64 (${proofImageBase64.length} chars)');
+        broLog('📸 Comprovante: ${sizeKB}KB em base64 (${proofImageBase64.length} chars, teto NIP-44 ${kNip44MaxImageBase64})');
       }
 
       // ========== GERAR INVOICE AUTOMATICAMENTE ==========

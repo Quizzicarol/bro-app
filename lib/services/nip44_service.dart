@@ -127,7 +127,17 @@ class Nip44Service {
   Uint8List _padMessage(String message) {
     final messageBytes = utf8.encode(message);
     final messageLength = messageBytes.length;
-    
+
+    // NIP-44 v2: o tamanho é gravado num campo de 2 bytes (ver abaixo), então
+    // o plaintext NÃO pode passar de 65535 bytes. Se passar, o campo "dá a
+    // volta" (mod 65536) e a decriptação devolve dados TRUNCADOS silenciosamente.
+    // Falhar aqui, alto e claro, evita corromper comprovantes/evidências.
+    if (messageLength > 0xFFFF) {
+      throw Exception(
+          'NIP-44: mensagem excede o limite de 65535 bytes ($messageLength). '
+          'Comprima a imagem antes de cifrar (ver image_compress.dart).');
+    }
+
     // Calcular tamanho com padding
     final paddedLength = _calcPaddedLen(messageLength);
     

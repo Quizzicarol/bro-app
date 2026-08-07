@@ -119,7 +119,9 @@ class TransactionCard extends StatelessWidget {
   Color _getStatusBackgroundColor() {
     switch (status.toLowerCase()) {
       case 'pending':
-        return const Color(0x33FFC107); // rgba(255, 193, 7, 0.2)
+      case 'payment_received':
+      case 'accepted':
+        return const Color(0x33FFC107); // rgba(255, 193, 7, 0.2) — amarelo "Bro Encontrado"
       case 'completed':
       case 'paid':
         return const Color(0x334CAF50); // rgba(76, 175, 80, 0.2)
@@ -138,7 +140,9 @@ class TransactionCard extends StatelessWidget {
   Color _getStatusTextColor() {
     switch (status.toLowerCase()) {
       case 'pending':
-        return const Color(0xFFFFC107);
+      case 'payment_received':
+      case 'accepted':
+        return const Color(0xFFFFC107); // amarelo — mantém aceso até o comprovante chegar
       case 'completed':
       case 'paid':
         return const Color(0xFF4CAF50);

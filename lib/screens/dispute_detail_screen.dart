@@ -13,6 +13,7 @@ import '../services/nostr_order_service.dart';
 import '../services/storage_service.dart';
 import '../services/api_service.dart';
 import '../widgets/dispute_chat.dart';
+import '../utils/image_compress.dart';
 
 /// Tela de detalhes de disputa para o mediador (admin)
 /// Mostra TODOS os dados da disputa, comprovante, e controles de resolução
@@ -1491,7 +1492,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
       
       final file = File(picked.path);
       final bytes = await file.readAsBytes();
-      final imageBase64 = base64Encode(bytes);
+      final imageBase64 = compressImageToBase64ForNip44(bytes);
       
       // Mostrar dialog para adicionar descrição antes de enviar
       if (!mounted) return;

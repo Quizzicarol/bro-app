@@ -534,32 +534,52 @@ class OrderProvider with ChangeNotifier {
   /// v519: Remove ghost provider orders — providerId==me but no invoice/proof.
   /// Runs both on local load and after Nostr sync to prevent re-addition.
   void _removeGhostProviderOrders(String userPubkey) {
-    final before = _orders.length;
     final now = DateTime.now();
+    // v631 HEAL: ordem que EU realmente aceitei (acceptedAt setado) mas cujo
+    // providerId ficou errado — null, ou == userPubkey do comprador por bug de
+    // carimbo (quando _nostrService.publicKey volta null o copyWith preservava
+    // o providerId poluído do evento do comprador). Sem isso a ordem some de
+    // "Minhas Ordens" porque myAcceptedOrders filtra providerId == eu.
+    bool healed = false;
+    for (int i = 0; i < _orders.length; i++) {
+      final o = _orders[i];
+      if (o.acceptedAt != null &&
+          o.userPubkey != null &&
+          o.userPubkey!.isNotEmpty &&
+          o.userPubkey != userPubkey &&
+          o.providerId != userPubkey) {
+        _orders[i] = o.copyWith(providerId: userPubkey);
+        healed = true;
+        broLog('🩹 HEAL providerId=me em ${o.id.substring(0, 8)} (era ${o.providerId == null ? "null" : o.providerId!.substring(0, 8)}; aceita localmente)');
+      }
+    }
+    if (healed) _saveOnlyUserOrders();
+
+    final before = _orders.length;
     // v566: Janela de tolerância para ordens recém-aceitas (sem invoice ainda).
-    // Provedor pode acabar de aceitar e ainda não ter recebido invoice do user
-    // — isso NÃO é uma ghost order, é uma legítima em propagação.
     const recentGrace = Duration(minutes: 30);
     _orders = _orders.where((order) {
       final isMeAsProvider = order.providerId == userPubkey;
       final someoneElseIsCustomer = order.userPubkey != null &&
           order.userPubkey!.isNotEmpty &&
           order.userPubkey != userPubkey;
+      if (!isMeAsProvider || !someoneElseIsCustomer) return true;
+      // v631: NUNCA remover ordem que EU aceitei de verdade (acceptedAt setado).
+      // O provedor pode ficar MUITO tempo aguardando o billcode do comprador ou
+      // pagando o PIX — legítima mesmo sem invoice/proof ainda. Só stamping-ghosts
+      // (providerId=me carimbado por sync bugado, sem aceite real) têm
+      // acceptedAt == null. Isso é a persistência que o usuário pediu: uma vez
+      // que aceitei, a ordem fica salva no dispositivo e não some mais.
+      if (order.acceptedAt != null) return true;
       final hasProviderInvoice = (order.metadata?['providerInvoice'] as String?)?.isNotEmpty == true;
       final hasProof = (order.metadata?['proofImage'] as String?)?.isNotEmpty == true ||
           (order.metadata?['paymentProof'] as String?)?.isNotEmpty == true;
-      if (isMeAsProvider && someoneElseIsCustomer && !hasProviderInvoice && !hasProof) {
-        // v566: Tolerância para aceitações recentes
-        final acceptedAt = order.acceptedAt;
-        if (acceptedAt != null && now.difference(acceptedAt) < recentGrace) {
-          broLog('⏳ Ghost-check (invoice): mantendo ordem ${order.id.substring(0, 8)} aceita há ${now.difference(acceptedAt).inSeconds}s');
+      if (!hasProviderInvoice && !hasProof) {
+        // acceptedAt == null aqui → nunca aceitei de verdade; tolerar se recente
+        if (now.difference(order.createdAt) < recentGrace) {
           return true;
         }
-        if (acceptedAt == null && now.difference(order.createdAt) < recentGrace) {
-          broLog('⏳ Ghost-check (invoice): mantendo ordem ${order.id.substring(0, 8)} criada há ${now.difference(order.createdAt).inSeconds}s');
-          return true;
-        }
-        broLog('🧹 Ghost order removida (providerId=me sem invoice/proof, status ${order.status}): ${order.id.substring(0, 8)}');
+        broLog('🧹 Ghost order removida (stamping sem acceptedAt/invoice/proof, status ${order.status}): ${order.id.substring(0, 8)}');
         return false;
       }
       return true;
@@ -596,18 +616,21 @@ class OrderProvider with ChangeNotifier {
             order.userPubkey!.isNotEmpty &&
             order.userPubkey != userPubkey;
         if (isMeAsProvider && someoneElseIsCustomer && !acceptedIds.contains(order.id)) {
-          // Janela de tolerância: aceita há pouco tempo? Manter.
-          final acceptedAt = order.acceptedAt;
-          if (acceptedAt != null && now.difference(acceptedAt) < propagationGrace) {
-            broLog('⏳ Ghost-check: mantendo ordem ${order.id.substring(0, 8)} aceita há ${now.difference(acceptedAt).inSeconds}s (propagação Nostr)');
+          // v631: acceptedAt setado = EU aceitei localmente. Relays PODAM eventos
+          // antigos, então o bro_accept pode simplesmente não voltar do relay —
+          // isso NÃO é prova de ghost. A persistência local é a fonte de verdade;
+          // nunca remover um aceite real (era a causa das ordens antigas de
+          // "Minhas" sumindo e reaparecendo — 5 numa hora, 51 na outra).
+          if (order.acceptedAt != null) {
             return true;
           }
-          // v566: Sem acceptedAt mas createdAt recente também merece tolerância
-          if (acceptedAt == null && now.difference(order.createdAt) < propagationGrace) {
+          // Sem acceptedAt: pode ser stamping-ghost. Tolerar se criada há pouco
+          // (propagação Nostr), senão remover.
+          if (now.difference(order.createdAt) < propagationGrace) {
             broLog('⏳ Ghost-check: mantendo ordem ${order.id.substring(0, 8)} criada há ${now.difference(order.createdAt).inSeconds}s (sem acceptedAt, propagação Nostr)');
             return true;
           }
-          broLog('🧹 Ghost order removida via Nostr cross-check (sem bro_accept meu): ${order.id.substring(0, 8)}');
+          broLog('🧹 Ghost order removida via Nostr cross-check (sem acceptedAt nem bro_accept meu): ${order.id.substring(0, 8)}');
           return false;
         }
         return true;
@@ -1561,9 +1584,13 @@ class OrderProvider with ChangeNotifier {
           // aparece em myAcceptedOrders e o billcode n�?£o roteia.
           // Reatribui `existing` para os copyWith de status abaixo n�?£o
           // re-nulificarem o providerId a partir da refer�?ªncia antiga.
-          if ((existing.providerId == null || existing.providerId!.isEmpty) &&
-              _currentUserPubkey != null &&
-              existing.userPubkey != _currentUserPubkey) {
+          if (_currentUserPubkey != null &&
+              existing.userPubkey != _currentUserPubkey &&
+              existing.providerId != _currentUserPubkey) {
+            // v631: fetchProviderOrders SÓ retorna ordens com bro_accept MEU →
+            // EU sou o provedor. Corrige providerId null OU errado (== userPubkey
+            // do comprador por bug de carimbo). Antes só curava null, deixando o
+            // valor poluído do comprador passar → ordem sumia de "Minhas".
             existing = existing.copyWith(providerId: _currentUserPubkey);
             _orders[existingIndex] = existing;
             broLog('�?��?��?? [syncProvider] HEAL providerId=me em ${existing.id.substring(0, 8)} (era null)');
@@ -2082,6 +2109,7 @@ class OrderProvider with ChangeNotifier {
     required String status,
     String? providerId,
     Map<String, dynamic>? metadata,
+    Map<String, dynamic>? nostrExtra, // v630: campos extras publicados no kind 30080 (ex.: disputa)
   }) async {
     _isLoading = true;
     _error = null;
@@ -2159,6 +2187,7 @@ class OrderProvider with ChangeNotifier {
           newStatus: status,
           providerId: effectiveProviderIdForUpdate,
           orderUserPubkey: orderUserPubkeyForUpdate,
+          extraContent: nostrExtra,
         );
         
         if (nostrSuccess) {
@@ -2399,9 +2428,18 @@ class OrderProvider with ChangeNotifier {
       // Atualizar localmente
       final index = _orders.indexWhere((o) => o.id == orderId);
       if (index != -1) {
+        // v631: FIX sumiço de ordem aceita. providerPubkey vem de
+        // _nostrService.publicKey que pode voltar NULL (ex: admin logado via
+        // seed recuperada). copyWith(providerId: null) preservava o providerId
+        // POLUÍDO do evento do comprador (== userPubkey), então a ordem sumia de
+        // "Minhas Ordens" (myAcceptedOrders filtra providerId == eu). Fallback
+        // para _currentUserPubkey (a chave canônica, nunca null aqui).
+        final myProviderId = (providerPubkey != null && providerPubkey.isNotEmpty)
+            ? providerPubkey
+            : _currentUserPubkey;
         _orders[index] = _orders[index].copyWith(
           status: 'accepted',
-          providerId: providerPubkey,
+          providerId: myProviderId,
           acceptedAt: DateTime.now(),
         );
         

@@ -1342,6 +1342,15 @@ class BreezProvider with ChangeNotifier {
         // amount é BigInt no SDK
         final amountSats = payment.amount.toInt();
         
+        // v630: taxa real de rede/roteamento cobrada pela rede Lightning/Spark
+        // (não é taxa do Bro). Exposta para o detalhamento de taxas na carteira.
+        int? feeSats;
+        try {
+          feeSats = payment.fees.toInt();
+        } catch (_) {
+          feeSats = null;
+        }
+
         return {
           'id': payment.id,
           'paymentType': payment.paymentType.toString(),
@@ -1350,6 +1359,7 @@ class BreezProvider with ChangeNotifier {
           'status': payment.status.toString(),
           'amount': amountSats,
           'amountSats': amountSats,
+          'fees': feeSats,
           'paymentHash': paymentHash,
           'description': description ?? '',  // NOVO: Incluir descrição
           'timestamp': timestamp,

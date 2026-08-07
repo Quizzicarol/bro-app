@@ -3552,7 +3552,74 @@ class _WalletScreenState extends State<WalletScreen> {
                   const SizedBox(height: 8),
                 ],
                 _buildDetailRow(AppLocalizations.of(context).t('wallet_network'), 'Lightning Network'),
-                
+
+                // v630: Detalhamento universal de taxas — mostra a taxa REAL de
+                // rede/roteamento (campo `fees` do SDK Spark) em TODA transação,
+                // além de uma nota explicando taxa Bro (ganho) e da plataforma.
+                Builder(builder: (context) {
+                  final feesRaw = payment['fees'];
+                  final int? networkFeeSats = feesRaw is int
+                      ? feesRaw
+                      : (feesRaw is num ? feesRaw.toInt() : null);
+                  final feeLabel = isReceived
+                      ? AppLocalizations.of(context).t('wallet_routing_fee')
+                      : AppLocalizations.of(context).t('wallet_withdrawal_fee');
+                  String feeValue;
+                  if (networkFeeSats == null) {
+                    feeValue = AppLocalizations.of(context).t('wallet_not_available');
+                  } else if (_btcPrice > 0) {
+                    final fiat = networkFeeSats / 100000000 * _btcPrice;
+                    feeValue = '$networkFeeSats sats (~$_fiatSymbol ${fiat.toStringAsFixed(2)})';
+                  } else {
+                    feeValue = '$networkFeeSats sats';
+                  }
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 16),
+                      const Divider(color: Color(0xFF333333)),
+                      const SizedBox(height: 12),
+                      Text(
+                        AppLocalizations.of(context).t('wallet_fees_section'),
+                        style: const TextStyle(
+                          color: Colors.orangeAccent,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      _buildDetailRow(feeLabel, feeValue),
+                      const SizedBox(height: 8),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.04),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.white.withOpacity(0.08)),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.info_outline, color: Colors.white38, size: 16),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                AppLocalizations.of(context).t('wallet_fees_note'),
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.55),
+                                  fontSize: 12,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                }),
+
                 // NOVO: Mostrar dados da ordem correlacionada
                 if (correlatedOrder != null) ...[
                   const SizedBox(height: 16),

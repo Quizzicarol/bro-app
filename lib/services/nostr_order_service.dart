@@ -292,6 +292,7 @@ class NostrOrderService {
     String? providerId,
     String? paymentProof,
     String? orderUserPubkey, // v240: pubkey do dono da ordem para notificação
+    Map<String, dynamic>? extraContent, // v630: campos extras (ex.: motivo/valor da disputa)
   }) async {
     try {
       // LOG v1.0.129+232: Alertar quando completed é publicado sem providerId
@@ -320,6 +321,9 @@ class NostrOrderService {
         'publishedBy': signerPubkey, // v257: quem publicou este update
         'paymentProof': paymentProof,
         'updatedAt': DateTime.now().toIso8601String(),
+        // v630: mescla campos extras (motivo/descrição/valor da disputa) para que
+        // o admin veja os dados mesmo quando o kind 1 bro-disputa não chega ao relay.
+        ...?extraContent,
       });
 
       // CORREÇÃO: Usar d-tag única por usuário+ordem para evitar conflitos
@@ -4649,6 +4653,162 @@ class NostrOrderService {
       return evidences;
     } catch (e) {
       broLog('❌ fetchDisputeEvidence EXCEPTION: $e');
+      return [];
+    }
+  }
+
+  /// v631: Chat de disputa visível às 3 partes (comprador, provedor, admin).
+  /// Cada mensagem é cifrada par-a-par (NIP-44) para as OUTRAS duas partes,
+  /// então o evento carrega um payload por destinatário. O próprio remetente
+  /// consegue redescriptografar seus payloads (segredo ECDH é simétrico).
+  Future<bool> publishDisputeChatMessage({
+    required String privateKey,
+    required String orderId,
+    required String message,
+    required String senderRole, // 'user' | 'provider' | 'admin'
+    required List<String> recipientPubkeys, // as OUTRAS duas partes
+  }) async {
+    try {
+      final keychain = Keychain(privateKey);
+      final myPub = keychain.public;
+
+      // Cifrar a mensagem separadamente para cada destinatário (par-a-par).
+      final payloads = <String, String>{};
+      for (final rp in recipientPubkeys) {
+        if (rp.isEmpty || rp == myPub) continue;
+        if (payloads.containsKey(rp)) continue;
+        try {
+          payloads[rp] = _nip44.encryptBetween(message, keychain.private, rp);
+        } catch (e) {
+          broLog('⚠️ Falha ao cifrar chat p/ ${rp.substring(0, 8)}: $e');
+        }
+      }
+      if (payloads.isEmpty) {
+        broLog('❌ publishDisputeChatMessage: nenhum destinatário válido/cifrável');
+        return false;
+      }
+
+      final content = jsonEncode({
+        'type': 'bro_dispute_chat',
+        'orderId': orderId,
+        'senderRole': senderRole,
+        'senderPubkey': myPub,
+        'sentAt': DateTime.now().toIso8601String(),
+        'encrypted': true,
+        'encryption': 'nip44v2',
+        'payloads': payloads,
+      });
+
+      final tags = <List<String>>[
+        ['t', 'bro-disputa-chat'],
+        ['t', broTag],
+        ['r', orderId],
+      ];
+      for (final rp in payloads.keys) {
+        tags.add(['p', rp]);
+      }
+
+      final event = Event.from(kind: 1, tags: tags, content: content, privkey: keychain.private);
+
+      final results = await Future.wait(
+        _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
+      );
+      final successCount = results.where((r) => r).length;
+      broLog('📤 publishDisputeChatMessage: $senderRole → ${payloads.length} dest, $successCount/${_relays.length} relays (ordem ${orderId.substring(0, 8)})');
+      return successCount > 0;
+    } catch (e) {
+      broLog('❌ publishDisputeChatMessage EXCEPTION: $e');
+      return false;
+    }
+  }
+
+  /// v631: Busca o chat de disputa de uma ordem e descriptografa as mensagens
+  /// que a identidade atual (myPrivateKey) consegue ler (como remetente ou
+  /// destinatário). Retorna lista ordenada da mais antiga para a mais recente
+  /// com: eventId, message, senderRole, senderPubkey, sentAt, eventCreatedAt, isMine.
+  Future<List<Map<String, dynamic>>> fetchDisputeChatMessages(
+    String orderId, {
+    required String myPrivateKey,
+  }) async {
+    final messages = <Map<String, dynamic>>[];
+    try {
+      final keychain = Keychain(myPrivateKey);
+      final myPub = keychain.public;
+
+      for (final relay in _relays.take(3)) {
+        try {
+          final channel = WebSocketChannel.connect(Uri.parse(relay));
+          final subId = 'dchat_${orderId.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
+          channel.sink.add(jsonEncode(['REQ', subId, {
+            'kinds': [1],
+            '#t': ['bro-disputa-chat'],
+            '#r': [orderId],
+            'limit': 100,
+          }]));
+
+          await for (final msg in channel.stream.timeout(const Duration(seconds: 8), onTimeout: (sink) => sink.close())) {
+            final data = jsonDecode(msg.toString());
+            if (data is List && data.length >= 3 && data[0] == 'EVENT') {
+              try {
+                final eventData = data[2] as Map<String, dynamic>;
+                final eventId = eventData['id'] as String? ?? '';
+                final createdAt = eventData['created_at'] as int? ?? 0;
+                final content = jsonDecode(eventData['content'] as String) as Map<String, dynamic>;
+                if (content['type'] != 'bro_dispute_chat') continue;
+                if (content['orderId'] != orderId) continue;
+                if (messages.any((m) => m['eventId'] == eventId)) continue;
+
+                final senderPubkey = (content['senderPubkey'] as String?) ?? (eventData['pubkey'] as String? ?? '');
+                final payloads = (content['payloads'] as Map?)?.cast<String, dynamic>() ?? const <String, dynamic>{};
+                final isMine = senderPubkey == myPub;
+
+                String? plain;
+                if (isMine) {
+                  // Remetente: descriptografa qualquer payload (priv própria + chave do destinatário).
+                  for (final entry in payloads.entries) {
+                    try {
+                      plain = _nip44.decryptBetween(entry.value as String, keychain.private, entry.key);
+                      break;
+                    } catch (_) {}
+                  }
+                } else {
+                  // Destinatário: o payload endereçado a mim é payloads[myPub].
+                  final mine = payloads[myPub] as String?;
+                  if (mine != null && mine.isNotEmpty) {
+                    try {
+                      plain = _nip44.decryptBetween(mine, keychain.private, senderPubkey);
+                    } catch (_) {}
+                  }
+                }
+                if (plain == null) continue; // não é pra mim / não decifrável
+
+                messages.add({
+                  'eventId': eventId,
+                  'message': plain,
+                  'senderRole': content['senderRole'] ?? '',
+                  'senderPubkey': senderPubkey,
+                  'sentAt': (content['sentAt'] as String?)?.isNotEmpty == true
+                      ? content['sentAt']
+                      : (createdAt > 0
+                          ? DateTime.fromMillisecondsSinceEpoch(createdAt * 1000, isUtc: true).toIso8601String()
+                          : ''),
+                  'eventCreatedAt': createdAt,
+                  'isMine': isMine,
+                });
+              } catch (_) {}
+            }
+            if (data is List && data[0] == 'EOSE') break;
+          }
+          channel.sink.add(jsonEncode(['CLOSE', subId]));
+          channel.sink.close();
+        } catch (_) {}
+      }
+
+      messages.sort((a, b) => (a['eventCreatedAt'] as int? ?? 0).compareTo(b['eventCreatedAt'] as int? ?? 0));
+      broLog('💬 fetchDisputeChatMessages: ${messages.length} msgs para ${orderId.substring(0, 8)}');
+      return messages;
+    } catch (e) {
+      broLog('❌ fetchDisputeChatMessages EXCEPTION: $e');
       return [];
     }
   }

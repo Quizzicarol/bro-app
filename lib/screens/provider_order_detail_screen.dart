@@ -19,7 +19,7 @@ import '../services/nostr_order_service.dart';
 import '../services/api_service.dart';
 import '../config.dart';
 import '../l10n/app_localizations.dart';
-
+import '../widgets/dispute_chat.dart';
 /// Tela de detalhes da ordem para o provedor
 /// Mostra dados de pagamento (PIX/boleto) e permite aceitar e enviar comprovante
 class ProviderOrderDetailScreen extends StatefulWidget {
@@ -121,10 +121,28 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   }
   
   /// v237: Busca mensagens do mediador direcionadas a este provedor para esta ordem
+  /// v631: Chat da disputa (provedor) visível às 3 partes.
+  Widget _buildDisputeChatSection() {
+    final myPriv = context.read<OrderProvider>().nostrPrivateKey;
+    if (myPriv == null || myPriv.isEmpty) return const SizedBox.shrink();
+    final buyerPubkey = (_orderDetails?['userPubkey'] as String?) ??
+        (_orderDetails?['pubkey'] as String?) ??
+        '';
+    final recipients = <String>[
+      if (buyerPubkey.isNotEmpty) buyerPubkey,
+      if (AppConfig.adminPubkey.isNotEmpty) AppConfig.adminPubkey,
+    ];
+    return DisputeChat(
+      orderId: widget.orderId,
+      myPrivateKey: myPriv,
+      myRole: 'provider',
+      recipientPubkeys: recipients,
+    );
+  }
+
   Future<void> _fetchProviderMediatorMessages() async {
     await Future.delayed(const Duration(seconds: 3));
-    if (!mounted) return;
-    
+    if (!mounted) return;    
     setState(() => _loadingProviderMediatorMessages = true);
     
     try {
@@ -1126,6 +1144,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             ],
             // v236: Botão enviar evidência quando em disputa
             if (status == 'disputed' && _disputeResolution == null) ...[
+              // v631: Chat da disputa (3 partes)
+              _buildDisputeChatSection(),
               // v237: Mensagens do mediador para o provedor
               if (_providerMediatorMessages.isNotEmpty) ...[
                 const SizedBox(height: 16),
@@ -2705,7 +2725,21 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
 
       // Atualizar status local para "em disputa"
       final orderProvider = context.read<OrderProvider>();
-      await orderProvider.updateOrderStatus(orderId: widget.orderId, status: 'disputed');
+      // v630: embute motivo/descrição/valor/ponto do fluxo no próprio status
+      // update (kind 30080) para o admin ver os dados mesmo se o kind 1 falhar.
+      await orderProvider.updateOrderStatus(
+        orderId: widget.orderId,
+        status: 'disputed',
+        nostrExtra: {
+          'reason': reason,
+          'description': description,
+          'openedBy': 'provider',
+          'amount_brl': orderDetails['amount_brl'],
+          'amount_sats': orderDetails['amount_sats'],
+          'payment_type': orderDetails['payment_type'],
+          'previous_status': _orderDetails?['status'],
+        },
+      );
 
       if (mounted) {
         Navigator.pop(context); // Fechar loading IMEDIATAMENTE

@@ -27,6 +27,7 @@ import '../services/billcode_crypto_service.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter/services.dart';
+import '../widgets/dispute_chat.dart';
 
 /// Tela exibida após pagamento confirmado
 /// Mostra status da ordem e aguarda provedor aceitar
@@ -96,6 +97,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   // v237: Mensagens do mediador para o usuário
   List<Map<String, dynamic>> _mediatorMessages = [];
   bool _loadingMediatorMessages = false;
+
+  // v631: Pubkey do provedor para o chat da disputa (resolvido sob demanda)
+  String? _chatProviderPubkey;
+  bool _resolvingChatProvider = false;
 
   @override
   void initState() {
@@ -1620,6 +1625,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               if (_currentStatus == 'disputed') ...[
                 const SizedBox(height: 16),
                 _buildDisputedCard(),
+                _buildDisputeChatSection(),
               ],
               // Card de resolução de disputa (para completed/cancelled/disputed com resolução)
               if (_disputeResolution != null) ...[
@@ -3248,7 +3254,22 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         
         // Atualizar status local para "em disputa"
         final orderProvider = context.read<OrderProvider>();
-        await orderProvider.updateOrderStatus(orderId: widget.orderId, status: 'disputed');
+        await orderProvider.updateOrderStatus(
+          orderId: widget.orderId,
+          status: 'disputed',
+          // v630: embute motivo/descrição/valor/ponto do fluxo no próprio status
+          // update (kind 30080) para o admin ver os dados mesmo se o kind 1
+          // bro-disputa não chegar aos relays (era a causa do "disputa via status update").
+          nostrExtra: {
+            'reason': reason,
+            'description': description,
+            'openedBy': 'user',
+            'amount_brl': widget.amountBrl,
+            'amount_sats': widget.amountSats,
+            'payment_type': _orderDetails?['payment_type'],
+            'previous_status': _currentStatus,
+          },
+        );
         
         // Atualizar UI ANTES de publicar no Nostr (que é lento)
         setState(() {
@@ -3266,6 +3287,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             duration: const Duration(seconds: 4),
           ),
         );
+
+        // v630: confirmação explícita na tela com os prazos de resposta,
+        // para o usuário saber que a solicitação foi enviada e o que esperar.
+        _showDisputeConfirmationDialog();
 
         // v541: Nao envia push manualmente. Watchtower detecta o evento
         // bro_dispute no Nostr e envia notificacao automaticamente.
@@ -3305,6 +3330,59 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         );
       }
     }
+  }
+
+  /// v630: Confirmação na tela após abrir disputa, com os prazos de resposta.
+  /// Substitui a antiga sensação de "nada aconteceu" (só snackbar).
+  void _showDisputeConfirmationDialog() {
+    if (!mounted) return;
+    final l = AppLocalizations.of(context)!;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.gavel, color: Color(0xFFFF6B6B)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                l.t('order_dispute_confirm_title'),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              l.t('order_dispute_confirm_intro'),
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            Text(l.t('order_dispute_confirm_step1'),
+                style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.4)),
+            const SizedBox(height: 10),
+            Text(l.t('order_dispute_confirm_step2'),
+                style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.4)),
+            const SizedBox(height: 10),
+            Text(l.t('order_dispute_confirm_step3'),
+                style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.4)),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF6B6B)),
+            child: Text(l.t('order_dispute_confirm_ok'),
+                style: const TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildDisputeButton() {
@@ -5273,6 +5351,50 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  /// v631: Resolve o pubkey do provedor para o chat da disputa, se necessário.
+  Future<void> _resolveChatProviderPubkey() async {
+    if (_chatProviderPubkey != null && _chatProviderPubkey!.isNotEmpty) return;
+    if (_resolvingChatProvider) return;
+    _resolvingChatProvider = true;
+    try {
+      final found =
+          await NostrOrderService().fetchOrderProviderPubkey(widget.orderId);
+      if (found != null && found.isNotEmpty && mounted) {
+        setState(() => _chatProviderPubkey = found);
+      }
+    } catch (_) {
+      // silencioso — o chat ainda funciona com o admin enquanto resolve
+    } finally {
+      _resolvingChatProvider = false;
+    }
+  }
+
+  /// v631: Chat da disputa (comprador) visível às 3 partes.
+  Widget _buildDisputeChatSection() {
+    final myPriv = context.read<OrderProvider>().nostrPrivateKey;
+    if (myPriv == null || myPriv.isEmpty) return const SizedBox.shrink();
+    final fromDetails =
+        (_orderDetails?['providerId'] as String?)?.isNotEmpty == true
+            ? _orderDetails!['providerId'] as String
+            : ((_orderDetails?['provider_id'] as String?)?.isNotEmpty == true
+                ? _orderDetails!['provider_id'] as String
+                : '');
+    final providerPk = fromDetails.isNotEmpty ? fromDetails : (_chatProviderPubkey ?? '');
+    if (providerPk.isEmpty) {
+      _resolveChatProviderPubkey();
+    }
+    final recipients = <String>[
+      if (providerPk.isNotEmpty) providerPk,
+      if (AppConfig.adminPubkey.isNotEmpty) AppConfig.adminPubkey,
+    ];
+    return DisputeChat(
+      orderId: widget.orderId,
+      myPrivateKey: myPriv,
+      myRole: 'user',
+      recipientPubkeys: recipients,
     );
   }
 

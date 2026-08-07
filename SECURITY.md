@@ -19,6 +19,38 @@ Include:
 
 We will acknowledge your report within 48 hours and work with you to understand and address the issue before any public disclosure.
 
+### Coordinated Disclosure
+
+- **Acknowledgement**: within 48 hours.
+- **Initial assessment**: within 5 business days.
+- **Fix & disclosure**: we aim to ship a fix and coordinate public disclosure within 90 days. For issues actively affecting user funds, we prioritize an emergency release.
+- Please give us a reasonable opportunity to fix the issue before any public disclosure.
+
+## Scope
+
+Bro touches user funds across several components. The following are **in scope**:
+
+- **Mobile app** (`lib/`) — Flutter client: wallet handling, Nostr event signing/verification, key storage.
+- **Order backend** (`backend/`, api.brostr.app) — order coordination, push notifications, NIP-98 auth.
+- **BRIX payment relay** (brix.brostr.app) — Lightning address bridge and offline payment forwarding.
+- **Release artifacts** — APKs published on GitHub releases.
+
+We especially care about money-touching vulnerabilities:
+
+- Theft, loss, or freezing of user funds (Lightning/Spark payments, collateral, dispute flows).
+- Bypassing dispute authorization or forging dispute resolutions / reimbursement invoices.
+- Forging or replaying Nostr events (order status, accept, payment proof) to redirect payments.
+- Leaking private keys or seeds, or decrypting another user's NIP-44 payloads.
+- Authentication bypass on the backend (NIP-98) or push-notification spoofing.
+
+### Out of Scope
+
+- Third-party Nostr relays and their availability/censorship (Bro is relay-agnostic).
+- Breez SDK / Spark internals (report those to Breez upstream).
+- Compromise of the user's own device or OS, or a seed the user lost/leaked themselves.
+- Social engineering of users or providers, and general P2P counterparty risk.
+- Denial-of-service via public relay flooding.
+
 ## Supported Versions
 
 | Version | Supported |
@@ -90,3 +122,13 @@ Nostr relays can see event metadata (pubkeys, timestamps, event kinds) but not e
 
 ### Provider Trust
 The P2P model requires some trust in providers. The reputation and collateral systems mitigate risk but do not eliminate it. Users should verify payment receipts independently.
+
+## Safe Harbor
+
+We support good-faith security research. If you make a genuine effort to comply with this policy, we will:
+
+- Consider your research authorized and will not pursue or support legal action against you.
+- Work with you to understand and resolve the issue quickly.
+- Publicly credit you for the discovery (if you wish) after a fix is released.
+
+To stay within safe harbor: only test against **your own** accounts and orders, do not access or move other users' funds or data, do not run denial-of-service attacks, and give us a reasonable time to remediate before public disclosure. Bro is a self-custodial, real-money system — never test in a way that could put other users' funds at risk.

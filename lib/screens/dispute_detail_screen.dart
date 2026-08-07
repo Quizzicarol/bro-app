@@ -12,6 +12,7 @@ import '../services/nip44_service.dart';
 import '../services/nostr_order_service.dart';
 import '../services/storage_service.dart';
 import '../services/api_service.dart';
+import '../widgets/dispute_chat.dart';
 
 /// Tela de detalhes de disputa para o mediador (admin)
 /// Mostra TODOS os dados da disputa, comprovante, e controles de resolução
@@ -364,6 +365,10 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
                   // v235: Histórico de mensagens de mediação
                   _buildMessageHistory(),
                   const SizedBox(height: 16),
+
+                  // v631: Chat da disputa (3 partes)
+                  _buildDisputeChatSection(),
+                  const SizedBox(height: 16),
                   
                   // Phase 4: Sugestão do AI Agent
                   if (!_isResolved) _buildAgentSuggestion(),
@@ -484,7 +489,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
                     color: Colors.white10,
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  child: Text('Status anterior: $previousStatus', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                  child: Text('Aberta em: ${_humanStatus(previousStatus)}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
                 ),
             ],
           ),
@@ -499,6 +504,9 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
       icon: Icons.receipt_long,
       children: [
         _infoRow('🆔 Ordem', orderId, copyable: true, monospace: true),
+        // v630: ponto do fluxo onde a disputa foi aberta — ajuda o mediador a
+        // entender rapidamente em que etapa a negociação travou.
+        _infoRow('🔄 Aberta em', _humanStatus(previousStatus)),
         if (amountBrl != null)
           _infoRow('💰 Valor BRL', 'R\$ ${amountBrl is num ? (amountBrl as num).toStringAsFixed(2) : amountBrl}'),
         if (amountSats != null)
@@ -509,6 +517,33 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
           _infoRow('🔑 PIX', pixKey, copyable: true),
       ],
     );
+  }
+
+  /// v630: traduz o status onde a disputa foi aberta para um rótulo legível.
+  String _humanStatus(String? status) {
+    switch (status) {
+      case 'pending':
+        return 'Aguardando provedor';
+      case 'accepted':
+        return 'Aceita — sem comprovante';
+      case 'awaiting_confirmation':
+        return 'Aguardando confirmação';
+      case 'payment_received':
+        return 'Pagamento recebido';
+      case 'completed':
+        return 'Concluída';
+      case 'disputed':
+        return 'Em disputa';
+      case 'cancelled':
+        return 'Cancelada';
+      case 'liquidated':
+        return 'Liquidada';
+      case null:
+      case '':
+        return 'Não informado';
+      default:
+        return status;
+    }
   }
   
   Widget _buildPartiesInfo() {
@@ -1201,6 +1236,24 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
           ),
         ],
       ],
+    );
+  }
+
+  /// v631: Chat da disputa visível às 3 partes (comprador, provedor, admin).
+  Widget _buildDisputeChatSection() {
+    final adminPrivKey = context.read<OrderProvider>().nostrPrivateKey;
+    if (adminPrivKey == null || adminPrivKey.isEmpty || orderId.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final recipients = <String>[
+      if (userPubkey.isNotEmpty) userPubkey,
+      if (providerId.isNotEmpty) providerId,
+    ];
+    return DisputeChat(
+      orderId: orderId,
+      myPrivateKey: adminPrivKey,
+      myRole: 'admin',
+      recipientPubkeys: recipients,
     );
   }
 

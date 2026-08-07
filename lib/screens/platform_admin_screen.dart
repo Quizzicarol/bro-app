@@ -113,14 +113,14 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
                 'orderId': orderId,
                 'reason': content['reason'] ?? 'Disputa via status update',
                 'description': content['description'] ?? '',
-                'openedBy': content['userPubkey'] != null ? 'user' : 'provider',
+                'openedBy': content['openedBy'] ?? (content['userPubkey'] != null ? 'user' : 'provider'),
                 'userPubkey': content['userPubkey'] ?? event['pubkey'] ?? '',
                 'amount_brl': content['amount_brl'],
                 'amount_sats': content['amount_sats'],
                 'payment_type': content['payment_type'],
                 'pix_key': content['pix_key'],
                 'provider_id': content['providerId'] ?? content['provider_id'],
-                'previous_status': null,
+                'previous_status': content['previous_status'],
                 'createdAt': content['updatedAt'] ?? DateTime.fromMillisecondsSinceEpoch(
                   ((event['created_at'] ?? 0) as int) * 1000,
                 ).toIso8601String(),
@@ -929,7 +929,17 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
           ),
           const SizedBox(height: 16),
-          
+
+          // v630: contagens vindas do Nostr — sempre disponíveis, não dependem
+          // dos registros locais de taxa (que zeram ao reinstalar/trocar identidade).
+          _buildStatRow('Disputas abertas', '${_nostrDisputes.length}'),
+          _buildStatRow('Disputas resolvidas', '${_resolvedNostrDisputes.length}'),
+          _buildStatRow('Total de disputas', '${_nostrDisputes.length + _resolvedNostrDisputes.length}'),
+          if (_disputedVolumeBrl() > 0)
+            _buildStatRow('Volume em disputa', 'R\$ ${_disputedVolumeBrl().toStringAsFixed(2)}'),
+
+          const Divider(color: Color(0x22FFFFFF), height: 24),
+
           _buildStatRow('Total de Transações', '${_totals?['totalTransactions'] ?? 0}'),
           _buildStatRow('Taxa por Transação', '${(AppConfig.platformFeePercent * 100).toStringAsFixed(0)}%'),
           _buildStatRow('Taxa Média', _calculateAverageFee()),
@@ -959,6 +969,26 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
         children: [
           Text(label, style: const TextStyle(color: Colors.white70)),
           Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  /// v630: chip compacto usado nos cards de disputa (ponto do fluxo, sats, tipo).
+  Widget _disputeChip(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.black26,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0x22FFFFFF)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white54, size: 13),
+          const SizedBox(width: 4),
+          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11)),
         ],
       ),
     );
@@ -1073,6 +1103,49 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
     final totalSats = _totals?['totalSats'] ?? 0;
     if (totalTx == 0) return '0 sats';
     return '${(totalSats / totalTx).round()} sats';
+  }
+
+  /// v630: soma o valor (BRL) das disputas abertas — dado vindo do Nostr,
+  /// robusto a reinstalação (não depende dos registros locais de taxa).
+  double _disputedVolumeBrl() {
+    double total = 0;
+    for (final d in _nostrDisputes) {
+      final v = d['amount_brl'];
+      if (v is num) {
+        total += v.toDouble();
+      } else if (v is String) {
+        total += double.tryParse(v.replaceAll(',', '.')) ?? 0;
+      }
+    }
+    return total;
+  }
+
+  /// v630: traduz o status onde a disputa foi aberta (ponto do fluxo) para
+  /// um rótulo curto e legível para o mediador.
+  String _humanStatus(String? status) {
+    switch (status) {
+      case 'pending':
+        return 'Aguardando provedor';
+      case 'accepted':
+        return 'Aceita — sem comprovante';
+      case 'awaiting_confirmation':
+        return 'Aguardando confirmação';
+      case 'payment_received':
+        return 'Pagamento recebido';
+      case 'completed':
+        return 'Concluída';
+      case 'disputed':
+        return 'Em disputa';
+      case 'cancelled':
+        return 'Cancelada';
+      case 'liquidated':
+        return 'Liquidada';
+      case null:
+      case '':
+        return 'Não informado';
+      default:
+        return status;
+    }
   }
 
   // ========== SEÇÃO AI DISPUTE AGENT (Phase 4) ==========
@@ -2025,6 +2098,21 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
                     'R\$ ${amountBrl is num ? amountBrl.toStringAsFixed(2) : amountBrl}',
                     style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
                   ),
+              ],
+            ),
+            const SizedBox(height: 8),
+
+            // v630: ponto do fluxo onde a disputa foi aberta + valor em sats +
+            // tipo de pagamento, para o mediador entender o contexto num relance.
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                _disputeChip(Icons.timeline, 'Aberta em: ${_humanStatus(dispute['previous_status'] as String?)}'),
+                if (amountSats != null)
+                  _disputeChip(Icons.bolt, '$amountSats sats'),
+                if ((dispute['payment_type'] as String?)?.isNotEmpty == true)
+                  _disputeChip(Icons.payments, '${dispute['payment_type']}'),
               ],
             ),
             const SizedBox(height: 8),

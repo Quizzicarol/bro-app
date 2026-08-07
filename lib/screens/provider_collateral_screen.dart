@@ -429,7 +429,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                           Text(
                             isTierInactive 
                                 ? l.t('prov_coll_deposit_reactivate')
-                                : l.tp('prov_coll_max_order_brl', {'max': BitcoinPriceService.convertBrlForLanguage(_currentCollateral!.maxOrderBrl, Localizations.localeOf(context).languageCode).toStringAsFixed(0)}),
+                                : l.tp('prov_coll_max_order_brl', {'max': _currentCollateral!.maxOrderBrl.isFinite ? BitcoinPriceService.convertBrlForLanguage(_currentCollateral!.maxOrderBrl, Localizations.localeOf(context).languageCode).toStringAsFixed(0) : '∞'}),
                             style: const TextStyle(color: Colors.white70, fontSize: 12),
                           ),
                         ],
@@ -586,7 +586,7 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                   children: [
                     Text(l.t('prov_coll_max_per_order'), style: const TextStyle(color: Colors.white38, fontSize: 11)),
                     Text(
-                      'R\$ ${tier.maxOrderValueBrl.toStringAsFixed(0)}',
+                      tier.maxOrderValueBrl.isFinite ? 'R\$ ${tier.maxOrderValueBrl.toStringAsFixed(0)}' : '∞',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 16,

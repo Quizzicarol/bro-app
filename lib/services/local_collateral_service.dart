@@ -32,7 +32,11 @@ class LocalCollateral {
       requiredSats: json['required_sats'] ?? 0,
       lockedSats: json['locked_sats'] ?? 0,
       activeOrders: json['active_orders'] ?? 0,
-      maxOrderBrl: (json['max_order_brl'] ?? 0).toDouble(),
+      // -1 é o sentinela para "ilimitado" (tier Master usa double.infinity,
+      // que não é serializável em JSON). Qualquer valor negativo vira infinito.
+      maxOrderBrl: ((json['max_order_brl'] ?? 0).toDouble()) < 0
+          ? double.infinity
+          : (json['max_order_brl'] ?? 0).toDouble(),
       createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
       updatedAt: DateTime.tryParse(json['updated_at'] ?? '') ?? DateTime.now(),
     );
@@ -45,7 +49,9 @@ class LocalCollateral {
       'required_sats': requiredSats,
       'locked_sats': lockedSats,
       'active_orders': activeOrders,
-      'max_order_brl': maxOrderBrl,
+      // Infinity/NaN não são serializáveis em JSON. Grava -1 como sentinela de
+      // "ilimitado" (tier Master). fromJson restaura para double.infinity.
+      'max_order_brl': maxOrderBrl.isFinite ? maxOrderBrl : -1,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };

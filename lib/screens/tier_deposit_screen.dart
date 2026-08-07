@@ -379,7 +379,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              l.tp('prov_tier_accept_up_to', {'max': BitcoinPriceService.convertBrlForLanguage(widget.tier.maxOrderValueBrl, Localizations.localeOf(context).languageCode).toStringAsFixed(0)}),
+              l.tp('prov_tier_accept_up_to', {'max': widget.tier.maxOrderValueBrl.isFinite ? BitcoinPriceService.convertBrlForLanguage(widget.tier.maxOrderValueBrl, Localizations.localeOf(context).languageCode).toStringAsFixed(0) : '∞'}),
               style: const TextStyle(color: Colors.white70, fontSize: 16),
               textAlign: TextAlign.center,
             ),
@@ -441,7 +441,7 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  l.tp('prov_tier_max_per_order', {'max': BitcoinPriceService.convertBrlForLanguage(widget.tier.maxOrderValueBrl, Localizations.localeOf(context).languageCode).toStringAsFixed(0)}),
+                  l.tp('prov_tier_max_per_order', {'max': widget.tier.maxOrderValueBrl.isFinite ? BitcoinPriceService.convertBrlForLanguage(widget.tier.maxOrderValueBrl, Localizations.localeOf(context).languageCode).toStringAsFixed(0) : '∞'}),
                   style: const TextStyle(color: Colors.white70),
                 ),
               ],

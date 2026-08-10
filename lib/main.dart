@@ -49,6 +49,7 @@ import 'services/notification_service.dart';
 import 'services/api_service.dart';
 import 'services/cache_service.dart';
 import 'services/platform_fee_service.dart';
+import 'services/provider_payment_guard.dart';
 import 'providers/theme_provider.dart';
 import 'widgets/alfa_banner.dart';
 
@@ -287,6 +288,9 @@ void main() async {
   
   // Inicializar PlatformFeeService (carrega ordens já pagas do storage)
   await PlatformFeeService.initialize();
+
+  // Inicializar ProviderPaymentGuard (anti gasto-duplo do pagamento ao provedor)
+  await ProviderPaymentGuard.initialize();
 
   // Inicializar ApiService (Dio + NIP-98 interceptor)
   await ApiService().init();
@@ -677,7 +681,14 @@ class BroApp extends StatelessWidget {
           final liquidProvider = context.read<BreezLiquidProvider>();
           orderProvider.onAutoPayLiquidation = (String orderId, order) async {
             broLog('⚡ [AutoPay-Main] Auto-pagamento para ordem ${orderId.substring(0, 8)}');
-            
+
+            // 🛡️ v634 ANTI GASTO-DUPLO: se o provedor JÁ foi pago (via confirmação
+            // manual ou auto-pagamento anterior), NÃO pagar de novo. Mesmo invoice.
+            if (ProviderPaymentGuard.isPaid(orderId)) {
+              broLog('🛡️ [AutoPay-Main] Ordem ${orderId.substring(0, 8)} já teve o provedor PAGO — pulando (anti double-spend)');
+              return true;
+            }
+
             // Buscar providerInvoice do metadata ou Nostr
             String? providerInvoice;
             providerInvoice = order.metadata?['providerInvoice'] as String?;
@@ -766,6 +777,8 @@ class BroApp extends StatelessWidget {
                 
                 if (payResult != null && payResult['success'] == true) {
                   broLog('✅ [AutoPay-Main] Pagamento OK na tentativa $attempt');
+                  // 🛡️ v634: travar a ordem de forma persistente (anti gasto-duplo)
+                  await ProviderPaymentGuard.markPaid(orderId);
                   // Pagar taxa da plataforma
                   // v621: taxa da plataforma = 2% da BASE (order.btcAmount). Antes usava
                   // metadata['amountSats'] que em fluxos wallet guardava o TOTAL (base+5%),
@@ -789,6 +802,7 @@ class BroApp extends StatelessWidget {
                     payError.contains('already settled') ||
                     payError.contains('preimage request already exists')) {
                   broLog('✅ [AutoPay-Main] Invoice já pago (AlreadyExists) — marcando como sucesso');
+                  await ProviderPaymentGuard.markPaid(orderId);
                   return true;
                 }
                 
@@ -799,6 +813,7 @@ class BroApp extends StatelessWidget {
                     errStr.contains('already paid') ||
                     errStr.contains('preimage request already exists')) {
                   broLog('✅ [AutoPay-Main] Invoice já pago (AlreadyExists exception) — marcando como sucesso');
+                  await ProviderPaymentGuard.markPaid(orderId);
                   return true;
                 }
                 broLog('⚠️ [AutoPay-Main] Tentativa $attempt erro: $e');
@@ -821,6 +836,12 @@ class BroApp extends StatelessWidget {
           // admin comprometida).
           orderProvider.onAutoPayDisputeReimbursement = (String orderId, order) async {
             broLog('⚡ [DisputeAutoPay-Main] Reembolso admin para ordem ${orderId.substring(0, 8)}');
+            // 🛡️ v634: o comprador paga NO MÁXIMO uma vez por ordem. Se já pagou
+            // (providerInvoice na confirmação/liquidação), NÃO pagar reembolso também.
+            if (ProviderPaymentGuard.isPaid(orderId)) {
+              broLog('🛡️ [DisputeAutoPay-Main] Ordem ${orderId.substring(0, 8)} já paga — pulando reembolso (anti double-spend)');
+              return true;
+            }
             final nostrService = NostrOrderService();
             String? adminInvoice;
             try {
@@ -881,6 +902,7 @@ class BroApp extends StatelessWidget {
                 }
                 if (payResult != null && payResult['success'] == true) {
                   broLog('✅ [DisputeAutoPay-Main] Reembolso pago na tentativa $attempt');
+                  await ProviderPaymentGuard.markPaid(orderId);
                   return true;
                 }
                 final payError = payResult?['error']?.toString().toLowerCase() ?? '';
@@ -889,6 +911,7 @@ class BroApp extends StatelessWidget {
                     payError.contains('already settled') ||
                     payError.contains('preimage request already exists')) {
                   broLog('✅ [DisputeAutoPay-Main] Invoice já pago (AlreadyExists) — sucesso');
+                  await ProviderPaymentGuard.markPaid(orderId);
                   return true;
                 }
                 broLog('⚠️ [DisputeAutoPay-Main] Tentativa $attempt falhou: ${payResult?['error']}');
@@ -898,6 +921,7 @@ class BroApp extends StatelessWidget {
                     errStr.contains('already paid') ||
                     errStr.contains('preimage request already exists')) {
                   broLog('✅ [DisputeAutoPay-Main] Invoice já pago (AlreadyExists exception) — sucesso');
+                  await ProviderPaymentGuard.markPaid(orderId);
                   return true;
                 }
                 broLog('⚠️ [DisputeAutoPay-Main] Tentativa $attempt erro: $e');

@@ -12,6 +12,7 @@ import '../services/withdrawal_service.dart';
 import '../services/nostr_order_service.dart';
 import '../services/nip44_service.dart';
 import '../services/platform_fee_service.dart';
+import '../services/provider_payment_guard.dart';
 import '../models/withdrawal.dart';
 import '../providers/breez_provider_export.dart';
 import '../providers/breez_liquid_provider.dart';
@@ -4371,11 +4372,87 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   bool _isConfirming = false; // Prevenir duplo clique
-  
+
+  /// v634: Finaliza a ordem como 'completed' SEM pagar o provedor novamente.
+  /// Usado pela guarda anti gasto-duplo quando o provedor JÁ foi pago (ou o
+  /// pagamento anterior liquidou). A taxa da plataforma tem guarda própria
+  /// (idempotente), então é seguro reenviá-la para garantir a finalização.
+  Future<void> _forceCompletedNoPayment() async {
+    if (!mounted) return;
+    final l = AppLocalizations.of(context)!;
+    final orderProvider = context.read<OrderProvider>();
+    final order = orderProvider.getOrderById(widget.orderId);
+    final providerId = order?.providerId;
+    orderProvider.updateOrderStatusLocalOnly(orderId: widget.orderId, status: 'completed');
+    try {
+      await orderProvider.updateOrderStatus(
+        orderId: widget.orderId,
+        status: 'completed',
+        providerId: providerId,
+      );
+    } catch (e) {
+      broLog('⚠️ _forceCompletedNoPayment: falha ao publicar completed: $e');
+    }
+    try {
+      if (AppConfig.platformLightningAddress.isNotEmpty) {
+        await PlatformFeeService.sendPlatformFee(
+          orderId: widget.orderId,
+          totalSats: widget.amountSats,
+        );
+      }
+    } catch (e) {
+      broLog('⚠️ _forceCompletedNoPayment: falha na taxa da plataforma: $e');
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(l.t('order_payment_confirmed')),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      setState(() {
+        _currentStatus = 'completed';
+        _isConfirming = false;
+      });
+    }
+  }
+
   Future<void> _handleConfirmPayment() async {
     if (_isConfirming) return;
     final l = AppLocalizations.of(context)!; // Prevenir duplo clique
-    
+
+    // 🛡️ v634 ANTI GASTO-DUPLO: NUNCA pagar o provedor duas vezes pela mesma ordem.
+    // Esta guarda é PERSISTENTE (sobrevive a restart e ao revert de status via
+    // bro_republish_request que reabre o botão Confirmar). Sem ela, uma ordem que
+    // voltava para awaiting_confirmation permitia um 2º pagamento real ao provedor.
+    if (ProviderPaymentGuard.isPaid(widget.orderId)) {
+      broLog('🛡️ Ordem ${widget.orderId.substring(0, 8)} já teve o provedor PAGO — bloqueando 2º pagamento');
+      await _forceCompletedNoPayment();
+      return;
+    }
+    // Re-checar hash de uma tentativa anterior: pode ter LIQUIDADO após timeout,
+    // mesmo que o app tenha marcado como "falha". Se liquidou, não pagar de novo.
+    final priorHash = ProviderPaymentGuard.attemptHashFor(widget.orderId);
+    if (priorHash != null && priorHash.isNotEmpty) {
+      try {
+        final breez = context.read<BreezProvider>();
+        if (breez.isInitialized) {
+          final status = await breez.checkPaymentStatus(priorHash);
+          if (status['paid'] == true) {
+            broLog('🛡️ Pagamento anterior (hash ${priorHash.substring(0, 8)}) já LIQUIDADO — não pagar de novo');
+            await ProviderPaymentGuard.markPaid(widget.orderId, paymentHash: priorHash);
+            await _forceCompletedNoPayment();
+            return;
+          }
+        }
+      } catch (e) {
+        broLog('⚠️ Erro ao re-checar hash de tentativa anterior: $e');
+      }
+    }
+    if (!mounted) return;
+
     // Confirmar com o usuário
     final confirm = await showDialog<bool>(
       context: context,
@@ -4660,6 +4737,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return;
       }
       
+      // 🛡️ v634: lock síncrono (antes de qualquer await de pagamento) + registro
+      // do paymentHash tentado. tryAcquire retorna false se a ordem já foi paga ou
+      // se outro fluxo já está pagando agora — nesses casos NÃO pagamos de novo.
+      if (!ProviderPaymentGuard.tryAcquire(widget.orderId)) {
+        broLog('🛡️ Pagamento já em andamento/concluído para ${widget.orderId.substring(0, 8)} — abortando 2º pagamento');
+        await _forceCompletedNoPayment();
+        return;
+      }
+      await ProviderPaymentGuard.recordAttempt(widget.orderId, providerInvoicePaymentHash);
+
       // PAGAR O PROVEDOR
       broLog('⚡ Pagando invoice do provedor: ${providerInvoice.substring(0, 30)}...');
       bool paymentSuccess = false;
@@ -4723,6 +4810,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     final newHash = decoded?['invoice']?['paymentHash']?.toString();
                     if (newHash != null && newHash.isNotEmpty) {
                       providerInvoicePaymentHash = newHash;
+                      // v634: registrar o novo hash tentado (para re-checagem futura)
+                      await ProviderPaymentGuard.recordAttempt(widget.orderId, newHash);
                     }
                   } catch (_) {}
                 }
@@ -4822,6 +4911,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       }
 
       if (!paymentSuccess) {
+        // v634: liberar o lock para permitir uma nova tentativa LEGÍTIMA depois.
+        // O hash tentado permanece registrado — se na verdade liquidou, a próxima
+        // entrada em _handleConfirmPayment detecta e bloqueia o 2º pagamento.
+        ProviderPaymentGuard.release(widget.orderId);
         broLog('❌ Pagamento ao provedor FALHOU após 3 tentativas: $paymentError');
         if (mounted) {
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -4839,7 +4932,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         }
         return; // CRÍTICO: Não finalizar sem pagamento
       }
-      
+
+      // 🛡️ v634: pagamento CONFIRMADO — travar a ordem de forma PERSISTENTE para
+      // que nenhum fluxo futuro (revert de status, reabertura de tela) pague de novo.
+      await ProviderPaymentGuard.markPaid(widget.orderId, paymentHash: providerInvoicePaymentHash);
       broLog('✅ Pagamento ao provedor confirmado! Agora marcando ordem como completed...');
 
       // ========== ETAPA 2: MARCAR COMO COMPLETED ==========
@@ -4955,6 +5051,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       }
     } catch (e) {
       broLog('❌ ERRO na confirmação: $e');
+      // v634: safety-net — se o lock foi adquirido mas NÃO chegamos a marcar como
+      // pago (markPaid), liberar para não travar futuras tentativas legítimas.
+      // Se já foi pago, isPaid continua true e release é no-op (não desfaz o pagamento).
+      if (!ProviderPaymentGuard.isPaid(widget.orderId)) {
+        ProviderPaymentGuard.release(widget.orderId);
+      }
       if (mounted) {
         // CRÍTICO: Reverter status visual para não travar a UI
         setState(() {
@@ -5007,6 +5109,27 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   Future<void> _handleDisputePayment({bool autoMode = false}) async {
     if (_isPayingDisputeResolution) return;
     final l = AppLocalizations.of(context)!;
+
+    // 🛡️ v634 ANTI GASTO-DUPLO: o comprador paga NO MÁXIMO uma vez por ordem
+    // (providerInvoice na confirmação/liquidação OU reembolso ao admin na disputa).
+    // Se a guarda persistente já marcou esta ordem como paga, NÃO pagar de novo.
+    if (ProviderPaymentGuard.isPaid(widget.orderId)) {
+      broLog('🛡️ [DisputePay] Ordem ${widget.orderId.substring(0, 8)} já paga — bloqueando 2º pagamento');
+      final op = context.read<OrderProvider>();
+      final o = op.getOrderById(widget.orderId);
+      if (o != null && o.metadata?['disputeProviderPaid'] != true) {
+        op.updateOrderMetadataLocal(widget.orderId, {...?o.metadata, 'disputeProviderPaid': true});
+      }
+      if (!autoMode && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(l.t('order_payment_confirmed')),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
+        ));
+      }
+      if (mounted) setState(() => _isPayingDisputeResolution = false);
+      return;
+    }
 
     // Confirmar com o usuário antes de pagar (skip em autoMode)
     if (!autoMode) {
@@ -5132,6 +5255,27 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       final breezProvider = context.read<BreezProvider>();
       final liquidProvider = context.read<BreezLiquidProvider>();
 
+      // 🛡️ v634: lock síncrono (antes de qualquer await de pagamento). tryAcquire
+      // retorna false se a ordem já foi paga ou se outro fluxo está pagando agora.
+      if (!ProviderPaymentGuard.tryAcquire(widget.orderId)) {
+        broLog('🛡️ [DisputePay] Pagamento já em andamento/concluído para ${widget.orderId.substring(0, 8)} — abortando');
+        if (mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          setState(() => _isPayingDisputeResolution = false);
+        }
+        return;
+      }
+      // best-effort: registrar o paymentHash tentado (para re-checagem futura)
+      try {
+        if (breezProvider.isInitialized) {
+          final dec = await breezProvider.decodeInvoice(invoiceToPay);
+          final h = dec?['invoice']?['paymentHash']?.toString();
+          if (h != null && h.isNotEmpty) {
+            await ProviderPaymentGuard.recordAttempt(widget.orderId, h);
+          }
+        }
+      } catch (_) {}
+
       if (!breezProvider.isInitialized && !liquidProvider.isInitialized) {
         paymentError = l.t('order_wallet_not_initialized');
       } else {
@@ -5176,6 +5320,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       }
 
       if (!paymentSuccess) {
+        // v634: liberar o lock para permitir nova tentativa legítima depois.
+        ProviderPaymentGuard.release(widget.orderId);
         broLog('❌ [DisputePay] Pagamento FALHOU após 3 tentativas: $paymentError');
         if (mounted) {
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -5191,6 +5337,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return;
       }
 
+      // 🛡️ v634: pagamento CONFIRMADO — travar de forma persistente (anti gasto-duplo)
+      await ProviderPaymentGuard.markPaid(widget.orderId);
       broLog('✅ [DisputePay] Pagamento confirmado! Alvo: $paymentTarget');
 
       // ========== MARCAR COMO PAGO NO METADATA ==========
@@ -5246,6 +5394,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       }
     } catch (e) {
       broLog('❌ [DisputePay] ERRO: $e');
+      // v634: safety-net — só liberar o lock se ainda NÃO marcou como pago.
+      if (!ProviderPaymentGuard.isPaid(widget.orderId)) {
+        ProviderPaymentGuard.release(widget.orderId);
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(

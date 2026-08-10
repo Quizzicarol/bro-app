@@ -12,6 +12,7 @@ import '../services/nip44_service.dart';
 import '../services/nostr_order_service.dart';
 import '../services/storage_service.dart';
 import '../services/api_service.dart';
+import '../services/provider_payment_guard.dart';
 import '../widgets/dispute_chat.dart';
 import '../utils/image_compress.dart';
 
@@ -2435,6 +2436,30 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
 
     setState(() => _isAdminPaying = true);
 
+    // v635 ANTI DOUBLE-SPEND: o admin paga o provedor DA SUA carteira. Sem uma
+    // trava persistente por ordem, reabrir a tela (ou reiniciar o app) fazia o
+    // botão reaparecer e o admin podia pagar o provedor DE NOVO. Usamos o
+    // ProviderPaymentGuard num NAMESPACE separado ('admin:') para não colidir
+    // com o guard do pagamento do COMPRADOR (que reembolsa o admin depois).
+    final guardKey = 'admin:$orderId';
+    if (ProviderPaymentGuard.isPaid(guardKey)) {
+      broLog('🛡️ [AdminPay] Provedor JÁ pago para esta ordem — ignorando (anti double-spend)');
+      if (mounted) {
+        setState(() {
+          _adminPaidProvider = true;
+          _isAdminPaying = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Provedor já foi pago para esta ordem.'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+      return;
+    }
+
     try {
       // 1. Buscar providerInvoice do evento COMPLETE no Nostr
       final nostrService = NostrOrderService();
@@ -2469,10 +2494,45 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
       final liquidProvider = context.read<BreezLiquidProvider>();
       bool paymentSuccess = false;
       String paymentError = '';
+      String? paidHash;
 
-      if (!breezProvider.isInitialized && !liquidProvider.isInitialized) {
+      // v635: re-checa se uma tentativa ANTERIOR (que ficou pending/timeout) na
+      // verdade liquidou antes de tentar pagar de novo.
+      final priorHash = ProviderPaymentGuard.attemptHashFor(guardKey);
+      if (priorHash != null && priorHash.isNotEmpty && breezProvider.isInitialized) {
+        try {
+          final st = await breezProvider.checkPaymentStatus(priorHash);
+          if (st['paid'] == true) {
+            broLog('🛡️ [AdminPay] Tentativa anterior JÁ liquidou ($priorHash) — não pagando de novo');
+            await ProviderPaymentGuard.markPaid(guardKey, paymentHash: priorHash);
+            paymentSuccess = true;
+            paidHash = priorHash;
+          }
+        } catch (_) {}
+      }
+
+      // Lock síncrono anti-concorrência/duplicidade (antes de qualquer await de pagamento).
+      if (!paymentSuccess && !ProviderPaymentGuard.tryAcquire(guardKey)) {
+        broLog('🛡️ [AdminPay] Pagamento já em andamento/concluído — abortando');
+        if (mounted) setState(() => _isAdminPaying = false);
+        return;
+      }
+
+      if (paymentSuccess) {
+        // Já liquidado por tentativa anterior — pula o loop de pagamento.
+      } else if (!breezProvider.isInitialized && !liquidProvider.isInitialized) {
         paymentError = 'Carteira não inicializada. Abra sua carteira primeiro.';
       } else {
+        // Registra o hash do invoice ANTES de pagar (cobre pending/timeout).
+        try {
+          final decoded = await breezProvider.decodeInvoice(providerInvoice);
+          final h = (decoded?['success'] == true)
+              ? (decoded?['invoice']?['paymentHash'] as String?)
+              : null;
+          if (h != null && h.isNotEmpty) {
+            await ProviderPaymentGuard.recordAttempt(guardKey, h);
+          }
+        } catch (_) {}
         for (int attempt = 1; attempt <= 3; attempt++) {
           try {
             Map<String, dynamic>? payResult;
@@ -2497,6 +2557,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
             if (payResult != null && payResult['success'] == true) {
               broLog('✅ [AdminPay] Pago com sucesso via $usedBackend na tentativa $attempt!');
               paymentSuccess = true;
+              paidHash = payResult['payment']?['paymentHash']?.toString();
               break;
             } else {
               paymentError = payResult?['error']?.toString() ?? 'Falha desconhecida';
@@ -2510,9 +2571,17 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
         }
       }
 
-      if (!mounted) return;
+      if (!mounted) {
+        // Não vazar o lock de sessão se a tela sumiu no meio.
+        if (!ProviderPaymentGuard.isPaid(guardKey)) {
+          ProviderPaymentGuard.release(guardKey);
+        }
+        return;
+      }
       if (!paymentSuccess) {
         broLog('❌ [AdminPay] Pagamento FALHOU: $paymentError');
+        // Libera o lock para permitir nova tentativa legítima (falha real).
+        ProviderPaymentGuard.release(guardKey);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -2523,6 +2592,8 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
           );
         }
       } else {
+        // Bloqueio ABSOLUTO e persistente: provedor pago por esta ordem.
+        await ProviderPaymentGuard.markPaid(guardKey, paymentHash: paidHash);
         // 3. Gerar invoice de reembolso para o admin receber do usuário
         String? adminReimbursementInvoice;
         final satsAmount = int.tryParse(amountSats?.toString() ?? '') ?? 0;
@@ -2611,6 +2682,10 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
       }
     } catch (e) {
       broLog('❌ [AdminPay] Erro geral: $e');
+      // Se não chegou a marcar como pago, libera o lock para retry legítimo.
+      if (!ProviderPaymentGuard.isPaid('admin:$orderId')) {
+        ProviderPaymentGuard.release('admin:$orderId');
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),

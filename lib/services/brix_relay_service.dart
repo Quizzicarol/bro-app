@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, visibleForTesting;
 import 'package:flutter/widgets.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -42,6 +42,27 @@ class BrixRelayService {
   void Function(String recipient, int amountSats)? onQueuedPaymentCompleted;
 
   int _fcmRetryCount = 0;
+
+  /// Pure, testable anti-double-spend decision for the outgoing queue.
+  /// Returns the first paymentHash in [hashes] that [check] reports as settled,
+  /// or null if none settled. A per-hash check error is treated as "not
+  /// settled" so we never SKIP a payment on a transient error (we would rather
+  /// re-check next cycle than risk not paying at all — the fresh-invoice guard
+  /// only blocks paying AGAIN when a settlement is positively confirmed).
+  @visibleForTesting
+  static Future<String?> firstSettledHash(
+    List<String> hashes,
+    Future<bool> Function(String hash) check,
+  ) async {
+    for (final h in hashes) {
+      try {
+        if (await check(h)) return h;
+      } catch (_) {
+        // Ignore transient check errors; treat as not-yet-settled.
+      }
+    }
+    return null;
+  }
 
   /// Ensure FCM token is registered with BRIX server (idempotent).
   /// Retries automatically on failure until successful.
@@ -447,10 +468,39 @@ class BrixRelayService {
     _retryOutgoingPayments();
   }
 
-  // Track fees already sent to prevent duplicates
+  // Track fees already sent to prevent duplicates.
+  // v635: now PERSISTENT across restarts (was in-memory only, so a restart
+  // could re-pay the 0.5% BRIX fee for a still-pending request id).
   final Set<String> _paidFees = {};
+  static const _paidFeesKey = 'brix_paid_fee_request_ids';
+  bool _paidFeesLoaded = false;
   // Track claims in progress to prevent duplicates
   final Set<String> _claimedPayments = {};
+
+  Future<void> _loadPaidFees() async {
+    if (_paidFeesLoaded) return;
+    _paidFeesLoaded = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getStringList(_paidFeesKey);
+      if (raw != null) _paidFees.addAll(raw);
+    } catch (_) {}
+  }
+
+  Future<void> _persistPaidFees() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // Bound growth: keep the most recent ids (insertion-ordered Set).
+      var ids = _paidFees.toList();
+      if (ids.length > 500) {
+        ids = ids.sublist(ids.length - 500);
+        _paidFees
+          ..clear()
+          ..addAll(ids);
+      }
+      await prefs.setStringList(_paidFeesKey, ids);
+    } catch (_) {}
+  }
 
   static const _secureStorage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -524,10 +574,17 @@ class BrixRelayService {
 
   /// Send the 0.5% BRIX fee to the platform Lightning address
   Future<void> _sendBrixFee(String requestId, int feeSats) async {
+    await _loadPaidFees();
     if (_paidFees.contains(requestId)) return;
     _paidFees.add(requestId);
+    await _persistPaidFees();
 
-    if (AppConfig.platformLightningAddress.isEmpty || _context == null) return;
+    if (AppConfig.platformLightningAddress.isEmpty || _context == null) {
+      // Not actually attempted — release so a future poll can retry.
+      _paidFees.remove(requestId);
+      await _persistPaidFees();
+      return;
+    }
 
     try {
       final lnService = LnAddressService();
@@ -551,14 +608,24 @@ class BrixRelayService {
             broLog('🔇 [BRIX-RELAY] Fee hash registrado para ocultar do histórico: ${hash.substring(0, hash.length > 16 ? 16 : hash.length)}');
           }
         } else {
-          _paidFees.remove(requestId);
+          // v635: only release on a HARD failure. A TIMEOUT_PENDING may have
+          // settled — keep the id marked so a restart does NOT re-pay the fee.
+          final mayStillSucceed = payResult != null && payResult['mayStillSucceed'] == true;
+          if (!mayStillSucceed) {
+            _paidFees.remove(requestId);
+            await _persistPaidFees();
+          } else {
+            broLog('⏳ [BRIX-RELAY] Fee TIMEOUT_PENDING — keeping id marked to avoid double-fee');
+          }
         }
       } else {
         _paidFees.remove(requestId);
+        await _persistPaidFees();
       }
     } catch (e) {
       broLog('⚠️ [BRIX-RELAY] Fee payment error: $e');
       _paidFees.remove(requestId);
+      await _persistPaidFees();
     }
   }
 
@@ -672,6 +739,30 @@ class BrixRelayService {
         final amountSats = payment['amountSats'] as int;
         final paymentComment = payment['comment'] as String?;
 
+        // v635 [BRIX-QUEUE] ANTI DOUBLE-SPEND: before generating a fresh
+        // invoice and paying AGAIN, verify no previous attempt actually settled
+        // on the Lightning network. A prior payInvoice may have returned
+        // TIMEOUT_PENDING (or the app was killed mid-send) while the HTLC in
+        // fact completed — retrying with a new invoice would pay the recipient
+        // twice. We persist every attempted invoice's paymentHash and re-check
+        // each one here before paying again.
+        final priorHashes =
+            (payment['attemptHashes'] as List?)?.cast<String>() ?? const <String>[];
+        if (priorHashes.isNotEmpty) {
+          final settled = await firstSettledHash(
+            priorHashes,
+            (h) async =>
+                (await breezProvider.checkPaymentStatus(h))['paid'] == true,
+          );
+          if (settled != null) {
+            payment['status'] = 'completed';
+            changed = true;
+            broLog('✅ [BRIX-QUEUE] Already settled by a prior attempt — NOT paying again: $amountSats sats → $recipient');
+            onQueuedPaymentCompleted?.call(recipient, amountSats);
+            continue;
+          }
+        }
+
         broLog('🔄 [BRIX-QUEUE] Retrying: $amountSats sats → $recipient (attempt ${payment['retryCount'] + 1})');
         payment['lastRetry'] = now.toIso8601String();
         payment['retryCount'] = (payment['retryCount'] as int) + 1;
@@ -694,6 +785,30 @@ class BrixRelayService {
 
           final invoice = invoiceResult['invoice'] as String;
 
+          // v635: record THIS invoice's paymentHash BEFORE paying and persist
+          // immediately, so a timeout/crash mid-send is still detectable by the
+          // settlement re-check above on the next cycle (crash safety).
+          try {
+            final decoded = await breezProvider.decodeInvoice(invoice);
+            final h = (decoded?['success'] == true)
+                ? (decoded?['invoice']?['paymentHash'] as String?)
+                : null;
+            if (h != null && h.isNotEmpty) {
+              final hashes =
+                  (payment['attemptHashes'] as List?)?.cast<String>().toList() ??
+                      <String>[];
+              if (!hashes.contains(h)) hashes.add(h);
+              // Bound growth (retries are rate-limited + age-capped anyway).
+              while (hashes.length > 10) {
+                hashes.removeAt(0);
+              }
+              payment['attemptHashes'] = hashes;
+              await _saveQueue(prefs, list);
+            }
+          } catch (e) {
+            broLog('⚠️ [BRIX-QUEUE] Could not decode invoice hash (will still guard via re-check): $e');
+          }
+
           // Try to pay
           final payResult = await breezProvider.payInvoice(invoice);
 
@@ -704,8 +819,11 @@ class BrixRelayService {
             // Notify listeners
             onQueuedPaymentCompleted?.call(recipient, amountSats);
           } else {
-            // Payment failed (e.g., still LNbits invoice) — keep queued
-            broLog('⏳ [BRIX-QUEUE] Pay failed, keeping queued: $recipient');
+            // Payment failed OR timed out (may still settle). Keep queued; the
+            // settlement re-check at the top of the next cycle prevents a
+            // double-pay if a TIMEOUT_PENDING attempt actually completed.
+            final et = payResult?['errorType'];
+            broLog('⏳ [BRIX-QUEUE] Pay not confirmed (errorType=$et), keeping queued: $recipient');
           }
         } catch (e) {
           broLog('⚠️ [BRIX-QUEUE] Retry error: $e');

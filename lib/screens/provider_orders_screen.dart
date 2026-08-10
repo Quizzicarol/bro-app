@@ -259,12 +259,11 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     _tabController.dispose();
     _ordersUpdateTimer?.cancel(); // Cancelar timer de atualização
     
-    // CRÍTICO: Limpar modo provedor E ordens de outros usuários
-    // Isso é ESSENCIAL para evitar vazamento de dados!
-    SecureStorageService.setProviderMode(false, userPubkey: widget.providerId);
-    
-    // SEGURANÇA: Chamar exitProviderMode usando a referência salva
-    // Isso GARANTE que ordens de outros usuários sejam removidas da memória
+    // v636: NÃO derrubar o modo provedor (persistido/backend) só por sair da
+    // tela. Ser provedor é um papel DURÁVEL — derrubar aqui fazia o backend
+    // marcar providerEnabled=false e o watchtower parar de enviar os pushes de
+    // "nova ordem" em background (chegavam só com o app aberto, via relay).
+    // A isolação de dados entre usuários é feita por exitProviderMode() (memória).
     try {
       _orderProviderRef?.exitProviderMode();
     } catch (e) {
@@ -458,8 +457,8 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     return PopScope(
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) {
-          // CRÍTICO: Limpar modo provedor ao sair
-          SecureStorageService.setProviderMode(false, userPubkey: widget.providerId);
+          // v636: só limpeza em memória — mantém providerEnabled no backend
+          // para continuar recebendo pushes de "nova ordem" em background.
           try {
             final orderProvider = context.read<OrderProvider>();
             orderProvider.exitProviderMode();
@@ -474,8 +473,8 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: () {
-              // CRÍTICO: Limpar modo provedor ao sair
-              SecureStorageService.setProviderMode(false, userPubkey: widget.providerId);
+              // v636: só limpeza em memória — mantém providerEnabled no backend
+              // para continuar recebendo pushes de "nova ordem" em background.
               try {
                 final orderProvider = context.read<OrderProvider>();
                 orderProvider.exitProviderMode();
@@ -497,8 +496,9 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
             IconButton(
               icon: const Icon(Icons.home, color: Colors.white),
               onPressed: () {
-                // Sair do modo Bro e voltar ao dashboard
-                SecureStorageService.setProviderMode(false, userPubkey: widget.providerId);
+                // v636: voltar ao dashboard NÃO deixa de ser provedor. Só
+                // limpeza em memória; mantém providerEnabled no backend para
+                // continuar recebendo pushes de "nova ordem" em background.
                 try {
                   final orderProvider = context.read<OrderProvider>();
                   orderProvider.exitProviderMode();

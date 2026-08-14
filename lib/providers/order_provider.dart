@@ -62,6 +62,21 @@ class OrderProvider with ChangeNotifier {
   // resetamos o timer a cada progresso parcial detectado em _reconcileSyncExpectations.
   final Map<String, _SyncExpectation> _syncExpectations = {};
   static const Duration _syncExpectationTimeout = Duration(seconds: 120);
+  // vSEC: cap de segurança — nunca deixar o mapa crescer sem limite
+  // (cada entry segura um Timer). Entradas se auto-removem no timeout, mas
+  // um flood de pushes poderia inflar o mapa entre timeouts.
+  static const int _syncExpectationsMaxSize = 200;
+
+  // vSEC (clock skew): maior created_at visto em eventos Nostr durante syncs.
+  // Usado como referência de "agora" pela auto-liquidação — o relógio local
+  // do device pode estar adiantado/atrasado, e liquidar CEDO por clock skew
+  // rouba o prazo de confirmação do usuário.
+  int _lastNetworkTimeSec = 0;
+  void _noteNetworkTime(int? createdAtSec) {
+    if (createdAtSec != null && createdAtSec > _lastNetworkTimeSec) {
+      _lastNetworkTimeSec = createdAtSec;
+    }
+  }
 
   // v448: Flag para saber se o sync inicial já completou
   // Enquanto false, UI mostra "sincronizando" ao invés de "nenhuma troca"
@@ -687,6 +702,21 @@ class OrderProvider with ChangeNotifier {
       // v578: read via OrdersStorage (decrypts encrypted blobs, passes
       // through legacy plaintext for one-time migration on next save).
       final ordersJson = await OrdersStorage.read(prefs, _currentUserPubkey!);
+
+      // vSEC: distinguir AUSÊNCIA de CORRUPÇÃO. read() retorna null nos dois
+      // casos. Se o blob EXISTE mas não descriptografou (HMAC mismatch, chave
+      // perdida, blob truncado), NÃO seguir silenciosamente com lista vazia —
+      // as ordens "sumiam" até o sync e o usuário achava que perdeu tudo.
+      // Fail-loud: logar, sinalizar erro na UI e MANTER o blob p/ recuperação.
+      if (ordersJson == null) {
+        final rawBlob = prefs.getString(OrdersStorage.prefsKey(_currentUserPubkey!));
+        if (rawBlob != null && rawBlob.isNotEmpty) {
+          broLog('🚨 [OrdersStorage] CORRUPÇÃO: blob existe (${rawBlob.length} bytes) mas falhou ao ler/descriptografar — MANTENDO dado p/ recuperação');
+          _error = 'Falha ao ler ordens locais. Suas ordens serão restauradas do Nostr no próximo sync.';
+          _immediateNotify();
+        }
+        return;
+      }
       
       if (ordersJson != null) {
         final List<dynamic> ordersList = json.decode(ordersJson);
@@ -779,9 +809,19 @@ class OrderProvider with ChangeNotifier {
       } else {
       }
     } catch (e) {
-      // Em caso de erro, limpar dados corrompidos
+      // vSEC: NÃO deletar silenciosamente — fazer BACKUP do blob corrompido
+      // antes de remover, para permitir recuperação manual/forense. Antes,
+      // um parse error apagava as ordens sem rastro.
+      broLog('🚨 _loadOrders parse error: $e — fazendo backup do blob antes de limpar');
       try {
         final prefs = await SharedPreferences.getInstance();
+        final raw = prefs.getString(_ordersKey);
+        if (raw != null && raw.isNotEmpty) {
+          await prefs.setString(
+            '${_ordersKey}_corrupted_${DateTime.now().millisecondsSinceEpoch}',
+            raw,
+          );
+        }
         await prefs.remove(_ordersKey);
       } catch (e2) {
       }
@@ -2414,6 +2454,36 @@ class OrderProvider with ChangeNotifier {
       // O pre-check (linha 2192) ja protege contra a maioria dos casos.
       // Races genuinas sao resolvidas pela escolha do buyer (so um accept
       // vai receber pagamento).
+      //
+      // vSEC (race): RE-CHECK pós-publish com vencedor CANÔNICO. O pre-check
+      // tem uma janela: 2 provedores em relays diferentes podem passar por ele
+      // no mesmo segundo e AMBOS publicarem. Como fetchOrderProviderPubkey
+      // agora é determinístico (menor created_at, desempate por pubkey), um
+      // re-check tardio converge para o MESMO vencedor que o buyer verá.
+      // Se perdemos: rollback para não pagarmos um boleto de uma ordem que
+      // não é nossa.
+      if (acceptVerified && success && providerPubkey != null) {
+        try {
+          final winner = await _nostrOrderService
+              .fetchOrderProviderPubkey(orderId)
+              .timeout(const Duration(seconds: 6), onTimeout: () => null);
+          if (winner != null &&
+              winner.toLowerCase() != providerPubkey.toLowerCase()) {
+            broLog('🏁 [acceptOrderAsProvider] race lost (post-publish): ${winner.substring(0, 8)} venceu');
+            _error = '❌ Esta ordem já foi aceita por outro provedor';
+            _orders.removeWhere((o) => o.id == orderId);
+            await _saveOnlyUserOrders();
+            _availableOrdersForProvider.removeWhere((o) => o.id == orderId);
+            _isLoading = false;
+            _immediateNotify();
+            return false;
+          }
+        } catch (e) {
+          // Falha na verificação → manter aceite otimista (fail-open p/
+          // disponibilidade; o ProviderPaymentGuard protege o pagamento).
+          broLog('⚠️ [acceptOrderAsProvider] post-publish race check falhou: $e');
+        }
+      }
 
       // CORREÇÃO v1.0.129+223: Remover da lista de disponíveis IMEDIATAMENTE
       // Sem isso, a ordem ficava em _availableOrdersForProvider com status stale
@@ -2913,7 +2983,20 @@ class OrderProvider with ChangeNotifier {
       broLog('[Reminder] erro no foreground: $e');
     }
     
-    final now = DateTime.now();
+    final localNow = DateTime.now();
+    var now = localNow;
+    // vSEC (clock skew): se o relógio local está ADIANTADO >15min em relação
+    // à rede (created_at dos eventos Nostr vistos no sync), usar o tempo da
+    // REDE. Liquidar cedo demais (relógio adiantado) é o pior cenário — o
+    // usuário perde injustamente o prazo de 36h p/ confirmar. Relógio
+    // atrasado apenas adia a liquidação (direção segura), então não corrigimos.
+    if (_lastNetworkTimeSec > 0) {
+      final networkNow = DateTime.fromMillisecondsSinceEpoch(_lastNetworkTimeSec * 1000);
+      if (localNow.difference(networkNow) > const Duration(minutes: 15)) {
+        broLog('[AutoLiquidation] ⚠️ relógio local adiantado >15min vs rede — usando tempo da rede');
+        now = networkNow;
+      }
+    }
     const deadline = Duration(hours: 36);
     
     // Filtrar ordens do provedor atual em awaiting_confirmation
@@ -4229,6 +4312,9 @@ class OrderProvider with ChangeNotifier {
                 'proofReceivedAt': proofTimeIso,
                 'receipt_submitted_at': existing.metadata?['receipt_submitted_at'] ?? proofTimeIso,
               };
+              // vSEC: alimentar a referência de tempo da rede (anti clock-skew
+              // na auto-liquidação) com o created_at deste evento.
+              _noteNetworkTime(proofCreatedAtSec);
             } else {
               updatedMetadata = existing.metadata;
             }
@@ -5162,6 +5248,23 @@ class OrderProvider with ChangeNotifier {
 
     // Cancel any previous timer for this order before replacing.
     _syncExpectations[orderId]?.timer?.cancel();
+    // vSEC: se o mapa estiver cheio, remover a entrada MAIS ANTIGA antes de
+    // adicionar — bound de memória/timers em caso de flood de pushes.
+    if (_syncExpectations.length >= _syncExpectationsMaxSize &&
+        !_syncExpectations.containsKey(orderId)) {
+      String? oldestId;
+      DateTime? oldestAt;
+      _syncExpectations.forEach((id, e) {
+        if (oldestAt == null || e.triggeredAt.isBefore(oldestAt!)) {
+          oldestAt = e.triggeredAt;
+          oldestId = id;
+        }
+      });
+      if (oldestId != null) {
+        _syncExpectations[oldestId]?.timer?.cancel();
+        _syncExpectations.remove(oldestId);
+      }
+    }
     final exp = _SyncExpectation(
       expectedStatus: expectedStatus,
       triggeredAt: DateTime.now(),

@@ -2337,8 +2337,14 @@ class NostrOrderService {
             if (eventType == 'bro_dispute_resolution') {
               // SEGURANÇA: Apenas o admin pode resolver disputas
               final eventPubkey = event['pubkey'] as String?;
-              if (eventPubkey == null || 
-                  (AppConfig.adminPubkey.isNotEmpty && eventPubkey != AppConfig.adminPubkey)) {
+              // vSEC: FAIL-CLOSED — sem adminPubkey no build, rejeitar TUDO
+              // (antes o guard virava no-op: qualquer pubkey resolvia disputa)
+              if (AppConfig.adminPubkey.isEmpty) {
+                broLog('🚨 [SECURITY] adminPubkey NÃO configurado — rejeitando TODAS as resoluções de disputa');
+                continue;
+              }
+              if (eventPubkey == null ||
+                  eventPubkey != AppConfig.adminPubkey) {
                 broLog('⚠️ REJEITADO: bro_dispute_resolution de pubkey não-admin ${eventPubkey?.substring(0, 8)}');
                 continue;
               }
@@ -3933,7 +3939,12 @@ class NostrOrderService {
               // Sem isso, qualquer um poderia publicar um invoice falso e desviar
               // o pagamento do usuário.
               final eventPubkey = event['pubkey'] as String?;
-              if (AppConfig.adminPubkey.isNotEmpty && eventPubkey != AppConfig.adminPubkey) {
+              // vSEC: FAIL-CLOSED — sem adminPubkey no build, rejeitar TUDO
+              if (AppConfig.adminPubkey.isEmpty) {
+                broLog('🚨 [SECURITY] adminPubkey NÃO configurado — rejeitando TODOS os invoices de reembolso');
+                continue;
+              }
+              if (eventPubkey != AppConfig.adminPubkey) {
                 broLog('⚠️ REJEITADO reembolso de não-admin: ${eventPubkey?.substring(0, 8) ?? '?'} (ordem ${orderId.substring(0, 8)})');
                 continue;
               }
@@ -4317,7 +4328,12 @@ class NostrOrderService {
                   // SEGURANÇA: só o admin pode resolver disputa. Após a verificação
                   // de assinatura acima, eventData['pubkey'] é autêntico.
                   final eventPubkey = eventData['pubkey'] as String?;
-                  if (AppConfig.adminPubkey.isNotEmpty && eventPubkey != AppConfig.adminPubkey) {
+                  // vSEC: FAIL-CLOSED — sem adminPubkey no build, rejeitar TUDO
+                  if (AppConfig.adminPubkey.isEmpty) {
+                    broLog('🚨 [SECURITY] adminPubkey NÃO configurado — rejeitando TODAS as resoluções de disputa');
+                    continue;
+                  }
+                  if (eventPubkey != AppConfig.adminPubkey) {
                     broLog('⚠️ REJEITADO resolução de não-admin: ${eventPubkey?.substring(0, 8) ?? '?'} (ordem ${orderId.substring(0, 8)})');
                     continue;
                   }
@@ -5029,6 +5045,13 @@ class NostrOrderService {
             ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]);
           }
           
+          // vSEC (race): coletar TODOS os candidatos e escolher o vencedor
+          // CANÔNICO = menor created_at (desempate: menor pubkey).
+          // Antes retornávamos o primeiro evento que o relay entregasse —
+          // ordem arbitrária. Com 2 accepts quase simultâneos (slots
+          // replaceable SEPARADOS por pubkey), buyer e provider podiam
+          // discordar sobre quem venceu.
+          final candidates = <Map<String, dynamic>>[]; // {pubkey, created_at}
           for (final event in events) {
             try {
               final content = event['parsedContent'] ?? jsonDecode(event['content']);
@@ -5036,17 +5059,35 @@ class NostrOrderService {
                 // Tentar providerId do content
                 final providerId = content['providerId'] as String?;
                 if (providerId != null && providerId.isNotEmpty) {
-                  broLog('\u2705 fetchOrderProviderPubkey: ${providerId.substring(0, 8)} para ordem ${orderId.substring(0, 8)}');
-                  return providerId;
+                  candidates.add({
+                    'pubkey': providerId,
+                    'created_at': event['created_at'] as int? ?? 0x7FFFFFFFFFFFFFFF,
+                  });
+                  continue;
                 }
                 // Fallback: usar pubkey do autor do evento (quem aceitou = provedor)
                 final eventPubkey = event['pubkey'] as String?;
                 if (eventPubkey != null && eventPubkey.isNotEmpty) {
-                  broLog('\u2705 fetchOrderProviderPubkey (author): ${eventPubkey.substring(0, 8)} para ordem ${orderId.substring(0, 8)}');
-                  return eventPubkey;
+                  candidates.add({
+                    'pubkey': eventPubkey,
+                    'created_at': event['created_at'] as int? ?? 0x7FFFFFFFFFFFFFFF,
+                  });
                 }
               }
             } catch (_) {}
+          }
+          if (candidates.isNotEmpty) {
+            candidates.sort((a, b) {
+              final t = (a['created_at'] as int).compareTo(b['created_at'] as int);
+              if (t != 0) return t;
+              return (a['pubkey'] as String).compareTo(b['pubkey'] as String);
+            });
+            final winner = candidates.first['pubkey'] as String;
+            if (candidates.length > 1) {
+              broLog('\u26A0\uFE0F fetchOrderProviderPubkey: ${candidates.length} accepts concorrentes — vencedor canônico: ${winner.substring(0, 8)}');
+            }
+            broLog('\u2705 fetchOrderProviderPubkey: ${winner.substring(0, 8)} para ordem ${orderId.substring(0, 8)}');
+            return winner;
           }
         } catch (_) {}
       }

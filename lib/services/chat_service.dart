@@ -5,6 +5,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:nostr/nostr.dart';
 import 'nip04_service.dart';
+import 'nip44_service.dart';
 import 'storage_service.dart';
 import 'notification_service.dart';
 
@@ -56,6 +57,7 @@ class ChatService {
   ChatService._internal();
 
   final _nip04 = Nip04Service();
+  final _nip44 = Nip44Service();
   final _storage = StorageService();
   
   final Map<String, WebSocketChannel> _connections = {};
@@ -270,17 +272,29 @@ class ChatService {
       broLog('💬 Chat: isFromMe=$isFromMe, otherPubkey=${otherPubkey.substring(0, 8)}...');
       
       // Descriptografar mensagem
+      // vSEC: NIP-44 v2 primeiro (mensagens novas); NIP-04 como fallback de
+      // leitura para mensagens antigas (NIP-04/AES-CBC está deprecado, mas
+      // o histórico existente precisa continuar legível).
       String decryptedContent;
       try {
-        decryptedContent = _nip04.decrypt(
+        decryptedContent = _nip44.decryptBetween(
           content,
           _privateKey!,
           otherPubkey,
         );
-        broLog('✅ Chat: Mensagem descriptografada com sucesso');
-      } catch (e) {
-        broLog('⚠️ Chat: Não foi possível descriptografar: $e');
-        decryptedContent = '[Mensagem criptografada]';
+        broLog('✅ Chat: Mensagem descriptografada (NIP-44)');
+      } catch (_) {
+        try {
+          decryptedContent = _nip04.decrypt(
+            content,
+            _privateKey!,
+            otherPubkey,
+          );
+          broLog('✅ Chat: Mensagem descriptografada (NIP-04 legacy)');
+        } catch (e) {
+          broLog('⚠️ Chat: Não foi possível descriptografar: $e');
+          decryptedContent = '[Mensagem criptografada]';
+        }
       }
       
       final chatMessage = ChatMessage(
@@ -333,8 +347,10 @@ class ChatService {
     }
     
     try {
-      // Criptografar mensagem usando NIP-04
-      final encryptedContent = _nip04.encrypt(
+      // vSEC: Criptografar mensagem usando NIP-44 v2 (NIP-04/AES-CBC deprecado).
+      // Mantemos kind 4 p/ compatibilidade de relay/subscription; o receptor
+      // tenta NIP-44 primeiro e cai p/ NIP-04 em mensagens antigas.
+      final encryptedContent = _nip44.encryptBetween(
         message,
         _privateKey!,
         recipientPubkey,

@@ -294,8 +294,10 @@ class PlatformFeeService {
       return true;
     }
 
-    if (AppConfig.platformLightningAddress.isEmpty) {
-      broLog('⚠️ platformLightningAddress não configurado!');
+    if (!AppConfig.isPlatformLightningAddressValid) {
+      // vSEC: validação de FORMATO (não só isNotEmpty) — endereço malformado
+      // no env.json falhava só em runtime, derrubando a taxa silenciosamente.
+      broLog('⚠️ platformLightningAddress ausente ou malformado!');
       _paidOrderIds.remove(orderId); // Liberar lock para retry
       return false;
     }

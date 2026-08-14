@@ -208,6 +208,23 @@ router.post('/notify', notifyLimiter, async (req, res) => {
   if (target_pubkey === senderPubkey) {
     return res.json({ ok: false, reason: 'self_notify' });
   }
+
+  // vSEC: order-scoped notifications may only be sent between the two order
+  // parties (creator <-> provider). This blocks the accept_relay billcode
+  // leak: an attacker could previously push accept_relay with their own
+  // pubkey to any order creator and trick the victim's background isolate
+  // into NIP-44-encrypting the billCode for the attacker.
+  if (type === 'order_update') {
+    if (!order_id) {
+      return res.status(400).json({ error: 'order_id required for order_update' });
+    }
+    const senderIsParty = watchtower.isOrderParty(order_id, senderPubkey);
+    const targetIsParty = watchtower.isOrderParty(order_id, target_pubkey);
+    if (!senderIsParty || !targetIsParty) {
+      console.warn(`[PUSH] /notify REJECTED: sender=${senderPubkey.substring(0,8)} target=${target_pubkey.substring(0,8)} order=${String(order_id).substring(0,8)} senderParty=${senderIsParty} targetParty=${targetIsParty}`);
+      return res.status(403).json({ error: 'Not a party to this order' });
+    }
+  }
   
   // Build data payload (all values must be strings for FCM)
   const data = {
@@ -269,9 +286,10 @@ router.post('/test-self', notifyLimiter, async (req, res) => {
  * Returns push service status (no auth required)
  */
 router.get('/status', (req, res) => {
+  // vSEC: do not expose tokens_registered publicly — it leaks the registered
+  // user count (base size / growth) to unauthenticated callers.
   res.json({
     enabled: pushService.isEnabled(),
-    tokens_registered: pushService.getTokenCount(),
   });
 });
 

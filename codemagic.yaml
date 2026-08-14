@@ -71,7 +71,11 @@ workflows:
           echo "passkey stub complete (dirs=$count)"
         
       - name: Build APK Release (Android)
-        script: flutter build apk --release --dart-define-from-file=env.json
+        # vSEC: --android-skip-build-dependency-validation → o Flutter estável novo
+        # do Codemagic passou a impor mínimos de Gradle/AGP/Kotlin que sobem a cada
+        # release e quebram o build. Já subimos p/ Gradle 8.14 + AGP 8.13 + Kotlin
+        # 2.2.20; a flag evita que o PRÓXIMO bump do Flutter quebre o CI de novo.
+        script: flutter build apk --release --android-skip-build-dependency-validation --dart-define-from-file=env.json
         
       - name: Publish APK to GitHub Release
         script: |
@@ -124,7 +128,7 @@ workflows:
           # ~289MB. --split-per-abi produces a real per-ABI apk (~135MB).
           # Note: --split-per-abi offsets versionCode (arm64 = 2000+build).
           echo "📦 Building arm64-v8a APK for Zapstore..."
-          flutter build apk --release --split-per-abi --dart-define-from-file=env.json
+          flutter build apk --release --split-per-abi --android-skip-build-dependency-validation --dart-define-from-file=env.json
           APK_ARM64="bro-${TAG}-arm64-v8a.apk"
           cp "build/app/outputs/flutter-apk/app-arm64-v8a-release.apk" "$APK_ARM64"
           echo "🚀 Publishing $TAG to $REPO..."
@@ -299,7 +303,11 @@ workflows:
         script: flutter pub get
 
       - name: Build APK Release (Android)
-        script: flutter build apk --release --dart-define-from-file=env.json
+        # vSEC: --android-skip-build-dependency-validation → o Flutter estável novo
+        # do Codemagic passou a impor mínimos de Gradle/AGP/Kotlin que sobem a cada
+        # release e quebram o build. Já subimos p/ Gradle 8.14 + AGP 8.13 + Kotlin
+        # 2.2.20; a flag evita que o PRÓXIMO bump do Flutter quebre o CI de novo.
+        script: flutter build apk --release --android-skip-build-dependency-validation --dart-define-from-file=env.json
 
       - name: Publish APK to GitHub Release
         script: |
@@ -347,7 +355,7 @@ workflows:
           cp "$APK_SRC" "$APK_VERSIONED"
           # Build a TRUE arm64-v8a-only APK for Zapstore (~135MB).
           echo "📦 Building arm64-v8a APK for Zapstore..."
-          flutter build apk --release --split-per-abi --dart-define-from-file=env.json
+          flutter build apk --release --split-per-abi --android-skip-build-dependency-validation --dart-define-from-file=env.json
           APK_ARM64="bro-${TAG}-arm64-v8a.apk"
           cp "build/app/outputs/flutter-apk/app-arm64-v8a-release.apk" "$APK_ARM64"
           echo "🚀 Publishing $TAG to $REPO..."
@@ -404,7 +412,7 @@ workflows:
         script: flutter pub get
         
       - name: Build APK Release (para distribuir)
-        script: flutter build apk --release --dart-define-from-file=env.json
+        script: flutter build apk --release --android-skip-build-dependency-validation --dart-define-from-file=env.json
         
     artifacts:
       - build/**/outputs/**/*.apk
@@ -446,10 +454,10 @@ workflows:
         script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","ADMIN_PASSWORD_HASH":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" "$ADMIN_PASSWORD_HASH" > "$CM_BUILD_DIR/env.json"
 
       - name: Build APK Release
-        script: flutter build apk --release --dart-define-from-file=env.json
+        script: flutter build apk --release --android-skip-build-dependency-validation --dart-define-from-file=env.json
         
       - name: Build AAB (release for Play Store)
-        script: flutter build appbundle --release --dart-define-from-file=env.json
+        script: flutter build appbundle --release --android-skip-build-dependency-validation --dart-define-from-file=env.json
         
     artifacts:
       - build/**/outputs/**/*.apk
@@ -554,7 +562,7 @@ workflows:
         script: flutter analyze --no-fatal-infos --no-fatal-warnings || true
         
       - name: Build Android Debug
-        script: flutter build apk --debug --dart-define-from-file=env.json
+        script: flutter build apk --debug --android-skip-build-dependency-validation --dart-define-from-file=env.json
         
     artifacts:
       - build/**/outputs/**/*.apk

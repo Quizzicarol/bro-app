@@ -365,6 +365,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     
     // Buscar resolução para qualquer ordem (pode ter sido disputada e já resolvida)
     try {
+      // vSEC: se o reembolso da disputa JÁ foi pago, não re-buscar a resolução
+      // nos relays a cada abertura da tela (re-verificação infinita).
+      final op = context.read<OrderProvider>();
+      final localOrder = op.getOrderById(widget.orderId);
+      if (localOrder?.metadata?['disputeProviderPaid'] == true) {
+        setState(() => _disputePaymentPending = false);
+        return;
+      }
       final nostrService = NostrOrderService();
       final resolution = await nostrService.fetchDisputeResolution(widget.orderId);
       if (resolution != null && mounted) {
@@ -5348,6 +5356,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           ...?order.metadata,
           'disputeProviderPaid': true,
           'disputeProviderPaidAt': DateTime.now().toIso8601String(),
+          // vSEC: limpar a flag de pendência — sem isso a ordem continuava
+          // elegível a re-verificações de pagamento de disputa para sempre.
+          'disputePaymentPending': false,
         };
         orderProvider.updateOrderMetadataLocal(widget.orderId, updatedMetadata);
       }

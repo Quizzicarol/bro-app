@@ -104,6 +104,22 @@ class AppConfig {
     'PLATFORM_LIGHTNING_ADDRESS',
   );
 
+  /// vSEC: validação de formato do Lightning Address (LUD-16 user@dominio).
+  /// Antes só checávamos isNotEmpty — um valor malformado no env.json fazia
+  /// o envio de taxa falhar em RUNTIME (e em silêncio p/ o usuário). Use este
+  /// getter nos caminhos de envio de taxa em vez de isNotEmpty.
+  static bool get isPlatformLightningAddressValid {
+    if (platformLightningAddress.isEmpty) return false;
+    // Lightning Address clássico (user@domain.tld) OU domínio puro (LUD-06)
+    final lnAddr = RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
+    final bareDomain = RegExp(r'^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
+    // Também aceitar LNURL bech32 (lnurl1...) como destino válido
+    final lnurl = RegExp(r'^[lL][nN][uU][rR][lL]1[02-9ac-hj-np-z]+$');
+    return lnAddr.hasMatch(platformLightningAddress) ||
+        bareDomain.hasMatch(platformLightningAddress) ||
+        lnurl.hasMatch(platformLightningAddress);
+  }
+
   /// Taxa BRIX (0.5% - cobrada em pagamentos recebidos via BRIX)
   static const double brixFeePercent = 0.005;
   

@@ -718,7 +718,15 @@ class BroApp extends StatelessWidget {
             try {
               if (breezProvider.isInitialized) {
                 final decoded = await breezProvider.decodeInvoice(providerInvoice);
-                if (decoded != null && decoded['success'] == true) {
+                // vSEC: decode FALHOU (null ou success=false) → BLOQUEAR.
+                // Antes, o `if (decoded != null && success == true)` deixava
+                // o fluxo SEGUIR E PAGAR sem validar valor/expiração quando o
+                // decode falhava — pagamento às cegas de invoice não validado.
+                if (decoded == null || decoded['success'] != true) {
+                  broLog('🚨 [AutoPay-Main] BLOQUEADO: falha ao decodificar invoice (${decoded?['error'] ?? 'null'}) — não pagar sem validar. Retry no próximo invoice fresco.');
+                  return false;
+                }
+                {
                   // v622: proteção anti-carol — NÃO tentar pagar invoice EXPIRADO.
                   // Pagar um invoice vencido faz o SDK emitir "Pagamento falhou"
                   // (notificação chata que aparecia toda madrugada). Se expirou,
@@ -786,7 +794,7 @@ class BroApp extends StatelessWidget {
                   // curto. Derivar da base garante comprador paga exatamente base+5%
                   // (provider base+3% + plataforma 2%), com a plataforma absorvendo roteamento.
                   final amountSats = (order.btcAmount * 100000000).round();
-                  if (AppConfig.platformLightningAddress.isNotEmpty && amountSats > 0) {
+                  if (AppConfig.isPlatformLightningAddressValid && amountSats > 0) {
                     await PlatformFeeService.sendPlatformFee(
                       orderId: orderId,
                       totalSats: amountSats,

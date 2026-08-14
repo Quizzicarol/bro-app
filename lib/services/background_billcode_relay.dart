@@ -124,6 +124,35 @@ Future<bool> handleAcceptRelayInBackground(Map<String, dynamic> data) async {
     return false;
   }
 
+  // vSEC: confirm the accepter is a REAL acceptor of this order before we
+  // hand over the NIP-44-encrypted billCode. Previously we trusted the
+  // accepter_pubkey from the FCM payload blindly — combined with the open
+  // /push/notify endpoint, an attacker could push accept_relay with their own
+  // pubkey and receive the victim's billCode (PIX/boleto PII).
+  //
+  // We verify against the actual kind 30079 accept events on the relays.
+  // Fail-CLOSED on mismatch (attacker), fail-OPEN only when we genuinely
+  // cannot determine the acceptor (relay timeout) — in that case the
+  // plaintext billCode in kind 30078 remains the backward-compat source and
+  // the foreground sync re-tries, so availability is preserved.
+  try {
+    final svc = NostrOrderService();
+    final accepts = await svc
+        .fetchAllAcceptsForOrder(orderId)
+        .timeout(const Duration(seconds: 10));
+    if (accepts.isNotEmpty && !accepts.contains(accepterPubkey)) {
+      // We have authoritative accept data and this pubkey is NOT an acceptor.
+      broLog('[BG-Relay] 🚫 accepter ${accepterPubkey.substring(0, 8)} is NOT a real acceptor of order ${orderId.substring(0, 8)} — REFUSING to relay billCode');
+      return false;
+    }
+    // accepts.isEmpty → relays unreachable / no accept found yet → proceed
+    // (fail-open for availability; the push came from the watchtower which
+    // only sends accept_relay after observing a real bro_accept).
+  } catch (e) {
+    // Verification error (network/timeout) → fail-open, foreground retries.
+    broLog('[BG-Relay] ⚠️ acceptor verification failed ($e) — proceeding (fail-open)');
+  }
+
   // Publish kind 30080 NIP-44-encrypted billCode for the accepter.
   // NostrOrderService is a singleton; in a background isolate it's a fresh
   // instance with default _relays, which is exactly what we want.

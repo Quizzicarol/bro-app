@@ -85,6 +85,9 @@ class NostrWatchtowerService {
     this._reconnectTimers = new Map();
     this._eoseReceived = new Set(); // relays that finished historical catch-up
     this._orderUsers = new Map(); // orderId → userPubkey cache (from bro_order events)
+    // vSEC: orderId → providerPubkey cache (from bro_accept events). Used to
+    // authorize /push/notify: only the two order parties may notify each other.
+    this._orderProviders = new Map();
     this._running = false;
     this._stats = { eventsProcessed: 0, pushesSent: 0, pushesFailed: 0, sigFailed: 0 };
     // SECURITY: Rate limit pushes per target pubkey (max 10 per 5 min)
@@ -560,6 +563,16 @@ class NostrWatchtowerService {
           const cachedUser = this._orderUsers.get(orderId);
           const userPubkeyA = (isValidPubkey(cachedUser) ? cachedUser : null)
             || (typeof content.userPubkey === 'string' && isValidPubkey(content.userPubkey) ? content.userPubkey : null);
+          // vSEC: record the accepter (event signer) as this order's provider.
+          // The signer is authenticated by verifyEvent upstream, so this is the
+          // authoritative provider identity for /push/notify authorization.
+          if (isValidPubkey(senderPubkey) && userPubkeyA !== senderPubkey) {
+            this._orderProviders.set(orderId, senderPubkey);
+            if (this._orderProviders.size > 4000) {
+              const pEntries = Array.from(this._orderProviders.entries());
+              this._orderProviders = new Map(pEntries.slice(-2000));
+            }
+          }
           if (isValidPubkey(userPubkeyA) && userPubkeyA !== senderPubkey) {
             await this._sendOrderPush(userPubkeyA, senderPubkey, 'accepted', orderId, shortId);
             // v574: also send a SILENT data-only push to wake the buyer's
@@ -1064,6 +1077,26 @@ class NostrWatchtowerService {
   }
 
   /**
+   * vSEC: is [pubkey] a party (creator or provider) of [orderId]?
+   * Used by /push/notify to authorize order-scoped notifications: only the
+   * two parties may notify each other.
+   *
+   * Fail-OPEN only when the watchtower has NEVER seen the order (cold cache
+   * right after a restart): blocking legitimate pushes in that window would
+   * break the accept flow, and the accept_relay path still has the app's own
+   * acceptor verification (background_billcode_relay.dart) as second layer.
+   * Once we know ANY participant, unknown pubkeys are rejected (fail-closed).
+   */
+  isOrderParty(orderId, pubkey) {
+    if (!orderId || !pubkey) return false;
+    const creator = this._orderUsers.get(orderId);
+    const provider = this._orderProviders.get(orderId);
+    // Ordem totalmente desconhecida p/ este watchtower → permitir (cache frio).
+    if (!creator && !provider) return true;
+    return pubkey === creator || pubkey === provider;
+  }
+
+  /**
    * v612: Fallback when _orderUsers cache is cold (post-restart).
    * Queries the open relay sockets with a transient REQ for kind 30078
    * events; collects until EOSE on all relays or timeout, then matches
@@ -1266,6 +1299,11 @@ class NostrWatchtowerService {
         // Ja enviado nas ultimas 24h — skip
         return false;
       }
+      // vSEC: marcar ANTES do await sendPush (check-then-set não atômico).
+      // Dois eventos com a mesma chave chegando em paralelo ambos passavam
+      // pelo check acima e disparavam push DUPLICADO. Marcar otimisticamente
+      // fecha a janela; em caso de falha no envio, fazemos rollback abaixo.
+      this._deliveredPushes.set(dedupKey, now);
     }
 
     // SECURITY: Per-pubkey rate limiting to prevent push notification spam
@@ -1295,16 +1333,21 @@ class NostrWatchtowerService {
       const ok = await pushService.sendPush(targetPubkey, data, notification);
       if (ok) {
         this._stats.pushesSent++;
-        // v611: não marcar como entregue quando bypassDedup (retries devem poder repetir)
-        if (!bypassDedup) {
-          this._deliveredPushes.set(dedupKey, now);
-        }
+        // v611/vSEC: a marcação de dedup já foi feita ANTES do await (acima).
       } else {
         this._stats.pushesFailed++;
+        // vSEC: rollback — envio falhou, permitir retry futuro desta chave.
+        if (!bypassDedup) {
+          this._deliveredPushes.delete(dedupKey);
+        }
       }
       return ok;
     } catch (err) {
       this._stats.pushesFailed++;
+      // vSEC: rollback — envio falhou, permitir retry futuro desta chave.
+      if (!bypassDedup) {
+        this._deliveredPushes.delete(dedupKey);
+      }
       console.error(`❌ [Watchtower] Push failed for ${targetPubkey.substring(0, 8)}: ${err.message}`);
       return false;
     }

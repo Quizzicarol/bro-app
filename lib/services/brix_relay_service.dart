@@ -579,7 +579,7 @@ class BrixRelayService {
     _paidFees.add(requestId);
     await _persistPaidFees();
 
-    if (AppConfig.platformLightningAddress.isEmpty || _context == null) {
+    if (!AppConfig.isPlatformLightningAddressValid || _context == null) {
       // Not actually attempted — release so a future poll can retry.
       _paidFees.remove(requestId);
       await _persistPaidFees();

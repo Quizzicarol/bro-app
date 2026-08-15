@@ -2385,6 +2385,26 @@ class OrderProvider with ChangeNotifier {
         broLog('⚠️ [acceptOrderAsProvider] race check falhou (seguindo mesmo assim): $e');
       }
 
+      // vSEC-fix (UX, problema do "bro encontrado chegar antes"): CONFIRMAÇÃO
+      // OTIMISTA. Marcar 'accepted' LOCALMENTE agora — ANTES do publish Nostr.
+      // O watchtower vê o bro_accept no relay quase instantaneamente e já manda
+      // push "Bro encontrado" pro buyer; sem isto, a UI do provedor ficava
+      // segundos atrás (parecendo que "não pegou"). Como o accept vira verdade
+      // no publish e há ROLLBACK abaixo em caso de corrida perdida/falha,
+      // confirmar otimisticamente alinha a UI do provedor com o que o buyer já vê.
+      final optIdx = _orders.indexWhere((o) => o.id == orderId);
+      final myProviderIdOpt = (providerPubkey != null && providerPubkey.isNotEmpty)
+          ? providerPubkey
+          : _currentUserPubkey;
+      if (optIdx != -1 && myProviderIdOpt != null) {
+        _orders[optIdx] = _orders[optIdx].copyWith(
+          status: 'accepted',
+          providerId: myProviderIdOpt,
+          acceptedAt: DateTime.now(),
+        );
+        _immediateNotify(); // UI reflete "aceito" IMEDIATAMENTE
+      }
+
       // Publicar aceita�?§�?£o no Nostr
       final success = await _nostrOrderService.acceptOrderOnNostr(
         order: order,
@@ -2490,11 +2510,17 @@ class OrderProvider with ChangeNotifier {
         final myProviderId = (providerPubkey != null && providerPubkey.isNotEmpty)
             ? providerPubkey
             : _currentUserPubkey;
-        _orders[index] = _orders[index].copyWith(
-          status: 'accepted',
-          providerId: myProviderId,
-          acceptedAt: DateTime.now(),
-        );
+        // vSEC-fix: se o update otimista (logo após o pre-check) já marcou
+        // 'accepted', aqui só PERSISTIMOS (sem re-notificar — a UI já está certa).
+        final alreadyOptimistic = _orders[index].status == 'accepted' &&
+            _orders[index].providerId == myProviderId;
+        if (!alreadyOptimistic) {
+          _orders[index] = _orders[index].copyWith(
+            status: 'accepted',
+            providerId: myProviderId,
+            acceptedAt: DateTime.now(),
+          );
+        }
         
         // Salvar localmente (apenas ordens do usu�?¡rio/provedor atual)
         await _saveOnlyUserOrders();

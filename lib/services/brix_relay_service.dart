@@ -37,6 +37,11 @@ class BrixRelayService {
   BuildContext? _context;
   bool _fcmRegistered = false;
   bool _backendFcmRegistered = false;
+  // vSEC-fix: true quando o servidor respondeu 404 ("sem conta BRIX"). Nesse
+  // caso o retry é INÚTIL (o usuário simplesmente não usa BRIX) e queimava
+  // bateria/rede a cada poll para sempre. Quem TEM BRIX recebe 200 e segue
+  // o fluxo normal — este flag só zera o retry de quem não tem conta.
+  bool _brixNotAUser = false;
 
   /// Callback for when a queued outgoing payment is completed.
   void Function(String recipient, int amountSats)? onQueuedPaymentCompleted;
@@ -66,8 +71,11 @@ class BrixRelayService {
 
   /// Ensure FCM token is registered with BRIX server (idempotent).
   /// Retries automatically on failure until successful.
+  /// vSEC-fix: o BRIX (quando sem conta → _brixNotAUser) NÃO bloqueia o
+  /// registro no backend principal — são independentes.
   Future<void> _ensureFcmRegistered() async {
-    if (_fcmRegistered && _backendFcmRegistered) return;
+    final brixDone = _fcmRegistered || _brixNotAUser;
+    if (brixDone && _backendFcmRegistered) return;
     try {
       _pubkey ??= await _storage.getNostrPublicKey();
       if (_pubkey == null || _pubkey!.isEmpty) {
@@ -103,11 +111,14 @@ class BrixRelayService {
       }
 
       // Register with BRIX server
-      if (!_fcmRegistered) {
+      // vSEC-fix: pular se o servidor já disse 404 (sem conta BRIX) — evita
+      // retry infinito. Se o usuário CRIAR uma conta BRIX depois, o flag é
+      // resetado em start()/resume e o registro volta a funcionar.
+      if (!_fcmRegistered && !_brixNotAUser) {
         // Ensure NIP-98 credentials are loaded before signing the request
         await _brixService.initCredentials();
         final ok = await _brixService.registerPushToken(token, _pubkey!);
-        if (ok) {
+        if (ok == true) {
           _fcmRegistered = true;
           _fcmRetryCount = 0;
           broLog('[BRIX-RELAY] FCM token registered successfully (BRIX)');
@@ -116,6 +127,11 @@ class BrixRelayService {
           if (linked.isNotEmpty) {
             broLog('[BRIX-RELAY] Auto-linked web accounts: ${linked.join(", ")}');
           }
+        } else if (ok == null) {
+          // 404 permanente — sem conta BRIX. Marcar e NÃO tentar de novo.
+          _brixNotAUser = true;
+          _fcmRetryCount = 0;
+          broLog('[BRIX-RELAY] Sem conta BRIX (404) — desativando retry de FCM BRIX');
         } else {
           _fcmRetryCount++;
           broLog('[BRIX-RELAY] BRIX FCM registration failed (attempt $_fcmRetryCount)');
@@ -224,6 +240,7 @@ class BrixRelayService {
     _running = true;
     _fcmRegistered = false; // Reset on start so we always try to register
     _backendFcmRegistered = false;
+    _brixNotAUser = false; // vSEC-fix: re-tentar BRIX — usuário pode ter criado conta
     _pollTimer?.cancel();
     // v535: intervalo de 5s (antes 1.5s). 1.5s era excessivo e causava
     // lentidao na UI por fazer 2 chamadas HTTP a cada polling (invoice requests
@@ -242,6 +259,7 @@ class BrixRelayService {
     _running = true;
     _fcmRegistered = false; // Force re-registration after resume (token may have rotated)
     _backendFcmRegistered = false;
+    _brixNotAUser = false; // vSEC-fix: re-tentar BRIX — usuário pode ter criado conta
     _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _poll());
     _poll();
     _ensureFcmRegistered();

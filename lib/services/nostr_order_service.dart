@@ -159,14 +159,14 @@ class NostrOrderService {
   static const int kindBroProviderTier = 30082; // Tier do provedor
 
   // v580 (Phase 2 / NIP-40): build an ["expiration", "<unix>"] tag so relays
-  // SHOULD drop events past this time. Reduces stale order pollution and
-  // makes accidental data exposure self-clean. Each kind has a distinct TTL:
-  //   - 30078 (order)  / 30079 (accept) → 7 days
-  //   - 30080 (update/billcode/proof)   → 30 days (disputes need a window)
-  //   - 30081 (complete)                → 30 days
-  // Some relays (Damus, primal, nos.lol) honor NIP-40, others ignore it. It
-  // is purely advisory: the events are still valid until expiration. Old
-  // clients without NIP-40 awareness simply ignore the tag.
+  // SHOULD drop events past this time.
+  //
+  // vSEC-fix (histórico): NIP-40 REMOVIDO das ORDENS (kind 30078). Expirar a
+  // ordem em 7d fazia relays (Damus/Primal/nos.lol) DELETAREM o evento original
+  // — e o histórico do provedor é montado buscando a ordem original por #d.
+  // Resultado: ordens >7d SUMIAM de "Minhas Ordens". Ordens são HISTÓRICO
+  // legítimo e devem persistir. Mantemos expiração APENAS em eventos
+  // transitórios (updates/refresh/republish), que não carregam o histórico.
   static List<String> _expirationTag(int days) {
     final unix = DateTime.now().add(Duration(days: days)).millisecondsSinceEpoch ~/ 1000;
     return ['expiration', unix.toString()];
@@ -259,7 +259,7 @@ class NostrOrderService {
           ['t', 'cur:${currency.toLowerCase()}'], // v606: filtragem por moeda no relay (mesma convenção das ofertas de marketplace)
           ['amount', amount.toStringAsFixed(2)],
           ['status', 'pending'],
-          _expirationTag(7), // v580: NIP-40 — kind 30078 expires in 7d
+          // vSEC-fix: NIP-40 REMOVIDO da ordem — ela É o histórico, não expira.
         ],
         content: content,
         privkey: keychain.private,
@@ -1499,7 +1499,7 @@ class NostrOrderService {
           ['t', order.billType],
           ['amount', order.amount.toStringAsFixed(2)],
           ['status', newStatus],
-          _expirationTag(7), // v580: NIP-40 — republished order expires in 7d
+          // vSEC-fix: NIP-40 REMOVIDO da ordem republicada — é o histórico.
         ],
         content: content,
         privkey: keychain.private,

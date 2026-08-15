@@ -468,8 +468,14 @@ class BrixService {
     }
   }
 
-  /// Register FCM push token with BRIX server for offline notifications
-  Future<bool> registerPushToken(String fcmToken, String pubkey) async {
+  /// Register FCM push token with BRIX server for offline notifications.
+  ///
+  /// vSEC-fix (ruído/bateria): retorna `true` = registrado, `false` = erro
+  /// transitório (tentar de novo), `null` = 404 PERMANENTE (esta pubkey NÃO
+  /// tem conta BRIX verificada — não adianta tentar de novo). O relay usa
+  /// o null para PARAR o retry infinito que antes queimava bateria/rede a
+  /// cada poll (log mostrava "attempt 98" num usuário sem BRIX).
+  Future<bool?> registerPushToken(String fcmToken, String pubkey) async {
     try {
       final body = {'fcm_token': fcmToken};
       final response = await _dio.post('/brix/register-push',
@@ -477,6 +483,14 @@ class BrixService {
         options: _signedOptions('/brix/register-push', 'POST', pubkey: pubkey, body: body),
       );
       return response.data?['success'] == true;
+    } on DioException catch (e) {
+      // 404 = usuário sem conta BRIX (permanente). NÃO é erro de rede.
+      if (e.response?.statusCode == 404) {
+        broLog('[BRIX] register-push 404: pubkey sem conta BRIX — não tentar de novo');
+        return null;
+      }
+      broLog('[BRIX] Error registering push token: $e');
+      return false;
     } catch (e) {
       broLog('[BRIX] Error registering push token: $e');
       return false;

@@ -425,8 +425,13 @@ class BrixRelayService {
       }
 
       // ── Claim pending offline payments ──
-      final pendingPayments = await _brixService.getPendingPayments(_pubkey!);
-      for (final payment in pendingPayments) {
+      // vSEC-fix: pular se o servidor já disse 404 (sem conta BRIX). Sem isso,
+      // um usuário sem BRIX fazia uma chamada HTTP a cada poll (5s) que sempre
+      // retornava 404 — ruído de rede/log e bateria. Quem TEM BRIX (200) segue
+      // o fluxo normal; o flag é resetado em start()/restart()/token-rotation.
+      if (!_brixNotAUser) {
+        final pendingPayments = await _brixService.getPendingPayments(_pubkey!);
+        for (final payment in pendingPayments) {
         if (_claimedPayments.contains(payment.id)) continue;
         _claimedPayments.add(payment.id);
 
@@ -462,7 +467,8 @@ class BrixRelayService {
         } else {
           _claimedPayments.remove(payment.id);
         }
-      }
+        } // end for (pendingPayments)
+      } // end if (!_brixNotAUser)
     } catch (e) {
       // Log errors periodically (every ~30s) to avoid spam but still visible
       if (_pollCount % 20 == 1) {

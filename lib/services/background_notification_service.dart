@@ -556,6 +556,11 @@ Future<void> _refreshFcmToken() async {
 
     if (response.statusCode == 200) {
       broLog('[BRO-BG-FCM] Token FCM re-registrado com sucesso (BRIX)');
+    } else if (response.statusCode == 404) {
+      // vSEC-fix: 404 = esta pubkey NÃO tem conta BRIX (permanente). NÃO é
+      // falha — é simplesmente um usuário que não usa BRIX. Não logar como
+      // erro nem fazer retry (era ruído a cada background wake).
+      broLog('[BRO-BG-FCM] BRIX: sem conta (404) — ok, nada a registrar');
     } else {
       broLog('[BRO-BG-FCM] Falha ao registrar token BRIX: ${response.statusCode}');
       // Retry once after 3s

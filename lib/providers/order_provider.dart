@@ -639,6 +639,13 @@ class OrderProvider with ChangeNotifier {
           if (order.acceptedAt != null) {
             return true;
           }
+          // vSEC-fix: ordem TERMINAL (completed/cancelled/liquidated) NUNCA é
+          // ghost — ela foi levada a um estado final por um fluxo real. Remover
+          // seria perda de histórico. Manter sempre.
+          const terminalStatuses = ['completed', 'cancelled', 'liquidated'];
+          if (terminalStatuses.contains(order.status)) {
+            return true;
+          }
           // Sem acceptedAt: pode ser stamping-ghost. Tolerar se criada há pouco
           // (propagação Nostr), senão remover.
           if (now.difference(order.createdAt) < propagationGrace) {
@@ -1424,6 +1431,17 @@ class OrderProvider with ChangeNotifier {
         broLog('? syncProvider: todas ordens do user s�o terminais, pulando fetchUserOrders');
       }
       
+      // vSEC-fix (cache inteligente): ordens TERMINAIS já salvas localmente
+      // são a fonte de verdade — NÃO re-buscar no relay. Isso (a) evita lentidão
+      // (dezenas de fetchOrderFromNostr p/ ordens antigas), (b) evita PERDER o
+      // histórico quando o relay já podou o evento original, (c) mantém ordens
+      // NOVAS/ativas sendo buscadas normalmente (nada se perde).
+      const terminalForSkip = ['completed', 'cancelled', 'liquidated'];
+      final terminalCachedIds = _orders
+          .where((o) => o.providerId == _currentUserPubkey && terminalForSkip.contains(o.status))
+          .map((o) => o.id)
+          .toSet();
+
       final results = await Future.wait([
         safeFetch(() => _nostrOrderService.fetchPendingOrders(), 'fetchPendingOrders'),
         if (hasActiveUserOrders)
@@ -1433,7 +1451,7 @@ class OrderProvider with ChangeNotifier {
         else
           Future.value(<Order>[]),
         safeFetch(() => _currentUserPubkey != null
-            ? _nostrOrderService.fetchProviderOrders(_currentUserPubkey!)
+            ? _nostrOrderService.fetchProviderOrders(_currentUserPubkey!, skipOrderIds: terminalCachedIds)
             : Future.value(<Order>[]), 'fetchProviderOrders'),
       ]);
       

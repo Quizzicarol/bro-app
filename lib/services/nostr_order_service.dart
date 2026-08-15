@@ -539,7 +539,7 @@ class NostrOrderService {
   /// all racing with a 5s per-relay timeout. Cross-relay dedup via seenIds
   /// guarantees no duplicates. The 15s status-update cache + Completer lock
   /// (added in v126/v129) prevents the WebSocket fan-out that hurt before.
-  Future<List<Map<String, dynamic>>> _fetchProviderOrdersRaw(String providerPubkey) async {
+  Future<List<Map<String, dynamic>>> _fetchProviderOrdersRaw(String providerPubkey, {Set<String>? skipOrderIds}) async {
     final orders = <Map<String, dynamic>>[];
     final seenIds = <String>{};
     final orderIdsFromAccepts = <String>{};
@@ -598,7 +598,10 @@ class NostrOrderService {
     
     // Buscar ordens originais pelos IDs dos eventos de aceitação
     if (orderIdsFromAccepts.isNotEmpty) {
-      final missingIds = orderIdsFromAccepts.where((id) => !seenIds.contains(id)).toList();
+      // vSEC-fix: pular ordens TERMINAIS já em cache local — não re-buscar no
+      // relay (evita lentidão e dependência de evento que o relay pode ter podado).
+      final missingIds = orderIdsFromAccepts.where((id) =>
+        !seenIds.contains(id) && !(skipOrderIds?.contains(id) ?? false)).toList();
       
       if (missingIds.isNotEmpty) {
         // Buscar em lotes de 5 (reduced from 10)
@@ -703,8 +706,15 @@ class NostrOrderService {
 
   /// Busca ordens aceitas por um provedor e retorna como List<Order>
   /// CORREÇÃO: Agora também busca eventos de UPDATE para obter status correto
-  Future<List<Order>> fetchProviderOrders(String providerPubkey) async {
-    final rawOrders = await _fetchProviderOrdersRaw(providerPubkey);
+  ///
+  /// vSEC-fix (cache inteligente): [skipOrderIds] = ordens TERMINAIS que já
+  /// estão salvas localmente. Elas NÃO são re-buscadas no relay — o histórico
+  /// local é a fonte de verdade p/ ordens concluídas. Isso evita que o app
+  /// fique lento (dezenas de fetchOrderFromNostr p/ ordens antigas) E evita
+  /// perder o histórico quando o relay já podou o evento. Ordens NOVAS/ativas
+  /// continuam sendo buscadas normalmente (nada se perde).
+  Future<List<Order>> fetchProviderOrders(String providerPubkey, {Set<String>? skipOrderIds}) async {
+    final rawOrders = await _fetchProviderOrdersRaw(providerPubkey, skipOrderIds: skipOrderIds);
     
     // CORREÇÃO CRÍTICA: Buscar eventos de UPDATE para obter status correto
     // Sem isso, ordens completed apareciam como "pending" ou "accepted"

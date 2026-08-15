@@ -319,7 +319,9 @@ void main() async {
         await BrixService().initCredentials();
         final ok = await BrixService().registerPushToken(token, pubkey);
         PushDiag.log('main: BRIX register=$ok');
-        return ok;
+        // vSEC-fix: null = 404 permanente (sem conta BRIX). Tratar como
+        // "resolvido" (true) para o retry PARAR — não é erro transitório.
+        return ok ?? true;
       });
 
       _retryAsync('Backend push', () async {

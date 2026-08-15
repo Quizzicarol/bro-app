@@ -289,6 +289,7 @@ class BrixRelayService {
     _fcmRegistered = false;
     _backendFcmRegistered = false;
     _fcmRetryCount = 0;
+    _brixNotAUser = false; // vSEC-fix: token rotation = nova chance p/ BRIX
   }
 
   int _pollCount = 0;

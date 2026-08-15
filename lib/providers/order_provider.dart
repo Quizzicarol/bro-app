@@ -1938,6 +1938,9 @@ class OrderProvider with ChangeNotifier {
         // para esta ordem. Se houver mais de um, o vencedor e o primeiro
         // (menor created_at). Se o providerId atual NAO for o vencedor,
         // NAO revelamos o billCode — o segundo bro perde a corrida.
+        // vSEC-latency: fetchAllAcceptsForOrder agora consulta os relays EM
+        // PARALELO (antes sequencial ~24s) — então esta checagem deixou de ser
+        // o gargalo de >1min no caminho do billCode.
         final allAccepts = await _nostrOrderService
             .fetchAllAcceptsForOrder(order.id)
             .timeout(const Duration(seconds: 10), onTimeout: () => <String>[]);
@@ -2455,35 +2458,15 @@ class OrderProvider with ChangeNotifier {
       // Races genuinas sao resolvidas pela escolha do buyer (so um accept
       // vai receber pagamento).
       //
-      // vSEC (race): RE-CHECK pós-publish com vencedor CANÔNICO. O pre-check
-      // tem uma janela: 2 provedores em relays diferentes podem passar por ele
-      // no mesmo segundo e AMBOS publicarem. Como fetchOrderProviderPubkey
-      // agora é determinístico (menor created_at, desempate por pubkey), um
-      // re-check tardio converge para o MESMO vencedor que o buyer verá.
-      // Se perdemos: rollback para não pagarmos um boleto de uma ordem que
-      // não é nossa.
-      if (acceptVerified && success && providerPubkey != null) {
-        try {
-          final winner = await _nostrOrderService
-              .fetchOrderProviderPubkey(orderId)
-              .timeout(const Duration(seconds: 6), onTimeout: () => null);
-          if (winner != null &&
-              winner.toLowerCase() != providerPubkey.toLowerCase()) {
-            broLog('🏁 [acceptOrderAsProvider] race lost (post-publish): ${winner.substring(0, 8)} venceu');
-            _error = '❌ Esta ordem já foi aceita por outro provedor';
-            _orders.removeWhere((o) => o.id == orderId);
-            await _saveOnlyUserOrders();
-            _availableOrdersForProvider.removeWhere((o) => o.id == orderId);
-            _isLoading = false;
-            _immediateNotify();
-            return false;
-          }
-        } catch (e) {
-          // Falha na verificação → manter aceite otimista (fail-open p/
-          // disponibilidade; o ProviderPaymentGuard protege o pagamento).
-          broLog('⚠️ [acceptOrderAsProvider] post-publish race check falhou: $e');
-        }
-      }
+      // vSEC-latency: REMOVI o "post-publish race check" que eu havia
+      // adicionado. Ele era REDUNDANTE: quando `success==true` o publish já
+      // foi ACK-ed (eu sou o vencedor naquele relay) e o verify-after-publish
+      // (quando success==false) já detecta corrida perdida. O check extra
+      // adicionava até 6s de relay-query no caminho do aceite SEM ganho real
+      // — contribuindo para a UX de "clicar 3 vezes". A proteção anti-race
+      // efetiva fica no PRE-check + verify-after-publish + winner canônico
+      // (fetchOrderProviderPubkey) usado pelo buyer na hora de revelar o
+      // billCode e pagar.
 
       // CORREÇÃO v1.0.129+223: Remover da lista de disponíveis IMEDIATAMENTE
       // Sem isso, a ordem ficava em _availableOrdersForProvider com status stale

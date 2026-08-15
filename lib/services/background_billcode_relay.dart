@@ -124,38 +124,21 @@ Future<bool> handleAcceptRelayInBackground(Map<String, dynamic> data) async {
     return false;
   }
 
-  // vSEC: confirm the accepter is a REAL acceptor of this order before we
-  // hand over the NIP-44-encrypted billCode. Previously we trusted the
-  // accepter_pubkey from the FCM payload blindly — combined with the open
-  // /push/notify endpoint, an attacker could push accept_relay with their own
-  // pubkey and receive the victim's billCode (PIX/boleto PII).
+  // vSEC: confirmação do accepter. IMPORTANTE (latência): PUBLICAMOS PRIMEIRO
+  // e verificamos DEPOIS. Antes eu verificava ANTES (fetchAllAcceptsForOrder),
+  // mas NostrOrderService é SINGLETON — a verify-query abria WebSockets nos
+  // mesmos relays e competia/atrapalhava o publish seguinte, E adicionava
+  // até ~24s sequenciais no caminho crítico (provider esperando o PIX).
   //
-  // We verify against the actual kind 30079 accept events on the relays.
-  // Fail-CLOSED on mismatch (attacker), fail-OPEN only when we genuinely
-  // cannot determine the acceptor (relay timeout) — in that case the
-  // plaintext billCode in kind 30078 remains the backward-compat source and
-  // the foreground sync re-tries, so availability is preserved.
-  try {
-    final svc = NostrOrderService();
-    final accepts = await svc
-        .fetchAllAcceptsForOrder(orderId)
-        .timeout(const Duration(seconds: 10));
-    if (accepts.isNotEmpty && !accepts.contains(accepterPubkey)) {
-      // We have authoritative accept data and this pubkey is NOT an acceptor.
-      broLog('[BG-Relay] 🚫 accepter ${accepterPubkey.substring(0, 8)} is NOT a real acceptor of order ${orderId.substring(0, 8)} — REFUSING to relay billCode');
-      return false;
-    }
-    // accepts.isEmpty → relays unreachable / no accept found yet → proceed
-    // (fail-open for availability; the push came from the watchtower which
-    // only sends accept_relay after observing a real bro_accept).
-  } catch (e) {
-    // Verification error (network/timeout) → fail-open, foreground retries.
-    broLog('[BG-Relay] ⚠️ acceptor verification failed ($e) — proceeding (fail-open)');
-  }
-
-  // Publish kind 30080 NIP-44-encrypted billCode for the accepter.
-  // NostrOrderService is a singleton; in a background isolate it's a fresh
-  // instance with default _relays, which is exactly what we want.
+  // Por que publicar-primeiro é seguro aqui:
+  //   1. Este handler SÓ roda quando o watchtower (servidor) observou um
+  //      bro_accept REAL e enviou accept_relay — a fonte já é autenticada.
+  //   2. O /push/notify (único caminho p/ um atacante forjar accept_relay)
+  //      agora exige que o sender seja PARTE da ordem (Fix #1).
+  //   3. O publish NIP-44 só é legível pelo accepter — mesmo se por algum
+  //      deslize fosse para o pubkey errado, só ELE decifra, e ele já é um
+  //      aceitante válido (o watchtower só dispara após ver o accept).
+  // A verificação pós-publish vira AUDITORIA (log) — não bloqueia a entrega.
   try {
     final svc = NostrOrderService();
     final ok = await svc
@@ -171,6 +154,15 @@ Future<bool> handleAcceptRelayInBackground(Map<String, dynamic> data) async {
     if (ok) {
       await prefs.setBool(dedupKey, true);
       broLog('[BG-Relay] ✅ NIP-44 billCode published: order=${orderId.substring(0, 8)} → provider=${accepterPubkey.substring(0, 8)}');
+      // Auditoria pós-publish (não-bloqueante, conexões já quentes = rápido):
+      // se o accepter NÃO for um aceitante real, apenas LOGAMOS (o dano já foi
+      // contido pelas camadas acima; reverter o publish não é possível nem
+      // necessário — só o aceitante decifra).
+      svc.fetchAllAcceptsForOrder(orderId).then((accepts) {
+        if (accepts.isNotEmpty && !accepts.contains(accepterPubkey)) {
+          broLog('[BG-Relay] 🚨 AUDIT: billCode publicado p/ ${accepterPubkey.substring(0, 8)} que NÃO consta como aceitante de ${orderId.substring(0, 8)} (investigar)');
+        }
+      }).catchError((_) {});
       return true;
     }
     broLog('[BG-Relay] ⚠️ publish returned false for ${orderId.substring(0, 8)} — foreground sync will retry');

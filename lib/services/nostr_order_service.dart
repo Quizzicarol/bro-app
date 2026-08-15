@@ -668,29 +668,33 @@ class NostrOrderService {
   Future<List<String>> fetchAllAcceptsForOrder(String orderId) async {
     final accepts = <Map<String, dynamic>>[]; // {pubkey, created_at}
     final seenPubkeys = <String>{};
-    for (final relay in _relays.take(3)) {
-      try {
-        final events = await _fetchFromRelay(
-          relay,
-          kinds: [kindBroAccept],
-          tags: {'#d': ['${orderId}_accept']},
-          limit: 20,
-        ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]);
-        for (final event in events) {
-          try {
-            final content = event['parsedContent'] ?? jsonDecode(event['content']);
-            if (content['orderId'] != orderId) continue;
-            if (content['type'] != 'bro_accept') continue;
-            final pubkey = event['pubkey'] as String?;
-            final createdAt = event['created_at'] as int?;
-            if (pubkey == null || pubkey.isEmpty || createdAt == null) continue;
-            if (seenPubkeys.contains(pubkey)) continue;
-            seenPubkeys.add(pubkey);
-            accepts.add({'pubkey': pubkey, 'created_at': createdAt});
-          } catch (_) {}
-        }
-      } catch (_) {
-        // try next relay
+    // vSEC-latency: consultar os relays EM PARALELO (antes era sequencial com
+    // timeout de 8s cada → até ~24s). Como esta função roda NO CAMINHO de
+    // entrega do billCode (foreground sync + background relay), a latência
+    // sequencial atrasava a chegada do código PIX/boleto em >1min sob relay
+    // lento. Paralelo: o tempo total = o relay MAIS LENTO, não a soma.
+    final results = await Future.wait(
+      _relays.take(3).map((relay) => _fetchFromRelay(
+        relay,
+        kinds: [kindBroAccept],
+        tags: {'#d': ['${orderId}_accept']},
+        limit: 20,
+      ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[])
+       .catchError((_) => <Map<String, dynamic>>[])),
+    );
+    for (final events in results) {
+      for (final event in events) {
+        try {
+          final content = event['parsedContent'] ?? jsonDecode(event['content']);
+          if (content['orderId'] != orderId) continue;
+          if (content['type'] != 'bro_accept') continue;
+          final pubkey = event['pubkey'] as String?;
+          final createdAt = event['created_at'] as int?;
+          if (pubkey == null || pubkey.isEmpty || createdAt == null) continue;
+          if (seenPubkeys.contains(pubkey)) continue;
+          seenPubkeys.add(pubkey);
+          accepts.add({'pubkey': pubkey, 'created_at': createdAt});
+        } catch (_) {}
       }
     }
     accepts.sort((a, b) => (a['created_at'] as int).compareTo(b['created_at'] as int));

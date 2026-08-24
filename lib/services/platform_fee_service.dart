@@ -4,6 +4,7 @@ import 'package:bro_app/services/log_utils.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config.dart';
 import 'lnaddress_service.dart';
+import 'coordinator_service.dart';
 
 /// Serviço para rastrear taxas da plataforma
 /// 
@@ -25,6 +26,40 @@ class PlatformFeeService {
   
   /// Taxa da plataforma — centralizada em AppConfig
   static const double platformFeePercent = AppConfig.platformFeePercent;
+
+  /// ETAPA 2 (roteamento de taxa p/ coordinator): resolve para qual endereço
+  /// Lightning a taxa vai.
+  /// - Se o usuário escolheu um coordinator específico (não "Automático") e ele
+  ///   tem endereço Lightning válido, a taxa vai para ELE.
+  /// - Senão (Automático), usa o endereço fixo atual (Bro original) — mesmo
+  ///   comportamento de sempre.
+  ///
+  /// NOTA: enquanto a Etapa 2 não for ligada na UI, a seleção fica "Automático"
+  /// e este método sempre retorna o endereço padrão (zero mudança de hoje).
+  static Future<String> _resolveFeeDestination() async {
+    try {
+      final svc = CoordinatorService();
+      await svc.loadSelection();
+      if (!svc.isAutomatic) {
+        // Tenta o cache (rápido). Se estiver vazio (ex.: usuário escolheu mas a
+        // tela fechou antes de gravar o cache), busca da rede para não cair no
+        // padrão por um detalhe de timing.
+        var cards = await svc.loadCachedCards();
+        var card = svc.selectedCard(cards);
+        if (card == null) {
+          cards = await svc.fetchCoordinatorCards();
+          card = svc.selectedCard(cards);
+        }
+        if (card != null && card.lnAddress.isNotEmpty) {
+          broLog('💼 Taxa roteada para coordinator escolhido: ${card.name} (${card.lnAddress})');
+          return card.lnAddress;
+        }
+      }
+    } catch (e) {
+      broLog('⚠️ _resolveFeeDestination: fallback p/ padrão ($e)');
+    }
+    return AppConfig.platformLightningAddress;
+  }
   
   /// Inicializa o serviço carregando ordens já pagas do storage
   static Future<void> initialize() async {
@@ -308,7 +343,7 @@ class PlatformFeeService {
     broLog('💼 Ordem: ${orderId.length > 8 ? orderId.substring(0, 8) : orderId}...');
     broLog('💼 Valor total: $totalSats sats');
     broLog('💼 Taxa (${(AppConfig.platformFeePercent * 100).toStringAsFixed(0)}%): $platformFeeSats sats');
-    broLog('💼 Destino: ${AppConfig.platformLightningAddress}');
+    broLog('💼 Destino: ${await _resolveFeeDestination()}');
     broLog('💼 Backend: $_currentBackend');
     broLog('💼 ════════════════════════════════════════════════');
     broLog('');
@@ -321,7 +356,7 @@ class PlatformFeeService {
     }
 
     try {
-      final platformAddress = AppConfig.platformLightningAddress;
+      final platformAddress = await _resolveFeeDestination();
 
       // Detectar tipo de endereço Lightning
       if (platformAddress.contains('@')) {

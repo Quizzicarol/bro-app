@@ -12,6 +12,7 @@ import '../services/version_check_service.dart';
 import '../providers/breez_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/locale_provider.dart';
+import 'coordinator_selection_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -975,6 +976,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             vertical: 10,
                           ),
                           onTap: () => Navigator.pushNamed(context, '/nip06-backup'),
+                        ),
+                        Divider(height: 1, color: Colors.white12),
+                        ListTile(
+                          leading: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.deepOrange.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.hub, color: Colors.deepOrange),
+                          ),
+                          title: const Text('Coordinator', style: TextStyle(color: Colors.white)),
+                          subtitle: const Text('Avançado — escolher quem coordena suas ordens', style: TextStyle(color: Colors.white54)),
+                          trailing: const Icon(Icons.chevron_right, color: Colors.white38),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 10,
+                          ),
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const CoordinatorSelectionScreen()),
+                          ),
                         ),
                       ],
                     ),

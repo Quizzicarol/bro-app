@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/breez_config.dart';
 import '../services/storage_service.dart';
 import '../services/brix_relay_service.dart';
+import '../services/platform_fee_service.dart';
 
 /// Self-custodial Lightning provider using Breez SDK Spark (Nodeless)
 class BreezProvider with ChangeNotifier {
@@ -224,6 +225,12 @@ class BreezProvider with ChangeNotifier {
 
       _isInitialized = true;
       broLog('✅ Breez SDK Spark inicializado com sucesso!');
+
+      // Anti re-pagamento de taxa: registra o acesso ao histórico REAL da carteira.
+      // É AQUI que a carteira inicializa de fato (independente do fluxo de login),
+      // então o fetcher fica disponível antes do FeeReconcile rodar. Sem isso o
+      // guarda ficava "não registrado" e o reconcile re-pagava taxas antigas.
+      PlatformFeeService.setWalletHistoryFetcher(() => getAllPayments());
       
       // Listen to events
       _eventsSub = _sdk!.addEventListener().listen(_handleSdkEvent);
@@ -740,11 +747,16 @@ class BreezProvider with ChangeNotifier {
       
       for (var p in resp.payments) {
         String? paymentHash;
+        String? description;
         String direction = p.paymentType.toString().contains('receive') ? 'RECEBIDO' : 'ENVIADO';
         
         if (p.details is spark.PaymentDetails_Lightning) {
           final details = p.details as spark.PaymentDetails_Lightning;
           paymentHash = details.htlcDetails.paymentHash;
+          description = details.description;
+        } else if (p.details is spark.PaymentDetails_Spark) {
+          final sparkDetails = p.details as spark.PaymentDetails_Spark;
+          description = sparkDetails.invoiceDetails?.description;
         }
         
         payments.add({
@@ -754,6 +766,7 @@ class BreezProvider with ChangeNotifier {
           'type': p.paymentType.toString(),
           'direction': direction,
           'paymentHash': paymentHash ?? 'N/A',
+          'description': description ?? '',
         });
       }
       

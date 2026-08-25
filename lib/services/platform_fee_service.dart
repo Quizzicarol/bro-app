@@ -27,6 +27,66 @@ class PlatformFeeService {
   /// Taxa da plataforma — centralizada em AppConfig
   static const double platformFeePercent = AppConfig.platformFeePercent;
 
+  // ── Anti re-pagamento (definitivo) ───────────────────────────────────
+  // O registro local _paidOrderIds se PERDE quando o app é reinstalado. A
+  // descrição "Bro Platform Fee" NÃO chega ao histórico do Spark (o comentário
+  // LNURL vai para o servidor do destinatário, não vira description do payment).
+  // Então o identificador confiável é o paymentHash, que o Spark guarda.
+  // Estratégia: ao pagar, salvamos o paymentHash da taxa na ORDEM (via callback),
+  // que vive no Nostr e sobrevive à reinstalação. Antes de re-pagar, checamos se
+  // a ordem já tem esse hash E se ele consta no histórico da carteira.
+  static Future<List<dynamic>> Function()? _walletHistoryFetcher;
+
+  // Callback para persistir o paymentHash da taxa na ordem (registrado pelo
+  // OrderProvider, que tem acesso à ordem e republica no Nostr).
+  static Future<void> Function(String orderId, String paymentHash)? _onFeePaidPersist;
+
+  /// Registra a função que busca o histórico de pagamentos da carteira.
+  static void setWalletHistoryFetcher(Future<List<dynamic>> Function() fetcher) {
+    _walletHistoryFetcher = fetcher;
+    broLog('💼 PlatformFeeService: wallet-history fetcher registrado (anti re-pagamento ativo)');
+  }
+
+  /// Registra o callback que persiste o paymentHash da taxa na ordem (Nostr).
+  static void setOnFeePaidPersist(Future<void> Function(String orderId, String paymentHash) cb) {
+    _onFeePaidPersist = cb;
+  }
+
+  /// Indica se o acesso ao histórico da carteira já foi registrado (carteira pronta).
+  static bool get hasWalletHistoryFetcher => _walletHistoryFetcher != null;
+
+  /// Verifica se um paymentHash consta como pago no histórico REAL da carteira.
+  static Future<bool> _hashConfirmedInWallet(String paymentHash) async {
+    if (_walletHistoryFetcher == null || paymentHash.isEmpty) return false;
+    try {
+      final payments = await _walletHistoryFetcher!();
+      for (final p in payments) {
+        final hash = (p is Map ? (p['paymentHash'] ?? '') : '').toString();
+        final type = (p is Map ? (p['type'] ?? p['direction'] ?? '') : '').toString().toLowerCase();
+        final isSent = type.contains('send') || type.contains('enviado') || type.contains('outgoing');
+        if (isSent && hash == paymentHash) return true;
+      }
+      return false;
+    } catch (e) {
+      broLog('⚠️ _hashConfirmedInWallet: $e');
+      return false;
+    }
+  }
+
+  /// Chamado pelo OrderProvider: verifica se a taxa da ordem já foi paga,
+  /// usando o paymentHash salvo na ordem (se houver) confirmado na carteira.
+  static Future<bool> isFeePaidVerified(String orderId, String? orderFeeHash) async {
+    if (_paidOrderIds.contains(orderId)) return true;
+    if (orderFeeHash != null && orderFeeHash.isNotEmpty) {
+      if (await _hashConfirmedInWallet(orderFeeHash)) {
+        _paidOrderIds.add(orderId);
+        await _savePaidOrderIds();
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// ETAPA 2 (roteamento de taxa p/ coordinator): resolve para qual endereço
   /// Lightning a taxa vai.
   /// - Se o usuário escolheu um coordinator específico (não "Automático") e ele
@@ -71,6 +131,34 @@ class PlatformFeeService {
     _feePaymentHashes.clear();
     _feePaymentHashes.addAll(hashes);
     broLog('💼 PlatformFeeService inicializado com ${_paidOrderIds.length} ordens já pagas, ${_feePaymentHashes.length} hashes');
+
+    // MIGRAÇÃO ÚNICA (remover depois de rodar 1x): marca as 3 ordens de teste que
+    // foram re-pagas durante o debug do FeeReconcile, para o teste da correção
+    // começar limpo SEM re-pagar. Essas ordens já tiveram a taxa paga várias
+    // vezes; não podem ser pagas de novo. Roda uma vez (guardada por flag).
+    const migrationFlag = 'fee_reconcile_migration_20260824_done';
+    final alreadyMigrated = prefs.getBool(migrationFlag) ?? false;
+    if (!alreadyMigrated) {
+      const legacyOrders = [
+        '7553fb25-29f8-4cd4-ae1d-5b49e7bdef99',
+        'b620259f',
+        '9a656378-1366-49a4-abdd-4b6ba04e297a',
+      ];
+      for (final id in legacyOrders) {
+        _paidOrderIds.add(id);
+      }
+      await _savePaidOrderIds();
+      await prefs.setBool(migrationFlag, true);
+      broLog('💼 [migração] ordens de teste marcadas como pagas (não re-pagar): ${legacyOrders.length}');
+    }
+  }
+
+  /// Verifica se uma ordem é uma das ordens de teste legadas (por prefixo).
+  /// Usado no filtro do FeeReconcile para pular mesmo se o ID tiver variação.
+  static bool isLegacyTestOrder(String orderId) {
+    return orderId.startsWith('7553fb25') ||
+        orderId.startsWith('b620259f') ||
+        orderId.startsWith('9a656378');
   }
   
   /// Salva o registro de ordens pagas no storage
@@ -305,11 +393,24 @@ class PlatformFeeService {
   static Future<bool> sendPlatformFee({
     required String orderId,
     required int totalSats,
+    String? knownFeeHash, // paymentHash da taxa salvo na ordem (se já paga antes)
   }) async {
     // VERIFICAÇÃO CRÍTICA: Evitar pagamento duplicado
     if (_paidOrderIds.contains(orderId)) {
       broLog('💼 Taxa já foi paga para ordem ${orderId.length > 8 ? orderId.substring(0, 8) : orderId} - ignorando');
       return true; // Retorna true pois já foi pago
+    }
+
+    // ANTI RE-PAGAMENTO (definitivo): se a ordem já tem um paymentHash de taxa
+    // salvo (persistido no Nostr, sobrevive à reinstalação) E ele consta no
+    // histórico real da carteira, a taxa JÁ foi paga — re-marca e NÃO re-paga.
+    if (knownFeeHash != null && knownFeeHash.isNotEmpty) {
+      if (await _hashConfirmedInWallet(knownFeeHash)) {
+        broLog('💼 Taxa da ordem ${orderId.length > 8 ? orderId.substring(0, 8) : orderId} confirmada no histórico (hash) — SEM re-pagar');
+        _paidOrderIds.add(orderId);
+        await _savePaidOrderIds();
+        return true;
+      }
     }
     
     // CORREÇÃO v1.0.129+224: LOCK IMEDIATO para prevenir race condition
@@ -392,6 +493,12 @@ class PlatformFeeService {
           final payHash = payResult['payment']?['paymentHash'] as String?;
           if (payHash != null && payHash.isNotEmpty) {
             await _saveFeePaymentHash(payHash);
+            // ANTI RE-PAGAMENTO: persistir o hash NA ORDEM (Nostr) — sobrevive à
+            // reinstalação. Assim o FeeReconcile consegue confirmar que a taxa
+            // já foi paga mesmo com o app reinstalado, e nunca re-paga.
+            if (_onFeePaidPersist != null) {
+              try { await _onFeePaidPersist!(orderId, payHash); } catch (_) {}
+            }
           }
           
           broLog('');

@@ -2070,6 +2070,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               l.t('order_detail_total_paid'),
               '$totalSats sats',
             ),
+            // v650: qual coordinator processou esta ordem (gravado na criação)
+            ..._buildCoordinatorRow(fullOrder),
             if (_orderDetails?['provider_id'] != null || fullOrder?.providerId != null) ...[
               const SizedBox(height: 16),
               Divider(height: 1, color: Colors.grey.withOpacity(0.15)),
@@ -2083,6 +2085,21 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         ),
       ),
     );
+  }
+
+  // v650: linha "Coordinator" nos detalhes — mostra quem processou a ordem.
+  // Lê de metadata.coordinatorName (gravada na criação). Ausente/vazio = Bro original.
+  List<Widget> _buildCoordinatorRow(dynamic fullOrder) {
+    String name = 'Bro original';
+    try {
+      final md = fullOrder?.metadata;
+      final n = (md is Map) ? (md['coordinatorName']?.toString() ?? '') : '';
+      if (n.isNotEmpty) name = n;
+    } catch (_) {}
+    return [
+      const SizedBox(height: 12),
+      _buildDetailRow('Coordinator', name),
+    ];
   }
 
   Widget _buildDetailRow(String label, String value) {

@@ -59,6 +59,12 @@ const KIND_COMPLETE = 30081;
 const KIND_COORDINATOR_ANNOUNCE = 30082;
 const ANNOUNCE_REPUBLISH_MS = 30 * 60 * 1000; // republica a cada 30 min
 
+// ── Reputação de Coordinator (kind 30083) ────────────────────────────
+// Quando uma ordem que este coordinator processa termina, ele publica uma
+// atestação (completed/disputed) assinada com a identidade do coordinator.
+// O app agrega essas atestações para mostrar o histórico de cada coordinator.
+const KIND_COORDINATOR_REPUTATION = 30083;
+
 // Notification title/body maps
 const NOTIFICATION_MAP = {
   'accepted': { title: '🤝 Bro encontrado!', body: 'Um Bro aceitou sua ordem' },
@@ -80,6 +86,7 @@ class NostrWatchtowerService {
     this._reconnectTimers = new Map();
     this._eoseReceived = new Set(); // relays that finished historical catch-up
     this._orderUsers = new Map(); // orderId → userPubkey cache (from bro_order events)
+    this._orderCoordinator = new Map(); // orderId → coordinatorPubkey (da metadata; '' = Bro original)
     this._running = false;
     this._stats = { eventsProcessed: 0, pushesSent: 0, pushesFailed: 0, sigFailed: 0 };
     // SECURITY: Rate limit pushes per target pubkey (max 10 per 5 min)
@@ -145,6 +152,9 @@ class NostrWatchtowerService {
     // Peça 2: segredo do coordinator p/ assinar o anúncio 30082 (de ADMIN_NSEC)
     this._coordinatorSecretKey = this._decodeNsec(process.env.ADMIN_NSEC);
     this._announceTimer = null;
+    // Reputação: ordens já atestadas (evita publicar a mesma atestação várias
+    // vezes quando o evento 'completed' chega de vários relays — bug do "12").
+    this._reputationPublished = new Set();
   }
 
   // Decodifica nsec (bech32) → secret key (32 bytes Uint8Array). Retorna null
@@ -549,6 +559,20 @@ class NostrWatchtowerService {
               this._orderUsers = new Map(entries.slice(-2000));
             }
           }
+
+          // v650: registrar QUAL coordinator a ordem escolheu (vem na metadata do
+          // content). '' (vazio/ausente) = Bro original. O coordinator SÓ atesta
+          // reputação de ordens cuja coordinatorPubkey bate com a DELE — assim ele
+          // não assina ordens coordenadas por outros (bug que inflou a reputação).
+          try {
+            const coordPk = (content.metadata && content.metadata.coordinatorPubkey)
+              ? String(content.metadata.coordinatorPubkey).toLowerCase() : '';
+            this._orderCoordinator.set(orderId, coordPk);
+            if (this._orderCoordinator.size > 4000) {
+              const entries = Array.from(this._orderCoordinator.entries());
+              this._orderCoordinator = new Map(entries.slice(-2000));
+            }
+          } catch (_) { /* ignore */ }
           // New order created — notify relevant users
           console.log(`🗼 [Watchtower] New order ${shortId} from ${senderPubkey.substring(0, 8)}`);
           await this._notifyNewOrder(senderPubkey, orderId, content, event);
@@ -662,6 +686,11 @@ class NostrWatchtowerService {
             if (this._pendingInvoicePayments.delete(orderId)) {
               console.log(`✅ [Watchtower] Limpando pending invoice ${shortId} (status=${status})`);
             }
+          }
+
+          // Reputação: ordem concluída → publica atestação (kind 30083)
+          if (status === 'completed' || status === 'disputed') {
+            this._publishReputation(orderId, status === 'completed' ? 'completed' : 'disputed', `ordem ${status}`);
           }
 
           // v611: ordem progrediu além de "accepted" → não faz mais sentido
@@ -1279,6 +1308,64 @@ class NostrWatchtowerService {
       console.log(`📢 [Announce] publicado kind 30082 em ${sent} relay(s) | fee=${fee} | ln=${lnAddress || '—'} | pubkey=${pubkey.substring(0, 8)}`);
     } catch (err) {
       console.error(`❌ [Announce] erro ao publicar anúncio: ${err.message}`);
+    }
+  }
+
+  // ── Reputação: atestação kind 30083 ao concluir/disputar uma ordem ──────
+  // Assinada com a identidade do coordinator. O app agrega para mostrar
+  // histórico (completed/disputed) de cada coordinator na lista de seleção.
+  // v650: SÓ atesta ordens que ESTE coordinator processou (metadata.coordinatorPubkey
+  // da ordem == pubkey dele). Sem isso ele assinava TODAS as ordens que via
+  // completar na rede (inclusive as do coordinator principal) — bug que inflou
+  // a reputação (a dona do projeto flagou: apareceram 12 ordens que não eram dele).
+  _publishReputation(orderId, result, note) {
+    if (!this._running || !this._coordinatorSecretKey) return;
+    const myPubkey = this._coordinatorPubkey();
+    if (!myPubkey) return;
+
+    // GATE: só atesta se a ordem foi atribuída a ESTE coordinator.
+    // Ordens sem coordinatorPubkey (antigas, ou Bro original) NÃO são dele → pula.
+    const orderCoord = (this._orderCoordinator.get(orderId) || '').toLowerCase();
+    if (orderCoord !== myPubkey.toLowerCase()) {
+      console.log(`📊 [Reputation] ordem ${orderId.substring(0, 8)} não é deste coordinator (coord=${orderCoord ? orderCoord.substring(0,8) : 'original'}) — não atesto`);
+      return;
+    }
+
+    // Dedup: uma atestação por ordem (o evento 'completed' chega de vários relays).
+    const dedupKey = `${orderId}:${result}`;
+    if (this._reputationPublished.has(dedupKey)) return;
+    this._reputationPublished.add(dedupKey);
+    if (this._reputationPublished.size > 5000) {
+      const arr = Array.from(this._reputationPublished);
+      this._reputationPublished = new Set(arr.slice(-2500));
+    }
+    try {
+      const pubkey = myPubkey;
+      const template = {
+        kind: KIND_COORDINATOR_REPUTATION,
+        created_at: Math.floor(Date.now() / 1000),
+        pubkey,
+        tags: [
+          ['d', `${pubkey}:${orderId}`],
+          ['t', 'bro-coordinator-reputation'],
+          ['p', pubkey],
+          ['result', result],
+          ['order', orderId],
+        ],
+        content: note || '',
+      };
+      const signed = finalizeEvent(template, this._coordinatorSecretKey);
+      if (signed.pubkey !== pubkey) return;
+      const frame = JSON.stringify(['EVENT', signed]);
+      let sent = 0;
+      for (const [relayUrl, ws] of this._connections) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          try { ws.send(frame); sent++; } catch (_) { /* best-effort */ }
+        }
+      }
+      console.log(`📊 [Reputation] atestação ${result} p/ ordem ${orderId.substring(0, 8)} publicada em ${sent} relay(s)`);
+    } catch (err) {
+      console.error(`❌ [Reputation] erro ao publicar: ${err.message}`);
     }
   }
 

@@ -10,6 +10,7 @@ import '../services/nostr_service.dart';
 import '../services/nostr_order_service.dart';
 import '../services/local_collateral_service.dart';
 import '../services/platform_fee_service.dart';
+import '../services/coordinator_service.dart';
 import '../services/order_reminder_service.dart';
 import '../services/orders_storage.dart';
 import '../models/order.dart';
@@ -405,6 +406,13 @@ class OrderProvider with ChangeNotifier {
     // e nunca recebeu pagamento real.
     await _fixIncorrectlyPaidOrders();
     
+    // ANTI RE-PAGAMENTO: registra o callback que persiste o paymentHash da taxa
+    // na ORDEM (metadata + republica no Nostr). Assim o hash sobrevive à
+    // reinstalação e o FeeReconcile consegue confirmar "já pago" pela carteira.
+    PlatformFeeService.setOnFeePaidPersist((orderId, paymentHash) async {
+      await _persistFeeHashOnOrder(orderId, paymentHash);
+    });
+
     // Depois sincronizar do Nostr (em background)
     if (_currentUserPubkey != null) {
       _syncFromNostrBackground();
@@ -412,6 +420,24 @@ class OrderProvider with ChangeNotifier {
     
     _isInitialized = true;
     _immediateNotify();
+  }
+
+  /// Persiste o paymentHash da taxa na ordem (metadata) e republica no Nostr.
+  /// É o que faz o "já pago" sobreviver à reinstalação (a ordem vem do Nostr).
+  Future<void> _persistFeeHashOnOrder(String orderId, String paymentHash) async {
+    try {
+      final index = _orders.indexWhere((o) => o.id == orderId);
+      if (index == -1) return;
+      final md = Map<String, dynamic>.from(_orders[index].metadata ?? {});
+      md['feePaymentHash'] = paymentHash;
+      _orders[index] = _orders[index].copyWith(metadata: md);
+      await _saveOrders();
+      // Republicar no Nostr para o marcador sobreviver à reinstalação
+      await _publishOrderToNostr(_orders[index]);
+      broLog('💾 feePaymentHash salvo na ordem ${orderId.substring(0, 8)} (anti re-pagamento)');
+    } catch (e) {
+      broLog('⚠️ _persistFeeHashOnOrder: $e');
+    }
   }
   
   /// ðŸ§¹ SEGURAN�?�?�A: Limpar storage 'orders_anonymous' que pode conter ordens de usu�?¡rios anteriores
@@ -1176,6 +1202,7 @@ class OrderProvider with ChangeNotifier {
       
       // ðŸ�?�¥ SIMPLIFICADO: Status 'pending' = Aguardando Bro
       // A ordem j�?¡ est�?¡ paga (invoice/endere�?§o j�?¡ foi criado)
+      final coordinator = await CoordinatorService().resolveForNewOrder();
       final order = Order(
         id: const Uuid().v4(),
         userPubkey: _currentUserPubkey,
@@ -1190,6 +1217,10 @@ class OrderProvider with ChangeNotifier {
         total: total,
         status: 'pending',  // â�?�?� Direto para pending = Aguardando Bro
         createdAt: DateTime.now(),
+        metadata: {
+          'coordinatorPubkey': coordinator['pubkey'] ?? '',
+          'coordinatorName': coordinator['name'] ?? 'Bro original',
+        },
       );
       
       // v493: PUBLICAR NO NOSTR com flag de cancelamento.
@@ -3396,6 +3427,13 @@ class OrderProvider with ChangeNotifier {
     if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return;
     if (AppConfig.platformLightningAddress.isEmpty) return;
 
+    // ANTI RE-PAGAMENTO: só reconcilia DEPOIS que a carteira está pronta e o
+    // acesso ao histórico real foi registrado (guarda anti re-pagamento).
+    if (!PlatformFeeService.hasWalletHistoryFetcher) {
+      broLog('[FeeReconcile] adiado — carteira ainda não pronta (guarda anti re-pagamento)');
+      return;
+    }
+
     _isReconcilingFees = true;
     try {
       final now = DateTime.now();
@@ -3411,8 +3449,15 @@ class OrderProvider with ChangeNotifier {
         final autoPaid = order.metadata?['autoPaymentCompleted'] == true;
         final manualCompleted = order.status == 'completed';
         if (!autoPaid && !manualCompleted) return false;
-        // Taxa já paga? pula (o próprio sendPlatformFee também tem esse guard)
+        // Filtro SÍNCRONO (sem await): o `where` não aceita async. A verificação
+        // pelo hash da carteira acontece no loop abaixo (async).
+        // Registro local rápido:
         if (PlatformFeeService.isFeePaid(order.id)) return false;
+        // MIGRAÇÃO: pular as 3 ordens de teste legadas (por prefixo) — foram
+        // re-pagas no debug e não podem ser pagas de novo.
+        if (PlatformFeeService.isLegacyTestOrder(order.id)) return false;
+        // Se a ordem já tem feePaymentHash salvo, trataremos no loop (confirmando
+        // na carteira) — aqui deixamos passar para a checagem async.
         // Janela de segurança: só ordens dos últimos 5 dias (limita risco de
         // dupla cobrança se o tracking local foi perdido numa reinstalação).
         final refStr = order.metadata?['completedAt']?.toString()
@@ -3426,21 +3471,37 @@ class OrderProvider with ChangeNotifier {
 
       if (pending.isEmpty) return;
 
-      broLog('[FeeReconcile] ${pending.length} ordem(ns) com taxa da plataforma pendente');
+      broLog('[FeeReconcile] ${pending.length} ordem(ns) candidatas a taxa pendente');
+      int paidCount = 0;
       for (final order in pending) {
         try {
-          // v621: taxa = 2% da BASE (order.btcAmount), consistente com o autopay.
-          final baseSats = (order.btcAmount * 100000000).round();
-          if (baseSats <= 0) continue;
-          broLog('[FeeReconcile] Enviando taxa pendente da ordem ${order.id.substring(0, 8)} (base $baseSats sats)');
-          final ok = await PlatformFeeService.sendPlatformFee(
-            orderId: order.id,
-            totalSats: baseSats,
-          );
-          broLog('[FeeReconcile] Ordem ${order.id.substring(0, 8)}: ${ok ? "taxa enviada/já paga" : "falhou (retry no próximo sync)"}');
+          final shortId = order.id.substring(0, 8);
+
+          // REGRA DE OURO (anti re-pagamento): na dúvida, NÃO paga.
+          // O FeeReconcile SÓ pode pagar uma taxa se tiver CERTEZA de que ela
+          // nunca foi paga. A única prova confiável que sobrevive à reinstalação
+          // é o feePaymentHash salvo na metadata da ordem + confirmado na carteira.
+          //
+          // - Se TEM feePaymentHash e ele está confirmado na carteira → já pagou → PULA.
+          // - Se TEM feePaymentHash mas NÃO confirmou na carteira → incerto → NÃO paga (pula).
+          // - Se NÃO TEM feePaymentHash (ordem antiga, pré-correção) → não tem como
+          //   provar que não pagou → NÃO paga (pula). Melhor deixar uma taxa antiga
+          //   de 1-2 sats sem regularizar do que re-pagar uma que já foi paga.
+          final savedFeeHash = order.metadata?['feePaymentHash']?.toString() ?? '';
+          if (savedFeeHash.isNotEmpty) {
+            final confirmed = await PlatformFeeService.isFeePaidVerified(order.id, savedFeeHash);
+            broLog('[FeeReconcile] Ordem $shortId: hash salvo, confirmado=$confirmed — pulando (não paga)');
+            continue;
+          }
+          // Sem hash salvo = ordem antiga. Conservador: não paga.
+          broLog('[FeeReconcile] Ordem $shortId: sem feePaymentHash (ordem antiga) — NÃO paga (conservador)');
+          continue;
         } catch (e) {
           broLog('[FeeReconcile] Erro na ordem ${order.id.substring(0, 8)}: $e');
         }
+      }
+      if (paidCount == 0) {
+        broLog('[FeeReconcile] nenhuma taxa paga neste ciclo (todas puladas por segurança)');
       }
     } catch (e) {
       broLog('[FeeReconcile] Erro geral: $e');

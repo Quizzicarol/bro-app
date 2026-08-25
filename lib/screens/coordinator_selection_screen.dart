@@ -21,6 +21,7 @@ class CoordinatorSelectionScreen extends StatefulWidget {
 class _CoordinatorSelectionScreenState extends State<CoordinatorSelectionScreen> {
   final _service = CoordinatorService();
   List<CoordinatorCard> _cards = [];
+  Map<String, Map<String, int>> _reputations = {};
   String _selected = '';
   bool _loading = true;
   String? _error;
@@ -43,9 +44,11 @@ class _CoordinatorSelectionScreenState extends State<CoordinatorSelectionScreen>
     }
     try {
       final fresh = await _service.fetchCoordinatorCards();
+      final rep = await _service.fetchReputations();
       if (mounted) {
         setState(() {
           _cards = fresh;
+          _reputations = rep;
           _loading = false;
           _error = fresh.isEmpty ? 'Nenhum coordinator encontrado ainda.' : null;
         });
@@ -139,9 +142,7 @@ class _CoordinatorSelectionScreenState extends State<CoordinatorSelectionScreen>
           ..._cards.map((c) => _optionTile(
                 pubkey: c.pubkey,
                 title: c.name,
-                subtitle: c.lnAddress.isNotEmpty
-                    ? 'Taxa ${c.fee.isNotEmpty ? "${(double.tryParse(c.fee) ?? 0) * 100}%" : ""} • ${c.lnAddress}'
-                    : 'Sem endereço Lightning anunciado',
+                subtitle: _buildSubtitle(c),
                 selected: _selected == c.pubkey,
                 enabled: c.lnAddress.isNotEmpty, // Etapa 2: só escolhe se puder receber taxa
                 onTap: () => _choose(c.pubkey),
@@ -149,6 +150,22 @@ class _CoordinatorSelectionScreenState extends State<CoordinatorSelectionScreen>
         ],
       ),
     );
+  }
+
+  // Monta o subtítulo com taxa, endereço e reputação (ordens concluídas).
+  String _buildSubtitle(CoordinatorCard c) {
+    if (c.lnAddress.isEmpty) return 'Sem endereço Lightning anunciado';
+    final feeTxt = c.fee.isNotEmpty ? '${(double.tryParse(c.fee) ?? 0) * 100}%' : '';
+    final rep = _reputations[c.pubkey];
+    String repTxt = '';
+    if (rep != null && (rep['total'] ?? 0) > 0) {
+      final done = rep['completed'] ?? 0;
+      final disp = rep['disputed'] ?? 0;
+      repTxt = ' • ✅$done' + (disp > 0 ? ' ⚖️$disp' : '');
+    } else {
+      repTxt = ' • sem histórico ainda';
+    }
+    return 'Taxa $feeTxt • ${c.lnAddress}$repTxt';
   }
 
   Widget _optionTile({

@@ -53,6 +53,7 @@ class CoordinatorService {
   CoordinatorService._internal();
 
   static const int kindCoordinatorAnnounce = 30082;
+  static const int kindCoordinatorReputation = 30083;
   static const String _selectedKey = 'selected_coordinator_pubkey'; // '' = Automático
   static const String _cachedListKey = 'coordinator_cards_cache';
 
@@ -92,6 +93,22 @@ class CoordinatorService {
 
   String get selectedPubkey => _selectedPubkey;
   bool get isAutomatic => _selectedPubkey.isEmpty;
+
+  /// Resolve o coordinator que vai processar a próxima ordem.
+  /// Retorna {pubkey, name} — pubkey '' e name 'Bro original' quando Automático.
+  /// Usado para gravar o coordinator NA ORDEM (metadata) na criação.
+  Future<Map<String, String>> resolveForNewOrder() async {
+    await loadSelection();
+    if (isAutomatic) return {'pubkey': '', 'name': 'Bro original'};
+    var cards = await loadCachedCards();
+    var card = selectedCard(cards);
+    if (card == null) {
+      cards = await fetchCoordinatorCards();
+      card = selectedCard(cards);
+    }
+    if (card != null) return {'pubkey': card.pubkey, 'name': card.name};
+    return {'pubkey': '', 'name': 'Bro original'};
+  }
 
   /// Retorna o cartão do coordinator escolhido (null se Automático).
   /// Usado pela Etapa 2 (roteamento da taxa).
@@ -185,6 +202,101 @@ class CoordinatorService {
     await _cacheCards(cards);
     broLog('🧭 CoordinatorService: ${cards.length} coordinator(s) descoberto(s)');
     return cards;
+  }
+
+  // ── Reputação (kind 30083) ───────────────────────────────────────────
+  /// Conta as atestações de reputação (kind 30083) por coordinator.
+  /// Retorna um mapa pubkey → {completed, disputed, total}.
+  /// Atestações "completed" pesam positivo; "disputed"/"timeout" negativo.
+  /// Falha tolerante por relay.
+  Future<Map<String, Map<String, int>>> fetchReputations() async {
+    final Map<String, Map<String, int>> rep = {};
+    // DEDUP por (coordinator, ordem): a mesma atestação chega de vários relays;
+    // sem isso cada ordem contava várias vezes (bug do "12").
+    final Set<String> seenOrders = {};
+
+    void bump(String pubkey, String orderId, String result) {
+      if (pubkey.length != 64) return;
+      final key = '$pubkey:$orderId';
+      if (orderId.isNotEmpty && !seenOrders.add(key)) return; // já contada
+      final entry = rep.putIfAbsent(pubkey, () => {'completed': 0, 'disputed': 0, 'total': 0});
+      entry['total'] = (entry['total'] ?? 0) + 1;
+      if (result == 'completed') entry['completed'] = (entry['completed'] ?? 0) + 1;
+      if (result == 'disputed' || result == 'timeout') entry['disputed'] = (entry['disputed'] ?? 0) + 1;
+    }
+
+    // FILTRO: só atestações do Bro (tag bro-coordinator-reputation). Sem isso o
+    // kind 30083 — usado por outros projetos (bitvid, dating, etc) — inflava a
+    // contagem com eventos que não são do Bro.
+    final filter = {
+      'kinds': [kindCoordinatorReputation],
+      '#t': ['bro-coordinator-reputation'],
+      'limit': 200,
+    };
+
+    for (final relay in _relays) {
+      try {
+        final channel = WebSocketChannel.connect(Uri.parse(relay));
+        final subId = 'rep_${DateTime.now().millisecondsSinceEpoch % 100000}';
+        channel.sink.add(jsonEncode(['REQ', subId, filter]));
+
+        await for (final msg in channel.stream.timeout(
+          const Duration(seconds: 8),
+          onTimeout: (sink) => sink.close(),
+        )) {
+          final data = jsonDecode(msg.toString());
+          if (data is List && data.length >= 3 && data[0] == 'EVENT') {
+            final eventData = data[2] as Map<String, dynamic>;
+            _parseReputation(eventData, bump);
+          }
+          if (data is List && data.isNotEmpty && data[0] == 'EOSE') break;
+        }
+        try { channel.sink.close(); } catch (_) {}
+      } catch (e) {
+        broLog('⚠️ CoordinatorService.fetchReputations relay $relay: $e');
+      }
+    }
+    return rep;
+  }
+
+  // v651: marco de corte da reputação. As atestações criadas ANTES deste
+  // timestamp são do bug antigo (o coordinator atestava toda ordem que via,
+  // inflando a contagem). Só contamos atestações criadas DEPOIS da correção.
+  // (Gerado em 2026-08-25 ~09:43 UTC; as 13 atestações erradas são anteriores.)
+  static const int _reputationCutoffSecs = 1787662900;
+
+  void _parseReputation(Map<String, dynamic> eventData, void Function(String, String, String) bump) {
+    try {
+      if ((eventData['kind'] as int?) != kindCoordinatorReputation) return;
+      final tags = eventData['tags'];
+      if (tags is! List) return;
+      // FILTRO: exigir a tag do Bro. Eventos 30083 de outros projetos não têm
+      // essa tag e são descartados aqui (defesa extra além do filtro do relay).
+      final isBro = tags.any((t) => t is List && t.length >= 2 && t[0] == 't' && t[1] == 'bro-coordinator-reputation');
+      if (!isBro) return;
+      // SEGURANÇA: verificar assinatura antes de confiar na atestação
+      try {
+        Event.fromJson(eventData, verify: true);
+      } catch (_) {
+        return;
+      }
+      // v651: ignorar atestações antigas (do bug) — só contam as pós-correção.
+      final createdAt = eventData['created_at'] as int? ?? 0;
+      if (createdAt < _reputationCutoffSecs) return;
+      String subjectPubkey = '';
+      String result = '';
+      String orderId = '';
+      for (final t in tags) {
+        if (t is! List || t.length < 2) continue;
+        if (t[0] == 'p') subjectPubkey = t[1].toString();
+        if (t[0] == 'result') result = t[1].toString();
+        if (t[0] == 'order') orderId = t[1].toString();
+      }
+      if (subjectPubkey.isEmpty) return;
+      bump(subjectPubkey, orderId, result);
+    } catch (e) {
+      broLog('⚠️ CoordinatorService._parseReputation: $e');
+    }
   }
 
   CoordinatorCard? _parseCard(Map<String, dynamic> eventData) {

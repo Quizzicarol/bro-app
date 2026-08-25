@@ -172,6 +172,10 @@ class LightningProvider with ChangeNotifier {
       (String invoice) => payInvoice(invoice),
       backend,
     );
+    // Anti re-pagamento: registra o acesso ao histórico REAL da carteira (Spark),
+    // que sobrevive à reinstalação. O PlatformFeeService usa isso para não re-pagar
+    // uma taxa que já saiu, mesmo se o registro local foi perdido.
+    PlatformFeeService.setWalletHistoryFetcher(() => _sparkProvider.getAllPayments());
     broLog('💼 PlatformFeeService configurado para usar $backend');
   }
 

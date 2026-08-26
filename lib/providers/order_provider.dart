@@ -63,21 +63,6 @@ class OrderProvider with ChangeNotifier {
   // resetamos o timer a cada progresso parcial detectado em _reconcileSyncExpectations.
   final Map<String, _SyncExpectation> _syncExpectations = {};
   static const Duration _syncExpectationTimeout = Duration(seconds: 120);
-  // vSEC: cap de segurança — nunca deixar o mapa crescer sem limite
-  // (cada entry segura um Timer). Entradas se auto-removem no timeout, mas
-  // um flood de pushes poderia inflar o mapa entre timeouts.
-  static const int _syncExpectationsMaxSize = 200;
-
-  // vSEC (clock skew): maior created_at visto em eventos Nostr durante syncs.
-  // Usado como referência de "agora" pela auto-liquidação — o relógio local
-  // do device pode estar adiantado/atrasado, e liquidar CEDO por clock skew
-  // rouba o prazo de confirmação do usuário.
-  int _lastNetworkTimeSec = 0;
-  void _noteNetworkTime(int? createdAtSec) {
-    if (createdAtSec != null && createdAtSec > _lastNetworkTimeSec) {
-      _lastNetworkTimeSec = createdAtSec;
-    }
-  }
 
   // v448: Flag para saber se o sync inicial já completou
   // Enquanto false, UI mostra "sincronizando" ao invés de "nenhuma troca"
@@ -406,13 +391,6 @@ class OrderProvider with ChangeNotifier {
     // e nunca recebeu pagamento real.
     await _fixIncorrectlyPaidOrders();
     
-    // ANTI RE-PAGAMENTO: registra o callback que persiste o paymentHash da taxa
-    // na ORDEM (metadata + republica no Nostr). Assim o hash sobrevive à
-    // reinstalação e o FeeReconcile consegue confirmar "já pago" pela carteira.
-    PlatformFeeService.setOnFeePaidPersist((orderId, paymentHash) async {
-      await _persistFeeHashOnOrder(orderId, paymentHash);
-    });
-
     // Depois sincronizar do Nostr (em background)
     if (_currentUserPubkey != null) {
       _syncFromNostrBackground();
@@ -420,24 +398,6 @@ class OrderProvider with ChangeNotifier {
     
     _isInitialized = true;
     _immediateNotify();
-  }
-
-  /// Persiste o paymentHash da taxa na ordem (metadata) e republica no Nostr.
-  /// É o que faz o "já pago" sobreviver à reinstalação (a ordem vem do Nostr).
-  Future<void> _persistFeeHashOnOrder(String orderId, String paymentHash) async {
-    try {
-      final index = _orders.indexWhere((o) => o.id == orderId);
-      if (index == -1) return;
-      final md = Map<String, dynamic>.from(_orders[index].metadata ?? {});
-      md['feePaymentHash'] = paymentHash;
-      _orders[index] = _orders[index].copyWith(metadata: md);
-      await _saveOrders();
-      // Republicar no Nostr para o marcador sobreviver à reinstalação
-      await _publishOrderToNostr(_orders[index]);
-      broLog('💾 feePaymentHash salvo na ordem ${orderId.substring(0, 8)} (anti re-pagamento)');
-    } catch (e) {
-      broLog('⚠️ _persistFeeHashOnOrder: $e');
-    }
   }
   
   /// ðŸ§¹ SEGURAN�?�?�A: Limpar storage 'orders_anonymous' que pode conter ordens de usu�?¡rios anteriores
@@ -665,13 +625,6 @@ class OrderProvider with ChangeNotifier {
           if (order.acceptedAt != null) {
             return true;
           }
-          // vSEC-fix: ordem TERMINAL (completed/cancelled/liquidated) NUNCA é
-          // ghost — ela foi levada a um estado final por um fluxo real. Remover
-          // seria perda de histórico. Manter sempre.
-          const terminalStatuses = ['completed', 'cancelled', 'liquidated'];
-          if (terminalStatuses.contains(order.status)) {
-            return true;
-          }
           // Sem acceptedAt: pode ser stamping-ghost. Tolerar se criada há pouco
           // (propagação Nostr), senão remover.
           if (now.difference(order.createdAt) < propagationGrace) {
@@ -735,21 +688,6 @@ class OrderProvider with ChangeNotifier {
       // v578: read via OrdersStorage (decrypts encrypted blobs, passes
       // through legacy plaintext for one-time migration on next save).
       final ordersJson = await OrdersStorage.read(prefs, _currentUserPubkey!);
-
-      // vSEC: distinguir AUSÊNCIA de CORRUPÇÃO. read() retorna null nos dois
-      // casos. Se o blob EXISTE mas não descriptografou (HMAC mismatch, chave
-      // perdida, blob truncado), NÃO seguir silenciosamente com lista vazia —
-      // as ordens "sumiam" até o sync e o usuário achava que perdeu tudo.
-      // Fail-loud: logar, sinalizar erro na UI e MANTER o blob p/ recuperação.
-      if (ordersJson == null) {
-        final rawBlob = prefs.getString(OrdersStorage.prefsKey(_currentUserPubkey!));
-        if (rawBlob != null && rawBlob.isNotEmpty) {
-          broLog('🚨 [OrdersStorage] CORRUPÇÃO: blob existe (${rawBlob.length} bytes) mas falhou ao ler/descriptografar — MANTENDO dado p/ recuperação');
-          _error = 'Falha ao ler ordens locais. Suas ordens serão restauradas do Nostr no próximo sync.';
-          _immediateNotify();
-        }
-        return;
-      }
       
       if (ordersJson != null) {
         final List<dynamic> ordersList = json.decode(ordersJson);
@@ -842,19 +780,9 @@ class OrderProvider with ChangeNotifier {
       } else {
       }
     } catch (e) {
-      // vSEC: NÃO deletar silenciosamente — fazer BACKUP do blob corrompido
-      // antes de remover, para permitir recuperação manual/forense. Antes,
-      // um parse error apagava as ordens sem rastro.
-      broLog('🚨 _loadOrders parse error: $e — fazendo backup do blob antes de limpar');
+      // Em caso de erro, limpar dados corrompidos
       try {
         final prefs = await SharedPreferences.getInstance();
-        final raw = prefs.getString(_ordersKey);
-        if (raw != null && raw.isNotEmpty) {
-          await prefs.setString(
-            '${_ordersKey}_corrupted_${DateTime.now().millisecondsSinceEpoch}',
-            raw,
-          );
-        }
         await prefs.remove(_ordersKey);
       } catch (e2) {
       }
@@ -1202,6 +1130,7 @@ class OrderProvider with ChangeNotifier {
       
       // ðŸ�?�¥ SIMPLIFICADO: Status 'pending' = Aguardando Bro
       // A ordem j�?¡ est�?¡ paga (invoice/endere�?§o j�?¡ foi criado)
+      // v650: grava QUAL coordinator vai processar a ordem (metadata vai p/ Nostr)
       final coordinator = await CoordinatorService().resolveForNewOrder();
       final order = Order(
         id: const Uuid().v4(),
@@ -1462,17 +1391,6 @@ class OrderProvider with ChangeNotifier {
         broLog('? syncProvider: todas ordens do user s�o terminais, pulando fetchUserOrders');
       }
       
-      // vSEC-fix (cache inteligente): ordens TERMINAIS já salvas localmente
-      // são a fonte de verdade — NÃO re-buscar no relay. Isso (a) evita lentidão
-      // (dezenas de fetchOrderFromNostr p/ ordens antigas), (b) evita PERDER o
-      // histórico quando o relay já podou o evento original, (c) mantém ordens
-      // NOVAS/ativas sendo buscadas normalmente (nada se perde).
-      const terminalForSkip = ['completed', 'cancelled', 'liquidated'];
-      final terminalCachedIds = _orders
-          .where((o) => o.providerId == _currentUserPubkey && terminalForSkip.contains(o.status))
-          .map((o) => o.id)
-          .toSet();
-
       final results = await Future.wait([
         safeFetch(() => _nostrOrderService.fetchPendingOrders(), 'fetchPendingOrders'),
         if (hasActiveUserOrders)
@@ -1482,7 +1400,7 @@ class OrderProvider with ChangeNotifier {
         else
           Future.value(<Order>[]),
         safeFetch(() => _currentUserPubkey != null
-            ? _nostrOrderService.fetchProviderOrders(_currentUserPubkey!, skipOrderIds: terminalCachedIds)
+            ? _nostrOrderService.fetchProviderOrders(_currentUserPubkey!)
             : Future.value(<Order>[]), 'fetchProviderOrders'),
       ]);
       
@@ -1987,9 +1905,6 @@ class OrderProvider with ChangeNotifier {
         // para esta ordem. Se houver mais de um, o vencedor e o primeiro
         // (menor created_at). Se o providerId atual NAO for o vencedor,
         // NAO revelamos o billCode — o segundo bro perde a corrida.
-        // vSEC-latency: fetchAllAcceptsForOrder agora consulta os relays EM
-        // PARALELO (antes sequencial ~24s) — então esta checagem deixou de ser
-        // o gargalo de >1min no caminho do billCode.
         final allAccepts = await _nostrOrderService
             .fetchAllAcceptsForOrder(order.id)
             .timeout(const Duration(seconds: 10), onTimeout: () => <String>[]);
@@ -2434,26 +2349,6 @@ class OrderProvider with ChangeNotifier {
         broLog('⚠️ [acceptOrderAsProvider] race check falhou (seguindo mesmo assim): $e');
       }
 
-      // vSEC-fix (UX, problema do "bro encontrado chegar antes"): CONFIRMAÇÃO
-      // OTIMISTA. Marcar 'accepted' LOCALMENTE agora — ANTES do publish Nostr.
-      // O watchtower vê o bro_accept no relay quase instantaneamente e já manda
-      // push "Bro encontrado" pro buyer; sem isto, a UI do provedor ficava
-      // segundos atrás (parecendo que "não pegou"). Como o accept vira verdade
-      // no publish e há ROLLBACK abaixo em caso de corrida perdida/falha,
-      // confirmar otimisticamente alinha a UI do provedor com o que o buyer já vê.
-      final optIdx = _orders.indexWhere((o) => o.id == orderId);
-      final myProviderIdOpt = (providerPubkey != null && providerPubkey.isNotEmpty)
-          ? providerPubkey
-          : _currentUserPubkey;
-      if (optIdx != -1 && myProviderIdOpt != null) {
-        _orders[optIdx] = _orders[optIdx].copyWith(
-          status: 'accepted',
-          providerId: myProviderIdOpt,
-          acceptedAt: DateTime.now(),
-        );
-        _immediateNotify(); // UI reflete "aceito" IMEDIATAMENTE
-      }
-
       // Publicar aceita�?§�?£o no Nostr
       final success = await _nostrOrderService.acceptOrderOnNostr(
         order: order,
@@ -2526,16 +2421,6 @@ class OrderProvider with ChangeNotifier {
       // O pre-check (linha 2192) ja protege contra a maioria dos casos.
       // Races genuinas sao resolvidas pela escolha do buyer (so um accept
       // vai receber pagamento).
-      //
-      // vSEC-latency: REMOVI o "post-publish race check" que eu havia
-      // adicionado. Ele era REDUNDANTE: quando `success==true` o publish já
-      // foi ACK-ed (eu sou o vencedor naquele relay) e o verify-after-publish
-      // (quando success==false) já detecta corrida perdida. O check extra
-      // adicionava até 6s de relay-query no caminho do aceite SEM ganho real
-      // — contribuindo para a UX de "clicar 3 vezes". A proteção anti-race
-      // efetiva fica no PRE-check + verify-after-publish + winner canônico
-      // (fetchOrderProviderPubkey) usado pelo buyer na hora de revelar o
-      // billCode e pagar.
 
       // CORREÇÃO v1.0.129+223: Remover da lista de disponíveis IMEDIATAMENTE
       // Sem isso, a ordem ficava em _availableOrdersForProvider com status stale
@@ -2559,17 +2444,11 @@ class OrderProvider with ChangeNotifier {
         final myProviderId = (providerPubkey != null && providerPubkey.isNotEmpty)
             ? providerPubkey
             : _currentUserPubkey;
-        // vSEC-fix: se o update otimista (logo após o pre-check) já marcou
-        // 'accepted', aqui só PERSISTIMOS (sem re-notificar — a UI já está certa).
-        final alreadyOptimistic = _orders[index].status == 'accepted' &&
-            _orders[index].providerId == myProviderId;
-        if (!alreadyOptimistic) {
-          _orders[index] = _orders[index].copyWith(
-            status: 'accepted',
-            providerId: myProviderId,
-            acceptedAt: DateTime.now(),
-          );
-        }
+        _orders[index] = _orders[index].copyWith(
+          status: 'accepted',
+          providerId: myProviderId,
+          acceptedAt: DateTime.now(),
+        );
         
         // Salvar localmente (apenas ordens do usu�?¡rio/provedor atual)
         await _saveOnlyUserOrders();
@@ -3041,20 +2920,7 @@ class OrderProvider with ChangeNotifier {
       broLog('[Reminder] erro no foreground: $e');
     }
     
-    final localNow = DateTime.now();
-    var now = localNow;
-    // vSEC (clock skew): se o relógio local está ADIANTADO >15min em relação
-    // à rede (created_at dos eventos Nostr vistos no sync), usar o tempo da
-    // REDE. Liquidar cedo demais (relógio adiantado) é o pior cenário — o
-    // usuário perde injustamente o prazo de 36h p/ confirmar. Relógio
-    // atrasado apenas adia a liquidação (direção segura), então não corrigimos.
-    if (_lastNetworkTimeSec > 0) {
-      final networkNow = DateTime.fromMillisecondsSinceEpoch(_lastNetworkTimeSec * 1000);
-      if (localNow.difference(networkNow) > const Duration(minutes: 15)) {
-        broLog('[AutoLiquidation] ⚠️ relógio local adiantado >15min vs rede — usando tempo da rede');
-        now = networkNow;
-      }
-    }
+    final now = DateTime.now();
     const deadline = Duration(hours: 36);
     
     // Filtrar ordens do provedor atual em awaiting_confirmation
@@ -3427,13 +3293,6 @@ class OrderProvider with ChangeNotifier {
     if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return;
     if (AppConfig.platformLightningAddress.isEmpty) return;
 
-    // ANTI RE-PAGAMENTO: só reconcilia DEPOIS que a carteira está pronta e o
-    // acesso ao histórico real foi registrado (guarda anti re-pagamento).
-    if (!PlatformFeeService.hasWalletHistoryFetcher) {
-      broLog('[FeeReconcile] adiado — carteira ainda não pronta (guarda anti re-pagamento)');
-      return;
-    }
-
     _isReconcilingFees = true;
     try {
       final now = DateTime.now();
@@ -3449,15 +3308,8 @@ class OrderProvider with ChangeNotifier {
         final autoPaid = order.metadata?['autoPaymentCompleted'] == true;
         final manualCompleted = order.status == 'completed';
         if (!autoPaid && !manualCompleted) return false;
-        // Filtro SÍNCRONO (sem await): o `where` não aceita async. A verificação
-        // pelo hash da carteira acontece no loop abaixo (async).
-        // Registro local rápido:
+        // Taxa já paga? pula (o próprio sendPlatformFee também tem esse guard)
         if (PlatformFeeService.isFeePaid(order.id)) return false;
-        // MIGRAÇÃO: pular as 3 ordens de teste legadas (por prefixo) — foram
-        // re-pagas no debug e não podem ser pagas de novo.
-        if (PlatformFeeService.isLegacyTestOrder(order.id)) return false;
-        // Se a ordem já tem feePaymentHash salvo, trataremos no loop (confirmando
-        // na carteira) — aqui deixamos passar para a checagem async.
         // Janela de segurança: só ordens dos últimos 5 dias (limita risco de
         // dupla cobrança se o tracking local foi perdido numa reinstalação).
         final refStr = order.metadata?['completedAt']?.toString()
@@ -3471,37 +3323,21 @@ class OrderProvider with ChangeNotifier {
 
       if (pending.isEmpty) return;
 
-      broLog('[FeeReconcile] ${pending.length} ordem(ns) candidatas a taxa pendente');
-      int paidCount = 0;
+      broLog('[FeeReconcile] ${pending.length} ordem(ns) com taxa da plataforma pendente');
       for (final order in pending) {
         try {
-          final shortId = order.id.substring(0, 8);
-
-          // REGRA DE OURO (anti re-pagamento): na dúvida, NÃO paga.
-          // O FeeReconcile SÓ pode pagar uma taxa se tiver CERTEZA de que ela
-          // nunca foi paga. A única prova confiável que sobrevive à reinstalação
-          // é o feePaymentHash salvo na metadata da ordem + confirmado na carteira.
-          //
-          // - Se TEM feePaymentHash e ele está confirmado na carteira → já pagou → PULA.
-          // - Se TEM feePaymentHash mas NÃO confirmou na carteira → incerto → NÃO paga (pula).
-          // - Se NÃO TEM feePaymentHash (ordem antiga, pré-correção) → não tem como
-          //   provar que não pagou → NÃO paga (pula). Melhor deixar uma taxa antiga
-          //   de 1-2 sats sem regularizar do que re-pagar uma que já foi paga.
-          final savedFeeHash = order.metadata?['feePaymentHash']?.toString() ?? '';
-          if (savedFeeHash.isNotEmpty) {
-            final confirmed = await PlatformFeeService.isFeePaidVerified(order.id, savedFeeHash);
-            broLog('[FeeReconcile] Ordem $shortId: hash salvo, confirmado=$confirmed — pulando (não paga)');
-            continue;
-          }
-          // Sem hash salvo = ordem antiga. Conservador: não paga.
-          broLog('[FeeReconcile] Ordem $shortId: sem feePaymentHash (ordem antiga) — NÃO paga (conservador)');
-          continue;
+          // v621: taxa = 2% da BASE (order.btcAmount), consistente com o autopay.
+          final baseSats = (order.btcAmount * 100000000).round();
+          if (baseSats <= 0) continue;
+          broLog('[FeeReconcile] Enviando taxa pendente da ordem ${order.id.substring(0, 8)} (base $baseSats sats)');
+          final ok = await PlatformFeeService.sendPlatformFee(
+            orderId: order.id,
+            totalSats: baseSats,
+          );
+          broLog('[FeeReconcile] Ordem ${order.id.substring(0, 8)}: ${ok ? "taxa enviada/já paga" : "falhou (retry no próximo sync)"}');
         } catch (e) {
           broLog('[FeeReconcile] Erro na ordem ${order.id.substring(0, 8)}: $e');
         }
-      }
-      if (paidCount == 0) {
-        broLog('[FeeReconcile] nenhuma taxa paga neste ciclo (todas puladas por segurança)');
       }
     } catch (e) {
       broLog('[FeeReconcile] Erro geral: $e');
@@ -4400,9 +4236,6 @@ class OrderProvider with ChangeNotifier {
                 'proofReceivedAt': proofTimeIso,
                 'receipt_submitted_at': existing.metadata?['receipt_submitted_at'] ?? proofTimeIso,
               };
-              // vSEC: alimentar a referência de tempo da rede (anti clock-skew
-              // na auto-liquidação) com o created_at deste evento.
-              _noteNetworkTime(proofCreatedAtSec);
             } else {
               updatedMetadata = existing.metadata;
             }
@@ -5336,23 +5169,6 @@ class OrderProvider with ChangeNotifier {
 
     // Cancel any previous timer for this order before replacing.
     _syncExpectations[orderId]?.timer?.cancel();
-    // vSEC: se o mapa estiver cheio, remover a entrada MAIS ANTIGA antes de
-    // adicionar — bound de memória/timers em caso de flood de pushes.
-    if (_syncExpectations.length >= _syncExpectationsMaxSize &&
-        !_syncExpectations.containsKey(orderId)) {
-      String? oldestId;
-      DateTime? oldestAt;
-      _syncExpectations.forEach((id, e) {
-        if (oldestAt == null || e.triggeredAt.isBefore(oldestAt!)) {
-          oldestAt = e.triggeredAt;
-          oldestId = id;
-        }
-      });
-      if (oldestId != null) {
-        _syncExpectations[oldestId]?.timer?.cancel();
-        _syncExpectations.remove(oldestId);
-      }
-    }
     final exp = _SyncExpectation(
       expectedStatus: expectedStatus,
       triggeredAt: DateTime.now(),

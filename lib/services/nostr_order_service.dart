@@ -216,6 +216,7 @@ class NostrOrderService {
     required double platformFee,
     required double total,
     String currency = 'BRL',
+    Map<String, dynamic>? metadata,
   }) async {
     try {
       final keychain = Keychain(privateKey);
@@ -246,6 +247,7 @@ class NostrOrderService {
         'total': total,
         'status': 'pending',
         'createdAt': DateTime.now().toIso8601String(),
+        if (metadata != null) 'metadata': metadata,
       });
 
       // Criar evento Nostr
@@ -1449,6 +1451,7 @@ class NostrOrderService {
       providerFee: order.providerFee,
       platformFee: order.platformFee,
       total: order.total,
+      metadata: order.metadata,
     );
   }
 

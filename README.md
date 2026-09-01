@@ -37,7 +37,7 @@
 
 ## About
 
-**Bro** is an open P2P protocol that lets anyone pay bills (PIX, Boleto, TED) using Bitcoin via the Lightning Network. Communication between users and providers happens entirely over **Nostr** — no central server, no accounts, no KYC.
+**Bro** is an open P2P protocol that lets anyone pay bills (PIX, Boleto, TED) using Bitcoin via the Lightning Network. Communication between users and providers happens over **Nostr** — no accounts, no KYC, and no single central server (coordination can run on independent coordinators).
 
 ### How It Works
 
@@ -78,6 +78,8 @@ All communication is encrypted (NIP-44) and relayed through decentralized Nostr 
 - 📈 Marketplace reviews and ratings
 - 🤖 Auto-liquidation after 36h confirmation timeout
 - 🛡️ AI-assisted dispute resolution
+
+> **Fee model:** providers earn **3%** per transaction; a **2%** coordination fee goes to the coordinator that processed the order (the default Bro coordinator, or an independent one). More on running your own coordinator soon.
 
 </td>
 </tr>
@@ -152,9 +154,10 @@ Bro defines a set of custom Nostr event kinds for P2P order management:
 |------|------|---------|
 | **30078** | Bro Order | User creates a payment order |
 | **30079** | Bro Accept | Provider accepts an order |
-| **30080** | Bro Update | Status changes, cancellations |
+| **30080** | Bro Update | Status changes, cancellations, encrypted bill code |
 | **30081** | Bro Complete | Provider submits proof of payment |
-| **30082** | Bro Provider Profile | Provider capabilities & reputation |
+| **30082** | Bro Coordinator | Coordinator announcement (fee, Lightning address, relays) |
+| **30083** | Bro Coordinator Reputation | Attestations of a coordinator's completed orders |
 
 ### Order Lifecycle
 

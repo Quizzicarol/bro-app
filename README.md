@@ -89,7 +89,7 @@ All communication is encrypted (NIP-44) and relayed through decentralized Nostr 
 
 | | |
 |:---:|---|
-| **🔒 Private** | No registration, no phone number, no personal data. Your keys, your identity. |
+| **🔒 Private** | No registration, no personal data. Your keys, your identity. |
 | **🌐 Decentralized** | Built on Nostr — no central servers, no single point of failure. |
 | **⚡ Instant** | Lightning payments settle in seconds. |
 | **🔐 Self-Custodial** | You hold your own keys and funds at all times. |

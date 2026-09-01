@@ -1,11 +1,3 @@
-> Notice: this repository was used temporarily while the original project was unavailable.
-> The active development and canonical version of Bro now live at:
-> https://github.com/Brostr/bro
->
-> This repository may remain as a reference/migration copy only.
-
-
-
 <p align="center">
   <img src="https://github.com/user-attachments/assets/3d58e978-9322-453b-86c9-fa8a73801bc0" alt="Bro Logo" width="200">
 </p>
@@ -15,10 +7,6 @@
   A peer-to-peer protocol for exchanging Bitcoin (Lightning) for fiat payments, built on Nostr.
 </p>
 
-<p align="center">
-  <strong>Active development has moved to <a href="https://github.com/Brostr/bro">Brostr/bro</a>.</strong><br>
-  This repository remains as a migration and reference copy.
-</p>
 
 <p align="center">
   <a href="https://testflight.apple.com/join/rkHbPQ94">
@@ -85,7 +73,7 @@ All communication is encrypted (NIP-44) and relayed through decentralized Nostr 
 ### For Providers (Bros)
 
 - 📥 Accept payment orders from the network
-- 💰 Earn fees on every transaction (5%)
+- 💰 Earn fees on every transaction (3%)
 - 🔒 Collateral tiers (Trial → Master)
 - 📈 Marketplace reviews and ratings
 - 🤖 Auto-liquidation after 36h confirmation timeout
@@ -101,7 +89,7 @@ All communication is encrypted (NIP-44) and relayed through decentralized Nostr 
 
 | | |
 |:---:|---|
-| **🔒 Private** | No registration, no phone number, no personal data. Your keys, your identity. |
+| **🔒 Private** | No registration, no personal data. Your keys, your identity. |
 | **🌐 Decentralized** | Built on Nostr — no central servers, no single point of failure. |
 | **⚡ Instant** | Lightning payments settle in seconds. |
 | **🔐 Self-Custodial** | You hold your own keys and funds at all times. |
@@ -113,7 +101,7 @@ All communication is encrypted (NIP-44) and relayed through decentralized Nostr 
 
 ## Download
 
-**Current version:** v1.0.133 (build 604) — ✅ STABLE
+**Current version:** v1.0.133 (build 644) — ✅ STABLE
 
 | Platform | Link | Status |
 |----------|------|--------|

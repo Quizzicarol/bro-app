@@ -73,7 +73,7 @@ All communication is encrypted (NIP-44) and relayed through decentralized Nostr 
 ### For Providers (Bros)
 
 - 📥 Accept payment orders from the network
-- 💰 Earn fees on every transaction (5%)
+- 💰 Earn fees on every transaction (3%)
 - 🔒 Collateral tiers (Trial → Master)
 - 📈 Marketplace reviews and ratings
 - 🤖 Auto-liquidation after 36h confirmation timeout

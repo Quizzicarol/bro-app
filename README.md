@@ -115,34 +115,27 @@ All communication is encrypted (NIP-44) and relayed through decentralized Nostr 
 
 ### Changelog — recent builds
 
-**build 604 — multi-currency marketplace**
-- 🌍 Marketplace offers can be priced in sats, BRL, USD, EUR or ARS — automatic sats↔fiat conversion at publish time
-- 🔍 Currency filter on the marketplace (All / sats / BRL / USD / EUR / ARS)
-- 💱 Each offer preserves its original currency for display (fiat highlighted, sats shown as the Lightning network reference)
-- 🏷️ Nostr `t cur:xxx` tag for server-side currency filtering
-- ✂️ Removed `relay.primal.net` from marketplace relays (it was dropping kinds 30019/30085)
+**build 640s — open coordinator network + reliability**
+- 🧭 Independent coordinators: app discovers coordinators via Nostr (kind 30082), lets you pick one in Settings, and routes the 2% coordination fee to it
+- 🛡️ Anti double-charge hardening: platform-fee reconciliation no longer re-pays old orders after a reinstall
+- 📊 Coordinator reputation (kind 30083) and coordinator shown on order details
+- 🔔 Background-notification fixes (battery-optimization prompt) and BRIX double-spend guards
 
-**build 603 — multi-currency dashboard**
-- 🇧🇷🇲🇽🇹🇭🇦🇷🇨🇴 Each order renders in the original currency from its payment code (PIX in BRL, CoDi in MXN, PromptPay in THB, Transf 3.0 in ARS, Bre-B in COP)
-- 🏷️ `PaymentMethods.displayName` instead of hardcoded "PIX/Boleto"
+**builds 605–639 — security & stability hardening**
+- 🔒 Security sweep: vulnerability fixes and hardening across payments and orders
+- ⚡ Provider push reliability (new-order push with the app closed), persistent billCode reminders
+- 🧾 NIP-44 proof compression, dispute chat (3 parties), and anti double-spend on provider payments
+- 🔧 Build/CI upgrades (Gradle, AGP, Kotlin) and migration of releases to `Brostr/bro`
 
-**build 602 — multi-country payments end-to-end**
-- 🇦🇷 Transferencia 3.0 (Argentina / ARS) enabled — full flow via Nostr
-- ❌ Removed the artificial R$ 200 cap (tier limits already enforce per-order amounts)
-- 🧪 Scripts to generate EMVCo test QR codes for BR / MX / TH / AR / CO
-
-**build 597–600 — multi-country base + stability**
-- 🌐 EMVCo-first routing: detects PIX (BR), CoDi (MX), PromptPay (TH), Transf 3.0 (AR), Bre-B (CO)
-- 🌍 Locale-aware BTC price display + currency-aware order/wallet/edu screens
-- 🔄 Breez SDK auto-retry on resume + periodic 90s retry
-- 🟢 Diagnostics removed, release logs surface via `print('[bro] ...')`
+**builds 597–604 — multi-country & multi-currency**
+- 🌍 Pay bills in BR (PIX/Boleto/TED), MX (CoDi), TH (PromptPay), AR (Transf 3.0), CO (Bre-B) — end to end via Nostr
+- 💱 Multi-currency marketplace (sats, BRL, USD, EUR, ARS) with automatic sats↔fiat conversion and per-offer currency display
+- 🏷️ Currency tags (`t cur:xxx`) for relay-side filtering; locale-aware BTC price and currency-aware screens
 
 **build 587 — BRIX auto-forward**
 - ⚡ BRIX Lightning Address: online and offline payments working
 - 📱 FCM push wakes the app in background to generate Spark invoices
-- 🔒 Payments go straight into the Spark channel (cloud-hosted) — no intermediaries
-- 🛡️ Extended server timeout for SDK cold-start in background
-- 🔐 Storage isolation between main and background SDK
+- 🔒 Payments go straight into the Spark channel — no intermediaries
 
 ---
 

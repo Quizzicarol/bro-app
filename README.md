@@ -101,7 +101,7 @@ All communication is encrypted (NIP-44) and relayed through decentralized Nostr 
 
 ## Download
 
-**Current version:** v1.0.133 (build 604) — ✅ STABLE
+**Current version:** v1.0.133 (build 644) — ✅ STABLE
 
 | Platform | Link | Status |
 |----------|------|--------|

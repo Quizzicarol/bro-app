@@ -108,8 +108,8 @@ All communication is encrypted (NIP-44) and relayed through decentralized Nostr 
 | Platform | Link | Status |
 |----------|------|--------|
 | 🤖 Android (Latest) | [📥 Download APK](https://github.com/Brostr/bro/releases/latest/download/app-release.apk) | ✅ Available |
+| ⚡ Zapstore (Android) | [📥 Bro on Zapstore](https://zapstore.dev/apps/app.bro.mobile) | ✅ Available |
 | 🍎 iOS Beta | [TestFlight](https://testflight.apple.com/join/rkHbPQ94) | ✅ Available |
-| ⚡ Zapstore | Coming soon | 🔜 |
 | 🤖 Google Play | Coming soon | 🔜 |
 | 🍎 App Store | Coming soon | 🔜 |
 

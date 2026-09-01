@@ -7,10 +7,6 @@
   A peer-to-peer protocol for exchanging Bitcoin (Lightning) for fiat payments, built on Nostr.
 </p>
 
-<p align="center">
-  <strong>Active development has moved to <a href="https://github.com/Brostr/bro">Brostr/bro</a>.</strong><br>
-  This repository remains as a migration and reference copy.
-</p>
 
 <p align="center">
   <a href="https://testflight.apple.com/join/rkHbPQ94">

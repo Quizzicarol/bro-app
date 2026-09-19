@@ -165,25 +165,56 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
   
-  /// v390: Check if battery optimization is disabled, prompt user if not
+  /// v390: Check if battery optimization is disabled, prompt user if not.
+  /// vSEC-fix (notificações não chegam em background): antes só perguntava UMA
+  /// vez (flag 'battery_opt_prompted') e desistia. Se o usuário negasse/ignorasse,
+  /// o app ficava restrito para sempre (Samsung bloqueia rede em background →
+  /// push só chegava com o app aberto). Agora: (1) verifica de novo a cada
+  /// inicialização até o usuário DESATIVAR de fato; (2) mostra um diálogo
+  /// explicativo ANTES de abrir as configurações (mais chance de o usuário agir).
   Future<void> _checkBatteryOptimization() async {
     await Future.delayed(const Duration(seconds: 6));
     if (!mounted) return;
     
     try {
-      final storage = StorageService();
-      await storage.init();
-      final prompted = await storage.getData('battery_opt_prompted');
-      if (prompted == 'true') return;
-      
       const platform = MethodChannel('app.bro.mobile/settings');
       final isIgnoring = await platform.invokeMethod<bool>('isIgnoringBatteryOptimizations');
+      // Já está desativada → nada a fazer. (Sem isso, ficaria pedindo toda hora.)
       if (isIgnoring == true) return;
-      
+
+      // NÃO usar mais o flag 'battery_opt_prompted' para desistir — verificar
+      // SEMPRE até o usuário desativar. Mas não spammar: mostrar no máximo 1x
+      // por sessão (o dialog some se o usuário já viu nesta sessão).
+      final storage = StorageService();
+      await storage.init();
+      final shownThisSession = await storage.getData('battery_opt_shown_session');
+      if (shownThisSession == 'true') return;
       if (!mounted) return;
-      await storage.saveData('battery_opt_prompted', 'true');
-      
-      await platform.invokeMethod('openBatterySettings');
+      await storage.saveData('battery_opt_shown_session', 'true');
+
+      // Diálogo explicativo ANTES de abrir as configurações — o usuário precisa
+      // entender POR QUE desativar, senão só fecha e continua sem receber push.
+      final l = AppLocalizations.of(context);
+      final goToSettings = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(l.t('battery_opt_title')),
+          content: Text(l.t('settings_notifications_desc')),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(l.t('later')),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(l.t('open_settings')),
+            ),
+          ],
+        ),
+      );
+      if (goToSettings == true) {
+        await platform.invokeMethod('openBatterySettings');
+      }
     } catch (e) {
       broLog('[HOME] Battery optimization check failed: $e');
     }

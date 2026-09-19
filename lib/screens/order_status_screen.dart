@@ -365,14 +365,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     
     // Buscar resolução para qualquer ordem (pode ter sido disputada e já resolvida)
     try {
-      // vSEC: se o reembolso da disputa JÁ foi pago, não re-buscar a resolução
-      // nos relays a cada abertura da tela (re-verificação infinita).
-      final op = context.read<OrderProvider>();
-      final localOrder = op.getOrderById(widget.orderId);
-      if (localOrder?.metadata?['disputeProviderPaid'] == true) {
-        setState(() => _disputePaymentPending = false);
-        return;
-      }
       final nostrService = NostrOrderService();
       final resolution = await nostrService.fetchDisputeResolution(widget.orderId);
       if (resolution != null && mounted) {
@@ -2070,8 +2062,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               l.t('order_detail_total_paid'),
               '$totalSats sats',
             ),
-            // v650: qual coordinator processou esta ordem (gravado na criação)
-            ..._buildCoordinatorRow(fullOrder),
             if (_orderDetails?['provider_id'] != null || fullOrder?.providerId != null) ...[
               const SizedBox(height: 16),
               Divider(height: 1, color: Colors.grey.withOpacity(0.15)),
@@ -2085,21 +2075,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         ),
       ),
     );
-  }
-
-  // v650: linha "Coordinator" nos detalhes — mostra quem processou a ordem.
-  // Lê de metadata.coordinatorName (gravada na criação). Ausente/vazio = Bro original.
-  List<Widget> _buildCoordinatorRow(dynamic fullOrder) {
-    String name = 'Bro original';
-    try {
-      final md = fullOrder?.metadata;
-      final n = (md is Map) ? (md['coordinatorName']?.toString() ?? '') : '';
-      if (n.isNotEmpty) name = n;
-    } catch (_) {}
-    return [
-      const SizedBox(height: 12),
-      _buildDetailRow('Coordinator', name),
-    ];
   }
 
   Widget _buildDetailRow(String label, String value) {
@@ -4848,11 +4823,27 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               Map<String, dynamic>? payResult;
               String usedBackend = 'none';
               
+              // v645c: se o comprador já pagou o escrow desta ordem (e o provedor
+              // ainda não foi pago), reconhecer esse valor como cobertura da
+              // liberação. O saldo da carteira = sats livres + sats travados em
+              // escrow; a liberação deve usar o escrow independente do saldo livre.
+              // Sem isso, um comprador honesto caía em "saldo insuficiente" mesmo
+              // tendo pago o escrow (caso 3dd5cb49). Guard anti-gasto-duplo acima
+              // já bloqueia re-pagamento se o provedor já recebeu.
+              int escrowCover = 0;
+              final escrowOrder = order ?? orderProvider.getOrderById(widget.orderId);
+              if (escrowOrder != null &&
+                  escrowOrder.userPubkey == orderProvider.currentUserPubkey &&
+                  escrowOrder.hasPaymentBeenReceived &&
+                  !ProviderPaymentGuard.isPaid(widget.orderId)) {
+                escrowCover = escrowOrder.totalInvoiceSats;
+              }
+              
               if (breezProvider.isInitialized) {
                 broLog('⚡ Tentativa $attempt/3: Pagando via Breez Spark...');
                 // v514: NO outer timeout — payInvoice() has internal 30s prepare + 60s send timeouts.
                 // Outer timeout was killing payments mid-flight, causing "timeout" errors.
-                payResult = await breezProvider.payInvoice(currentInvoice);
+                payResult = await breezProvider.payInvoice(currentInvoice, escrowCoverSats: escrowCover);
                 usedBackend = 'Spark';
               } else if (liquidProvider.isInitialized) {
                 broLog('⚡ Tentativa $attempt/3: Pagando via Liquid...');
@@ -5373,9 +5364,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           ...?order.metadata,
           'disputeProviderPaid': true,
           'disputeProviderPaidAt': DateTime.now().toIso8601String(),
-          // vSEC: limpar a flag de pendência — sem isso a ordem continuava
-          // elegível a re-verificações de pagamento de disputa para sempre.
-          'disputePaymentPending': false,
         };
         orderProvider.updateOrderMetadataLocal(widget.orderId, updatedMetadata);
       }

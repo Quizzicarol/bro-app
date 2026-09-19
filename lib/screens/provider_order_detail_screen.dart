@@ -2780,6 +2780,30 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           }).catchError((e) {
             broLog('⚠️ Erro ao publicar disputa no Nostr: $e');
           });
+
+          // v645e: re-publicar a CÓPIA do comprovante cifrada PARA O ADMIN.
+          // O evento bro_complete omite a cópia do admin (v444, limite de
+          // tamanho do relay) — então na mediação o admin via a prova "sumir".
+          // O provedor guarda a imagem localmente (metadata['proofImage']) ao
+          // completar; aqui re-encriptamos p/ o admin. Fire-and-forget.
+          try {
+            final prov = orderProvider.getOrderById(widget.orderId);
+            final proof = prov?.metadata?['proofImage'] as String? ??
+                prov?.metadata?['paymentProof'] as String?;
+            if (proof != null && proof.isNotEmpty) {
+              nostrOrderService.publishProofCopyForAdmin(
+                privateKey: privateKey,
+                orderId: widget.orderId,
+                proofImageBase64: proof,
+              ).then((ok) {
+                broLog('📤 Cópia do comprovante p/ admin: ${ok ? "OK" : "falhou"}');
+              }).catchError((e) {
+                broLog('⚠️ Erro ao publicar cópia p/ admin: $e');
+              });
+            }
+          } catch (e) {
+            broLog('⚠️ Erro ao preparar cópia p/ admin: $e');
+          }
         }
       } catch (e) {
         broLog('⚠️ Erro ao publicar disputa no Nostr: $e');

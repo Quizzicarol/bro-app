@@ -65,6 +65,14 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
   String get providerId => _resolvedProviderId ?? (widget.dispute['provider_id'] as String? ?? '');
   String get previousStatus => widget.dispute['previous_status'] as String? ?? '';
   String get paymentType => widget.dispute['payment_type'] as String? ?? '';
+
+  // v645: etapa derivada quando o evento de disputa não traz `previous_status`
+  // (kind 30080 de status não carrega esse campo). Se há comprovante do
+  // provedor (ou E2E extraído dele), a negociação estava em
+  // 'awaiting_confirmation' quando a disputa abriu. Setado após _fetchProofImage.
+  String? _derivedPreviousStatus;
+  String get _effectivePreviousStatus =>
+      previousStatus.isNotEmpty ? previousStatus : (_derivedPreviousStatus ?? '');
   String get pixKey => widget.dispute['pix_key'] as String? ?? '';
   String get createdAtStr => widget.dispute['createdAt'] as String? ?? '';
   dynamic get amountBrl => widget.dispute['amount_brl'];
@@ -259,6 +267,15 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
         final e2e = result['e2eId'] as String?;
         if (e2e != null && e2e.isNotEmpty) {
           _fetchedE2eId = e2e;
+        }
+        // v645: derivar a etapa de abertura quando o evento não a informa.
+        // Se o provedor entregou comprovante (proof ou E2E), a ordem estava
+        // 'awaiting_confirmation' quando a disputa abriu.
+        if (previousStatus.isEmpty &&
+            (_proofImageData != null && _proofImageData!.isNotEmpty ||
+             _proofEncrypted ||
+             (_fetchedE2eId != null && _fetchedE2eId!.isNotEmpty))) {
+          _derivedPreviousStatus = 'awaiting_confirmation';
         }
       });
     } catch (e) {
@@ -486,14 +503,14 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
               // v645: rotular explicitamente — a tela tem várias datas da ordem
               // e o mediador não sabia qual era a da abertura da disputa.
               Text('📅 Aberta em: $dateStr', style: const TextStyle(color: Colors.white54, fontSize: 13)),
-              if (previousStatus.isNotEmpty)
+              if (_effectivePreviousStatus.isNotEmpty)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: Colors.white10,
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  child: Text('Etapa ao abrir: ${_humanStatus(previousStatus)}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                  child: Text('Etapa ao abrir: ${_humanStatus(_effectivePreviousStatus)}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
                 ),
             ],
           ),
@@ -510,7 +527,9 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
         _infoRow('🆔 Ordem', orderId, copyable: true, monospace: true),
         // v630: ponto do fluxo onde a disputa foi aberta — ajuda o mediador a
         // entender rapidamente em que etapa a negociação travou.
-        _infoRow('🔄 Aberta em', _humanStatus(previousStatus)),
+        // v645: usa _effectivePreviousStatus (deriva de prova/E2E quando o
+        // evento não informa), senão cai em 'Não informado' indevidamente.
+        _infoRow('🔄 Aberta em', _humanStatus(_effectivePreviousStatus)),
         if (amountBrl != null)
           _infoRow('💰 Valor BRL', 'R\$ ${amountBrl is num ? (amountBrl as num).toStringAsFixed(2) : amountBrl}'),
         if (amountSats != null)

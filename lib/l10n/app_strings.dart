@@ -22,6 +22,8 @@ const Map<String, String> ptBR = {
   'ok': 'OK',
   'later': 'Depois',
   'understood': 'Entendi',
+  'battery_opt_title': '🔔 Ativar notificações em segundo plano',
+  'open_settings': 'Abrir configurações',
 
   // ==================== home_screen ====================
   'home_digital_barter': 'Escambo digital via Nostr',
@@ -1627,6 +1629,8 @@ const Map<String, String> enUS = {
   'ok': 'OK',
   'later': 'Later',
   'understood': 'Got it',
+  'battery_opt_title': '🔔 Enable background notifications',
+  'open_settings': 'Open settings',
 
   // ==================== home_screen ====================
   'home_digital_barter': 'Digital barter via Nostr',
@@ -3208,6 +3212,8 @@ const Map<String, String> esES = {
   'ok': 'OK',
   'later': 'Después',
   'understood': 'Entendido',
+  'battery_opt_title': '🔔 Activar notificaciones en segundo plano',
+  'open_settings': 'Abrir configuración',
 
   // ==================== home_screen ====================
   'home_digital_barter': 'Trueque digital vía Nostr',

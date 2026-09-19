@@ -11,7 +11,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/breez_config.dart';
 import '../services/storage_service.dart';
 import '../services/brix_relay_service.dart';
-import '../services/platform_fee_service.dart';
 
 /// Self-custodial Lightning provider using Breez SDK Spark (Nodeless)
 class BreezProvider with ChangeNotifier {
@@ -225,12 +224,6 @@ class BreezProvider with ChangeNotifier {
 
       _isInitialized = true;
       broLog('✅ Breez SDK Spark inicializado com sucesso!');
-
-      // Anti re-pagamento de taxa: registra o acesso ao histórico REAL da carteira.
-      // É AQUI que a carteira inicializa de fato (independente do fluxo de login),
-      // então o fetcher fica disponível antes do FeeReconcile rodar. Sem isso o
-      // guarda ficava "não registrado" e o reconcile re-pagava taxas antigas.
-      PlatformFeeService.setWalletHistoryFetcher(() => getAllPayments());
       
       // Listen to events
       _eventsSub = _sdk!.addEventListener().listen(_handleSdkEvent);
@@ -447,10 +440,16 @@ class BreezProvider with ChangeNotifier {
             ),
           );
           
-          broLog('   ✅ Depósito reivindicado! Payment ID: ${response.payment.id}');
-          
-          // Persistir como pagamento recebido
-          _persistPayment(response.payment.id, response.payment.amount.toInt());
+          // Spark v0.25.0: `payment` passou a ser anulável. Só logar/persistir
+          // se a reivindicação realmente retornou um pagamento.
+          final responsePayment = response.payment;
+          if (responsePayment != null) {
+            broLog('   ✅ Depósito reivindicado! Payment ID: ${responsePayment.id}');
+            // Persistir como pagamento recebido
+            _persistPayment(responsePayment.id, responsePayment.amount.toInt());
+          } else {
+            broLog('   ⚠️ Depósito reivindicado sem payment retornado (txid=${deposit.txid})');
+          }
           
         } catch (e) {
           broLog('   ⚠️ Erro ao reivindicar depósito: $e');
@@ -747,16 +746,11 @@ class BreezProvider with ChangeNotifier {
       
       for (var p in resp.payments) {
         String? paymentHash;
-        String? description;
         String direction = p.paymentType.toString().contains('receive') ? 'RECEBIDO' : 'ENVIADO';
         
         if (p.details is spark.PaymentDetails_Lightning) {
           final details = p.details as spark.PaymentDetails_Lightning;
           paymentHash = details.htlcDetails.paymentHash;
-          description = details.description;
-        } else if (p.details is spark.PaymentDetails_Spark) {
-          final sparkDetails = p.details as spark.PaymentDetails_Spark;
-          description = sparkDetails.invoiceDetails?.description;
         }
         
         payments.add({
@@ -766,7 +760,6 @@ class BreezProvider with ChangeNotifier {
           'type': p.paymentType.toString(),
           'direction': direction,
           'paymentHash': paymentHash ?? 'N/A',
-          'description': description ?? '',
         });
       }
       
@@ -1012,17 +1005,21 @@ class BreezProvider with ChangeNotifier {
             ),
           );
           
-          broLog('   ✅ Depósito reivindicado! Payment ID: ${claimResponse.payment.id}');
+          // Spark v0.25.0: `payment` passou a ser anulável.
+          final claimPayment = claimResponse.payment;
+          broLog('   ✅ Depósito reivindicado! Payment ID: ${claimPayment?.id}');
           
-          // Persistir como pagamento recebido
-          _persistPayment(claimResponse.payment.id, claimResponse.payment.amount.toInt());
+          // Persistir como pagamento recebido (só se veio um pagamento)
+          if (claimPayment != null) {
+            _persistPayment(claimPayment.id, claimPayment.amount.toInt());
+          }
           
           processedDeposits.add({
             'txid': deposit.txid,
             'vout': deposit.vout,
             'amount': deposit.amountSats.toString(),
             'status': 'claimed',
-            'paymentId': claimResponse.payment.id,
+            'paymentId': claimPayment?.id,
           });
           
           claimed++;
@@ -1065,7 +1062,15 @@ class BreezProvider with ChangeNotifier {
   }
 
   /// Pay a Lightning invoice (BOLT11) or LNURL/Lightning Address
-  Future<Map<String, dynamic>?> payInvoice(String bolt11, {int? amountSats}) async {
+  ///
+  /// [escrowCoverSats] (opcional): sats já recebidos como escrow/depósito para
+  /// ESTA liberação (ex.: ordem em que o comprador já pagou o escrow). Quando a
+  /// liberação falha por "saldo insuficiente" mas o escrow já cobre o valor,
+  /// reconhecemos esse montante — porque os sats do escrow JÁ são do comprador
+  /// (a carteira é formada por sats livres + sats travados em escrow). Sem isso,
+  /// um comprador honesto ficava travado em "saldo insuficiente" mesmo tendo
+  /// pago o escrow (caso real: ordem 3dd5cb49).
+  Future<Map<String, dynamic>?> payInvoice(String bolt11, {int? amountSats, int escrowCoverSats = 0}) async {
     if (!_isInitialized || _sdk == null) {
       return {'success': false, 'error': 'SDK não inicializado'};
     }
@@ -1109,13 +1114,22 @@ class BreezProvider with ChangeNotifier {
         broLog('⚠️ Não foi possível decodificar invoice: $e');
       }
 
-      // Verificar saldo antes de enviar
+      // Verificar saldo antes de enviar. Forçar sync primeiro — um saldo
+      // desatualizado (ex.: escrow recém-recebido ainda não refletido) causava
+      // falso "saldo insuficiente" na liberação.
+      try {
+        await _sdk!.syncWallet(request: spark.SyncWalletRequest());
+      } catch (e) {
+        broLog('⚠️ syncWallet antes de pagar falhou (continuando): $e');
+      }
       final balanceInfo = await getBalance();
       final currentBalance = int.tryParse(balanceInfo?['balance']?.toString() ?? '0') ?? 0;
-      broLog('💰 Saldo atual: $currentBalance sats');
+      // Saldo efetivo = saldo livre + escrow reconhecido para esta liberação.
+      final effectiveBalance = currentBalance + (escrowCoverSats > 0 ? escrowCoverSats : 0);
+      broLog('💰 Saldo atual: $currentBalance sats' + (escrowCoverSats > 0 ? ' (+ escrow $escrowCoverSats = $effectiveBalance efetivo)' : ''));
 
       final requiredAmount = amountSats ?? invoiceAmount;
-      if (requiredAmount != null && currentBalance < requiredAmount) {
+      if (requiredAmount != null && effectiveBalance < requiredAmount) {
         final errorMsg = 'Saldo insuficiente. Você tem $currentBalance sats mas precisa de $requiredAmount sats';
         _setError(errorMsg);
         broLog('❌ $errorMsg');

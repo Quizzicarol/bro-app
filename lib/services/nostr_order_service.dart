@@ -4395,8 +4395,13 @@ class NostrOrderService {
       };
       
       final messages = <Map<String, dynamic>>[];
+      // v645d: agregar TODOS os relays + fallback (antes só take(3)); dedup por
+      // eventId (a checagem por sentAt+message deixava passar duplicata de
+      // relays distintos quando o conteúdo diferia em campos internos).
+      final seenIds = <String>{};
+      final allRelays = <String>[..._relays, ..._fallbackRelays];
       
-      for (final relay in _relays.take(3)) {
+      for (final relay in allRelays) {
         try {
           final channel = WebSocketChannel.connect(Uri.parse(relay));
           final subId = 'medord_${orderId.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
@@ -4412,8 +4417,11 @@ class NostrOrderService {
                 if (content['type'] == 'bro_mediator_message') {
                   content['eventCreatedAt'] = eventData['created_at'];
                   content['eventId'] = eventData['id'];
-                  final existing = messages.any((m) => m['sentAt'] == content['sentAt'] && m['message'] == content['message']);
-                  if (!existing) messages.add(content);
+                  final id = (eventData['id'] as String? ?? '');
+                  if (id.isNotEmpty && !seenIds.contains(id)) {
+                    seenIds.add(id);
+                    messages.add(content);
+                  }
                 }
               } catch (_) {}
             }
@@ -4576,6 +4584,66 @@ class NostrOrderService {
       return false;
     }
   }
+
+  /// v645e: O PROVEDOR publica uma cópia do comprovante criptografada para o
+  /// admin quando a ordem entra em disputa. Necessário porque o evento
+  /// bro_complete (kind 30081) OMITE a cópia do admin p/ caber no limite de
+  /// tamanho do relay (v444) — o comprovante vai cifrado só p/ o usuário
+  /// (proofImage_nip44). O admin não tem a chave do usuário, então via a prova
+  /// "sumir" na mediação. Aqui o provedor (dono da imagem, guardada localmente
+  /// em metadata['proofImage'] ao completar) re-encripta p/ o admin num kind 1
+  /// separado, pequeno o suficiente p/ os relays. Admin lê em fetchProofForOrder
+  /// via 'proofImage_nip44_admin' (já implementado).
+  Future<bool> publishProofCopyForAdmin({
+    required String privateKey,
+    required String orderId,
+    required String proofImageBase64,
+  }) async {
+    try {
+      if (AppConfig.adminPubkey.isEmpty) {
+        broLog('⚠️ publishProofCopyForAdmin: adminPubkey vazio, pulando');
+        return false;
+      }
+      if (proofImageBase64.isEmpty) return false;
+      final keychain = Keychain(privateKey);
+      final adminCopy = _nip44.encryptBetween(
+        proofImageBase64,
+        keychain.private,
+        AppConfig.adminPubkey,
+      );
+      final content = jsonEncode({
+        'type': 'bro_dispute_evidence',
+        'orderId': orderId,
+        'senderRole': 'provider',
+        'senderPubkey': keychain.public,
+        'sentAt': DateTime.now().toIso8601String(),
+        'description': '[Cópia do comprovante para mediação]',
+        'proofImage_nip44_admin': adminCopy,
+      });
+      final event = Event.from(
+        kind: 1,
+        tags: [
+          ['t', 'bro-disputa-evidencia'],
+          ['t', broTag],
+          ['r', orderId],
+          ['p', AppConfig.adminPubkey],
+        ],
+        content: content,
+        privkey: keychain.private,
+      );
+      final results = await Future.wait(
+        _relays.map((relay) async {
+          try { return await _publishToRelay(relay, event); } catch (_) { return false; }
+        }),
+      );
+      final ok = results.where((r) => r).length;
+      broLog('📤 publishProofCopyForAdmin: ordem ${orderId.substring(0, 8)} → $ok/${_relays.length} relays');
+      return ok > 0;
+    } catch (e) {
+      broLog('❌ publishProofCopyForAdmin EXCEPTION: $e');
+      return false;
+    }
+  }
   
   /// v236: Busca todas as evidências de disputa para uma ordem
   /// Retorna lista de evidências de ambas as partes, ordenadas por data
@@ -4584,7 +4652,12 @@ class NostrOrderService {
     final evidences = <Map<String, dynamic>>[];
     
     try {
-      for (final relay in _relays.take(3)) {
+      // v645d: agregar TODOS os relays + fallback (antes só take(3) e parava no
+      // 1º que respondesse). Evidências ficam espalhadas (prova só no damus,
+      // prints divididos entre damus e primal) — parar cedo fazia a tela mostrar
+      // um subconjunto e, ao recarregar de outro relay, repetir/sumir itens.
+      final allRelays = <String>[..._relays, ..._fallbackRelays];
+      for (final relay in allRelays) {
         try {
           final channel = WebSocketChannel.connect(Uri.parse(relay));
           final subId = 'evid_${orderId.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
@@ -4669,7 +4742,8 @@ class NostrOrderService {
           channel.sink.add(jsonEncode(['CLOSE', subId]));
           channel.sink.close();
           
-          if (evidences.isNotEmpty) break; // Já achou, não precisa de mais relays
+          // v645d: NÃO parar ao achar evidências — continuar agregando os demais
+          // relays (dedup por eventId abaixo já impede duplicata).
         } catch (e) {
           broLog('⚠️ fetchDisputeEvidence relay error: $e');
         }
@@ -4859,7 +4933,14 @@ class NostrOrderService {
         'providerPubkey': providerPubkey,
       };
       
-      for (final relay in _relays.take(3)) {
+      // v645: consultar TODOS os relays principais + fallback (antes era só
+      // `_relays.take(3)` = damus/nos.lol/primal). O comprovante (88KB) às
+      // vezes é aceito por UM único relay (ex.: damus na ordem 3dd5cb49) — se
+      // esse relay falha no momento da consulta, a prova 'sumia' da tela do
+      // admin mesmo existindo. NÃO parar no primeiro relay que responde:
+      // agregamos os resultados de todos para cobrir o relay certo.
+      final allRelays = <String>[..._relays, ..._fallbackRelays];
+      for (final relay in allRelays) {
         try {
           final channel = WebSocketChannel.connect(Uri.parse(relay));
           final subId = 'proof_${orderId.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
@@ -4897,6 +4978,18 @@ class NostrOrderService {
             });
           }
           
+          // Filter 5 (v645e): cópia do comprovante cifrada PARA O ADMIN,
+          // publicada pelo provedor num kind 1 (bro-disputa-evidencia) quando a
+          // ordem entra em disputa. O evento bro_complete omite a cópia do admin
+          // (v444, limite de tamanho do relay); sem este filtro o admin nunca
+          // recebia a imagem.
+          filters.add({
+            'kinds': [1],
+            '#t': ['bro-disputa-evidencia'],
+            '#r': [orderId],
+            'limit': 20,
+          });
+          
           // Enviar todos os filters
           for (int i = 0; i < filters.length; i++) {
             channel.sink.add(jsonEncode(['REQ', '${subId}_$i', filters[i]]));
@@ -4929,6 +5022,25 @@ class NostrOrderService {
                 // Verificar proofImage
                 final proofImage = content['proofImage'] as String?;
                 final proofImageNip44 = content['proofImage_nip44'] as String?;
+                
+                // v645e: cópia cifrada PARA O ADMIN num kind 1 de disputa
+                // (provedor re-publicou). Descriptografar direto aqui.
+                if (privateKey != null) {
+                  final adminCopyDirect = content['proofImage_nip44_admin'] as String?;
+                  if (adminCopyDirect != null && adminCopyDirect.isNotEmpty && result['proofImage'] == null) {
+                    try {
+                      final senderPk = content['senderPubkey'] as String? ?? (eventData['pubkey'] as String?);
+                      if (senderPk != null) {
+                        final dec = _nip44.decryptBetween(adminCopyDirect, privateKey, senderPk);
+                        result['proofImage'] = dec;
+                        result['encrypted'] = false;
+                        broLog('🔓 Comprovante descriptografado (cópia admin kind1) para ${orderId.substring(0, 8)}');
+                      }
+                    } catch (e) {
+                      broLog('⚠️ Falha decrypt cópia admin kind1: $e');
+                    }
+                  }
+                }
                 
                 if (proofImage != null && proofImage.isNotEmpty && proofImage != '[encrypted:nip44v2]') {
                   // Plaintext - perfeito
@@ -5011,8 +5123,10 @@ class NostrOrderService {
           }
           channel.sink.close();
           
-          // Se já encontrou plaintext, parar
-          if (result['proofImage'] != null && result['encrypted'] == false) break;
+          // v645: não quebrar o loop ao achar a prova — continuar agregando os
+          // demais relays (antes um break aqui fazia o método depender do
+          // primeiro relay que respondesse, e a prova sumia se ela estivesse só
+          // num relay posterior).
         } catch (e) {
           broLog('⚠️ fetchProofForOrder relay error: $e');
         }

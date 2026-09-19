@@ -17,8 +17,7 @@
 
 const WebSocket = require('ws');
 const pushService = require('./pushService');
-const { verifyEvent, finalizeEvent } = require('nostr-tools/pure');
-const { bytesToHex } = require('nostr-tools/utils');
+const { verifyEvent } = require('nostr-tools/pure');
 const fs = require('fs');
 const path = require('path');
 
@@ -30,6 +29,16 @@ const BROADCAST_SEEN_FILE = process.env.NODE_ENV === 'production'
   ? '/data/watchtower_broadcasts.json'
   : path.join(__dirname, '..', 'data', 'watchtower_broadcasts.json');
 const BROADCAST_SEEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+// v637: store persistido dos lembretes VISÍVEIS de billCode. O fallback v611
+// disparava UM único push a +15min via setTimeout in-memory, perdido em todo
+// deploy — então um comprador offline por horas/dias nunca era relembrado e o
+// provedor ficava sem o código de barras (caso real: ordem 195feda6, billCode
+// entregue 3 DIAS após o aceite, boleto vencido). Persistir permite ao scanner
+// re-enviar num cronograma crescente que sobrevive a restarts.
+const BILLCODE_WAKEUP_FILE = process.env.NODE_ENV === 'production'
+  ? '/data/billcode_wakeups.json'
+  : path.join(__dirname, '..', 'data', 'billcode_wakeups.json');
 
 // Relays podem ser sobrescritos via env RELAYS (CSV). Fallback = padrão atual.
 const RELAYS = (process.env.RELAYS || 'wss://relay.damus.io,wss://nos.lol,wss://relay.primal.net')
@@ -51,20 +60,6 @@ const KIND_ACCEPT = 30079;
 const KIND_PAYMENT_PROOF = 30080;
 const KIND_COMPLETE = 30081;
 
-// ── Peça 2: Anúncio de Coordinator (kind 30082) ────────────────────────
-// O coordinator publica um "cartão de visita" (parameterized replaceable, #d
-// = bro-coordinator) para o app descobrir que ele existe, qual a taxa e o
-// endereço Lightning. Assinado com a identidade do coordinator (ADMIN_NSEC).
-// Só ativa se ADMIN_NSEC estiver definida no .env.
-const KIND_COORDINATOR_ANNOUNCE = 30082;
-const ANNOUNCE_REPUBLISH_MS = 30 * 60 * 1000; // republica a cada 30 min
-
-// ── Reputação de Coordinator (kind 30083) ────────────────────────────
-// Quando uma ordem que este coordinator processa termina, ele publica uma
-// atestação (completed/disputed) assinada com a identidade do coordinator.
-// O app agrega essas atestações para mostrar o histórico de cada coordinator.
-const KIND_COORDINATOR_REPUTATION = 30083;
-
 // Notification title/body maps
 const NOTIFICATION_MAP = {
   'accepted': { title: '🤝 Bro encontrado!', body: 'Um Bro aceitou sua ordem' },
@@ -77,6 +72,10 @@ const NOTIFICATION_MAP = {
   'new_order': { title: '📋 Nova ordem disponível!', body: 'Uma nova ordem de pagamento está disponível' },
 };
 
+// v637: validador de pubkey em escopo de módulo (o `isValidPubkey` existente é
+// local ao _handleEvent). Usado pelos métodos de lembrete de billCode.
+const isHexPubkey = (pk) => typeof pk === 'string' && /^[0-9a-f]{64}$/.test(pk);
+
 class NostrWatchtowerService {
   constructor() {
     this._connections = new Map(); // relay → ws
@@ -86,7 +85,9 @@ class NostrWatchtowerService {
     this._reconnectTimers = new Map();
     this._eoseReceived = new Set(); // relays that finished historical catch-up
     this._orderUsers = new Map(); // orderId → userPubkey cache (from bro_order events)
-    this._orderCoordinator = new Map(); // orderId → coordinatorPubkey (da metadata; '' = Bro original)
+    // vSEC: orderId → providerPubkey cache (from bro_accept events). Used to
+    // authorize /push/notify: only the two order parties may notify each other.
+    this._orderProviders = new Map();
     this._running = false;
     this._stats = { eventsProcessed: 0, pushesSent: 0, pushesFailed: 0, sigFailed: 0 };
     // SECURITY: Rate limit pushes per target pubkey (max 10 per 5 min)
@@ -147,47 +148,28 @@ class NostrWatchtowerService {
     //     liquidated, cancelled, disputed) — ordem progrediu de outra forma.
     this._pendingBillcodeRelays = new Map(); // `${orderId}:${accepterPubkey}` → { timers: Timeout[], targetPubkey, accepterPubkey, orderId, shortId, attempt }
     this._BILLCODE_RETRY_SCHEDULE_MS = [45_000, 180_000, 600_000]; // T+45s, T+3min, T+10min (silent)
-    this._BILLCODE_WAKEUP_DELAY_MS = 900_000; // T+15min (visible fallback)
 
-    // Peça 2: segredo do coordinator p/ assinar o anúncio 30082 (de ADMIN_NSEC)
-    this._coordinatorSecretKey = this._decodeNsec(process.env.ADMIN_NSEC);
-    this._announceTimer = null;
-    // Reputação: ordens já atestadas (evita publicar a mesma atestação várias
-    // vezes quando o evento 'completed' chega de vários relays — bug do "12").
-    this._reputationPublished = new Set();
-  }
-
-  // Decodifica nsec (bech32) → secret key (32 bytes Uint8Array). Retorna null
-  // se inválido/ausente. Fallback: se a env já for hex de 64 chars, usa direto.
-  _decodeNsec(nsec) {
-    try {
-      if (!nsec || typeof nsec !== 'string') return null;
-      const clean = nsec.trim().replace(/[<>]/g, '');
-      if (/^[0-9a-f]{64}$/i.test(clean)) {
-        const out = new Uint8Array(32);
-        for (let i = 0; i < 32; i++) out[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
-        return out;
-      }
-      if (!clean.startsWith('nsec1')) return null;
-      const bech = require('nostr-tools/nip19');
-      const decoded = bech.decode(clean);
-      if (decoded.type === 'nsec' && decoded.data) {
-        return typeof decoded.data === 'string'
-          ? new Uint8Array(Buffer.from(decoded.data, 'hex'))
-          : decoded.data;
-      }
-      return null;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  // pubkey do coordinator (ADMIN_PUBKEY, hex). Normaliza se por acaso vier em
-  // formato nsec/bytes. Retorna null se ausente/inválido.
-  _coordinatorPubkey() {
-    const pk = (process.env.ADMIN_PUBKEY || '').trim().replace(/[<>]/g, '');
-    if (/^[0-9a-f]{64}$/i.test(pk)) return pk.toLowerCase();
-    return null;
+    // v637: lembretes VISÍVEIS recorrentes p/ o criador publicar o billCode,
+    // PERSISTIDOS em disco (o fallback v611 era um único setTimeout in-memory a
+    // +15min, perdido em todo deploy → comprador offline por horas/dias nunca
+    // era relembrado e o provedor ficava sem o código. Caso real: ordem
+    // 195feda6, billCode entregue 3 DIAS após o aceite, boleto vencido). Um
+    // scanner periódico re-envia num cronograma crescente até observarmos
+    // bro_billcode_encrypted ou status terminal, e sobrevive a restarts.
+    this._billcodeWakeups = new Map(); // orderId → { orderId, shortId, targetPubkey, accepterPubkey, acceptedAt, attempts, lastSentAt }
+    this._billcodeWakeupTimer = null;
+    this._billcodeWakeupSaveTimer = null;
+    this._BILLCODE_WAKEUP_SCAN_MS = 15 * 60 * 1000; // varre a cada 15min
+    // Offsets (desde o aceite) de cada lembrete visível; após o último, desiste.
+    this._BILLCODE_WAKEUP_OFFSETS_MS = [
+      15 * 60 * 1000,        // +15min
+      2 * 60 * 60 * 1000,    // +2h
+      6 * 60 * 60 * 1000,    // +6h
+      14 * 60 * 60 * 1000,   // +14h
+      24 * 60 * 60 * 1000,   // +24h
+      38 * 60 * 60 * 1000,   // +38h
+    ];
+    this._BILLCODE_WAKEUP_MAX_AGE_MS = 48 * 60 * 60 * 1000; // desiste após 48h
   }
 
   start() {
@@ -203,6 +185,9 @@ class NostrWatchtowerService {
     // v588: load persistent broadcast dedup
     this._loadBroadcastSeen();
 
+    // v637: carrega lembretes de billCode persistidos (sobrevivem a deploys)
+    this._loadBillcodeWakeups();
+
     for (const relay of RELAYS) {
       this._connectToRelay(relay);
     }
@@ -213,16 +198,12 @@ class NostrWatchtowerService {
     // v584: retry job pra pagamentos pendentes (bro_complete sem confirm do cliente)
     this._invoiceRetryTimer = setInterval(() => this._retryPendingInvoicePushes(), this._INVOICE_RETRY_INTERVAL_MS);
 
-    // Peça 2: anúncio do coordinator (kind 30082)
-    this._startCoordinatorAnnounce();
+    // v637: scanner de lembretes VISÍVEIS de billCode (cronograma crescente)
+    this._billcodeWakeupTimer = setInterval(() => this._processBillcodeWakeups(), this._BILLCODE_WAKEUP_SCAN_MS);
   }
 
   stop() {
     this._running = false;
-    if (this._announceTimer) {
-      clearInterval(this._announceTimer);
-      this._announceTimer = null;
-    }
     if (this._backfillTimer) {
       clearInterval(this._backfillTimer);
       this._backfillTimer = null;
@@ -230,6 +211,11 @@ class NostrWatchtowerService {
     if (this._invoiceRetryTimer) {
       clearInterval(this._invoiceRetryTimer);
       this._invoiceRetryTimer = null;
+    }
+    // v637: para o scanner de lembretes de billCode
+    if (this._billcodeWakeupTimer) {
+      clearInterval(this._billcodeWakeupTimer);
+      this._billcodeWakeupTimer = null;
     }
     // v611: cancela todos os retries de billCode relay pendentes
     for (const [, entry] of this._pendingBillcodeRelays) {
@@ -559,20 +545,6 @@ class NostrWatchtowerService {
               this._orderUsers = new Map(entries.slice(-2000));
             }
           }
-
-          // v650: registrar QUAL coordinator a ordem escolheu (vem na metadata do
-          // content). '' (vazio/ausente) = Bro original. O coordinator SÓ atesta
-          // reputação de ordens cuja coordinatorPubkey bate com a DELE — assim ele
-          // não assina ordens coordenadas por outros (bug que inflou a reputação).
-          try {
-            const coordPk = (content.metadata && content.metadata.coordinatorPubkey)
-              ? String(content.metadata.coordinatorPubkey).toLowerCase() : '';
-            this._orderCoordinator.set(orderId, coordPk);
-            if (this._orderCoordinator.size > 4000) {
-              const entries = Array.from(this._orderCoordinator.entries());
-              this._orderCoordinator = new Map(entries.slice(-2000));
-            }
-          } catch (_) { /* ignore */ }
           // New order created — notify relevant users
           console.log(`🗼 [Watchtower] New order ${shortId} from ${senderPubkey.substring(0, 8)}`);
           await this._notifyNewOrder(senderPubkey, orderId, content, event);
@@ -591,6 +563,16 @@ class NostrWatchtowerService {
           const cachedUser = this._orderUsers.get(orderId);
           const userPubkeyA = (isValidPubkey(cachedUser) ? cachedUser : null)
             || (typeof content.userPubkey === 'string' && isValidPubkey(content.userPubkey) ? content.userPubkey : null);
+          // vSEC: record the accepter (event signer) as this order's provider.
+          // The signer is authenticated by verifyEvent upstream, so this is the
+          // authoritative provider identity for /push/notify authorization.
+          if (isValidPubkey(senderPubkey) && userPubkeyA !== senderPubkey) {
+            this._orderProviders.set(orderId, senderPubkey);
+            if (this._orderProviders.size > 4000) {
+              const pEntries = Array.from(this._orderProviders.entries());
+              this._orderProviders = new Map(pEntries.slice(-2000));
+            }
+          }
           if (isValidPubkey(userPubkeyA) && userPubkeyA !== senderPubkey) {
             await this._sendOrderPush(userPubkeyA, senderPubkey, 'accepted', orderId, shortId);
             // v574: also send a SILENT data-only push to wake the buyer's
@@ -686,11 +668,6 @@ class NostrWatchtowerService {
             if (this._pendingInvoicePayments.delete(orderId)) {
               console.log(`✅ [Watchtower] Limpando pending invoice ${shortId} (status=${status})`);
             }
-          }
-
-          // Reputação: ordem concluída → publica atestação (kind 30083)
-          if (status === 'completed' || status === 'disputed') {
-            this._publishReputation(orderId, status === 'completed' ? 'completed' : 'disputed', `ordem ${status}`);
           }
 
           // v611: ordem progrediu além de "accepted" → não faz mais sentido
@@ -906,31 +883,12 @@ class NostrWatchtowerService {
       entry.timers.push(t);
     }
 
-    // Fallback visível
-    const wakeupTimer = setTimeout(async () => {
-      if (entry.cancelled) return;
-      console.log(`🔔 [Watchtower] billCode wakeup VISÍVEL para ${shortId} → ${targetPubkey.substring(0, 8)} (+${Math.round(this._BILLCODE_WAKEUP_DELAY_MS/1000)}s)`);
-      try {
-        await this._sendPush(targetPubkey, {
-          type: 'order_update',
-          sender_pubkey: accepterPubkey,
-          subtype: 'accepted',
-          order_id: orderId,
-          source: 'watchtower_wakeup',
-        }, {
-          title: '⏰ Sua ordem está esperando!',
-          body: 'Toque para abrir o Bro e enviar o código de pagamento.',
-        }, { bypassDedup: true });
-      } catch (e) {
-        console.error(`❌ [Watchtower] billCode wakeup falhou para ${shortId}: ${e.message}`);
-      } finally {
-        // Após o wakeup visível, removemos o entry. Se mesmo assim o usuário
-        // não abrir o app, o auto-nudge do provedor (Nostr) continua tentando,
-        // e em deploys futuros podemos adicionar pings de 24/36h.
-        this._pendingBillcodeRelays.delete(key);
-      }
-    }, this._BILLCODE_WAKEUP_DELAY_MS);
-    entry.timers.push(wakeupTimer);
+    // v637: o lembrete VISÍVEL deixou de ser um único setTimeout in-memory a
+    // +15min (perdido em cada deploy). Agora registramos um wakeup PERSISTIDO
+    // que o scanner (_processBillcodeWakeups) re-envia num cronograma crescente
+    // (+15min, +2h, +6h, +14h, +24h, +38h) até observarmos o billCode ou um
+    // status terminal — sobrevivendo a restarts do servidor.
+    this._registerBillcodeWakeup(targetPubkey, accepterPubkey, orderId, shortId);
 
     this._pendingBillcodeRelays.set(key, entry);
     // Cap de memória: 2K combinações pendentes
@@ -943,7 +901,7 @@ class NostrWatchtowerService {
       }
       this._pendingBillcodeRelays.delete(firstKey);
     }
-    console.log(`⏳ [Watchtower] billCode relay retries agendados para ${shortId} → ${targetPubkey.substring(0, 8)} (3 silent + 1 visível)`);
+    console.log(`⏳ [Watchtower] billCode relay retries agendados para ${shortId} → ${targetPubkey.substring(0, 8)} (3 silent + wakeup visível persistido)`);
   }
 
   /**
@@ -959,9 +917,138 @@ class NostrWatchtowerService {
       this._pendingBillcodeRelays.delete(key);
       cancelled++;
     }
+    // v637: encerra também os lembretes visíveis persistidos desta ordem
+    if (this._billcodeWakeups.delete(orderId)) {
+      this._persistBillcodeWakeups();
+      console.log(`✅ [Watchtower] Encerrado lembrete de billCode para ${orderId.substring(0, 8)} (${reason})`);
+    }
     if (cancelled > 0) {
       console.log(`✅ [Watchtower] Cancelados ${cancelled} retry(s) de billCode para ${orderId.substring(0, 8)} (${reason})`);
     }
+  }
+
+  /**
+   * v637: Registra um lembrete VISÍVEL persistido para o criador da ordem
+   * publicar o billCode. Idempotente por orderId. Persistido em disco para
+   * sobreviver a deploys — o scanner (_processBillcodeWakeups) re-envia num
+   * cronograma crescente até observarmos bro_billcode_encrypted / status
+   * terminal (via _cancelBillcodeRelayRetries) ou expirar em 48h.
+   */
+  _registerBillcodeWakeup(targetPubkey, accepterPubkey, orderId, shortId) {
+    if (!isHexPubkey(targetPubkey) || !isHexPubkey(accepterPubkey)) return;
+    if (targetPubkey === accepterPubkey) return;
+    if (this._billcodeWakeups.has(orderId)) return; // já registrado
+    this._billcodeWakeups.set(orderId, {
+      orderId,
+      shortId,
+      targetPubkey,
+      accepterPubkey,
+      acceptedAt: Date.now(),
+      attempts: 0,
+      lastSentAt: 0,
+    });
+    // Cap de memória: 2K ordens aguardando billCode
+    if (this._billcodeWakeups.size > 2000) {
+      const first = this._billcodeWakeups.keys().next().value;
+      if (first) this._billcodeWakeups.delete(first);
+    }
+    this._persistBillcodeWakeups();
+  }
+
+  /**
+   * v637: Scanner periódico (a cada 15min) dos lembretes de billCode. Para
+   * cada ordem cujo próximo offset já venceu, envia UM push visível ao criador
+   * pedindo pra abrir o app e enviar o código. Escala em +15min/+2h/+6h/+14h/
+   * +24h/+38h e desiste após 48h. Cada tentativa usa um subtype único para não
+   * colidir com o dedup de 24h. Se o servidor esteve fora durante um offset, o
+   * próximo scan dispara o lembrete devido imediatamente (catch-up).
+   */
+  async _processBillcodeWakeups() {
+    if (!this._running) return;
+    if (this._billcodeWakeups.size === 0) return;
+    const now = Date.now();
+    const toDelete = [];
+    let changed = false;
+    for (const [orderId, info] of this._billcodeWakeups) {
+      const age = now - info.acceptedAt;
+      if (age > this._BILLCODE_WAKEUP_MAX_AGE_MS) { toDelete.push(orderId); continue; }
+      if (info.attempts >= this._BILLCODE_WAKEUP_OFFSETS_MS.length) { toDelete.push(orderId); continue; }
+      const dueOffset = this._BILLCODE_WAKEUP_OFFSETS_MS[info.attempts];
+      if (age < dueOffset) continue; // ainda não venceu este lembrete
+      try {
+        const ok = await this._sendPush(info.targetPubkey, {
+          type: 'order_update',
+          sender_pubkey: info.accepterPubkey,
+          // subtype único por tentativa p/ burlar o dedup de 24h
+          subtype: `billcode_wakeup_${info.attempts + 1}`,
+          order_id: orderId,
+          source: 'watchtower_billcode_wakeup',
+        }, {
+          title: '⏰ Sua ordem está esperando!',
+          body: 'Toque para abrir o Bro e enviar o código de pagamento antes que vença.',
+        }, { bypassDedup: true });
+        info.attempts += 1;
+        info.lastSentAt = now;
+        changed = true;
+        console.log(`🔔 [Watchtower] billCode wakeup VISÍVEL ${info.shortId} → ${info.targetPubkey.substring(0, 8)} attempt=${info.attempts} ok=${ok}`);
+      } catch (err) {
+        console.error(`❌ [Watchtower] billCode wakeup erro ${info.shortId}: ${err.message}`);
+      }
+    }
+    for (const id of toDelete) { this._billcodeWakeups.delete(id); changed = true; }
+    if (changed) this._persistBillcodeWakeups();
+  }
+
+  /**
+   * v637: Carrega os lembretes de billCode persistidos no start (sobrevive a
+   * deploys). Descarta entradas expiradas (> 48h) e mal-formadas.
+   */
+  _loadBillcodeWakeups() {
+    try {
+      if (!fs.existsSync(BILLCODE_WAKEUP_FILE)) return;
+      const raw = fs.readFileSync(BILLCODE_WAKEUP_FILE, 'utf8');
+      const data = JSON.parse(raw);
+      if (!Array.isArray(data)) return;
+      const now = Date.now();
+      let loaded = 0;
+      for (const info of data) {
+        if (!info || typeof info !== 'object') continue;
+        const { orderId, targetPubkey, accepterPubkey, acceptedAt } = info;
+        if (!orderId || !isHexPubkey(targetPubkey) || !isHexPubkey(accepterPubkey)) continue;
+        if (typeof acceptedAt !== 'number') continue;
+        if (now - acceptedAt > this._BILLCODE_WAKEUP_MAX_AGE_MS) continue;
+        this._billcodeWakeups.set(orderId, {
+          orderId,
+          shortId: typeof info.shortId === 'string' ? info.shortId : orderId.substring(0, 8),
+          targetPubkey,
+          accepterPubkey,
+          acceptedAt,
+          attempts: typeof info.attempts === 'number' ? info.attempts : 0,
+          lastSentAt: typeof info.lastSentAt === 'number' ? info.lastSentAt : 0,
+        });
+        loaded++;
+      }
+      if (loaded > 0) console.log(`🗼 [Watchtower] Loaded ${loaded} persisted billCode wakeup(s)`);
+    } catch (e) {
+      console.log(`[Watchtower] Could not load billCode wakeups: ${e.message}`);
+    }
+  }
+
+  /**
+   * v637: Persiste (debounced 3s) o mapa de lembretes de billCode em disco.
+   */
+  _persistBillcodeWakeups() {
+    if (this._billcodeWakeupSaveTimer) clearTimeout(this._billcodeWakeupSaveTimer);
+    this._billcodeWakeupSaveTimer = setTimeout(() => {
+      try {
+        const dir = path.dirname(BILLCODE_WAKEUP_FILE);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        const out = Array.from(this._billcodeWakeups.values());
+        fs.writeFileSync(BILLCODE_WAKEUP_FILE, JSON.stringify(out), { encoding: 'utf8', mode: 0o600 });
+      } catch (e) {
+        console.error(`[Watchtower] Could not persist billCode wakeups: ${e.message}`);
+      }
+    }, 3000);
   }
 
   /**
@@ -1243,130 +1330,7 @@ class NostrWatchtowerService {
       totalRelays: RELAYS.length,
       seenEvents: this._seenEvents.size,
       stats: { ...this._stats },
-      coordinatorAnnounce: (this._coordinatorSecretKey && this._coordinatorPubkey()) ? 'enabled' : 'disabled (falta ADMIN_NSEC/ADMIN_PUBKEY)',
     };
-  }
-
-  // ── Peça 2: anúncio de coordinator (kind 30082) ──────────────────────
-  // Publica o "cartão de visita" do coordinator nos relays (inclui o próprio
-  // relay local via espelho de conexão) e republica a cada 30 min para ficar
-  // visível. Só roda se ADMIN_NSEC estiver configurada.
-  _startCoordinatorAnnounce() {
-    const pubkey = this._coordinatorPubkey();
-    if (!this._coordinatorSecretKey || !pubkey) {
-      console.log('📢 [Announce] desligado — defina ADMIN_NSEC e ADMIN_PUBKEY no .env para o coordinator se anunciar (kind 30082)');
-      return;
-    }
-    // Publica 20s após o boot (dá tempo de conectar nos relays) e depois repete.
-    setTimeout(() => this._publishCoordinatorAnnounce(), 20_000);
-    this._announceTimer = setInterval(() => this._publishCoordinatorAnnounce(), ANNOUNCE_REPUBLISH_MS);
-    console.log('📢 [Announce] ativo — coordinator vai se anunciar nos relays (kind 30082)');
-  }
-
-  _publishCoordinatorAnnounce() {
-    if (!this._running || !this._coordinatorSecretKey) return;
-    try {
-      const pubkey = this._coordinatorPubkey();
-      if (!pubkey) return;
-      const relaysList = RELAYS.slice(0, 8);
-      const fee = process.env.COORDINATOR_FEE || '0.02';
-      const lnAddress = process.env.COORDINATOR_LIGHTNING_ADDRESS || '';
-      const name = process.env.COORDINATOR_NAME || 'Bro Coordinator';
-
-      const template = {
-        kind: KIND_COORDINATOR_ANNOUNCE,
-        created_at: Math.floor(Date.now() / 1000),
-        pubkey,
-        tags: [
-          ['d', 'bro-coordinator'],
-          ['t', 'bro-coordinator'],
-          ['name', name],
-          ['fee', fee],
-          ...relaysList.map((r) => ['relay', r]),
-          ...(lnAddress ? [['ln', lnAddress]] : []),
-          ['version', '1'],
-        ],
-        content: JSON.stringify({
-          terms: 'Coordinator Bro independente. Taxa sobre a ordem que passa por este nó.',
-          limits: { min: 1000, max: 5000000 },
-        }),
-      };
-
-      const signed = finalizeEvent(template, this._coordinatorSecretKey);
-      // sanity: a assinatura precisa bater com a pubkey anunciada
-      if (signed.pubkey !== pubkey) {
-        console.error('❌ [Announce] ADMIN_NSEC e ADMIN_PUBKEY não combinam — anúncio cancelado');
-        return;
-      }
-      const frame = JSON.stringify(['EVENT', signed]);
-      let sent = 0;
-      for (const [relayUrl, ws] of this._connections) {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          try { ws.send(frame); sent++; } catch (_) { /* best-effort */ }
-        }
-      }
-      console.log(`📢 [Announce] publicado kind 30082 em ${sent} relay(s) | fee=${fee} | ln=${lnAddress || '—'} | pubkey=${pubkey.substring(0, 8)}`);
-    } catch (err) {
-      console.error(`❌ [Announce] erro ao publicar anúncio: ${err.message}`);
-    }
-  }
-
-  // ── Reputação: atestação kind 30083 ao concluir/disputar uma ordem ──────
-  // Assinada com a identidade do coordinator. O app agrega para mostrar
-  // histórico (completed/disputed) de cada coordinator na lista de seleção.
-  // v650: SÓ atesta ordens que ESTE coordinator processou (metadata.coordinatorPubkey
-  // da ordem == pubkey dele). Sem isso ele assinava TODAS as ordens que via
-  // completar na rede (inclusive as do coordinator principal) — bug que inflou
-  // a reputação (a dona do projeto flagou: apareceram 12 ordens que não eram dele).
-  _publishReputation(orderId, result, note) {
-    if (!this._running || !this._coordinatorSecretKey) return;
-    const myPubkey = this._coordinatorPubkey();
-    if (!myPubkey) return;
-
-    // GATE: só atesta se a ordem foi atribuída a ESTE coordinator.
-    // Ordens sem coordinatorPubkey (antigas, ou Bro original) NÃO são dele → pula.
-    const orderCoord = (this._orderCoordinator.get(orderId) || '').toLowerCase();
-    if (orderCoord !== myPubkey.toLowerCase()) {
-      console.log(`📊 [Reputation] ordem ${orderId.substring(0, 8)} não é deste coordinator (coord=${orderCoord ? orderCoord.substring(0,8) : 'original'}) — não atesto`);
-      return;
-    }
-
-    // Dedup: uma atestação por ordem (o evento 'completed' chega de vários relays).
-    const dedupKey = `${orderId}:${result}`;
-    if (this._reputationPublished.has(dedupKey)) return;
-    this._reputationPublished.add(dedupKey);
-    if (this._reputationPublished.size > 5000) {
-      const arr = Array.from(this._reputationPublished);
-      this._reputationPublished = new Set(arr.slice(-2500));
-    }
-    try {
-      const pubkey = myPubkey;
-      const template = {
-        kind: KIND_COORDINATOR_REPUTATION,
-        created_at: Math.floor(Date.now() / 1000),
-        pubkey,
-        tags: [
-          ['d', `${pubkey}:${orderId}`],
-          ['t', 'bro-coordinator-reputation'],
-          ['p', pubkey],
-          ['result', result],
-          ['order', orderId],
-        ],
-        content: note || '',
-      };
-      const signed = finalizeEvent(template, this._coordinatorSecretKey);
-      if (signed.pubkey !== pubkey) return;
-      const frame = JSON.stringify(['EVENT', signed]);
-      let sent = 0;
-      for (const [relayUrl, ws] of this._connections) {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          try { ws.send(frame); sent++; } catch (_) { /* best-effort */ }
-        }
-      }
-      console.log(`📊 [Reputation] atestação ${result} p/ ordem ${orderId.substring(0, 8)} publicada em ${sent} relay(s)`);
-    } catch (err) {
-      console.error(`❌ [Reputation] erro ao publicar: ${err.message}`);
-    }
   }
 
   // ── v588: persistent dedup for 'new_order' broadcasts ────────────────

@@ -153,10 +153,12 @@ workflows:
         script: xcode-project use-profiles --project ios/Runner.xcodeproj
 
       - name: Build iOS
-        # v645: --build-number automático (CM_BUILD_NUMBER + 700). O App Store
-        # rejeita número duplicado (409); o offset garante sempre crescente,
-        # sem precisar bumpar o pubspec para iOS.
-        script: flutter build ipa --release --dart-define-from-file=env.json --build-number=$((CM_BUILD_NUMBER + 700)) --export-options-plist=/Users/builder/export_options.plist
+        # v645: build-number automático = CM_BUILD_NUMBER + 700 (App Store rejeita
+        # número duplicado 409). Variável POSIX p/ garantir expansão no runner.
+        script: |
+          BUILD_NUMBER=$((CM_BUILD_NUMBER + 700))
+          echo "iOS build number: $BUILD_NUMBER"
+          flutter build ipa --release --dart-define-from-file=env.json --build-number=$BUILD_NUMBER --export-options-plist=/Users/builder/export_options.plist
         
     artifacts:
       - build/**/outputs/**/*.apk
@@ -248,7 +250,10 @@ workflows:
         script: xcode-project use-profiles --project ios/Runner.xcodeproj
 
       - name: Build iOS
-        script: flutter build ipa --release --dart-define-from-file=env.json --build-number=$((CM_BUILD_NUMBER + 700)) --export-options-plist=/Users/builder/export_options.plist
+        script: |
+          BUILD_NUMBER=$((CM_BUILD_NUMBER + 700))
+          echo "iOS build number: $BUILD_NUMBER"
+          flutter build ipa --release --dart-define-from-file=env.json --build-number=$BUILD_NUMBER --export-options-plist=/Users/builder/export_options.plist
 
     artifacts:
       - build/ios/ipa/*.ipa
@@ -507,7 +512,10 @@ workflows:
         script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","ADMIN_PASSWORD_HASH":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" "$ADMIN_PASSWORD_HASH" > "$CM_BUILD_DIR/env.json"
 
       - name: Build iOS
-        script: flutter build ipa --release --dart-define-from-file=env.json --build-number=$((CM_BUILD_NUMBER + 700)) --export-options-plist=/Users/builder/export_options.plist
+        script: |
+          BUILD_NUMBER=$((CM_BUILD_NUMBER + 700))
+          echo "iOS build number: $BUILD_NUMBER"
+          flutter build ipa --release --dart-define-from-file=env.json --build-number=$BUILD_NUMBER --export-options-plist=/Users/builder/export_options.plist
         
     artifacts:
       - build/ios/ipa/*.ipa

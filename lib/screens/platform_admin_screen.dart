@@ -137,9 +137,22 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
             final existsLocally = allDisputes.any((d) => d.orderId == orderId);
             disputeData['existsLocally'] = existsLocally;
             
-            // Priorizar kind 1 (dados mais completos) sobre kind 30080
+            // Priorizar kind 1 (dados mais completos) sobre kind 30080.
+            // v645: quando há múltiplos eventos da MESMA origem (ex.: status
+            // 'disputed' republicado depois pela outra parte), manter o MAIS
+            // ANTIGO — createdAt deve refletir a ABERTURA real da disputa,
+            // não uma republicação posterior.
             final existing = disputesByOrderId[orderId];
-            if (existing == null || (existing['source'] == 'kind30080' && disputeData['source'] == 'kind1')) {
+            bool replaceDispute = existing == null ||
+                (existing['source'] == 'kind30080' && disputeData['source'] == 'kind1');
+            if (!replaceDispute && existing != null && existing['source'] == disputeData['source']) {
+              final existingTs = DateTime.tryParse(existing['createdAt'] as String? ?? '');
+              final newTs = DateTime.tryParse(disputeData['createdAt'] as String? ?? '');
+              if (existingTs == null || (newTs != null && newTs.isBefore(existingTs))) {
+                replaceDispute = true;
+              }
+            }
+            if (replaceDispute) {
               disputesByOrderId[orderId] = disputeData;
             }
           } catch (_) {}

@@ -483,7 +483,9 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
             spacing: 8,
             runSpacing: 6,
             children: [
-              Text('📅 $dateStr', style: const TextStyle(color: Colors.white54, fontSize: 13)),
+              // v645: rotular explicitamente — a tela tem várias datas da ordem
+              // e o mediador não sabia qual era a da abertura da disputa.
+              Text('📅 Aberta em: $dateStr', style: const TextStyle(color: Colors.white54, fontSize: 13)),
               if (previousStatus.isNotEmpty)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -491,7 +493,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
                     color: Colors.white10,
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  child: Text('Aberta em: ${_humanStatus(previousStatus)}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                  child: Text('Etapa ao abrir: ${_humanStatus(previousStatus)}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
                 ),
             ],
           ),

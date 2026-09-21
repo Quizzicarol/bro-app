@@ -153,12 +153,18 @@ workflows:
         script: xcode-project use-profiles --project ios/Runner.xcodeproj
 
       - name: Build iOS
-        # v646: define CFBundleVersion DIRETO no projeto Xcode via agvtool
-        # (CM_BUILD_NUMBER + 700). O --build-number do flutter nem sempre chega
-        # ao IPA; agvtool garante o número crescente que o App Store exige.
+        # v647: CFBundleVersion SEMPRE crescente. O App Store rejeitava 700 em
+        # loop -> CM_BUILD_NUMBER estava vazio/0 no runner (700+0=700). Agora:
+        # loga o valor bruto e, se o numero nao passar de 700, usa timestamp Unix
+        # (sempre maior que qualquer build anterior). agvtool seta direto no Xcode.
         script: |
-          BUILD_NUMBER=$((CM_BUILD_NUMBER + 700))
-          echo "iOS build number: $BUILD_NUMBER"
+          echo "CM_BUILD_NUMBER bruto: '${CM_BUILD_NUMBER}'"
+          BUILD_NUMBER=$(( ${CM_BUILD_NUMBER:-0} + 700 ))
+          if [ "$BUILD_NUMBER" -le 700 ]; then
+            BUILD_NUMBER=$(date +%s)
+            echo "CM_BUILD_NUMBER ausente/baixo -> usando timestamp: $BUILD_NUMBER"
+          fi
+          echo "iOS build number FINAL: $BUILD_NUMBER"
           cd ios
           agvtool new-version -all "$BUILD_NUMBER"
           cd ..
@@ -255,8 +261,13 @@ workflows:
 
       - name: Build iOS
         script: |
-          BUILD_NUMBER=$((CM_BUILD_NUMBER + 700))
-          echo "iOS build number: $BUILD_NUMBER"
+          echo "CM_BUILD_NUMBER bruto: '${CM_BUILD_NUMBER}'"
+          BUILD_NUMBER=$(( ${CM_BUILD_NUMBER:-0} + 700 ))
+          if [ "$BUILD_NUMBER" -le 700 ]; then
+            BUILD_NUMBER=$(date +%s)
+            echo "CM_BUILD_NUMBER ausente/baixo -> usando timestamp: $BUILD_NUMBER"
+          fi
+          echo "iOS build number FINAL: $BUILD_NUMBER"
           cd ios
           agvtool new-version -all "$BUILD_NUMBER"
           cd ..
@@ -520,8 +531,13 @@ workflows:
 
       - name: Build iOS
         script: |
-          BUILD_NUMBER=$((CM_BUILD_NUMBER + 700))
-          echo "iOS build number: $BUILD_NUMBER"
+          echo "CM_BUILD_NUMBER bruto: '${CM_BUILD_NUMBER}'"
+          BUILD_NUMBER=$(( ${CM_BUILD_NUMBER:-0} + 700 ))
+          if [ "$BUILD_NUMBER" -le 700 ]; then
+            BUILD_NUMBER=$(date +%s)
+            echo "CM_BUILD_NUMBER ausente/baixo -> usando timestamp: $BUILD_NUMBER"
+          fi
+          echo "iOS build number FINAL: $BUILD_NUMBER"
           cd ios
           agvtool new-version -all "$BUILD_NUMBER"
           cd ..

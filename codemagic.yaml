@@ -153,12 +153,16 @@ workflows:
         script: xcode-project use-profiles --project ios/Runner.xcodeproj
 
       - name: Build iOS
-        # v645: build-number automático = CM_BUILD_NUMBER + 700 (App Store rejeita
-        # número duplicado 409). Variável POSIX p/ garantir expansão no runner.
+        # v646: define CFBundleVersion DIRETO no projeto Xcode via agvtool
+        # (CM_BUILD_NUMBER + 700). O --build-number do flutter nem sempre chega
+        # ao IPA; agvtool garante o número crescente que o App Store exige.
         script: |
           BUILD_NUMBER=$((CM_BUILD_NUMBER + 700))
           echo "iOS build number: $BUILD_NUMBER"
-          flutter build ipa --release --dart-define-from-file=env.json --build-number=$BUILD_NUMBER --export-options-plist=/Users/builder/export_options.plist
+          cd ios
+          agvtool new-version -all "$BUILD_NUMBER"
+          cd ..
+          flutter build ipa --release --dart-define-from-file=env.json --export-options-plist=/Users/builder/export_options.plist
         
     artifacts:
       - build/**/outputs/**/*.apk
@@ -253,7 +257,10 @@ workflows:
         script: |
           BUILD_NUMBER=$((CM_BUILD_NUMBER + 700))
           echo "iOS build number: $BUILD_NUMBER"
-          flutter build ipa --release --dart-define-from-file=env.json --build-number=$BUILD_NUMBER --export-options-plist=/Users/builder/export_options.plist
+          cd ios
+          agvtool new-version -all "$BUILD_NUMBER"
+          cd ..
+          flutter build ipa --release --dart-define-from-file=env.json --export-options-plist=/Users/builder/export_options.plist
 
     artifacts:
       - build/ios/ipa/*.ipa
@@ -515,7 +522,10 @@ workflows:
         script: |
           BUILD_NUMBER=$((CM_BUILD_NUMBER + 700))
           echo "iOS build number: $BUILD_NUMBER"
-          flutter build ipa --release --dart-define-from-file=env.json --build-number=$BUILD_NUMBER --export-options-plist=/Users/builder/export_options.plist
+          cd ios
+          agvtool new-version -all "$BUILD_NUMBER"
+          cd ..
+          flutter build ipa --release --dart-define-from-file=env.json --export-options-plist=/Users/builder/export_options.plist
         
     artifacts:
       - build/ios/ipa/*.ipa

@@ -1993,8 +1993,12 @@ class NostrOrderService {
         dTags.add('${id}_complete');
       }
       
-      // Buscar de todos os relays em paralelo com DUAS estratégias
-      final relayFutures = _relays.map((relay) async {
+      // Buscar de todos os relays em paralelo com DUAS estratégias.
+      // v646: incluir fallback relays (incl. Apex cord) — antes só _relays (3
+      // principais). Se o aceite não propagou para o relay que respondeu, a
+      // ordem reaparecia como disponível (caso 29daef72).
+      final statusRelays = <String>[..._relays, ..._fallbackRelays];
+      final relayFutures = statusRelays.map((relay) async {
         try {
           final results = await Future.wait([
             // Estratégia 1: #d tag para accept/complete events (kind 30079, 30081)

@@ -17,7 +17,9 @@
 
 const WebSocket = require('ws');
 const pushService = require('./pushService');
-const { verifyEvent } = require('nostr-tools/pure');
+const { verifyEvent, finalizeEvent } = require('nostr-tools/pure');
+const { bytesToHex } = require('nostr-tools/utils');
+const nip19 = require('nostr-tools/nip19');
 const fs = require('fs');
 const path = require('path');
 
@@ -202,6 +204,11 @@ class NostrWatchtowerService {
 
     // v637: scanner de lembretes VISÍVEIS de billCode (cronograma crescente)
     this._billcodeWakeupTimer = setInterval(() => this._processBillcodeWakeups(), this._BILLCODE_WAKEUP_SCAN_MS);
+
+    // v646: anunciar o coordinator (kind 30082) para o app descobrir na lista.
+    // Sem isso, o Apex cord nunca aparecia (só o PC antigo aparecia porque o
+    // anúncio dele propagou numa versão anterior que tinha esse código).
+    this._startCoordinatorAnnounce();
   }
 
   stop() {
@@ -213,6 +220,11 @@ class NostrWatchtowerService {
     if (this._invoiceRetryTimer) {
       clearInterval(this._invoiceRetryTimer);
       this._invoiceRetryTimer = null;
+    }
+    // v646: parar o anúncio do coordinator
+    if (this._coordinatorAnnounceTimer) {
+      clearInterval(this._coordinatorAnnounceTimer);
+      this._coordinatorAnnounceTimer = null;
     }
     // v637: para o scanner de lembretes de billCode
     if (this._billcodeWakeupTimer) {
@@ -927,6 +939,86 @@ class NostrWatchtowerService {
     if (cancelled > 0) {
       console.log(`✅ [Watchtower] Cancelados ${cancelled} retry(s) de billCode para ${orderId.substring(0, 8)} (${reason})`);
     }
+  }
+
+  // ── v646: anúncio do coordinator (kind 30082) ───────────────────────────
+  // Publica o cartão do coordinator (nome, taxa, relay, LN) para o app
+  // descobrir na tela de seleção. Roda 1x ~20s após o boot e repete a cada 30min.
+  _decodeNsecToBytes(key) {
+    try {
+      if (typeof key !== 'string') return null;
+      if (key.startsWith('nsec1')) {
+        const dec = nip19.decode(key);
+        if (dec.type === 'nsec' && dec.data instanceof Uint8Array) return dec.data;
+        return null;
+      }
+      if (/^[0-9a-f]{64}$/i.test(key)) {
+        const out = new Uint8Array(32);
+        for (let i = 0; i < 32; i++) out[i] = parseInt(key.substr(i * 2, 2), 16);
+        return out;
+      }
+      return null;
+    } catch (_) { return null; }
+  }
+
+  _startCoordinatorAnnounce() {
+    const nsec = process.env.ADMIN_NSEC;
+    const pubkey = (process.env.ADMIN_PUBKEY || '').toLowerCase();
+    if (!nsec || !/^[0-9a-f]{64}$/.test(pubkey)) {
+      console.log('📢 [Watchtower] Coordinator announce DESLIGADO (ADMIN_NSEC/ADMIN_PUBKEY ausentes)');
+      return;
+    }
+    const secretKey = this._decodeNsecToBytes(nsec);
+    if (!secretKey) {
+      console.log('⚠️ [Watchtower] ADMIN_NSEC inválido — announce desligado');
+      return;
+    }
+    const name = process.env.COORDINATOR_NAME || 'Bro Coordinator';
+    const fee = process.env.COORDINATOR_FEE || '0.02';
+    const ln = process.env.COORDINATOR_LIGHTNING_ADDRESS || '';
+    // Relays que o coordinator atende (ws:// locais + wss:// públicos).
+    const relayTags = [...RELAYS, ...MIRROR_RELAYS]
+      .filter((r, i, arr) => arr.indexOf(r) === i)
+      .map((r) => r.replace(/^ws:\/\//, 'wss://')); // normaliza ws→wss p/ anúncio
+
+    const publish = () => {
+      try {
+        const tags = [
+          ['d', 'bro-coordinator'],
+          ['t', 'bro-coordinator'],
+          ['name', name],
+          ['fee', fee],
+          ['ln', ln],
+          ['version', '1'],
+          ...relayTags.map((r) => ['relay', r]),
+        ];
+        const event = finalizeEvent({
+          kind: 30082,
+          created_at: Math.floor(Date.now() / 1000),
+          tags,
+          content: '',
+        }, secretKey);
+        // Sanity: a pubkey assinada deve bater com ADMIN_PUBKEY.
+        if (event.pubkey !== pubkey) {
+          console.log('⚠️ [Watchtower] announce: pubkey derivada != ADMIN_PUBKEY — abortando');
+          return;
+        }
+        const frame = JSON.stringify(['EVENT', event]);
+        let sent = 0;
+        for (const [, ws] of this._connections) {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            try { ws.send(frame); sent++; } catch (_) { /* ignore */ }
+          }
+        }
+        console.log(`📢 [Watchtower] publicado kind 30082 (coordinator "${name}") em ${sent} relay(s) | fee=${fee} | ln=${ln}`);
+      } catch (e) {
+        console.log(`⚠️ [Watchtower] announce falhou: ${e.message}`);
+      }
+    };
+
+    // Primeira publicação ~20s após o boot (deixa as conexões abrirem), depois a cada 30min.
+    setTimeout(publish, 20000);
+    this._coordinatorAnnounceTimer = setInterval(publish, 30 * 60 * 1000);
   }
 
   /**

@@ -80,12 +80,21 @@ All communication is encrypted (NIP-44) and relayed through decentralized Nostr 
 - 🛡️ AI-assisted dispute resolution
 
 > **Fee model:** providers earn **3%** per transaction; a **2%** coordination fee goes to the coordinator that processed the order (the default Bro coordinator, or an independent one).
->
-> **Run your own coordinator:** coordinators are live. Anyone can run one — it watches Nostr order events, relays pushes, mediates disputes, and announces itself to the network (kind 30082) so the app can list it. The reference implementation is the backend in [`backend/`](backend/) (see [`backend/services/nostrWatchtowerService.js`](backend/services/nostrWatchtowerService.js) for the announcement + mirror logic and [`_deploy_apexcord/docker-compose.yml`](_deploy_apexcord/docker-compose.yml) for a ready relay+coordinator setup). The app discovers coordinators automatically; users pick one in **Settings → Coordinator**.
 
 </td>
 </tr>
 </table>
+
+---
+
+## Run your own coordinator
+
+Coordinators are live — anyone can run one. A coordinator watches Nostr order events, relays pushes, mediates disputes, and announces itself to the network (kind 30082) so the app can list it.
+
+- **Reference implementation:** the backend in [`backend/`](backend/) — see [`backend/services/nostrWatchtowerService.js`](backend/services/nostrWatchtowerService.js) for the announcement + mirror logic.
+- **Ready-made setup:** [`_deploy_apexcord/docker-compose.yml`](_deploy_apexcord/docker-compose.yml) runs a relay + coordinator together (the same setup we use for the "Apex cord" coordinator).
+
+The app discovers coordinators automatically; users pick one in **Settings → Coordinator**.
 
 ---
 

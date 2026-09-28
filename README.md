@@ -79,7 +79,9 @@ All communication is encrypted (NIP-44) and relayed through decentralized Nostr 
 - 🤖 Auto-liquidation after 36h confirmation timeout
 - 🛡️ AI-assisted dispute resolution
 
-> **Fee model:** providers earn **3%** per transaction; a **2%** coordination fee goes to the coordinator that processed the order (the default Bro coordinator, or an independent one). More on running your own coordinator soon.
+> **Fee model:** providers earn **3%** per transaction; a **2%** coordination fee goes to the coordinator that processed the order (the default Bro coordinator, or an independent one).
+>
+> **Run your own coordinator:** coordinators are live. Anyone can run one — it watches Nostr order events, relays pushes, mediates disputes, and announces itself to the network (kind 30082) so the app can list it. The reference implementation is the backend in [`backend/`](backend/) (see [`backend/services/nostrWatchtowerService.js`](backend/services/nostrWatchtowerService.js) for the announcement + mirror logic and [`_deploy_apexcord/docker-compose.yml`](_deploy_apexcord/docker-compose.yml) for a ready relay+coordinator setup). The app discovers coordinators automatically; users pick one in **Settings → Coordinator**.
 
 </td>
 </tr>
@@ -103,7 +105,7 @@ All communication is encrypted (NIP-44) and relayed through decentralized Nostr 
 
 ## Download
 
-**Current version:** v1.0.133 (build 644) — ✅ STABLE
+**Current version:** v1.0.134 (build 647) — ✅ STABLE
 
 | Platform | Link | Status |
 |----------|------|--------|
@@ -114,6 +116,14 @@ All communication is encrypted (NIP-44) and relayed through decentralized Nostr 
 | 🍎 App Store | Coming soon | 🔜 |
 
 ### Changelog — recent builds
+
+**build 1.0.134+647 — coordinator network live + reliability fixes**
+- 🧭 Coordinators now **announce themselves** (kind 30082) so the app lists them automatically — independent coordinators are live
+- 🛡️ Fixed accepted orders reappearing as available (status lookup now also queries fallback relays)
+- ⚡ Breez Spark SDK updated to v0.25.0
+- 🧾 Dispute mediation: proof now fetched across all relays + admin copy; evidence de-duplicated; "opened at" stage shown
+- 💸 Escrow release recognizes the paid escrow (no more false "insufficient balance" when releasing)
+- 🌐 New independent relay ("Apex cord") added as a read fallback
 
 **build 640s — open coordinator network + reliability**
 - 🧭 Independent coordinators: app discovers coordinators via Nostr (kind 30082), lets you pick one in Settings, and routes the 2% coordination fee to it

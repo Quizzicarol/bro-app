@@ -50,9 +50,11 @@ const RELAYS = (process.env.RELAYS || 'wss://relay.damus.io,wss://nos.lol,wss://
 // PRÓPRIO do coordinator, para o nó guardar uma cópia local de todas as ordens
 // e não depender só de relays de terceiros. Alvo = relays locais (ws://) da
 // lista RELAYS, ou o CSV explícito em MIRROR_RELAYS. Vazio = mirror desligado.
+// v646: inclui o relay "Apex cord" (Oracle) como mirror adicional — o backend
+// principal (Fly.io) passa a copiar ordens para lá também.
 const MIRROR_RELAYS = (process.env.MIRROR_RELAYS
   ? process.env.MIRROR_RELAYS.split(',').map((s) => s.trim()).filter(Boolean)
-  : RELAYS.filter((r) => r.startsWith('ws://')));
+  : [...RELAYS.filter((r) => r.startsWith('ws://')), 'wss://apexcord.duckdns.org']);
 
 // Nostr event kinds for Bro orders
 const KIND_ORDER = 30078;

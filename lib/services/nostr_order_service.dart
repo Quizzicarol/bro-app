@@ -146,7 +146,10 @@ class NostrOrderService {
 
   // v259: Relays de fallback - usados SOMENTE quando os 3 principais falham
   // Não são usados para publicação, apenas para leitura de emergência
+  // v646: inclui o relay "Apex cord" (coordinator próprio na Oracle) — lê dele
+  // quando damus/nos.lol/primal falham, reduzindo dependência de terceiros.
   static const List<String> _fallbackRelays = [
+    'wss://apexcord.duckdns.org',
     'wss://relay.nostr.band',
     'wss://nostr.mom',
   ];

@@ -1,0 +1,34 @@
+services:
+  relay:
+    image: scsibug/nostr-rs-relay
+    container_name: relay
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - relay_data:/usr/src/app/db
+    networks:
+      - bro-net
+
+  coordinator:
+    build:
+      context: ./backend
+    container_name: coordinator
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - coordinator_data:/data
+    networks:
+      - bro-net
+    depends_on:
+      - relay
+
+volumes:
+  relay_data:
+  coordinator_data:
+
+networks:
+  bro-net:
+    driver: bridge

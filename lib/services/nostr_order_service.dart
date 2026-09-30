@@ -3684,6 +3684,15 @@ class NostrOrderService {
     try {
       final keychain = Keychain(privateKey);
       
+      // v648: duplo aceite — notificar TODOS os provedores que aceitaram, não só
+      // o que abriu a disputa. Buscar todos os aceites para incluir nas tags #p
+      // (senão o provedor que PAGOU mas não abriu a disputa nunca era avisado).
+      List<String> allAccepters = [];
+      try {
+        allAccepters = await fetchAllAcceptsForOrder(orderId)
+            .timeout(const Duration(seconds: 8), onTimeout: () => <String>[]);
+      } catch (_) {}
+      
       final contentMap = {
         'type': 'bro_dispute',
         'orderId': orderId,
@@ -3716,6 +3725,7 @@ class NostrOrderService {
       final content = jsonEncode(contentMap);
       
       // v253: Incluir #p tag do provedor para que ele descubra a disputa nos relays
+      // v648: com duplo aceite, notificar TODOS os aceites (não só o que abriu).
       final providerIdFromDetails = orderDetails?['provider_id'] as String?;
       final tags = [
         ['t', 'bro-disputa'],
@@ -3723,8 +3733,14 @@ class NostrOrderService {
         ['r', orderId],
         ['p', AppConfig.adminPubkey], // Notificar admin/mediador
       ];
-      if (providerIdFromDetails != null && providerIdFromDetails.isNotEmpty && providerIdFromDetails != AppConfig.adminPubkey) {
-        tags.add(['p', providerIdFromDetails]); // v253: Notificar provedor
+      // Todos os aceites (se houver) OU o provider_id legado (se não houver).
+      final toNotify = allAccepters.isNotEmpty
+          ? allAccepters
+          : [if (providerIdFromDetails != null && providerIdFromDetails.isNotEmpty) providerIdFromDetails];
+      for (final pk in toNotify) {
+        if (pk.isNotEmpty && pk != AppConfig.adminPubkey && !tags.any((t) => t.length > 1 && t[0] == 'p' && t[1] == pk)) {
+          tags.add(['p', pk]); // Notificar cada provedor que aceitou
+        }
       }
       
       final event = Event.from(

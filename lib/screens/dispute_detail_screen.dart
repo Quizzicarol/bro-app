@@ -629,32 +629,9 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
             ),
           ),
         ],
-        if (providerId.isNotEmpty) ...[
-          _infoRow('🏪 Provedor', providerId, copyable: true, monospace: true),
-          const SizedBox(height: 4),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: () => _showSendMessageDialog('provider'),
-              icon: const Icon(Icons.message, size: 14, color: Colors.green),
-              label: const Text('Enviar Mensagem', style: TextStyle(fontSize: 12, color: Colors.green)),
-              style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 30)),
-            ),
-          ),
-        ] else ...[
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 4),
-            child: Row(
-              children: [
-                Text('🏪 Provedor', style: TextStyle(color: Colors.white54, fontSize: 12)),
-                SizedBox(width: 8),
-                Expanded(child: Text('Buscando...', style: TextStyle(color: Colors.white38, fontSize: 12, fontStyle: FontStyle.italic), textAlign: TextAlign.right)),
-              ],
-            ),
-          ),
-        ],
         // v648: duplo aceite — listar TODOS os provedores que aceitaram e
-        // sinalizar o canônico (o que recebe os fundos).
+        // sinalizar o canônico (o que recebe os fundos). Substitui a linha única
+        // de "Provedor" quando há mais de um aceite.
         if (_hasDoubleAccept) ...[
           const SizedBox(height: 10),
           Container(
@@ -699,6 +676,29 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
                     );
                   }),
                 ],
+              ],
+            ),
+          ),
+        ] else if (providerId.isNotEmpty) ...[
+          _infoRow('🏪 Provedor', providerId, copyable: true, monospace: true),
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => _showSendMessageDialog('provider'),
+              icon: const Icon(Icons.message, size: 14, color: Colors.green),
+              label: const Text('Enviar Mensagem', style: TextStyle(fontSize: 12, color: Colors.green)),
+              style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 30)),
+            ),
+          ),
+        ] else ...[
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              children: [
+                Text('🏪 Provedor', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                SizedBox(width: 8),
+                Expanded(child: Text('Buscando...', style: TextStyle(color: Colors.white38, fontSize: 12, fontStyle: FontStyle.italic), textAlign: TextAlign.right)),
               ],
             ),
           ),
@@ -2446,6 +2446,24 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
                   : '⚠️ O provedor manterá os sats do serviço.\nO usuário será notificado da decisão.',
                 style: TextStyle(color: isUser ? Colors.blue.shade200 : Colors.green.shade200, fontSize: 12),
               ),
+              // v648: com duplo aceite, deixar explícito PARA QUAL provedor vão os
+              // fundos (o canônico), para não pagar errado.
+              if (!isUser && _hasDoubleAccept && _canonicalProviderId != null) ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green.withOpacity(0.4)),
+                  ),
+                  child: Text(
+                    '✅ Os fundos irão para o provedor CANÔNICO (o 1º a aceitar):\n${_canonicalProviderId!.substring(0, 16)}…',
+                    style: const TextStyle(color: Colors.greenAccent, fontSize: 12, height: 1.3),
+                  ),
+                ),
+              ],
               const SizedBox(height: 16),
               const Text('Mensagem para ambas as partes:', style: TextStyle(color: Colors.white70, fontSize: 13)),
               const SizedBox(height: 8),

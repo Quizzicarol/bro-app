@@ -4237,6 +4237,7 @@ class NostrOrderService {
     required String target, // 'user', 'provider', 'both'
     String? userPubkey,
     String? providerId,
+    List<String>? allProviderIds, // v649: duplo aceite — todos os provedores
   }) async {
     try {
       final keychain = Keychain(privateKey);
@@ -4261,8 +4262,17 @@ class NostrOrderService {
       if ((target == 'user' || target == 'both') && userPubkey != null && userPubkey.isNotEmpty) {
         tags.add(['p', userPubkey]);
       }
-      if ((target == 'provider' || target == 'both') && providerId != null && providerId.isNotEmpty) {
-        tags.add(['p', providerId]);
+      // v649: com duplo aceite, marcar TODOS os provedores (allProviderIds);
+      // senão, só o providerId (canônico).
+      final providerTags = (allProviderIds != null && allProviderIds.isNotEmpty)
+          ? allProviderIds
+          : [if (providerId != null && providerId.isNotEmpty) providerId];
+      if (target == 'provider' || target == 'both') {
+        for (final pk in providerTags) {
+          if (pk.isNotEmpty && !tags.any((t) => t.length > 1 && t[0] == 'p' && t[1] == pk)) {
+            tags.add(['p', pk]);
+          }
+        }
       }
       
       final event = Event.from(kind: 1, tags: tags, content: content, privkey: keychain.private);

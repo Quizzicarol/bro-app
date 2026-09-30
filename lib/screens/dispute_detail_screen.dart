@@ -2948,6 +2948,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
         target: 'both',
         userPubkey: userPubkey,
         providerId: providerId,
+        allProviderIds: _hasDoubleAccept ? _allAcceptingProviders : null, // v649
       ).timeout(const Duration(seconds: 15), onTimeout: () => false);
     } catch (e) {
       broLog('⚠️ Erro ao enviar mensagem de resolução: $e');
@@ -2966,16 +2967,23 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
       broLog('⚠️ DM para usuário falhou: $e');
     }
     
-    try {
-      if (providerId.isNotEmpty) {
+    // v649: com duplo aceite, notificar TODOS os provedores que aceitaram (não
+    // só o canônico), para ambos saberem o desfecho. Sem duplo aceite, é só o
+    // providerId (canônico).
+    final providersToNotify = _hasDoubleAccept
+        ? _allAcceptingProviders
+        : [if (providerId.isNotEmpty) providerId];
+    for (final pk in providersToNotify) {
+      if (pk.isEmpty) continue;
+      try {
         await nostrService.sendAdminNip04DM(
           adminPrivateKey: privateKey,
-          recipientPubkey: providerId,
+          recipientPubkey: pk,
           message: '⚖️ [Bro Mediação] $resolutionMsg',
         ).timeout(const Duration(seconds: 15), onTimeout: () => false);
+      } catch (e) {
+        broLog('⚠️ DM para provedor ${pk.substring(0, 8)} falhou: $e');
       }
-    } catch (e) {
-      broLog('⚠️ DM para provedor falhou: $e');
     }
   }
   
@@ -3106,6 +3114,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
                 target: target,
                 userPubkey: userPubkey,
                 providerId: providerId,
+                allProviderIds: _hasDoubleAccept ? _allAcceptingProviders : null, // v649
               );
               
               // v239: Também enviar como DM NIP-04 para caixa de entrada Nostr
@@ -3119,12 +3128,19 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
                     message: dmMsg,
                   );
                 }
-                if ((target == 'provider' || target == 'both') && providerId.isNotEmpty) {
-                  await nostrService.sendAdminNip04DM(
-                    adminPrivateKey: privateKey,
-                    recipientPubkey: providerId,
-                    message: dmMsg,
-                  );
+                // v649: com duplo aceite, DM para TODOS os provedores que aceitaram.
+                final dmProviders = _hasDoubleAccept
+                    ? _allAcceptingProviders
+                    : [if (providerId.isNotEmpty) providerId];
+                if (target == 'provider' || target == 'both') {
+                  for (final pk in dmProviders) {
+                    if (pk.isEmpty) continue;
+                    await nostrService.sendAdminNip04DM(
+                      adminPrivateKey: privateKey,
+                      recipientPubkey: pk,
+                      message: dmMsg,
+                    );
+                  }
                 }
               }
               

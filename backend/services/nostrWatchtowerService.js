@@ -1078,8 +1078,10 @@ class NostrWatchtowerService {
           order_id: orderId,
           source: 'watchtower_billcode_wakeup',
         }, {
+          // v648: mensagem neutra — sem falar em atraso/vencimento. Só pede p/
+          // abrir o app e enviar o código. (Antes: "...antes que vença".)
           title: '⏰ Sua ordem está esperando!',
-          body: 'Toque para abrir o Bro e enviar o código de pagamento antes que vença.',
+          body: 'Toque para abrir o Bro e enviar o código de pagamento.',
         }, { bypassDedup: true });
         info.attempts += 1;
         info.lastSentAt = now;

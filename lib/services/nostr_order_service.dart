@@ -5153,9 +5153,19 @@ class NostrOrderService {
   /// em vez de #orderId (multi-char, NÃO suportada por relays)
   Future<String?> fetchOrderProviderPubkey(String orderId) async {
     try {
-      for (final relay in _relays.take(3)) {
+      // v648: consultar TODOS os relays + fallback (antes: `_relays.take(3)` e
+      // parava no 1º que respondesse). No duplo-aceite (ordem 72fd7667), o 2º
+      // provedor consultou um relay que ainda não tinha o aceite do 1º e passou
+      // — dois provedores aceitaram a mesma ordem. Agora agregamos os aceites
+      // de todos os relays antes de decidir o vencedor canônico (menor
+      // created_at, desempate menor pubkey).
+      final allRelays = <String>[..._relays, ..._fallbackRelays];
+      final candidates = <Map<String, dynamic>>[]; // {pubkey, created_at}
+      final seenEventIds = <String>{};
+
+      await Future.wait(allRelays.map((relay) async {
         try {
-          // Estratégia 1: Buscar por #d tag = '{orderId}_accept' (accept event padrão)
+          // Estratégia 1: #d tag = '{orderId}_accept' (accept event padrão)
           var events = await _fetchFromRelay(
             relay,
             kinds: [kindBroAccept],
@@ -5163,7 +5173,7 @@ class NostrOrderService {
             limit: 5,
           ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]);
           
-          // Estratégia 2: Se não encontrou, buscar por #t bro-accept e filtrar por content
+          // Estratégia 2: #t bro-accept (fallback mais amplo)
           if (events.isEmpty) {
             events = await _fetchFromRelay(
               relay,
@@ -5173,66 +5183,45 @@ class NostrOrderService {
             ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]);
           }
           
-          // Estratégia 3: Buscar por #r (updates que têm referência ao orderId)
-          if (events.isEmpty) {
-            events = await _fetchFromRelay(
-              relay,
-              kinds: [kindBroPaymentProof, kindBroComplete],
-              tags: {'#r': [orderId]},
-              limit: 10,
-            ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]);
-          }
-          
-          // vSEC (race): coletar TODOS os candidatos e escolher o vencedor
-          // CANÔNICO = menor created_at (desempate: menor pubkey).
-          // Antes retornávamos o primeiro evento que o relay entregasse —
-          // ordem arbitrária. Com 2 accepts quase simultâneos (slots
-          // replaceable SEPARADOS por pubkey), buyer e provider podiam
-          // discordar sobre quem venceu.
-          final candidates = <Map<String, dynamic>>[]; // {pubkey, created_at}
           for (final event in events) {
+            final evId = event['id'] as String?;
+            if (evId == null || seenEventIds.contains(evId)) continue;
+            seenEventIds.add(evId);
             try {
               final content = event['parsedContent'] ?? jsonDecode(event['content']);
               if (content['orderId'] == orderId) {
-                // Tentar providerId do content
                 final providerId = content['providerId'] as String?;
                 if (providerId != null && providerId.isNotEmpty) {
-                  candidates.add({
-                    'pubkey': providerId,
-                    'created_at': event['created_at'] as int? ?? 0x7FFFFFFFFFFFFFFF,
-                  });
+                  candidates.add({'pubkey': providerId, 'created_at': event['created_at'] as int? ?? 0x7FFFFFFFFFFFFFFF});
                   continue;
                 }
-                // Fallback: usar pubkey do autor do evento (quem aceitou = provedor)
                 final eventPubkey = event['pubkey'] as String?;
                 if (eventPubkey != null && eventPubkey.isNotEmpty) {
-                  candidates.add({
-                    'pubkey': eventPubkey,
-                    'created_at': event['created_at'] as int? ?? 0x7FFFFFFFFFFFFFFF,
-                  });
+                  candidates.add({'pubkey': eventPubkey, 'created_at': event['created_at'] as int? ?? 0x7FFFFFFFFFFFFFFF});
                 }
               }
             } catch (_) {}
           }
-          if (candidates.isNotEmpty) {
-            candidates.sort((a, b) {
-              final t = (a['created_at'] as int).compareTo(b['created_at'] as int);
-              if (t != 0) return t;
-              return (a['pubkey'] as String).compareTo(b['pubkey'] as String);
-            });
-            final winner = candidates.first['pubkey'] as String;
-            if (candidates.length > 1) {
-              broLog('\u26A0\uFE0F fetchOrderProviderPubkey: ${candidates.length} accepts concorrentes — vencedor canônico: ${winner.substring(0, 8)}');
-            }
-            broLog('\u2705 fetchOrderProviderPubkey: ${winner.substring(0, 8)} para ordem ${orderId.substring(0, 8)}');
-            return winner;
-          }
         } catch (_) {}
+      }));
+
+      if (candidates.isNotEmpty) {
+        candidates.sort((a, b) {
+          final t = (a['created_at'] as int).compareTo(b['created_at'] as int);
+          if (t != 0) return t;
+          return (a['pubkey'] as String).compareTo(b['pubkey'] as String);
+        });
+        final winner = candidates.first['pubkey'] as String;
+        if (candidates.length > 1) {
+          broLog('⚠️ fetchOrderProviderPubkey: ${candidates.length} accepts concorrentes — vencedor canônico: ${winner.substring(0, 8)}');
+        }
+        broLog('✅ fetchOrderProviderPubkey: ${winner.substring(0, 8)} para ordem ${orderId.substring(0, 8)}');
+        return winner;
       }
-      broLog('\uD83D\uDD0D fetchOrderProviderPubkey: n\u00e3o encontrado para ${orderId.substring(0, 8)}');
+      broLog('🔍 fetchOrderProviderPubkey: não encontrado para ${orderId.substring(0, 8)}');
       return null;
     } catch (e) {
-      broLog('\u274C fetchOrderProviderPubkey EXCEPTION: $e');
+      broLog('❌ fetchOrderProviderPubkey EXCEPTION: $e');
       return null;
     }
   }

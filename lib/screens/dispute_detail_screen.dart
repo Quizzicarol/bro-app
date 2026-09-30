@@ -40,6 +40,14 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
   // Provider ID pode ser descoberto dinamicamente se não estiver nos dados da disputa
   String? _resolvedProviderId;
   String? _fetchedE2eId; // v236: E2E ID buscado do comprovante
+
+  // v648: duplo aceite. Quando dois provedores aceitam a mesma ordem (race),
+  // guardamos TODOS os aceites e o canônico (o mais antigo). O escrow continua
+  // com 2 partes (comprador + canônico) — o canônico é quem recebe os fundos.
+  // O chat da disputa inclui TODOS os envolvidos para transparência.
+  List<String> _allAcceptingProviders = []; // todos que aceitaram (ordem cronológica)
+  String? _canonicalProviderId; // o vencedor canônico (1º aceite)
+  bool get _hasDoubleAccept => _allAcceptingProviders.length > 1;
   
   // v235: Histórico de mensagens de mediação
   List<Map<String, dynamic>> _mediatorMessages = [];
@@ -63,6 +71,11 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
   String get openedBy => widget.dispute['openedBy'] as String? ?? 'user';
   String get userPubkey => widget.dispute['userPubkey'] as String? ?? '';
   String get providerId => _resolvedProviderId ?? (widget.dispute['provider_id'] as String? ?? '');
+  // v648: o provedor que recebe os fundos é SEMPRE o canônico (quando há duplo
+  // aceite), senão o providerId normal. O escrow tem 2 partes; o canônico é a
+  // parte provedora legítima.
+  String get _effectiveProviderId =>
+      _canonicalProviderId ?? providerId;
   String get previousStatus => widget.dispute['previous_status'] as String? ?? '';
   String get paymentType => widget.dispute['payment_type'] as String? ?? '';
 
@@ -109,6 +122,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
       _fetchProofImage(),
       _fetchAllEvidence(), // v236
       _fetchDisputeLosses(), // v247
+      _fetchAllAccepts(), // v648: detectar duplo aceite + canônico
     ]);
     _fetchMediatorMessages();
     _fetchExistingResolution(); // v248: Verificar se já foi resolvida
@@ -222,6 +236,34 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
     }
   }
   
+  /// v648: busca TODOS os aceites da ordem e define o provedor canônico
+  /// (o mais antigo). Com duplo aceite, o escrow continua com 2 partes e o
+  /// canônico é quem recebe os fundos; o outro é sinalizado na UI e entra no
+  /// chat para transparência.
+  Future<void> _fetchAllAccepts() async {
+    if (orderId.isEmpty) return;
+    try {
+      final nostrService = NostrOrderService();
+      final accepts = await nostrService.fetchAllAcceptsForOrder(orderId)
+          .timeout(const Duration(seconds: 12), onTimeout: () => <String>[]);
+      if (!mounted || accepts.isEmpty) return;
+      setState(() {
+        _allAcceptingProviders = accepts;
+        _canonicalProviderId = accepts.first; // o mais antigo = canônico
+        // Se o providerId resolvido não é o canônico, corrigir para o canônico
+        // (a resolução/escrow deve apontar para ele).
+        if (_hasDoubleAccept && _resolvedProviderId != _canonicalProviderId) {
+          _resolvedProviderId = _canonicalProviderId;
+        }
+      });
+      if (_hasDoubleAccept) {
+        broLog('⚠️ [Disputa] DUPLO ACEITE em ${orderId.substring(0, 8)}: ${accepts.length} provedores. Canônico=${_canonicalProviderId!.substring(0, 8)}');
+      }
+    } catch (e) {
+      broLog('⚠️ _fetchAllAccepts: $e');
+    }
+  }
+
   /// Busca o comprovante do provedor via Nostr
   /// Usa fetchProofForOrder que pesquisa kind 30081 e 30080 diretamente pelo orderId
   /// Passa a chave privada do admin para descriptografar proofImage NIP-44
@@ -607,6 +649,56 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
                 Text('🏪 Provedor', style: TextStyle(color: Colors.white54, fontSize: 12)),
                 SizedBox(width: 8),
                 Expanded(child: Text('Buscando...', style: TextStyle(color: Colors.white38, fontSize: 12, fontStyle: FontStyle.italic), textAlign: TextAlign.right)),
+              ],
+            ),
+          ),
+        ],
+        // v648: duplo aceite — listar TODOS os provedores que aceitaram e
+        // sinalizar o canônico (o que recebe os fundos).
+        if (_hasDoubleAccept) ...[
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.orange.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange.withOpacity(0.4)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(children: [
+                  Icon(Icons.warning_amber, color: Colors.orange, size: 16),
+                  SizedBox(width: 6),
+                  Text('⚠️ Dois provedores aceitaram esta ordem', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 12)),
+                ]),
+                const SizedBox(height: 8),
+                for (int i = 0; i < _allAcceptingProviders.length; i++) ...[
+                  Builder(builder: (context) {
+                    final pk = _allAcceptingProviders[i];
+                    final isCanonical = pk == _canonicalProviderId;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(
+                        children: [
+                          Icon(isCanonical ? Icons.check_circle : Icons.cancel,
+                              color: isCanonical ? Colors.green : Colors.white38, size: 14),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              '${pk.substring(0, 16)}… ${isCanonical ? "(canônico — recebe os fundos)" : "(aceitou depois — sem efeito)"}',
+                              style: TextStyle(
+                                color: isCanonical ? Colors.green : Colors.white54,
+                                fontSize: 11, fontFamily: 'monospace',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
               ],
             ),
           ),
@@ -1270,7 +1362,9 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
     }
     final recipients = <String>[
       if (userPubkey.isNotEmpty) userPubkey,
-      if (providerId.isNotEmpty) providerId,
+      // v648: incluir TODOS os provedores que aceitaram (duplo aceite) no chat,
+      // para todos saberem o que aconteceu. Sem duplo aceite, é só o canônico.
+      ...(_hasDoubleAccept ? _allAcceptingProviders : [if (providerId.isNotEmpty) providerId]),
     ];
     return DisputeChat(
       orderId: orderId,
@@ -2736,7 +2830,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
       // 1. Publicar resolução no Nostr (kind 1, tag bro-resolucao)
       //    Timeout de 20s para não travar a tela
       bool published = false;
-      broLog('🔄 _executeResolution: orderId=$orderId resolution=$resolution userPubkey=${userPubkey.isNotEmpty ? userPubkey.substring(0, 8) : "EMPTY"} providerId=${providerId.isNotEmpty ? providerId.substring(0, 8) : "EMPTY"}');
+      broLog('🔄 _executeResolution: orderId=$orderId resolution=$resolution userPubkey=${userPubkey.isNotEmpty ? userPubkey.substring(0, 8) : "EMPTY"} providerId=${_effectiveProviderId.isNotEmpty ? _effectiveProviderId.substring(0, 8) : "EMPTY"} (canonico=${_canonicalProviderId != null})');
       try {
         published = await nostrService.publishDisputeResolution(
           privateKey: privateKey,
@@ -2744,7 +2838,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
           resolution: resolution,
           notes: message,
           userPubkey: userPubkey,
-          providerId: providerId,
+          providerId: _effectiveProviderId, // v648: canônico recebe os fundos
         ).timeout(const Duration(seconds: 20), onTimeout: () => false);
       } catch (e) {
         broLog('⚠️ publishDisputeResolution timeout/erro: $e');
@@ -2763,7 +2857,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
             privateKey: privateKey,
             orderId: orderId,
             newStatus: newStatus,
-            providerId: providerId.isNotEmpty ? providerId : null,
+            providerId: _effectiveProviderId.isNotEmpty ? _effectiveProviderId : null, // v648: canônico
             orderUserPubkey: userPubkey.isNotEmpty ? userPubkey : null,
           ).timeout(const Duration(seconds: 15), onTimeout: () => false);
           if (nostrPublished) {

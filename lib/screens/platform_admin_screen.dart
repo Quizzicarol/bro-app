@@ -954,7 +954,10 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
           const Divider(color: Color(0x22FFFFFF), height: 24),
 
           _buildStatRow('Total de Transações', '${_totals?['totalTransactions'] ?? 0}'),
-          _buildStatRow('Taxa por Transação', '${(AppConfig.platformFeePercent * 100).toStringAsFixed(0)}%'),
+          // v648: modelo de taxa real = 3% provedor + 2% coordinator (antes
+          // mostrava só a da plataforma). Detalhado para não confundir.
+          _buildStatRow('Taxa do Provedor', '${(AppConfig.providerFeePercent * 100).toStringAsFixed(0)}%'),
+          _buildStatRow('Taxa do Coordinator', '${(AppConfig.platformFeePercent * 100).toStringAsFixed(0)}%'),
           _buildStatRow('Taxa Média', _calculateAverageFee()),
           
           const SizedBox(height: 16),

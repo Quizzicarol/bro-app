@@ -2,6 +2,7 @@
 import 'package:flutter/services.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../services/platform_fee_service.dart';
 import '../services/dispute_service.dart';
@@ -45,6 +46,12 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
   List<Map<String, dynamic>> _resolvedNostrDisputes = []; // Resolvidas
   bool _showResolved = false; // Toggle: false = abertas, true = resolvidas
 
+  // v651: cache local das disputas (carrega instantâneo, atualiza do relay em
+  // background). Antes o admin buscava TUDO dos relays a cada abertura — lento
+  // e "esquecia" o que já foi processado.
+  static const String _disputesCacheKey = 'admin_disputes_cache';
+  static const String _disputesCacheTimeKey = 'admin_disputes_cache_time';
+
   // AI Dispute Agent (Phase 4)
   List<Map<String, dynamic>> _agentAnalyses = [];
   Map<String, dynamic>? _agentStats;
@@ -53,7 +60,50 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
   @override
   void initState() {
     super.initState();
+    _loadFromCacheThenRefresh();
+  }
+
+  /// v651: carrega do cache local IMEDIATAMENTE (UI instantânea) e atualiza do
+  /// relay em background. Antes o admin ficava lento e "esquecia" o que já foi
+  /// processado porque buscava tudo dos relays a cada abertura.
+  Future<void> _loadFromCacheThenRefresh() async {
+    // 1. Carrega do cache local (instantâneo)
+    await _loadDisputesFromCache();
+    // 2. Atualiza do relay em background (sem bloquear a UI)
     _loadData();
+  }
+
+  Future<void> _loadDisputesFromCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_disputesCacheKey);
+      if (raw == null) return;
+      final data = jsonDecode(raw) as Map<String, dynamic>;
+      final open = (data['open'] as List? ?? []).cast<Map<String, dynamic>>();
+      final resolved = (data['resolved'] as List? ?? []).cast<Map<String, dynamic>>();
+      if (mounted) {
+        setState(() {
+          _nostrDisputes = open;
+          _resolvedNostrDisputes = resolved;
+        });
+      }
+      broLog('📂 Admin: ${open.length} abertas + ${resolved.length} resolvidas do cache local');
+    } catch (e) {
+      broLog('⚠️ Erro ao carregar cache de disputas: $e');
+    }
+  }
+
+  Future<void> _saveDisputesToCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_disputesCacheKey, jsonEncode({
+        'open': _nostrDisputes,
+        'resolved': _resolvedNostrDisputes,
+      }));
+      await prefs.setInt(_disputesCacheTimeKey, DateTime.now().millisecondsSinceEpoch);
+    } catch (e) {
+      broLog('⚠️ Erro ao salvar cache de disputas: $e');
+    }
   }
 
   Future<void> _loadData() async {
@@ -379,6 +429,8 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
           _agentAnalyses = agentAnalyses;
           _agentStats = agentStats;
         });
+        // v651: salvar no cache local para a próxima abertura ser instantânea
+        _saveDisputesToCache();
       } catch (e) {
         broLog('⚠️ Erro ao buscar disputas do Nostr: $e');
         setState(() {

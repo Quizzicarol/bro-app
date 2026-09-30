@@ -583,3 +583,44 @@ workflows:
         
     artifacts:
       - build/**/outputs/**/*.apk
+
+  # ============================================
+  # BACKEND -> Fly.io (bro-api)
+  # Dispara quando algo em backend/ muda. Deploya o servidor Node no Fly.io
+  # sem depender da máquina local (o antivírus local apagava o flyctl).
+  # Requer FLY_API_TOKEN no grupo de segredos (Personal/Org access token).
+  # ============================================
+  backend-deploy-flyio:
+    name: Backend -> Fly.io (bro-api)
+    max_build_duration: 30
+    instance_type: mac_mini_m2
+
+    environment:
+      groups:
+        - bro_secrets
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: 'main'
+          include: true
+        - pattern: 'master'
+          include: true
+
+    scripts:
+      - name: Install flyctl
+        script: |
+          curl -L https://fly.io/install.sh | sh
+          export FLYCTL_INSTALL="$HOME/.fly"
+          export PATH="$FLYCTL_INSTALL/bin:$PATH"
+          flyctl version
+
+      - name: Deploy backend to Fly.io
+        script: |
+          export PATH="$HOME/.fly/bin:$PATH"
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "⚠️  FLY_API_TOKEN não configurado no grupo bro_secrets — pulando deploy."
+            exit 0
+          fi
+          flyctl deploy -a bro-api --config backend/fly.toml --dockerfile backend/Dockerfile --remote-only

@@ -320,27 +320,27 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       final breezProvider = context.read<BreezProvider>();
       final orderProvider = context.read<OrderProvider>();
       
-      // Executar tudo em paralelo
-      // Separar fetchOrders (void) dos que retornam valores
-      final collateralFuture = collateralService.getCollateral();
-      final balanceFuture = breezProvider.getBalance();
-      final fetchOrdersFuture = orderProvider.fetchOrders(forProvider: true);
-      
-      await Future.wait([collateralFuture, balanceFuture, fetchOrdersFuture]);
-      
-      final localCollateral = await collateralFuture;
+      // v652: carregar o TIER imediatamente do armazenamento LOCAL, SEM esperar
+      // o sync pesado do Nostr. O tier fica salvo localmente — não precisa do
+      // relay p/ saber se pode aceitar. Antes o initialize só rodava DEPOIS do
+      // fetchOrders (sync lento), então o botão do tier ficava desativado até o
+      // sync terminar (e ao sair/voltar do modo Bro, o provedor perdia corridas).
+      final localCollateral = await collateralService.getCollateral();
       _hasCollateral = localCollateral != null;
-      
-      final balanceInfo = await balanceFuture;
+      final balanceInfo = await breezProvider.getBalance();
       final walletBalance = int.tryParse(balanceInfo['balance']?.toString() ?? '0') ?? 0;
       final committedSats = orderProvider.committedSats;
-      
       final collateralProvider = context.read<CollateralProvider>();
       await collateralProvider.initialize(
         widget.providerId,
         walletBalance: walletBalance,
         committedSats: committedSats,
       );
+      if (mounted) setState(() {}); // tier ativo IMEDIATAMENTE
+      
+      // Sync pesado do Nostr roda em background e atualiza a lista quando terminar.
+      // NÃO bloqueia a ativação do tier.
+      await orderProvider.fetchOrders(forProvider: true);
       
       if (mounted) {
         setState(() {

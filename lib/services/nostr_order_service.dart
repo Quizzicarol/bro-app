@@ -138,18 +138,24 @@ class NostrOrderService {
 
   // Relays para publicar ordens
   // NOTA: nostr.wine REMOVIDO - causa rate limit 429 constante e timeouts
+  // v653: inclui o relay "Apex cord" (nosso coordinator na Oracle) no conjunto
+  // PRINCIPAL. Ele tem TODOS os dados do Bro e responde rápido, então o sync do
+  // provedor não fica refém dos relays públicos lentos. Como o sync AGREGA os
+  // resultados de todos os relays (não descarta nada), isso só aumenta a
+  // cobertura — a redundância é mantida. Publicar nele também ajuda o
+  // coordinator a indexar as ordens/eventos do Bro.
   final List<String> _relays = [
+    'wss://apexcord.duckdns.org',
     'wss://relay.damus.io',
     'wss://nos.lol',
     'wss://relay.primal.net',
   ];
 
-  // v259: Relays de fallback - usados SOMENTE quando os 3 principais falham
+  // v259: Relays de fallback - usados SOMENTE quando os principais falham
   // Não são usados para publicação, apenas para leitura de emergência
-  // v646: inclui o relay "Apex cord" (coordinator próprio na Oracle) — lê dele
-  // quando damus/nos.lol/primal falham, reduzindo dependência de terceiros.
+  // v653: Apex cord promovido para o conjunto principal; removido daqui p/ não
+  // duplicar consultas (já está em _relays).
   static const List<String> _fallbackRelays = [
-    'wss://apexcord.duckdns.org',
     'wss://relay.nostr.band',
     'wss://nostr.mom',
   ];

@@ -2648,11 +2648,6 @@ class _WalletScreenState extends State<WalletScreen> {
                           
                           broLog('📦 Resultado createInvoice: $result');
                           
-                          // Log se usou Liquid
-                          if (result?['isLiquid'] == true) {
-                            broLog('💧 Invoice criada via LIQUID (fallback)');
-                          }
-                          
                           if (result != null && result['bolt11'] != null) {
                             final bolt11 = result['bolt11'] as String;
                             broLog('✅ Invoice: ${bolt11.substring(0, 50)}...');

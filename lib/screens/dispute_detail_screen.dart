@@ -7,7 +7,6 @@ import 'package:bro_app/services/log_utils.dart';
 import 'package:provider/provider.dart';
 import '../providers/order_provider.dart';
 import '../providers/breez_provider_export.dart';
-import '../providers/breez_liquid_provider.dart';
 import '../services/nip44_service.dart';
 import '../services/nostr_order_service.dart';
 import '../services/storage_service.dart';
@@ -2622,9 +2621,8 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
 
       broLog('✅ [AdminPay] Invoice encontrado: ${providerInvoice.substring(0, 30)}...');
 
-      // 2. Pagar via Breez Spark ou Liquid (carteira do admin)
+      // 2. Pagar via Breez Spark (carteira do admin)
       final breezProvider = context.read<BreezProvider>();
-      final liquidProvider = context.read<BreezLiquidProvider>();
       bool paymentSuccess = false;
       String paymentError = '';
       String? paidHash;
@@ -2653,7 +2651,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
 
       if (paymentSuccess) {
         // Já liquidado por tentativa anterior — pula o loop de pagamento.
-      } else if (!breezProvider.isInitialized && !liquidProvider.isInitialized) {
+      } else if (!breezProvider.isInitialized) {
         paymentError = 'Carteira não inicializada. Abra sua carteira primeiro.';
       } else {
         // Registra o hash do invoice ANTES de pagar (cobre pending/timeout).
@@ -2678,13 +2676,6 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
                 onTimeout: () => {'success': false, 'error': 'timeout'},
               );
               usedBackend = 'Spark';
-            } else if (liquidProvider.isInitialized) {
-              broLog('⚡ [AdminPay] Tentativa $attempt/3: Pagando via Liquid...');
-              payResult = await liquidProvider.payInvoice(providerInvoice).timeout(
-                const Duration(seconds: 30),
-                onTimeout: () => {'success': false, 'error': 'timeout'},
-              );
-              usedBackend = 'Liquid';
             }
 
             if (payResult != null && payResult['success'] == true) {
@@ -2737,11 +2728,6 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
             Map<String, dynamic>? invoiceResult;
             if (breezProvider.isInitialized) {
               invoiceResult = await breezProvider.createInvoice(
-                amountSats: satsAmount,
-                description: 'Bro reembolso admin - ordem ${orderId.substring(0, 8)}',
-              );
-            } else if (liquidProvider.isInitialized) {
-              invoiceResult = await liquidProvider.createInvoice(
                 amountSats: satsAmount,
                 description: 'Bro reembolso admin - ordem ${orderId.substring(0, 8)}',
               );

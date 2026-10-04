@@ -15,7 +15,6 @@ import '../services/platform_fee_service.dart';
 import '../services/provider_payment_guard.dart';
 import '../models/withdrawal.dart';
 import '../providers/breez_provider_export.dart';
-import '../providers/breez_liquid_provider.dart';
 import '../providers/lightning_provider.dart';
 import '../providers/order_provider.dart';
 import '../providers/provider_balance_provider.dart';
@@ -3621,7 +3620,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     feedbackTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
       final elapsed = stopwatch.elapsed.inSeconds;
       if (elapsed >= 30) {
-        statusNotifier.value = l.tp('order_trying_liquid', {'elapsed': elapsed.toString()});
+        statusNotifier.value = l.tp('order_retrying', {'elapsed': elapsed.toString()});
       } else if (elapsed >= 15) {
         statusNotifier.value = l.tp('order_waiting_response', {'elapsed': elapsed.toString()});
       } else {
@@ -3656,19 +3655,18 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       ),
     );
 
-    // Usar LightningProvider com fallback automático Spark -> Liquid
+    // Usar LightningProvider (backend Spark)
     final lightningProvider = context.read<LightningProvider>();
     final breezProvider = context.read<BreezProvider>();
     
     try {
-      broLog('🔵 Criando Lightning invoice para ${widget.amountSats} sats (com fallback)...');
+      broLog('🔵 Criando Lightning invoice para ${widget.amountSats} sats...');
       
-      // LightningProvider tenta Spark primeiro, depois Liquid se Spark falhar
       final invoiceData = await lightningProvider.createInvoice(
         amountSats: widget.amountSats,
         description: 'Bro ${widget.orderId}',
       ).timeout(
-        const Duration(seconds: 45), // Timeout maior para fallback
+        const Duration(seconds: 45),
         onTimeout: () {
           broLog('⏰ Timeout ao criar invoice Lightning');
           return {'success': false, 'error': 'Timeout ao criar invoice'};
@@ -3682,20 +3680,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
       broLog('🔵 Invoice data recebido: $invoiceData');
       
-      // Verificar se usou Liquid (para log)
-      final isLiquid = invoiceData?['isLiquid'] == true;
-      if (isLiquid) {
-        final fees = invoiceData?['fees'] ?? 0;
-        broLog('💧 Invoice criada via LIQUID (fallback). Taxas: $fees sats');
-      }
-      
       if (invoiceData != null && invoiceData['success'] == true) {
         final invoice = invoiceData['invoice'] as String;
         final paymentHash = invoiceData['paymentHash'] as String? ?? '';
         broLog('🔵 Invoice criada: ${invoice.substring(0, 50)}...');
         
         if (mounted) {
-          _showLightningPaymentDialog(invoice, paymentHash, isLiquid: isLiquid);
+          _showLightningPaymentDialog(invoice, paymentHash);
         }
       } else {
         broLog('❌ Falha ao criar invoice: ${invoiceData?['error']}');
@@ -3717,7 +3708,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   void _showPaymentOptions(String invoice, String paymentHash) {
     // Método legado - redireciona para o novo fluxo
-    _showLightningPaymentDialog(invoice, paymentHash, isLiquid: false);
+    _showLightningPaymentDialog(invoice, paymentHash);
   }
 
   void _showError(String message) {
@@ -3729,7 +3720,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     );
   }
 
-  void _showLightningPaymentDialog(String invoice, String paymentHash, {bool isLiquid = false}) {
+  void _showLightningPaymentDialog(String invoice, String paymentHash) {
     final l = AppLocalizations.of(context)!;
     // Registrar callback para pagamento recebido
     final breezProvider = context.read<BreezProvider>();
@@ -3737,15 +3728,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       broLog('🎉 Callback de pagamento recebido! ID: $paymentId, Amount: $amountSats, Hash: $pHash');
       _onPaymentReceived();
     };
-    
-    // Se usando Liquid, registrar callback no LiquidProvider também
-    if (isLiquid) {
-      final lightningProvider = context.read<LightningProvider>();
-      lightningProvider.liquidProvider.onPaymentReceived = (paymentId, amountSats, pHash) {
-        broLog('🎉 Callback de pagamento Liquid recebido! ID: $paymentId, Amount: $amountSats');
-        _onPaymentReceived();
-      };
-    }
     
     // Iniciar monitoramento de pagamento (backup via polling)
     _startPaymentMonitoring(paymentHash);
@@ -4754,7 +4736,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       
       try {
         final breezProvider = context.read<BreezProvider>();
-        final liquidProvider = context.read<BreezLiquidProvider>();
 
         Future<bool> verifyPendingSparkPayment() async {
           if (!breezProvider.isInitialized || providerInvoicePaymentHash == null || providerInvoicePaymentHash!.isEmpty) {
@@ -4783,9 +4764,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         
         broLog('🔍 DEBUG PAY INVOICE:');
         broLog('   breezProvider.isInitialized: ${breezProvider.isInitialized}');
-        broLog('   liquidProvider.isInitialized: ${liquidProvider.isInitialized}');
         
-        if (!breezProvider.isInitialized && !liquidProvider.isInitialized) {
+        if (!breezProvider.isInitialized) {
           paymentError = l.t('order_wallet_not_initialized');
         } else {
           // v516: Mutable local holding the latest invoice (may be refreshed between retries)
@@ -4845,10 +4825,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 // Outer timeout was killing payments mid-flight, causing "timeout" errors.
                 payResult = await breezProvider.payInvoice(currentInvoice, escrowCoverSats: escrowCover);
                 usedBackend = 'Spark';
-              } else if (liquidProvider.isInitialized) {
-                broLog('⚡ Tentativa $attempt/3: Pagando via Liquid...');
-                payResult = await liquidProvider.payInvoice(currentInvoice);
-                usedBackend = 'Liquid';
               }
               
               if (payResult != null && payResult['success'] == true) {
@@ -5269,7 +5245,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       String paymentError = '';
 
       final breezProvider = context.read<BreezProvider>();
-      final liquidProvider = context.read<BreezLiquidProvider>();
 
       // 🛡️ v634: lock síncrono (antes de qualquer await de pagamento). tryAcquire
       // retorna false se a ordem já foi paga ou se outro fluxo está pagando agora.
@@ -5292,7 +5267,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         }
       } catch (_) {}
 
-      if (!breezProvider.isInitialized && !liquidProvider.isInitialized) {
+      if (!breezProvider.isInitialized) {
         paymentError = l.t('order_wallet_not_initialized');
       } else {
         for (int attempt = 1; attempt <= 3; attempt++) {
@@ -5307,13 +5282,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 onTimeout: () => {'success': false, 'error': 'timeout'},
               );
               usedBackend = 'Spark';
-            } else if (liquidProvider.isInitialized) {
-              broLog('⚡ [DisputePay] Tentativa $attempt/3: Pagando via Liquid...');
-              payResult = await liquidProvider.payInvoice(invoiceToPay).timeout(
-                const Duration(seconds: 30),
-                onTimeout: () => {'success': false, 'error': 'timeout'},
-              );
-              usedBackend = 'Liquid';
             }
 
             if (payResult != null && payResult['success'] == true) {

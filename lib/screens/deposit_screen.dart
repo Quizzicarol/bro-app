@@ -93,10 +93,9 @@ class _DepositScreenState extends State<DepositScreen> {
     });
     
     try {
-      // Usar LightningProvider com fallback automático Spark -> Liquid
+      // Usar LightningProvider (backend Spark)
       final lightningProvider = context.read<LightningProvider>();
       
-      // Create invoice via LightningProvider (tenta Spark, depois Liquid)
       final response = await lightningProvider.createInvoice(
         amountSats: _totalSats,
         description: 'Depósito Bro - R\$ ${_totalBrl.toStringAsFixed(2)}',
@@ -108,11 +107,6 @@ class _DepositScreenState extends State<DepositScreen> {
         });
         _showError('Erro ao criar invoice');
         return;
-      }
-
-      // Log se usou Liquid
-      if (response['isLiquid'] == true) {
-        broLog('💧 Invoice de depósito criada via LIQUID (fallback)');
       }
 
       if (response['invoice'] is String) {

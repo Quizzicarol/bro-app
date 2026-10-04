@@ -1,29 +1,21 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter/material.dart';
-import '../config.dart';
 import '../services/platform_fee_service.dart';
 import 'breez_provider_export.dart';
-import 'breez_liquid_provider.dart';
 
 /// Tipos de backend Lightning
 enum LightningBackend {
   spark,   // Breez SDK Spark (VTXO)
-  liquid,  // Breez SDK Liquid (L-BTC + Boltz)
 }
 
-/// Abstração que unifica Breez SDK Spark e Liquid
+/// Abstração do backend Lightning (Breez SDK Spark, nodeless e self-custodial)
 /// 
-/// Estratégia:
-/// 1. SEMPRE tenta usar Spark primeiro (menores taxas)
-/// 2. Se Spark falhar, tenta Liquid como fallback
-/// 3. Quando usar Liquid, as taxas são calculadas e embutidas
-/// 
-/// IMPORTANTE: As taxas do Liquid devem ser embutidas no spread da cotação
-/// pelo chamador usando calculateTotalFees() e adjustPriceForLiquidFees()
+/// NOTA: O fallback Liquid (flutter_breez_liquid) foi REMOVIDO — o repositório
+/// upstream (breez/breez-sdk-liquid-flutter) foi deletado do GitHub (404),
+/// quebrando builds limpos (Codemagic). O app agora é Spark-only.
 class LightningProvider with ChangeNotifier {
   final BreezProvider _sparkProvider;
-  final BreezLiquidProvider _liquidProvider;
   
   LightningBackend _currentBackend = LightningBackend.spark;
   bool _isInitialized = false;
@@ -33,14 +25,12 @@ class LightningProvider with ChangeNotifier {
   // Estatísticas de uso
   int _sparkAttempts = 0;
   int _sparkFailures = 0;
-  int _liquidAttempts = 0;
-  int _liquidFailures = 0;
   
   // Cache de última falha Spark para evitar retry imediato
   DateTime? _lastSparkFailure;
   static const _sparkCooldownSeconds = 60; // Esperar 1 min antes de tentar Spark novamente
   
-  LightningProvider(this._sparkProvider, this._liquidProvider);
+  LightningProvider(this._sparkProvider);
   
   // Getters
   LightningBackend get currentBackend => _currentBackend;
@@ -48,16 +38,12 @@ class LightningProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get isUsingSpark => _currentBackend == LightningBackend.spark;
-  bool get isUsingLiquid => _currentBackend == LightningBackend.liquid;
   
   BreezProvider get sparkProvider => _sparkProvider;
-  BreezLiquidProvider get liquidProvider => _liquidProvider;
   
   // Estatísticas
   int get sparkAttempts => _sparkAttempts;
   int get sparkFailures => _sparkFailures;
-  int get liquidAttempts => _liquidAttempts;
-  int get liquidFailures => _liquidFailures;
   double get sparkSuccessRate => _sparkAttempts > 0 
       ? (_sparkAttempts - _sparkFailures) / _sparkAttempts 
       : 1.0;
@@ -79,83 +65,30 @@ class LightningProvider with ChangeNotifier {
     final elapsed = DateTime.now().difference(_lastSparkFailure!);
     return elapsed.inSeconds >= _sparkCooldownSeconds;
   }
-  
-  /// Calcula as taxas totais para uma transação Liquid
-  /// Inclui: taxa Boltz (0.25% + 200 sats) + taxa rede (50 sats)
-  /// 
-  /// Retorna em sats
-  static int calculateLiquidFees(int amountSats) {
-    return BreezLiquidProvider.calculateLiquidFee(amountSats);
-  }
-  
-  /// Calcula o spread adicional em porcentagem para cobrir taxas Liquid
-  /// 
-  /// Exemplo: Se amountSats = 10000, e taxas = 275 sats
-  /// Spread adicional = 275/10000 = 0.0275 = 2.75%
-  static double calculateLiquidSpread(int amountSats) {
-    return BreezLiquidProvider.calculateLiquidSpread(amountSats);
-  }
-  
-  /// Ajusta um preço em BRL para embutir taxas do Liquid
-  /// 
-  /// Exemplo: 
-  ///   - Preço original: R$ 100,00 (para 10.000 sats)
-  ///   - Taxas Liquid: ~275 sats (2.75%)
-  ///   - Preço ajustado: R$ 100,00 + 2.75% = R$ 102,75
-  /// 
-  /// O usuário paga R$ 102,75 e recebe R$ 100,00 em Bitcoin líquido
-  static double adjustPriceForLiquidFees(double priceBrl, int amountSats) {
-    final spread = calculateLiquidSpread(amountSats);
-    return priceBrl * (1 + spread);
-  }
-  
-  /// Calcula o valor em sats que o usuário deve pagar para receber um valor líquido
-  /// 
-  /// netAmountSats = valor que o usuário quer receber
-  /// Retorna = valor que ele precisa enviar (incluindo taxas)
-  static int calculateGrossAmount(int netAmountSats) {
-    return BreezLiquidProvider.calculateGrossAmount(netAmountSats);
-  }
 
-  /// Inicializa o provider (tenta Spark primeiro, depois Liquid se habilitado)
+  /// Inicializa o provider (Spark)
   Future<bool> initialize({String? mnemonic}) async {
     if (_isInitialized) return true;
     
     _setLoading(true);
     _setError(null);
     
-    broLog('⚡ LightningProvider: Inicializando backends...');
+    broLog('⚡ LightningProvider: Inicializando backend Spark...');
     
-    // Sempre inicializar Spark primeiro
-    bool sparkOk = false;
     try {
-      sparkOk = await _sparkProvider.initialize(mnemonic: mnemonic);
+      final sparkOk = await _sparkProvider.initialize(mnemonic: mnemonic);
       if (sparkOk) {
         _currentBackend = LightningBackend.spark;
-        broLog('✅ Spark inicializado - usando como primário');
+        broLog('✅ Spark inicializado');
       }
     } catch (e) {
       broLog('❌ Erro ao inicializar Spark: $e');
     }
     
-    // Se Spark falhou e Liquid fallback está habilitado, inicializar Liquid
-    if (!sparkOk && AppConfig.enableLiquidFallback) {
-      try {
-        final liquidOk = await _liquidProvider.initialize(mnemonic: mnemonic);
-        if (liquidOk) {
-          _currentBackend = LightningBackend.liquid;
-          broLog('✅ Liquid inicializado como fallback (Spark falhou)');
-        }
-      } catch (e) {
-        broLog('❌ Erro ao inicializar Liquid fallback: $e');
-      }
-    }
-    
-    // Pelo menos um backend deve estar ok
-    _isInitialized = _sparkProvider.isInitialized || _liquidProvider.isInitialized;
+    _isInitialized = _sparkProvider.isInitialized;
     
     if (!_isInitialized) {
-      _setError('Nenhum backend Lightning disponível');
+      _setError('Backend Lightning (Spark) não disponível');
     } else {
       // IMPORTANTE: Configurar callback do PlatformFeeService para envio de taxas
       _configurePlatformFeeCallback();
@@ -167,33 +100,24 @@ class LightningProvider with ChangeNotifier {
   
   /// Configura o callback do PlatformFeeService com o método payInvoice deste provider
   void _configurePlatformFeeCallback() {
-    final backend = _currentBackend == LightningBackend.spark ? 'Spark' : 'Liquid';
     PlatformFeeService.setPaymentCallback(
       (String invoice) => payInvoice(invoice),
-      backend,
+      'Spark',
     );
     // Anti re-pagamento: registra o acesso ao histórico REAL da carteira (Spark),
     // que sobrevive à reinstalação. O PlatformFeeService usa isso para não re-pagar
     // uma taxa que já saiu, mesmo se o registro local foi perdido.
     PlatformFeeService.setWalletHistoryFetcher(() => _sparkProvider.getAllPayments());
-    broLog('💼 PlatformFeeService configurado para usar $backend');
+    broLog('💼 PlatformFeeService configurado para usar Spark');
   }
 
-  /// Obter saldo total (Spark + Liquid)
+  /// Obter saldo total
   Future<int> getBalance() async {
-    int total = 0;
-    
     if (_sparkProvider.isInitialized) {
       final sparkResult = await _sparkProvider.getBalance();
-      final sparkBalance = int.tryParse(sparkResult['balance']?.toString() ?? '0') ?? 0;
-      total += sparkBalance;
+      return int.tryParse(sparkResult['balance']?.toString() ?? '0') ?? 0;
     }
-    
-    if (_liquidProvider.isInitialized) {
-      total += await _liquidProvider.getBalance();
-    }
-    
-    return total;
+    return 0;
   }
   
   /// Obter saldo separado por backend
@@ -205,24 +129,15 @@ class LightningProvider with ChangeNotifier {
       result[LightningBackend.spark] = int.tryParse(sparkResult['balance']?.toString() ?? '0') ?? 0;
     }
     
-    if (_liquidProvider.isInitialized) {
-      result[LightningBackend.liquid] = await _liquidProvider.getBalance();
-    }
-    
     return result;
   }
 
-  /// Criar invoice com fallback automático
-  /// 
-  /// IMPORTANTE: Se retornar com 'isLiquid': true, as taxas devem ser embutidas
-  /// no spread da cotação pelo chamador!
+  /// Criar invoice via Spark
   /// 
   /// Retorna:
   ///   - success: bool
   ///   - bolt11: String (invoice BOLT11)
-  ///   - isLiquid: bool (true se usou Liquid - calcular taxas!)
-  ///   - fees: int (taxas estimadas em sats, se Liquid)
-  ///   - backend: String ('spark' ou 'liquid')
+  ///   - backend: String ('spark')
   Future<Map<String, dynamic>?> createInvoice({
     int? amountSats,
     String? description,
@@ -230,7 +145,7 @@ class LightningProvider with ChangeNotifier {
     _setLoading(true);
     _setError(null);
     
-    // 1. Tentar Spark primeiro (se não estiver em cooldown)
+    // Tentar Spark (se não estiver em cooldown)
     if (_sparkProvider.isInitialized && _shouldTrySpark) {
       _sparkAttempts++;
       broLog('⚡ Tentando criar invoice via Spark...');
@@ -248,7 +163,6 @@ class LightningProvider with ChangeNotifier {
           broLog('✅ Invoice criado via Spark');
           return {
             ...result,
-            'isLiquid': false,
             'backend': 'spark',
           };
         } else {
@@ -265,69 +179,21 @@ class LightningProvider with ChangeNotifier {
       broLog('⏳ Spark em cooldown, pulando...');
     }
     
-    // 2. Fallback para Liquid se habilitado
-    // v562: Liquid (Boltz swaps) NAO suporta invoice de valor aberto. Pular se amountSats==null.
-    if (AppConfig.enableLiquidFallback && amountSats != null) {
-      // Inicializar Liquid se ainda não foi
-      if (!_liquidProvider.isInitialized) {
-        broLog('💧 Inicializando Liquid para fallback...');
-        final mnemonic = _sparkProvider.mnemonic;
-        await _liquidProvider.initialize(mnemonic: mnemonic);
-      }
-      
-      if (_liquidProvider.isInitialized) {
-        _liquidAttempts++;
-        broLog('💧 Tentando criar invoice via Liquid (fallback)...');
-        
-        try {
-          final result = await _liquidProvider.createInvoice(
-            amountSats: amountSats,
-            description: description,
-          );
-          
-          if (result != null && result['success'] == true) {
-            _currentBackend = LightningBackend.liquid;
-            _setLoading(false);
-            
-            final fees = calculateLiquidFees(amountSats);
-            broLog('✅ Invoice criado via Liquid (fallback)');
-            broLog('💰 Taxas estimadas: $fees sats');
-            
-            return {
-              ...result,
-              'isLiquid': true,
-              'backend': 'liquid',
-              'fees': fees,
-              'feePercent': calculateLiquidSpread(amountSats) * 100,
-            };
-          } else {
-            _liquidFailures++;
-            broLog('❌ Liquid também falhou: ${result?['error']}');
-          }
-        } catch (e) {
-          _liquidFailures++;
-          broLog('❌ Erro ao criar invoice Liquid: $e');
-        }
-      }
-    }
-    
-    // 3. Todos os backends falharam
-    _setError('Não foi possível criar invoice - todos os backends falharam');
+    // Spark falhou ou não está inicializado
+    _setError('Não foi possível criar invoice - backend Spark indisponível');
     _setLoading(false);
     return {
       'success': false,
-      'error': 'Nenhum backend Lightning disponível no momento',
+      'error': 'Backend Lightning (Spark) indisponível no momento',
     };
   }
 
-  /// Pagar invoice com fallback automático
-  /// 
-  /// Tenta pagar usando o backend que tem saldo suficiente
+  /// Pagar invoice via Spark
   Future<Map<String, dynamic>?> payInvoice(String bolt11) async {
     _setLoading(true);
     _setError(null);
     
-    // 1. Tentar Spark primeiro se tem saldo
+    // Tentar Spark se tem saldo
     if (_sparkProvider.isInitialized) {
       final sparkResult = await _sparkProvider.getBalance();
       final sparkBalance = int.tryParse(sparkResult['balance']?.toString() ?? '0') ?? 0;
@@ -349,32 +215,11 @@ class LightningProvider with ChangeNotifier {
       }
     }
     
-    // 2. Fallback para Liquid
-    if (_liquidProvider.isInitialized) {
-      final liquidBalance = await _liquidProvider.getBalance();
-      if (liquidBalance > 0) {
-        broLog('💧 Tentando pagar via Liquid (saldo: $liquidBalance sats)...');
-        
-        try {
-          final result = await _liquidProvider.payInvoice(bolt11);
-          if (result != null && result['success'] == true) {
-            _setLoading(false);
-            return {
-              ...result,
-              'backend': 'liquid',
-            };
-          }
-        } catch (e) {
-          broLog('❌ Pagamento Liquid falhou: $e');
-        }
-      }
-    }
-    
-    _setError('Não foi possível pagar - saldo insuficiente ou backends indisponíveis');
+    _setError('Não foi possível pagar - saldo insuficiente ou backend indisponível');
     _setLoading(false);
     return {
       'success': false,
-      'error': 'Saldo insuficiente em todos os backends',
+      'error': 'Saldo insuficiente ou backend Spark indisponível',
     };
   }
   
@@ -396,12 +241,9 @@ class LightningProvider with ChangeNotifier {
     return {
       'currentBackend': _currentBackend.name,
       'sparkInitialized': _sparkProvider.isInitialized,
-      'liquidInitialized': _liquidProvider.isInitialized,
       'sparkAttempts': _sparkAttempts,
       'sparkFailures': _sparkFailures,
       'sparkSuccessRate': '${(sparkSuccessRate * 100).toStringAsFixed(1)}%',
-      'liquidAttempts': _liquidAttempts,
-      'liquidFailures': _liquidFailures,
       'sparkInCooldown': !_shouldTrySpark,
     };
   }

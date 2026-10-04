@@ -38,7 +38,6 @@ import 'screens/wallet_screen.dart';
 import 'screens/marketplace_screen.dart';
 import 'screens/brix_screen.dart';
 import 'providers/breez_provider_export.dart';
-import 'providers/breez_liquid_provider.dart';
 import 'providers/lightning_provider.dart';
 import 'providers/order_provider.dart';
 import 'providers/collateral_provider.dart';
@@ -607,20 +606,18 @@ class BroApp extends StatelessWidget {
         Provider(create: (_) => ApiService()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => BreezProvider()),
-        ChangeNotifierProvider(create: (_) => BreezLiquidProvider()),
-        // LightningProvider - abstração que unifica Spark e Liquid com fallback
-        // IMPORTANTE: Usar as mesmas instâncias de Spark e Liquid, não criar novas!
-        ChangeNotifierProxyProvider2<BreezProvider, BreezLiquidProvider, LightningProvider>(
+        // LightningProvider - abstração do backend Spark
+        // IMPORTANTE: Usar a mesma instância do Spark, não criar nova!
+        ChangeNotifierProxyProvider<BreezProvider, LightningProvider>(
           create: (context) {
-            // Na criação inicial, pegar as instâncias do context
+            // Na criação inicial, pegar a instância do context
             final spark = context.read<BreezProvider>();
-            final liquid = context.read<BreezLiquidProvider>();
-            return LightningProvider(spark, liquid);
+            return LightningProvider(spark);
           },
-          update: (_, spark, liquid, previous) {
+          update: (_, spark, previous) {
             // Se já existe, retornar o mesmo (não criar novo)
             if (previous != null) return previous;
-            return LightningProvider(spark, liquid);
+            return LightningProvider(spark);
           },
         ),
         ChangeNotifierProvider(
@@ -680,7 +677,6 @@ class BroApp extends StatelessWidget {
           };
 
           // v132: Callback para auto-pagamento de ordens liquidadas
-          final liquidProvider = context.read<BreezLiquidProvider>();
           orderProvider.onAutoPayLiquidation = (String orderId, order) async {
             broLog('⚡ [AutoPay-Main] Auto-pagamento para ordem ${orderId.substring(0, 8)}');
 
@@ -778,8 +774,6 @@ class BroApp extends StatelessWidget {
                 
                 if (breezProvider.isInitialized) {
                   payResult = await breezProvider.payInvoice(providerInvoice);
-                } else if (liquidProvider.isInitialized) {
-                  payResult = await liquidProvider.payInvoice(providerInvoice);
                 } else {
                   broLog('⚠️ [AutoPay-Main] Nenhuma carteira inicializada');
                   return false;
@@ -904,8 +898,6 @@ class BroApp extends StatelessWidget {
                 Map<String, dynamic>? payResult;
                 if (breezProvider.isInitialized) {
                   payResult = await breezProvider.payInvoice(adminInvoice);
-                } else if (liquidProvider.isInitialized) {
-                  payResult = await liquidProvider.payInvoice(adminInvoice);
                 } else {
                   broLog('⚠️ [DisputeAutoPay-Main] Nenhuma carteira inicializada');
                   return false;
@@ -950,11 +942,6 @@ class BroApp extends StatelessWidget {
               Map<String, dynamic>? result;
               if (breezProvider.isInitialized) {
                 result = await breezProvider.createInvoice(
-                  amountSats: amountSats,
-                  description: 'Bro - Ordem ${orderId.substring(0, 8)}',
-                ).timeout(const Duration(seconds: 30));
-              } else if (liquidProvider.isInitialized) {
-                result = await liquidProvider.createInvoice(
                   amountSats: amountSats,
                   description: 'Bro - Ordem ${orderId.substring(0, 8)}',
                 ).timeout(const Duration(seconds: 30));

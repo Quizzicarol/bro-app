@@ -319,15 +319,6 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
-  flutter_breez_liquid:
-    dependency: "direct main"
-    description:
-      path: "."
-      ref: HEAD
-      resolved-ref: a899921107d42c657b5556d1771927230b2c1d89
-      url: "https://github.com/breez/breez-sdk-liquid-flutter"
-    source: git
-    version: "0.12.3-dev1"
   flutter_launcher_icons:
     dependency: "direct dev"
     description:

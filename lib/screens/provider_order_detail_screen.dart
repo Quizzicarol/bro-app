@@ -10,8 +10,6 @@ import 'dart:async';
 import '../providers/order_provider.dart';
 import '../providers/collateral_provider.dart';
 import '../providers/breez_provider_export.dart';
-import '../providers/breez_liquid_provider.dart';
-import '../providers/lightning_provider.dart';
 import '../services/escrow_service.dart';
 import '../services/dispute_service.dart';
 import '../services/notification_service.dart';
@@ -801,12 +799,10 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       // Gerar invoice Lightning para receber o pagamento (apenas se taxa > 0)
       // IMPORTANTE: Usar BreezProvider direto pois é o que está inicializado pelo login
       final breezProvider = context.read<BreezProvider>();
-      final liquidProvider = context.read<BreezLiquidProvider>();
       
-      // DEBUG: Verificar estado das carteiras
+      // DEBUG: Verificar estado da carteira
       broLog('🔍 DEBUG INVOICE GENERATION:');
       broLog('   breezProvider.isInitialized: ${breezProvider.isInitialized}');
-      broLog('   liquidProvider.isInitialized: ${liquidProvider.isInitialized}');
       broLog('   providerReceiveSats: $providerReceiveSats');
       
       // Só gerar invoice se o valor for maior que 0
@@ -828,28 +824,10 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         } catch (e) {
           broLog('⚠️ Erro/timeout ao gerar invoice Spark: $e — continuando sem invoice');
         }
-      } else if (providerReceiveSats > 0 && liquidProvider.isInitialized) {
-        broLog('⚡ Gerando invoice de $providerReceiveSats sats via Liquid (fallback)...');
-        
-        try {
-          final result = await liquidProvider.createInvoice(
-            amountSats: providerReceiveSats,
-            description: 'Bro - Ordem ${widget.orderId.substring(0, 8)}',
-          ).timeout(const Duration(seconds: 30));
-          
-          if (result != null && result['bolt11'] != null) {
-            generatedInvoice = result['bolt11'] as String;
-            broLog('✅ Invoice gerado via Liquid: ${generatedInvoice.substring(0, 30)}...');
-          } else {
-            broLog('⚠️ Falha ao gerar invoice via Liquid: $result');
-          }
-        } catch (e) {
-          broLog('⚠️ Erro/timeout ao gerar invoice Liquid: $e — continuando sem invoice');
-        }
       } else if (providerReceiveSats <= 0) {
         broLog('ℹ️ providerReceiveSats=$providerReceiveSats (muito baixo), não gerando invoice');
       } else {
-        broLog('🚨 NENHUMA CARTEIRA INICIALIZADA! breez=${breezProvider.isInitialized}, liquid=${liquidProvider.isInitialized}');
+        broLog('🚨 CARTEIRA NÃO INICIALIZADA! breez=${breezProvider.isInitialized}');
       }
 
       broLog('📋 Resumo: providerReceiveSats=$providerReceiveSats, hasInvoice=${generatedInvoice != null}');
@@ -1890,7 +1868,6 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
 
     try {
       final breezProvider = context.read<BreezProvider>();
-      final liquidProvider = context.read<BreezLiquidProvider>();
       final orderProvider = context.read<OrderProvider>();
 
       // Calcular valor em sats
@@ -1916,15 +1893,6 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       if (breezProvider.isInitialized) {
         broLog('⚡ [RegenInvoice] Gerando invoice de $totalSats sats ($baseSats base + $regenFeeSats fee) via Spark...');
         final result = await breezProvider.createInvoice(
-          amountSats: totalSats,
-          description: 'Bro - Ordem ${widget.orderId.substring(0, 8)} (novo)',
-        ).timeout(const Duration(seconds: 30));
-        if (result != null && result['bolt11'] != null) {
-          newInvoice = result['bolt11'] as String;
-        }
-      } else if (liquidProvider.isInitialized) {
-        broLog('⚡ [RegenInvoice] Gerando invoice de $totalSats sats via Liquid...');
-        final result = await liquidProvider.createInvoice(
           amountSats: totalSats,
           description: 'Bro - Ordem ${widget.orderId.substring(0, 8)} (novo)',
         ).timeout(const Duration(seconds: 30));

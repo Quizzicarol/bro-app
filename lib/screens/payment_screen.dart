@@ -1249,13 +1249,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
         
         // 🔥 NOVO FLUXO: Criar invoice ANTES da ordem!
         // Isso evita criar ordem "fantasma" se usuário sair da tela
-        // Usa LightningProvider com fallback Spark -> Liquid
         final lightningProvider = context.read<LightningProvider>();
         final invoiceData = await lightningProvider.createInvoice(
           amountSats: amountSats,
           description: 'Bro Payment',
         ).timeout(
-          const Duration(seconds: 45), // Timeout maior para fallback
+          const Duration(seconds: 45),
           onTimeout: () {
             broLog('⏰ Timeout ao criar invoice Lightning');
             return {'success': false, 'error': 'Timeout ao criar invoice'};
@@ -1264,11 +1263,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
         broLog('📨 Invoice data: $invoiceData');
         
-        // Log se usou Liquid
-        if (invoiceData?['isLiquid'] == true) {
-          broLog('💧 Invoice criada via LIQUID (fallback)');
-        }
-
         if (invoiceData == null || invoiceData['success'] != true) {
           // Fechar popup de loading
           if (mounted) Navigator.of(context).pop();

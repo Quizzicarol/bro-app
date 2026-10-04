@@ -18,15 +18,6 @@ dependencies:
       url: https://github.com/breez/breez-sdk-spark-flutter
       ref: v0.25.0
   
-  # Lightning Network - Breez SDK Liquid (Fallback quando Spark não funciona)
-  # v657: upstream breez/breez-sdk-liquid-flutter foi REMOVIDO do GitHub (404),
-  # quebrando builds limpos (Codemagic). Apontamos para o nosso mirror público
-  # (Quizzicarol/breez-sdk-liquid-flutter) com pin no commit exato que o app usa
-  # (a899921 = v0.12.3-dev1, mesmo do pubspec.lock) — build reproduzível.
-  flutter_breez_liquid:
-    git:
-      url: https://github.com/Quizzicarol/breez-sdk-liquid-flutter
-      ref: a899921107d42c657b5556d1771927230b2c1d89
   rxdart: ^0.28.0
   
   bip39: ^1.0.6

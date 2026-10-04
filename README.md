@@ -223,7 +223,6 @@ Full protocol specification: [`specs/`](specs/)
 ├──────────────────────────────────────────────────────────────┤
 │  External                                                    │
 │  ├── Breez SDK Spark   ← Self-custodial Lightning wallet     │
-│  ├── Breez Liquid      ← Liquid sidechain fallback (Boltz)   │
 │  ├── Nostr Relays      ← Decentralized event transport       │
 │  └── Backend API       ← Push notifications + optional helpers │
 └──────────────────────────────────────────────────────────────┘
@@ -236,7 +235,7 @@ Full protocol specification: [`specs/`](specs/)
 | Layer | Technology |
 |-------|------------|
 | **Framework** | Flutter 3.x / Dart 3.x |
-| **Lightning** | [Breez SDK Spark](https://breez.technology/sdk/) (primary) + Liquid (fallback) |
+| **Lightning** | [Breez SDK Spark](https://breez.technology/sdk/) (self-custodial) |
 | **Protocol** | [Nostr](https://nostr.com/) (NIPs 01, 04, 05, 15, 19, 33, 44, 98) |
 | **Encryption** | NIP-44v2 (XChaCha20-Poly1305) |
 | **State** | Provider + ChangeNotifier |

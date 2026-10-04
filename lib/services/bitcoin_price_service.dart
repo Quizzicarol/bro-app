@@ -38,6 +38,11 @@ class BitcoinPriceService {
   /// Compat: BTC -> BRL.
   static Future<double?> getBitcoinPriceInBRL() => getBitcoinPriceIn('BRL');
 
+  /// v658: último preço BRL em cache, SINCRONO (sem chamada de rede).
+  /// Usado para ativar o tier do provedor IMEDIATAMENTE sem esperar a rede
+  /// (iOS lento). Retorna null se nunca buscou — o chamador aplica um fallback.
+  static double? get lastKnownBrlPrice => _ratesCache?['BRL'];
+
   static Future<Map<String, double>?> _getAllRatesWithCache() async {
     if (_ratesCache != null && _ratesFetchedAt != null) {
       final age = DateTime.now().difference(_ratesFetchedAt!);

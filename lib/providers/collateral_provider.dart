@@ -46,72 +46,90 @@ class CollateralProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      // Carregar preço do Bitcoin
-      _btcPriceBrl = await _priceService.getBitcoinPrice();
-      broLog('💰 Preço do Bitcoin: R\$ $_btcPriceBrl');
-
-      if (_btcPriceBrl == null) {
-        throw Exception('Não foi possível obter o preço do Bitcoin');
-      }
-
-      // Carregar tiers disponíveis
-      _availableTiers = CollateralTier.getAvailableTiers(_btcPriceBrl!);
-      broLog('📊 Tiers disponíveis: ${_availableTiers!.length}');
-
-      // Usar saldo da carteira se fornecido
-      if (walletBalance != null) {
-        _walletBalanceSats = walletBalance;
-        broLog('💳 Saldo da carteira: $_walletBalanceSats sats');
-      }
-      
-      // Registrar sats comprometidos com ordens pendentes
-      if (committedSats != null) {
-        _committedSats = committedSats;
-        broLog('🔒 Sats comprometidos (ordens pendentes): $_committedSats sats');
-        broLog('💰 Saldo efetivo para garantia: $effectiveBalanceSats sats');
-      }
-
-      // 🔑 CRÍTICO: Obter pubkey do Nostr e setar no service ANTES de carregar
-      // O setCurrentUser já gerencia cache e verifica se usuário mudou
+      // v658: iOS LENTO — o tier "desligava" ao entrar no modo Bro porque o
+      // initialize() esperava a REDE (preço do BTC) antes de ativar o tier.
+      // Como o tier fica salvo LOCALMENTE, carregamos a garantia local PRIMEIRO
+      // e ativamos o tier com um preço em cache/fallback (sem esperar a rede).
+      // O preço real é buscado em background e recalcula os tiers depois.
       final nostrService = NostrService();
       final pubkey = nostrService.publicKey;
       broLog('🔑 CollateralProvider: carregando tier para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
       _localCollateralService.setCurrentUser(pubkey);
-      
-      // SISTEMA LOCAL: Carregar garantia local (fundos ficam na carteira do provedor)
+
+      // 1. Carregar garantia LOCAL imediatamente (não depende de rede)
       _localCollateral = await _localCollateralService.getCollateral(userPubkey: pubkey);
-      
-      // Se não tem garantia local, tentar buscar do Nostr (restaurar tier que usuário já ativou)
+
+      // 1b. Registrar saldo e sats comprometidos ANTES de aplicar a garantia
+      //     (effectiveBalanceSats depende deles para o available_amount).
+      if (walletBalance != null) {
+        _walletBalanceSats = walletBalance;
+        broLog('💳 Saldo da carteira: $_walletBalanceSats sats');
+      }
+      if (committedSats != null) {
+        _committedSats = committedSats;
+        broLog('🔒 Sats comprometidos: $_committedSats sats');
+      }
+
+      // 2. Ativar o tier IMEDIATAMENTE com um preço em cache/fallback.
+      //    Usa o último preço conhecido (static cache) ou um fallback seguro.
+      //    O tier ID e os sats travados NÃO dependem do preço — só os limites
+      //    em BRL dependem. Melhor ativar com preço aproximado do que deixar
+      //    o tier desligado esperando a rede.
+      final cachedPrice = BitcoinPriceService.lastKnownBrlPrice ?? 500000.0; // fallback R$500k
+      _btcPriceBrl = cachedPrice;
+      _availableTiers = CollateralTier.getAvailableTiers(cachedPrice);
+      _applyLocalCollateral();
+      _isLoading = false;
+      notifyListeners(); // tier ativo AGORA, sem esperar a rede
+
+      // 3. Buscar o preço REAL em background e recalcular (não bloqueia o tier)
+      _refreshPriceInBackground();
+
+      // 4. Se não tem garantia local, tentar restaurar do Nostr (background)
       if (_localCollateral == null) {
         broLog('📭 Garantia local não encontrada, buscando no Nostr...');
         await _tryRestoreFromNostr();
+        _applyLocalCollateral();
+        notifyListeners();
       }
-      
-      if (_localCollateral != null) {
-        broLog('✅ Garantia local carregada: ${_localCollateral!.tierName}');
-        broLog('   Sats travados: ${_localCollateral!.lockedSats}');
-        broLog('   Ordens ativas: ${_localCollateral!.activeOrders}');
-        
-        // Converter garantia local para formato legado (compatibilidade)
-        // IMPORTANTE: Usar effectiveBalanceSats ao invés de _walletBalanceSats
-        _collateral = {
-          'current_tier_id': _localCollateral!.tierId,
-          'total_collateral': _localCollateral!.lockedSats,
-          'locked_amount': _localCollateral!.lockedSats,
-          'available_amount': _localCollateralService.getAvailableBalance(_localCollateral!, effectiveBalanceSats),
-        };
-      } else {
-        broLog('📭 Provedor não possui garantia configurada');
-        _collateral = null;
-      }
-
-      _isLoading = false;
-      notifyListeners();
     } catch (e) {
       broLog('❌ Erro ao inicializar CollateralProvider: $e');
       _error = humanizeError(e);
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  /// v658: aplica a garantia local ao formato legado _collateral (compat UI).
+  void _applyLocalCollateral() {
+    if (_localCollateral != null) {
+      broLog('✅ Garantia local carregada: ${_localCollateral!.tierName}');
+      _collateral = {
+        'current_tier_id': _localCollateral!.tierId,
+        'total_collateral': _localCollateral!.lockedSats,
+        'locked_amount': _localCollateral!.lockedSats,
+        'available_amount': _localCollateralService.getAvailableBalance(_localCollateral!, effectiveBalanceSats),
+      };
+    } else {
+      broLog('📭 Provedor não possui garantia configurada');
+      _collateral = null;
+    }
+  }
+
+  /// v658: busca o preço real do BTC em background e recalcula os tiers.
+  /// NÃO bloqueia a ativação do tier — só refina os limites em BRL.
+  Future<void> _refreshPriceInBackground() async {
+    try {
+      final price = await _priceService.getBitcoinPrice();
+      if (price != null && price > 0) {
+        _btcPriceBrl = price;
+        _availableTiers = CollateralTier.getAvailableTiers(price);
+        broLog('💰 Preço BTC atualizado em background: R\$ $price');
+        _applyLocalCollateral();
+        notifyListeners();
+      }
+    } catch (e) {
+      broLog('⚠️ refresh de preço em background falhou (mantendo cache): $e');
     }
   }
 

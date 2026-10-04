@@ -619,8 +619,16 @@ workflows:
       - name: Deploy backend to Fly.io
         script: |
           export PATH="$HOME/.fly/bin:$PATH"
+          # v658: normalizar + diagnosticar o token sem vazar o valor.
+          # O Codemagic injeta FLY_API_TOKEN do grupo bro_secrets. Alguns
+          # runners adicionam whitespace/quebra de linha que invalidam o token.
+          FLY_API_TOKEN="$(printf '%s' "$FLY_API_TOKEN" | tr -d '[:space:]')"
           if [ -z "$FLY_API_TOKEN" ]; then
             echo "⚠️  FLY_API_TOKEN não configurado no grupo bro_secrets — pulando deploy."
             exit 0
           fi
-          flyctl deploy -a bro-api --config backend/fly.toml --dockerfile backend/Dockerfile --remote-only
+          echo "🔑 FLY_API_TOKEN presente (${#FLY_API_TOKEN} chars, prefixo ${FLY_API_TOKEN:0:5}...)"
+          # flyctl lê FLY_API_TOKEN, mas passamos --access-token explicitamente
+          # p/ garantir (e setamos FLY_ACCESS_TOKEN como fallback adicional).
+          export FLY_ACCESS_TOKEN="$FLY_API_TOKEN"
+          flyctl deploy -a bro-api --config backend/fly.toml --dockerfile backend/Dockerfile --remote-only --access-token "$FLY_API_TOKEN"

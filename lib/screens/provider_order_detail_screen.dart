@@ -658,6 +658,13 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     broLog('🔵 [ACCEPT] Resultado final: success=$success');
     
     if (!success) {
+      // v655: se perdeu a CORRIDA (outro Bro aceitou antes), mostrar POP-UP
+      // dedicado na tela de aceitação em vez do erro genérico de publish.
+      // O provedor entende na hora por que a ordem sumiu — sem push.
+      if (orderProvider.lastAcceptWasRaceLost) {
+        await _showRaceLostDialog();
+        return;
+      }
       _showError(AppLocalizations.of(context)!.t('prov_det_publish_fail'));
       return;
     }
@@ -935,6 +942,45 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         ),
       );
     }
+  }
+
+  /// v655: Pop-up mostrado quando o provedor clica em aceitar mas OUTRO Bro
+  /// já aceitou a ordem antes (corrida perdida). Não é push — é uma janela
+  /// modal na própria tela de aceitação. Ao fechar, volta para a lista, onde
+  /// a ordem já não aparece mais.
+  Future<void> _showRaceLostDialog() async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Text('😔', style: TextStyle(fontSize: 26)),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text('Que pena!',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Outro Bro aceitou esta ordem antes de você.',
+          style: TextStyle(color: Colors.white70, fontSize: 15),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Entendi', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    // Ao fechar o pop-up, voltar para a lista — a ordem já foi removida de
+    // "Disponíveis" pelo provider (race-loss rollback), então some sozinha.
+    if (mounted) Navigator.of(context).pop();
   }
 
   @override

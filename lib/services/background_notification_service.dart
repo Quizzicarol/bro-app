@@ -378,6 +378,16 @@ Future<void> _showNotificationForEvent(Map<String, dynamic> event, String userPu
           payload = 'order_cancelled:$orderId';
           break;
         case 'disputed':
+          // v654: GUARDA DE POSSE — só notificar disputa se a ordem for
+          // realmente do usuário (buyer ou provider). Sem isso, a tag #p
+          // que marca TODOS os aceites (v648, double-accept) fazia uma
+          // disputa de OUTRA ordem disparar notificação falsa neste
+          // dispositivo (cross-order), gerando insegurança.
+          final ownsOrder = await _orderBelongsToUser(orderId, userPubkey);
+          if (!ownsOrder) {
+            broLog('[BRO-BG] disputa de ordem alheia ($shortOrderId) ignorada — usuário não é parte');
+            return;
+          }
           title = 'Disputa Aberta';
           body = 'Uma disputa foi aberta na ordem $shortOrderId.';
           payload = 'order_disputed:$orderId';
@@ -460,6 +470,38 @@ String? _getTagValue(Map<String, dynamic> event, String tagName) {
     }
   }
   return null;
+}
+
+/// v654: Verifica se uma ordem pertence ao usuário (buyer ou provider).
+/// Lê as ordens locais (descriptografa via OrdersStorage) e procura o orderId,
+/// conferindo se userPubkey ou providerId batem com a chave do usuário.
+/// Fail-CLOSED para disputa: se não conseguir confirmar posse, retorna false
+/// (melhor não notificar do que notificar errado).
+Future<bool> _orderBelongsToUser(String orderId, String userPubkey) async {
+  if (orderId.isEmpty || userPubkey.isEmpty) return false;
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = await OrdersStorage.read(prefs, userPubkey);
+    if (raw == null || raw.isEmpty) return false;
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) return false;
+    for (final item in decoded) {
+      if (item is! Map) continue;
+      final id = (item['id'] ?? item['orderId'] ?? '').toString();
+      if (id != orderId) continue;
+      // Achou a ordem localmente. Checar posse (buyer ou provider).
+      final buyer = (item['userPubkey'] ?? item['pubkey'] ?? '').toString();
+      final provider = (item['providerId'] ?? '').toString();
+      final mine = buyer == userPubkey || provider == userPubkey;
+      broLog('[BRO-BG] posse da ordem ${orderId.substring(0, 8)}: buyer=${buyer.isEmpty ? "?" : buyer.substring(0, 8)} provider=${provider.isEmpty ? "?" : provider.substring(0, 8)} -> mine=$mine');
+      return mine;
+    }
+    // Ordem não encontrada localmente — não é do usuário.
+    return false;
+  } catch (e) {
+    broLog('[BRO-BG] _orderBelongsToUser erro (fail-closed): $e');
+    return false;
+  }
 }
 
 // ============================================================

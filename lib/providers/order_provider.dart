@@ -169,6 +169,13 @@ class OrderProvider with ChangeNotifier {
   Order? get currentOrder => _currentOrder;
   bool get isLoading => _isLoading;
   String? get error => _error;
+
+  /// v655: true quando a ÚLTIMA tentativa de aceite perdeu a corrida para
+  /// outro provedor. A tela de aceite lê isso para mostrar o pop-up
+  /// "Que pena! Outro Bro aceitou esta ordem antes de você." em vez do
+  /// erro genérico de publish. Resetada no início de cada acceptOrderAsProvider.
+  bool get lastAcceptWasRaceLost => _lastAcceptWasRaceLost;
+  bool _lastAcceptWasRaceLost = false;
   bool get hasCompletedInitialSync => _hasCompletedInitialSync;
   
   /// Getter p�?ºblico para a pubkey do usu�?¡rio atual (usado para verifica�?§�?µes externas)
@@ -358,6 +365,7 @@ class OrderProvider with ChangeNotifier {
     _notifyPending = false;
     notifyListeners();
   }
+
   // Cache de ordens salvas localmente â�?��?� usado para proteger contra regress�?£o de status
   // quando o relay n�?£o retorna o evento de conclus�?£o mais recente
   final Map<String, Order> _savedOrdersCache = {};
@@ -2352,6 +2360,7 @@ class OrderProvider with ChangeNotifier {
     broLog('ðŸ�?�µ [acceptOrderAsProvider] INICIADO para $orderId');
     _isLoading = true;
     _error = null;
+    _lastAcceptWasRaceLost = false; // v655: reset — só vira true se perder a corrida
     _immediateNotify();
 
     try {
@@ -2496,6 +2505,7 @@ class OrderProvider with ChangeNotifier {
         // v579: distinguish race-loss from publish failure for clearer UX.
         if (raceWinner != null) {
           _error = '❌ Esta ordem já foi aceita por outro provedor';
+          _lastAcceptWasRaceLost = true; // v655: sinaliza p/ pop-up na tela de aceite
           // v627: ROLLBACK do aceite otimista — outro provedor venceu a corrida.
           // Remover de _orders (copyWith não limpa providerId) para não ficar
           // falsamente em "Minhas Ordens".

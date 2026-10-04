@@ -715,6 +715,42 @@ class NostrOrderService {
     return accepts.map((e) => e['pubkey'] as String).toList();
   }
 
+  /// v656: Deleta o accept de um provedor que PERDEU a corrida (NIP-09 kind 5).
+  /// Sem isso, o bro_accept do perdedor fica gravado nos relays (slot separado
+  /// por pubkey) e o _fetchProviderOrdersRaw o trata como prova de posse —
+  /// criando uma "ordem fantasma" na lista do perdedor (ex.: ordem 0b8eb0f3
+  /// aparecia concluída para o Roberto sem ele ter pago). O delete remove o
+  /// accept dos relays que honram NIP-09 (Apex cord e Primal confirmados).
+  /// Retorna true se publicou o delete em ≥1 relay.
+  Future<bool> deleteAcceptEvent({
+    required String privateKey,
+    required String orderId,
+  }) async {
+    try {
+      final keychain = Keychain(privateKey);
+      // NIP-09: kind 5 referenciando o endereço replaceable do accept
+      // (a-tag = '30079:<pubkey>:<orderId>_accept'). Relays que honram NIP-09
+      // removem o evento; os que não honram simplesmente o ignoram (inofensivo).
+      final deletionEvent = Event.from(
+        kind: 5, // NIP-09 Event Deletion
+        tags: [
+          ['a', '$kindBroAccept:${keychain.public}:${orderId}_accept'],
+        ],
+        content: 'Accept removido — corrida perdida para outro provedor',
+        privkey: keychain.private,
+      );
+      final results = await Future.wait(
+        _relays.map((relay) => _publishToRelay(relay, deletionEvent).catchError((_) => false)),
+      );
+      final ok = results.where((r) => r).length;
+      broLog('🗑️ deleteAcceptEvent: ordem ${orderId.substring(0, 8)} — delete em $ok/${_relays.length} relays');
+      return ok > 0;
+    } catch (e) {
+      broLog('❌ deleteAcceptEvent EXCEPTION: $e');
+      return false;
+    }
+  }
+
   /// Busca ordens aceitas por um provedor e retorna como List<Order>
   /// CORREÇÃO: Agora também busca eventos de UPDATE para obter status correto
   ///

@@ -676,6 +676,8 @@ class OrderProvider with ChangeNotifier {
           // vSEC-fix: ordem TERMINAL (completed/cancelled/liquidated) NUNCA é
           // ghost — ela foi levada a um estado final por um fluxo real. Remover
           // seria perda de histórico. Manter sempre.
+          // (v656: a exceção de race-perdida para terminais é tratada num passo
+          // async separado logo abaixo, fora deste .where() síncrono.)
           const terminalStatuses = ['completed', 'cancelled', 'liquidated'];
           if (terminalStatuses.contains(order.status)) {
             return true;
@@ -691,6 +693,36 @@ class OrderProvider with ChangeNotifier {
         }
         return true;
       }).toList();
+
+      // v656: PASSO ASYNC separado — limpar ordens TERMINAIS que são FANTASMAS
+      // de double-accept: EU sou o providerId mas NÃO sou o aceite canônico
+      // (perdi a corrida; outro provedor completou). Ex.: ordem 0b8eb0f3
+      // aparecia concluída p/ Roberto sem ele ter pago. O .where() acima não
+      // pode fazer await, então verificamos o canônico aqui, uma a uma.
+      // Fail-safe: consulta falhou => manter (não remover histórico por dúvida).
+      final terminalGhosts = _orders.where((o) =>
+        o.providerId == userPubkey &&
+        o.userPubkey != null && o.userPubkey!.isNotEmpty && o.userPubkey != userPubkey &&
+        const ['completed', 'cancelled', 'liquidated'].contains(o.status)
+      ).toList();
+      var removedTerminal = 0;
+      for (final order in terminalGhosts) {
+        try {
+          final canonical = await _nostrOrderService
+              .fetchOrderProviderPubkey(order.id)
+              .timeout(const Duration(seconds: 6), onTimeout: () => userPubkey);
+          if (canonical != null && canonical.toLowerCase() != userPubkey.toLowerCase()) {
+            broLog('🧹 Ghost terminal removida (race perdida, canônico=${canonical.substring(0, 8)}): ${order.id.substring(0, 8)}');
+            _orders.removeWhere((o) => o.id == order.id);
+            removedTerminal++;
+          }
+        } catch (_) {
+          // manter em caso de erro de consulta
+        }
+      }
+      if (removedTerminal > 0) {
+        broLog('🧹 v656: $removedTerminal ordem(ns) terminal(is) fantasma(s) removida(s)');
+      }
       if (_orders.length < before) {
         await _saveOrders();
         _immediateNotify();
@@ -2512,6 +2544,9 @@ class OrderProvider with ChangeNotifier {
           _orders.removeWhere((o) => o.id == orderId);
           await _saveOnlyUserOrders();
           _availableOrdersForProvider.removeWhere((o) => o.id == orderId);
+          // v656: deletar meu accept fantasma dos relays (NIP-09) para não
+          // virar ordem fantasma na MINHA lista no próximo sync.
+          _nostrOrderService.deleteAcceptEvent(privateKey: privateKey, orderId: orderId);
           _isLoading = false;
           _immediateNotify();
           return false;
@@ -2546,6 +2581,35 @@ class OrderProvider with ChangeNotifier {
       // efetiva fica no PRE-check + verify-after-publish + winner canônico
       // (fetchOrderProviderPubkey) usado pelo buyer na hora de revelar o
       // billCode e pagar.
+
+      // v656: PÓS-CHECK CANÔNICO (caso do Roberto). Quando success==true o relay
+      // ACEITOU meu evento — mas outro provedor pode ter aceito ANTES (double-accept).
+      // O publish com sucesso NÃO garante que eu venci a corrida. Verificar se meu
+      // pubkey é o accept CANÔNICO (menor created_at). Se não for, perdi a corrida:
+      // deleto meu accept fantasma (NIP-09) e sinalizo corrida perdida p/ o pop-up.
+      // Isso cobre o caso em que o publish teve sucesso mas a ordem era de outro.
+      if (providerPubkey != null) {
+        try {
+          final canonical = await _nostrOrderService
+              .fetchOrderProviderPubkey(orderId)
+              .timeout(const Duration(seconds: 6), onTimeout: () => providerPubkey);
+          if (canonical != null &&
+              canonical.toLowerCase() != providerPubkey.toLowerCase()) {
+            broLog('🏁 [acceptOrderAsProvider] publish ok MAS corrida perdida p/ ${canonical.substring(0, 8)} — deletando accept fantasma');
+            _error = '❌ Esta ordem já foi aceita por outro provedor';
+            _lastAcceptWasRaceLost = true; // pop-up na tela de aceite
+            _orders.removeWhere((o) => o.id == orderId);
+            await _saveOnlyUserOrders();
+            _availableOrdersForProvider.removeWhere((o) => o.id == orderId);
+            _nostrOrderService.deleteAcceptEvent(privateKey: privateKey, orderId: orderId);
+            _isLoading = false;
+            _immediateNotify();
+            return false;
+          }
+        } catch (e) {
+          broLog('⚠️ [acceptOrderAsProvider] pós-check canônico falhou (seguindo): $e');
+        }
+      }
 
       // CORREÇÃO v1.0.129+223: Remover da lista de disponíveis IMEDIATAMENTE
       // Sem isso, a ordem ficava em _availableOrdersForProvider com status stale

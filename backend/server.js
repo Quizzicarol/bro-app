@@ -21,6 +21,7 @@ const disputeAgent = require('./services/disputeAgentService');
 const pushService = require('./services/pushService');
 const watchtower = require('./services/nostrWatchtowerService');
 
+// v658c: deploy via Codemagic com token de deploy dedicado (carol.areabitcoin)
 const app = express();
 const PORT = process.env.PORT || 3002;
 

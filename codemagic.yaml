@@ -619,16 +619,24 @@ workflows:
       - name: Deploy backend to Fly.io
         script: |
           export PATH="$HOME/.fly/bin:$PATH"
-          # v658: normalizar + diagnosticar o token sem vazar o valor.
-          # O Codemagic injeta FLY_API_TOKEN do grupo bro_secrets. Alguns
-          # runners adicionam whitespace/quebra de linha que invalidam o token.
-          FLY_API_TOKEN="$(printf '%s' "$FLY_API_TOKEN" | tr -d '[:space:]')"
+          # v658: limpeza AGRESSIVA do token. Além de espaços/quebras de linha,
+          # copiar/colar do dashboard pode trazer caracteres invisíveis (BOM,
+          # zero-width space, non-breaking space) que quebram a validação do
+          # macaroon. Removemos TUDO que não é caractere imprimível.
+          FLY_API_TOKEN="$(printf '%s' "$FLY_API_TOKEN" | LC_ALL=C tr -cd '[:graph:]')"
           if [ -z "$FLY_API_TOKEN" ]; then
             echo "⚠️  FLY_API_TOKEN não configurado no grupo bro_secrets — pulando deploy."
             exit 0
           fi
           echo "🔑 FLY_API_TOKEN presente (${#FLY_API_TOKEN} chars, prefixo ${FLY_API_TOKEN:0:5}...)"
-          # flyctl lê FLY_API_TOKEN, mas passamos --access-token explicitamente
-          # p/ garantir (e setamos FLY_ACCESS_TOKEN como fallback adicional).
+          # Validar o token ANTES de tentar o deploy — falha clara se inválido.
           export FLY_ACCESS_TOKEN="$FLY_API_TOKEN"
+          echo "🔎 Validando token com 'flyctl auth whoami'..."
+          if ! flyctl auth whoami --access-token "$FLY_API_TOKEN"; then
+            echo "❌ Token INVÁLIDO ou sem permissão. Gere um novo em:"
+            echo "   Fly dashboard → org 'Personal' → Tokens → 'Create Organization Token'"
+            echo "   e atualize FLY_API_TOKEN no Codemagic (grupo bro_secrets)."
+            exit 1
+          fi
+          echo "✅ Token válido — iniciando deploy"
           flyctl deploy -a bro-api --config backend/fly.toml --dockerfile backend/Dockerfile --remote-only --access-token "$FLY_API_TOKEN"

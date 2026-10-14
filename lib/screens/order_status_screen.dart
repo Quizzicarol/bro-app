@@ -2002,12 +2002,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     // v621: base = order.btcAmount (fonte canônica). widget.amountSats pode conter
     // o TOTAL (base+5%) em fluxos wallet/lightning; usar btcAmount garante que o
     // "valor da conta" e a taxa de 3% batam com o invoice do Bro (base+3%).
+    // v660: condensar taxas numa linha só (provedor 3% + plataforma 2% = 5%).
+    // O usuário não precisa ver a divisão interna — só o total de taxas.
     final baseSats = (fullOrder != null && fullOrder.btcAmount > 0)
         ? (fullOrder.btcAmount * 100000000).round()
         : widget.amountSats;
-    var providerFeeSats = (baseSats * AppConfig.providerFeePercent).round();
-    if (providerFeeSats < 1 && baseSats > 0) providerFeeSats = 1;
-    final totalSats = baseSats + providerFeeSats;
+    var totalFeesSats = (baseSats * AppConfig.totalFeePercent).round();
+    if (totalFeesSats < 1 && baseSats > 0) totalFeesSats = 1;
+    final totalSats = baseSats + totalFeesSats;
     
     return Card(
       color: const Color(0xFF1A1A1A),
@@ -2047,12 +2049,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               l.t('order_detail_bill_value'),
               '$baseSats sats',
             ),
-            // Taxa do provedor Bro
-            if (providerFeeSats > 0) ...[
+            // Taxas de processamento (provedor + plataforma, condensadas)
+            if (totalFeesSats > 0) ...[
               const SizedBox(height: 12),
               _buildDetailRow(
-                l.t('order_detail_provider_fee'),
-                '$providerFeeSats sats',
+                l.t('order_detail_processing_fees'),
+                '$totalFeesSats sats',
               ),
             ],
             // Total pago em sats

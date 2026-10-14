@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
+import '../services/storage_service.dart';
 
 class PrivacySettingsScreen extends StatefulWidget {
   const PrivacySettingsScreen({Key? key}) : super(key: key);
@@ -22,12 +23,34 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
   }
 
   Future<void> _loadSettings() async {
-    // TODO: Load from storage
+    // v659: carregar do storage de verdade (antes era TODO — o toggle de Tor
+    // resetava a cada abertura do app, como o usuário reportou).
+    final storage = StorageService();
+    _torEnabled = await storage.getTorEnabled();
+    _nip44Enabled = await storage.getNip44Enabled();
+    _hideBalance = await storage.getHideBalance();
+    _sharePaymentReceipts = await storage.getShareReceipts();
     setState(() => _isLoading = false);
   }
 
   Future<void> _saveSetting(String key, bool value) async {
-    // TODO: Save to storage
+    // v659: salvar de verdade no storage (antes era TODO — nada persistia).
+    final storage = StorageService();
+    switch (key) {
+      case 'tor_enabled':
+        await storage.saveTorEnabled(value);
+        break;
+      case 'nip44_enabled':
+        await storage.saveNip44Enabled(value);
+        break;
+      case 'hide_balance':
+        await storage.saveHideBalance(value);
+        break;
+      case 'share_receipts':
+        await storage.saveShareReceipts(value);
+        break;
+    }
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(AppLocalizations.of(context).t('privacy_setting_saved')),

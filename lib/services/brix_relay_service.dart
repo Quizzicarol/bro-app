@@ -430,10 +430,12 @@ class BrixRelayService {
       // retornava 404 — ruído de rede/log e bateria. Quem TEM BRIX (200) segue
       // o fluxo normal; o flag é resetado em start()/restart()/token-rotation.
       if (!_brixNotAUser) {
+        await _loadClaimedPayments(); // v661: garantir que o set veio do disco
         final pendingPayments = await _brixService.getPendingPayments(_pubkey!);
         for (final payment in pendingPayments) {
         if (_claimedPayments.contains(payment.id)) continue;
         _claimedPayments.add(payment.id);
+        await _persistClaimedPayments(); // v661: gravar ANTES de criar a invoice
 
         broLog('💰 [BRIX-RELAY] Claiming offline payment: ${payment.amountSats} sats');
 
@@ -460,12 +462,17 @@ class BrixRelayService {
                 paymentHash: invoiceResult['paymentHash'] as String?,
               );
             }
-            if (!claimed) _claimedPayments.remove(payment.id);
+            if (!claimed) {
+              _claimedPayments.remove(payment.id);
+              await _persistClaimedPayments(); // v661: desfazer no disco também
+            }
           } else {
             _claimedPayments.remove(payment.id);
+            await _persistClaimedPayments();
           }
         } else {
           _claimedPayments.remove(payment.id);
+          await _persistClaimedPayments();
         }
         } // end for (pendingPayments)
       } // end if (!_brixNotAUser)
@@ -499,8 +506,14 @@ class BrixRelayService {
   final Set<String> _paidFees = {};
   static const _paidFeesKey = 'brix_paid_fee_request_ids';
   bool _paidFeesLoaded = false;
-  // Track claims in progress to prevent duplicates
+  // v661: Track claims to prevent duplicates — agora PERSISTENTE. Antes era só
+  // em memória: se o app crashava/fechava entre marcar o pagamento como
+  // "claimed" e o servidor confirmar, o set se perdia no restart e o app
+  // reivindicava o MESMO pagamento offline de novo (risco de receber 2x).
+  // Mesmo padrão do _paidFees.
   final Set<String> _claimedPayments = {};
+  static const _claimedPaymentsKey = 'brix_claimed_payment_ids';
+  bool _claimedPaymentsLoaded = false;
 
   Future<void> _loadPaidFees() async {
     if (_paidFeesLoaded) return;
@@ -524,6 +537,31 @@ class BrixRelayService {
           ..addAll(ids);
       }
       await prefs.setStringList(_paidFeesKey, ids);
+    } catch (_) {}
+  }
+
+  // v661: carregar/persistir os claims (mesmo padrão do _paidFees).
+  Future<void> _loadClaimedPayments() async {
+    if (_claimedPaymentsLoaded) return;
+    _claimedPaymentsLoaded = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getStringList(_claimedPaymentsKey);
+      if (raw != null) _claimedPayments.addAll(raw);
+    } catch (_) {}
+  }
+
+  Future<void> _persistClaimedPayments() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      var ids = _claimedPayments.toList();
+      if (ids.length > 500) {
+        ids = ids.sublist(ids.length - 500);
+        _claimedPayments
+          ..clear()
+          ..addAll(ids);
+      }
+      await prefs.setStringList(_claimedPaymentsKey, ids);
     } catch (_) {}
   }
 

@@ -687,8 +687,14 @@ class NostrOrderService {
     // entrega do billCode (foreground sync + background relay), a latência
     // sequencial atrasava a chegada do código PIX/boleto em >1min sob relay
     // lento. Paralelo: o tempo total = o relay MAIS LENTO, não a soma.
+    // v661: consultar TODOS os relays + fallback (antes: `_relays.take(3)`).
+    // O caminho de REVELAR o billCode usa esta função para escolher o vencedor
+    // canônico — mas ela consultava só 3 relays enquanto fetchOrderProviderPubkey
+    // (v648) consulta todos. Se o aceite vencedor só chegou num relay de fallback,
+    // o comprador podia revelar o billCode para o provedor ERRADO. Alinhar os dois.
+    final allRelays = <String>[..._relays, ..._fallbackRelays];
     final results = await Future.wait(
-      _relays.take(3).map((relay) => _fetchFromRelay(
+      allRelays.map((relay) => _fetchFromRelay(
         relay,
         kinds: [kindBroAccept],
         tags: {'#d': ['${orderId}_accept']},

@@ -3868,6 +3868,19 @@ class NostrOrderService {
     return allEvents;
   }
 
+  /// v662: Verifica a assinatura Schnorr de um evento recebido via WebSocket
+  /// cru (métodos que NÃO passam pelo _fetchFromRelay, que já valida). Sem isso,
+  /// um relay malicioso podia injetar eventos forjados (prova/evidência/chat/
+  /// resolução falsos) e induzir o admin a decidir errado numa mediação.
+  bool _isEventSignatureValid(Map<String, dynamic> eventData) {
+    try {
+      Event.fromJson(eventData, verify: true);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Busca TODAS as resoluções de disputas do Nostr
   /// Estratégia dupla (v240):
   /// 1. Kind 1 com tag bro-resolucao (evento principal de resolução)
@@ -3908,7 +3921,9 @@ class NostrOrderService {
             const Duration(seconds: 10), onTimeout: (sink) => sink.close())) {
             final data = jsonDecode(msg.toString());
             if (data is List && data.length >= 3 && data[0] == 'EVENT') {
-              events.add(data[2] as Map<String, dynamic>);
+              final ev = data[2] as Map<String, dynamic>;
+              if (!_isEventSignatureValid(ev)) continue; // v662: rejeitar forjado
+              events.add(ev);
             }
             if (data is List && data[0] == 'EOSE') {
               eoseCount++;
@@ -4493,6 +4508,7 @@ class NostrOrderService {
             final data = jsonDecode(msg.toString());
             if (data is List && data.length >= 3 && data[0] == 'EVENT') {
               final eventData = data[2] as Map<String, dynamic>;
+              if (!_isEventSignatureValid(eventData)) continue; // v662
               try {
                 final content = jsonDecode(eventData['content'] as String) as Map<String, dynamic>;
                 if (content['type'] == 'bro_mediator_message') {
@@ -4551,6 +4567,7 @@ class NostrOrderService {
             final data = jsonDecode(msg.toString());
             if (data is List && data.length >= 3 && data[0] == 'EVENT') {
               final eventData = data[2] as Map<String, dynamic>;
+              if (!_isEventSignatureValid(eventData)) continue; // v662
               try {
                 final content = jsonDecode(eventData['content'] as String) as Map<String, dynamic>;
                 if (content['type'] == 'bro_mediator_message') {
@@ -4755,6 +4772,7 @@ class NostrOrderService {
             if (data is List && data.length >= 3 && data[0] == 'EVENT') {
               try {
                 final eventData = data[2] as Map<String, dynamic>;
+                if (!_isEventSignatureValid(eventData)) continue; // v662
                 final eventId = eventData['id'] as String? ?? '';
                 final eventPubkey = eventData['pubkey'] as String? ?? '';
                 final createdAt = eventData['created_at'] as int? ?? 0;
@@ -4939,6 +4957,7 @@ class NostrOrderService {
             if (data is List && data.length >= 3 && data[0] == 'EVENT') {
               try {
                 final eventData = data[2] as Map<String, dynamic>;
+                if (!_isEventSignatureValid(eventData)) continue; // v662
                 final eventId = eventData['id'] as String? ?? '';
                 final createdAt = eventData['created_at'] as int? ?? 0;
                 final content = jsonDecode(eventData['content'] as String) as Map<String, dynamic>;
@@ -5081,6 +5100,7 @@ class NostrOrderService {
             final data = jsonDecode(msg.toString());
             if (data is List && data.length >= 3 && data[0] == 'EVENT') {
               final eventData = data[2] as Map<String, dynamic>;
+              if (!_isEventSignatureValid(eventData)) continue; // v662
               try {
                 final content = jsonDecode(eventData['content'] as String) as Map<String, dynamic>;
                 final eventOrderId = content['orderId'] as String?;

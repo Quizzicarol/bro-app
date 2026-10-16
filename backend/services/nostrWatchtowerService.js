@@ -43,7 +43,10 @@ const BILLCODE_WAKEUP_FILE = process.env.NODE_ENV === 'production'
   : path.join(__dirname, '..', 'data', 'billcode_wakeups.json');
 
 // Relays podem ser sobrescritos via env RELAYS (CSV). Fallback = padrão atual.
-const RELAYS = (process.env.RELAYS || 'wss://relay.damus.io,wss://nos.lol,wss://relay.primal.net')
+// v664: inclui o Apex cord (nosso relay) — antes o watchtower só vigiava
+// damus/nos.lol/primal, então aceites/ordens que caíam SÓ no nosso relay não
+// geravam push de wakeup (ordens travadas em "bro aceitou" sem billCode).
+const RELAYS = (process.env.RELAYS || 'wss://apexcord.duckdns.org,wss://relay.damus.io,wss://nos.lol,wss://relay.primal.net')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);

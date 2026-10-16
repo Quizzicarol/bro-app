@@ -45,8 +45,11 @@ class TorService extends ChangeNotifier {
   bool _enabled = false;
   bool get isEnabled => _enabled;
 
-  /// true apenas quando o proxy SOCKS5 está pronto para uso.
-  bool get isActive => _status == TorConnectionStatus.active;
+  /// true apenas quando o proxy SOCKS5 está pronto para uso (bootstrap
+  /// completo — circuito estabelecido). Antes disso o SOCKS5 REJEITA o
+  /// CONNECT (código 1), então NÃO podemos marcar como ativo cedo demais.
+  bool get isActive =>
+      _status == TorConnectionStatus.active && Tor.instance.bootstrapped;
 
   /// Porta do proxy SOCKS5 local (null se inativo).
   int? get socksPort => isActive ? Tor.instance.port : null;
@@ -84,6 +87,11 @@ class TorService extends ChangeNotifier {
         _retryCount = 0;
         _setStatus(TorConnectionStatus.active);
         broLog('🧅 Tor: ATIVO na porta SOCKS5 ${Tor.instance.port}');
+        // v663g: logar o estado do bootstrap pra diagnosticar se o proxy
+        // realmente aceita conexões (o arti pode marcar started=true antes do
+        // bootstrap completar, e aí o SOCKS5 rejeita o CONNECT).
+        broLog('🧅 Tor: bootstrapped=${Tor.instance.bootstrapped} enabled=${Tor.instance.enabled}');
+        unawaited(_watchBootstrap());
       } else {
         throw StateError('Tor.start() retornou sem started=true');
       }
@@ -94,6 +102,26 @@ class TorService extends ChangeNotifier {
     } finally {
       _starting = false;
     }
+  }
+
+  /// Observa o bootstrap do Tor e, quando COMPLETAR, marca como ativo de
+  /// verdade e notifica a UI (o isActive agora exige bootstrapped=true). Se
+  /// não completar em ~90s, marca erro (fail-soft: conexões seguem diretas).
+  Future<void> _watchBootstrap() async {
+    for (var i = 0; i < 18; i++) {
+      await Future.delayed(const Duration(seconds: 5));
+      final booted = Tor.instance.bootstrapped;
+      broLog('🧅 Tor: bootstrap check ${i + 1}/18 → bootstrapped=$booted');
+      if (booted) {
+        broLog('🧅 Tor: ✅ BOOTSTRAP COMPLETO — proxy pronto');
+        // Notifica a UI pra virar "IP oculto" de verdade agora.
+        notifyListeners();
+        return;
+      }
+    }
+    broLog('🧅 Tor: ⚠️ bootstrap NÃO completou em 90s — conexões seguem diretas');
+    _setStatus(TorConnectionStatus.error);
+    _scheduleRetry();
   }
 
   /// Desliga o Tor e volta para conexão direta.

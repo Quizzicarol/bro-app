@@ -1,10 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
-import 'package:socks5_proxy/socks_client.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -44,6 +44,12 @@ class TorHttp {
 
   /// Abre `dart:io` WebSocket cru via Tor (ou direto se inativo).
   /// Usado por código que precisa do WebSocket nativo e não do Channel.
+  ///
+  /// v663h: WebSocket.connect(customClient:) com o HttpClient roteado pelo
+  /// SOCKS5 do Tor — o Dart faz o upgrade WS internamente via detachSocket
+  /// (à prova de buffer; o meu handshake manual re-ouvia o socket e quebrava
+  /// com "Stream has already been listened"). O Dart converte wss→https antes
+  /// de chamar o connectionFactory, então o TLS é aplicado pelo _connectTcpViaTor.
   static Future<WebSocket> connectRawWebSocket(String url,
       {Duration? timeout}) async {
     if (!_torActive) {
@@ -52,9 +58,6 @@ class TorHttp {
     }
     try {
       final client = _createProxiedHttpClient();
-      // WebSocket.connect aceita customClient — o handshake HTTP de upgrade
-      // inteiro passa pelo proxy SOCKS5 do Tor, inclusive o TLS é terminado
-      // DEPOIS do túnel (o exit node não vê o conteúdo, só o destino).
       final future = WebSocket.connect(url, customClient: client);
       final ws = timeout != null ? await future.timeout(timeout) : await future;
       return ws;
@@ -64,6 +67,8 @@ class TorHttp {
       return timeout != null ? future.timeout(timeout) : future;
     }
   }
+
+  /// Abre uma conexão TCP para [host]:[port] através do SOCKS5 do Tor,
 
   // ---------------------------------------------------------------------------
   // package:http
@@ -171,10 +176,77 @@ class TorHttp {
       return HttpClient();
     }
     final client = HttpClient();
-    SocksTCPClient.assignToHttpClient(client, [
-      ProxySettings(InternetAddress.loopbackIPv4, port),
-    ]);
+    // v663f: NÃO usar SocksTCPClient.assignToHttpClient — ele resolve o domínio
+    // LOCALMENTE (InternetAddress.lookup) antes de mandar pro Tor, o que VAZA
+    // o DNS e quebra quando a rede local não resolve ("Failed host lookup").
+    // Aqui o connectionFactory manda o DOMÍNIO pro Tor (AddressType.domain) e
+    // o exit node resolve o DNS — o IP real nem é consultado localmente.
+    client.connectionFactory = (uri, proxyHost, proxyPort) async {
+      final isSecure = uri.scheme == 'https';
+      final future = _connectTcpViaTor(uri.host, uri.port, secure: isSecure);
+      return ConnectionTask.fromSocket(future, () async {
+        (await future).close().ignore();
+      });
+    };
     return client;
+  }
+
+  /// Abre uma conexão TCP para [host]:[port] através do SOCKS5 do Tor,
+  /// mandando o DOMÍNIO (o exit node resolve o DNS). Se [secure], termina o
+  /// TLS depois do túnel. Reuso da mesma lógica do WebSocket.
+  static Future<Socket> _connectTcpViaTor(String host, int port,
+      {required bool secure}) async {
+    final socksPort = TorService.instance.socksPort;
+    if (socksPort == null) {
+      throw StateError('Tor inativo (sem porta SOCKS5)');
+    }
+    var socket = await Socket.connect(InternetAddress.loopbackIPv4, socksPort);
+    // Mesmo padrão do WebSocket: UMA subscrição contínua acumulando num buffer.
+    final buffer = <int>[];
+    final dataReady = StreamController<void>.broadcast();
+    late final StreamSubscription<List<int>> sub;
+    sub = socket.listen(
+      (chunk) {
+        buffer.addAll(chunk);
+        dataReady.add(null);
+      },
+      onError: (Object e) => dataReady.addError(e),
+      onDone: () {},
+    );
+    Future<List<int>> readExact(int n) async {
+      while (buffer.length < n) {
+        await dataReady.stream.first;
+      }
+      final out = buffer.sublist(0, n);
+      buffer.removeRange(0, n);
+      return out;
+    }
+
+    socket.add([0x05, 0x01, 0x00]);
+    await socket.flush();
+    final greeting = await readExact(2);
+    if (greeting[1] != 0x00) {
+      throw StateError('SOCKS5 greeting rejeitado pelo Tor');
+    }
+    final hostBytes = host.codeUnits;
+    socket.add([
+      0x05, 0x01, 0x00, 0x03, hostBytes.length, ...hostBytes,
+      (port >> 8) & 0xFF, port & 0xFF,
+    ]);
+    await socket.flush();
+    final head = await readExact(4);
+    if (head[1] != 0x00) {
+      throw StateError('SOCKS5 CONNECT falhou (código ${head[1]}) — o Tor não alcançou $host');
+    }
+    final atyp = head[3];
+    final addrLen = (atyp == 0x01) ? 4 : (atyp == 0x03 ? (await readExact(1))[0] : 16);
+    await readExact(addrLen + 2);
+    sub.pause(); // pausar (não cancelar) — o SecureSocket.secure retoma a leitura
+
+    if (secure) {
+      socket = await SecureSocket.secure(socket, host: host);
+    }
+    return socket;
   }
 }
 

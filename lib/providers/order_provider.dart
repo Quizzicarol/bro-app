@@ -4925,14 +4925,22 @@ class OrderProvider with ChangeNotifier {
 
     for (final order in candidates) {
       try {
-        final success = await _nostrOrderService.republishOrderWithStatus(
+        final publishedEventId = await _nostrOrderService.republishOrderWithStatus(
           privateKey: privateKey,
           order: order,
           newStatus: order.status,
           providerId: order.providerId,
         );
-        if (success) {
+        if (publishedEventId != null) {
           broLog('✅ Ordem ${order.id.substring(0, 8)} publicada (status=${order.status})');
+          // v663: GRAVAR o eventId — sem isso a ordem ficava eventId=NULL pra
+          // sempre e era republicada a cada sync em loop infinito (floodeava
+          // os relays até rate-limit ban — ex.: Damus baniu o app).
+          final idx = _orders.indexWhere((o) => o.id == order.id);
+          if (idx != -1) {
+            _orders[idx] = _orders[idx].copyWith(eventId: publishedEventId);
+            await _saveOnlyUserOrders();
+          }
         } else {
           broLog('❌ Ordem ${order.id.substring(0, 8)} publish FALHOU');
         }

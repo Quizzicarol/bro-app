@@ -1512,7 +1512,10 @@ class NostrOrderService {
   /// Isso garante que outros provedores NÃO vejam a ordem como disponível,
   /// mesmo se a query de status updates (kind 30079/30080/30081) falhar.
   /// SÓ deve ser chamado pelo DONO da ordem (userPubkey == signer).
-  Future<bool> republishOrderWithStatus({
+  /// v663: Retorna o event.id publicado (null se falhou). O caller grava o
+  /// eventId na ordem local — sem isso a ordem ficava eventId=NULL e era
+  /// republicada em loop infinito (flood nos relays → rate-limit ban).
+  Future<String?> republishOrderWithStatus({
     required String privateKey,
     required Order order,
     required String newStatus,
@@ -1524,7 +1527,7 @@ class NostrOrderService {
       // Só o dono da ordem pode re-publicar (assinatura deve bater)
       if (order.userPubkey != null && order.userPubkey != keychain.public) {
         broLog('v261: republishOrderWithStatus: SKIP - não sou o dono da ordem');
-        return false;
+        return null;
       }
 
       final content = jsonEncode({
@@ -1574,10 +1577,12 @@ class NostrOrderService {
       );
       final successCount = results.where((r) => r).length;
       broLog('v261: republishOrderWithStatus: ${order.id.substring(0, 8)} -> $newStatus ($successCount/${_relays.length} relays)');
-      return successCount > 0;
+      // v663: retornar o event.id para o caller gravar — senão a ordem ficava
+      // sem eventId e era republicada em loop (flood nos relays).
+      return successCount > 0 ? event.id : null;
     } catch (e) {
       broLog('v261: republishOrderWithStatus ERROR: $e');
-      return false;
+      return null;
     }
   }
 

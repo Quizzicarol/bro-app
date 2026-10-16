@@ -1889,10 +1889,13 @@ class OrderProvider with ChangeNotifier {
       
       // v438: Also send encrypted billCode for accepted orders in provider sync
       try {
+        // v664: 30s era pouco com relays degradados (fetchAllAccepts 10s +
+        // publish paralelo ~20s) — estourava toda hora e o billCode nunca
+        // era marcado como enviado (ordem cc8820e0 travada em "aceita").
         await _sendEncryptedBillCodeForAcceptedOrders().timeout(
-          const Duration(seconds: 30),
+          const Duration(seconds: 90),
           onTimeout: () {
-            broLog('⏱️ _sendEncryptedBillCodeForAcceptedOrders timeout (30s) [provider sync]');
+            broLog('⏱️ _sendEncryptedBillCodeForAcceptedOrders timeout (90s) [provider sync]');
           },
         );
       } catch (e) {
@@ -4559,10 +4562,11 @@ class OrderProvider with ChangeNotifier {
 
       // v438: Send NIP-44 encrypted billCode for accepted orders (buyer side)
       try {
+        // v664: 30s → 90s (mesmo motivo do provider sync — relays degradados).
         await _sendEncryptedBillCodeForAcceptedOrders().timeout(
-          const Duration(seconds: 30),
+          const Duration(seconds: 90),
           onTimeout: () {
-            broLog('⏱️ _sendEncryptedBillCodeForAcceptedOrders timeout (30s)');
+            broLog('⏱️ _sendEncryptedBillCodeForAcceptedOrders timeout (90s)');
           },
         );
       } catch (e) {

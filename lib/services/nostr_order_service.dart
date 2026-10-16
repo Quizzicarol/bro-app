@@ -700,7 +700,7 @@ class NostrOrderService {
         kinds: [kindBroAccept],
         tags: {'#d': ['${orderId}_accept']},
         limit: 20,
-      ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[])
+      ).timeout(TorHttp.readTimeout, onTimeout: () => <Map<String, dynamic>>[])
        .catchError((_) => <Map<String, dynamic>>[])),
     );
     for (final events in results) {
@@ -986,8 +986,8 @@ class NostrOrderService {
         channel = await TorHttp.connectWs(relayUrl);
         final ch = channel!; // Capturar referência não-nula
 
-        // Timeout de 8 segundos
-        timeout = Timer(const Duration(seconds: 8), () {
+        // Timeout adaptado ao Tor (v663i): 8s direto / 25s via Tor
+        timeout = Timer(TorHttp.readTimeout, () {
           if (!completer.isCompleted) {
             completer.complete(events);
             try { ch.sink.close(); } catch (_) {}
@@ -1512,7 +1512,10 @@ class NostrOrderService {
   /// Isso garante que outros provedores NÃO vejam a ordem como disponível,
   /// mesmo se a query de status updates (kind 30079/30080/30081) falhar.
   /// SÓ deve ser chamado pelo DONO da ordem (userPubkey == signer).
-  Future<bool> republishOrderWithStatus({
+  /// v663j: Retorna o event.id publicado (null se falhou). O caller grava o
+  /// eventId na ordem local — sem isso a ordem ficava eventId=NULL e era
+  /// republicada em loop infinito (flood nos relays → rate-limit ban).
+  Future<String?> republishOrderWithStatus({
     required String privateKey,
     required Order order,
     required String newStatus,
@@ -1524,7 +1527,7 @@ class NostrOrderService {
       // Só o dono da ordem pode re-publicar (assinatura deve bater)
       if (order.userPubkey != null && order.userPubkey != keychain.public) {
         broLog('v261: republishOrderWithStatus: SKIP - não sou o dono da ordem');
-        return false;
+        return null;
       }
 
       final content = jsonEncode({
@@ -1574,10 +1577,14 @@ class NostrOrderService {
       );
       final successCount = results.where((r) => r).length;
       broLog('v261: republishOrderWithStatus: ${order.id.substring(0, 8)} -> $newStatus ($successCount/${_relays.length} relays)');
-      return successCount > 0;
+      // v663j: retornar o event.id (antes retornava bool). O caller GRAVA o
+      // eventId na ordem local — sem isso a ordem ficava eventId=NULL pra
+      // sempre e era republicada a cada sync em loop infinito, floodeando os
+      // relays até rate-limit ban (ordem 02ebc36d baniu o app no Damus).
+      return successCount > 0 ? event.id : null;
     } catch (e) {
       broLog('v261: republishOrderWithStatus ERROR: $e');
-      return false;
+      return null;
     }
   }
 
@@ -2056,7 +2063,7 @@ class NostrOrderService {
               tags: {'#d': dTags},
               since: null,
               limit: batch.length * 2,
-            ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]),
+            ).timeout(TorHttp.readTimeout, onTimeout: () => <Map<String, dynamic>>[]),
             // Estratégia 2: #r tag para updates/cancellations (kind 30080)
             // updateOrderStatus usa tag ['r', orderId] que é indexada como #r
             _fetchFromRelayWithSince(
@@ -2065,7 +2072,7 @@ class NostrOrderService {
               tags: {'#r': batch}, // orderId direto na tag #r
               since: null,
               limit: batch.length * 3,
-            ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]),
+            ).timeout(TorHttp.readTimeout, onTimeout: () => <Map<String, dynamic>>[]),
           ]);
           
           final combined = <Map<String, dynamic>>[];
@@ -2179,7 +2186,7 @@ class NostrOrderService {
           authors: pubkeys,
           since: sinceSecs,
           limit: pubkeys.length * 50, // ~50 updates por author (margem ampla)
-        ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]);
+        ).timeout(TorHttp.readTimeout, onTimeout: () => <Map<String, dynamic>>[]);
         return events;
       } catch (e) {
         return <Map<String, dynamic>>[];
@@ -2865,7 +2872,7 @@ class NostrOrderService {
         since: sinceTimestamp,
         limit: 200, // Aumentado para pegar mais ordens
       ).timeout(
-        const Duration(seconds: 8),
+        TorHttp.readTimeout,
         onTimeout: () {
           return <Map<String, dynamic>>[];
         },
@@ -2936,7 +2943,7 @@ class NostrOrderService {
         authors: [pubkey],
         limit: 100,
       ).timeout(
-        const Duration(seconds: 8),
+        TorHttp.readTimeout,
         onTimeout: () {
           return <Map<String, dynamic>>[];
         },
@@ -3738,7 +3745,7 @@ class NostrOrderService {
       List<String> allAccepters = [];
       try {
         allAccepters = await fetchAllAcceptsForOrder(orderId)
-            .timeout(const Duration(seconds: 8), onTimeout: () => <String>[]);
+            .timeout(TorHttp.readTimeout, onTimeout: () => <String>[]);
       } catch (_) {}
       
       final contentMap = {
@@ -3838,14 +3845,14 @@ class NostrOrderService {
               kinds: [1],
               tags: {'#t': ['bro-disputa']},
               limit: 100,
-            ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]),
+            ).timeout(TorHttp.readTimeout, onTimeout: () => <Map<String, dynamic>>[]),
             // Estratégia 2: Kind 30080 com tag status-disputed (qualquer build)
             _fetchFromRelay(
               relay,
               kinds: [kindBroPaymentProof],
               tags: {'#t': ['status-disputed']},
               limit: 100,
-            ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]),
+            ).timeout(TorHttp.readTimeout, onTimeout: () => <Map<String, dynamic>>[]),
           ]);
           return [...fetches[0], ...fetches[1]];
         } catch (_) {
@@ -5265,7 +5272,7 @@ class NostrOrderService {
             kinds: [kindBroAccept],
             tags: {'#d': ['${orderId}_accept']},
             limit: 5,
-          ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]);
+          ).timeout(TorHttp.readTimeout, onTimeout: () => <Map<String, dynamic>>[]);
           
           // Estratégia 2: #t bro-accept (fallback mais amplo)
           if (events.isEmpty) {
@@ -5274,7 +5281,7 @@ class NostrOrderService {
               kinds: [kindBroAccept],
               tags: {'#t': ['bro-accept']},
               limit: 30,
-            ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]);
+            ).timeout(TorHttp.readTimeout, onTimeout: () => <Map<String, dynamic>>[]);
           }
           
           for (final event in events) {

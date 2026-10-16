@@ -28,6 +28,14 @@ class TorHttp {
 
   static bool get _torActive => TorService.instance.isActive;
 
+  /// Timeout de leitura adaptado ao Tor: via Tor tudo é mais lento (o connect
+  /// de cada relay leva ~5-20s, e circuitos variam ao longo do dia). Sem isso,
+  /// as leituras estouravam o timeout de 8s e a lista de "ordens disponíveis"
+  /// vinha VAZIA com Tor ligado.
+  static Duration get readTimeout => TorService.instance.isActive
+      ? const Duration(seconds: 45)
+      : const Duration(seconds: 8);
+
   // ---------------------------------------------------------------------------
   // WebSocket
   // ---------------------------------------------------------------------------
@@ -57,9 +65,15 @@ class TorHttp {
       return timeout != null ? future.timeout(timeout) : future;
     }
     try {
+      // v663i: timeout OBRIGATÓRIO no caminho Tor. Sem ele, um relay lento via
+      // Tor pendurava o connect pra sempre e travava o Future.wait de publish
+      // (a ordem 02ebc36d ficou eventId=NULL — criada mas nunca publicada,
+      // porque o republish estourava o timeout de 30s no aguardo do connect).
+      // 20s: circuitos do Tor variam bastante ao longo do dia.
+      final effectiveTimeout = timeout ?? const Duration(seconds: 20);
       final client = _createProxiedHttpClient();
-      final future = WebSocket.connect(url, customClient: client);
-      final ws = timeout != null ? await future.timeout(timeout) : await future;
+      final ws = await WebSocket.connect(url, customClient: client)
+          .timeout(effectiveTimeout);
       return ws;
     } catch (e) {
       broLog('🧅 TorHttp: WS via Tor FALHOU para $url ($e) — usando conexão direta');

@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:bro_app/services/tor_http.dart';
 import '../config.dart';
 import '../models/order.dart';
 import 'billcode_crypto_service.dart';
@@ -863,9 +864,8 @@ class NostrOrderService {
 
     try {
       
-      // Criar conexão WebSocket
-      final uri = Uri.parse(relayUrl);
-      channel = WebSocketChannel.connect(uri);
+      // Criar conexão WebSocket (via Tor quando ativo — v663)
+      channel = await TorHttp.connectWs(relayUrl);
       
       // Aguardar conexão estar pronta
       // NOTA: Em iOS, channel.ready pode não funcionar bem, então usamos try/catch
@@ -982,8 +982,8 @@ class NostrOrderService {
       final completer = Completer<List<Map<String, dynamic>>>();
 
       try {
-        // Conectar ao relay
-        channel = WebSocketChannel.connect(Uri.parse(relayUrl));
+        // Conectar ao relay (via Tor quando ativo — v663)
+        channel = await TorHttp.connectWs(relayUrl);
         final ch = channel!; // Capturar referência não-nula
 
         // Timeout de 8 segundos
@@ -3895,7 +3895,7 @@ class NostrOrderService {
     final results = await Future.wait(
       _relays.map((relay) async {
         try {
-          final channel = WebSocketChannel.connect(Uri.parse(relay));
+          final channel = await TorHttp.connectWs(relay);
           final subId = 'allres_${DateTime.now().millisecondsSinceEpoch % 100000}';
           final subId2 = 'allresA_${DateTime.now().millisecondsSinceEpoch % 100000}';
           final events = <Map<String, dynamic>>[];
@@ -4417,7 +4417,7 @@ class NostrOrderService {
       
       for (final relay in _relays.take(3)) {
         try {
-          final channel = WebSocketChannel.connect(Uri.parse(relay));
+          final channel = await TorHttp.connectWs(relay);
           final subId = 'res_${orderId.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
           
           channel.sink.add(jsonEncode(['REQ', subId, filter]));
@@ -4499,7 +4499,7 @@ class NostrOrderService {
       
       for (final relay in allRelays) {
         try {
-          final channel = WebSocketChannel.connect(Uri.parse(relay));
+          final channel = await TorHttp.connectWs(relay);
           final subId = 'medord_${orderId.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
           
           channel.sink.add(jsonEncode(['REQ', subId, filter]));
@@ -4558,7 +4558,7 @@ class NostrOrderService {
       
       for (final relay in _relays.take(3)) {
         try {
-          final channel = WebSocketChannel.connect(Uri.parse(relay));
+          final channel = await TorHttp.connectWs(relay);
           final subId = 'med_${pubkey.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
           
           channel.sink.add(jsonEncode(['REQ', subId, filter]));
@@ -4757,7 +4757,7 @@ class NostrOrderService {
       final allRelays = <String>[..._relays, ..._fallbackRelays];
       for (final relay in allRelays) {
         try {
-          final channel = WebSocketChannel.connect(Uri.parse(relay));
+          final channel = await TorHttp.connectWs(relay);
           final subId = 'evid_${orderId.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
           
           channel.sink.add(jsonEncode(['REQ', subId, {
@@ -4943,7 +4943,7 @@ class NostrOrderService {
 
       for (final relay in _relays.take(3)) {
         try {
-          final channel = WebSocketChannel.connect(Uri.parse(relay));
+          final channel = await TorHttp.connectWs(relay);
           final subId = 'dchat_${orderId.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
           channel.sink.add(jsonEncode(['REQ', subId, {
             'kinds': [1],
@@ -5042,7 +5042,7 @@ class NostrOrderService {
       final allRelays = <String>[..._relays, ..._fallbackRelays];
       for (final relay in allRelays) {
         try {
-          final channel = WebSocketChannel.connect(Uri.parse(relay));
+          final channel = await TorHttp.connectWs(relay);
           final subId = 'proof_${orderId.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
           
           // Buscar kind 30081 (complete) e kind 30080 (payment proof)

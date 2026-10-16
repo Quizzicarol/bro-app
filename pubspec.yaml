@@ -40,6 +40,16 @@ dependencies:
   dio: ^5.4.0
   web_socket_channel: ^2.4.0
 
+  # Tor (privacidade) — proxy SOCKS5 embarcado via arti.
+  # tor 0.1.1 foi REMOVIDO do pub.dev (só existe 0.0.9). Usamos nosso fork
+  # Quizzicarol/bro-tor com patches: rustls+tokio (sem OpenSSL/Perl),
+  # libsqlite3-sys bundled, TokioRustlsRuntime, cargokit build-from-source.
+  tor:
+    git:
+      url: https://github.com/Quizzicarol/bro-tor.git
+      ref: fa73e6c
+  socks5_proxy: ^2.1.1
+
   # Image
   image_picker: ^1.0.7
   image: ^4.6.0

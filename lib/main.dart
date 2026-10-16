@@ -1,4 +1,5 @@
-﻿import 'dart:convert';
+﻿import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -34,6 +35,7 @@ import 'screens/relay_management_screen.dart';
 import 'screens/nostr_profile_screen.dart';
 import 'screens/nip06_backup_screen.dart';
 import 'screens/privacy_settings_screen.dart';
+import 'services/tor_service.dart';
 import 'screens/wallet_screen.dart';
 import 'screens/marketplace_screen.dart';
 import 'screens/brix_screen.dart';
@@ -290,6 +292,10 @@ void main() async {
 
   // Inicializar ProviderPaymentGuard (anti gasto-duplo do pagamento ao provedor)
   await ProviderPaymentGuard.initialize();
+
+  // Tor (v663): lê o toggle salvo e liga em background se ativo — NÃO bloqueia
+  // o boot (bootstrap leva segundos; novas conexões usam Tor quando ficar pronto)
+  unawaited(TorService.instance.init());
 
   // Inicializar ApiService (Dio + NIP-98 interceptor)
   await ApiService().init();

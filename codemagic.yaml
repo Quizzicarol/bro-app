@@ -46,9 +46,19 @@ workflows:
       - name: Decode google-services.json
         script: echo "$GOOGLE_SERVICES_JSON" | base64 --decode > "$CM_BUILD_DIR/android/app/google-services.json"
 
+      - name: Setup Rust + cargo-ndk (Tor/arti compila do source)
+        script: |
+          set -e
+          export PATH="$HOME/.cargo/bin:$PATH"
+          cargo install cargo-ndk --locked
+          rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+          # Targets iOS (o workflow "Android + iOS" também builda iOS)
+          rustup target add aarch64-apple-ios aarch64-apple-ios-sim || true
+          echo "rust targets ok"
+
       - name: Get Flutter packages
         script: flutter pub get
-        
+
       - name: Neutralize breez spark passkey (unused; breaks CocoaPods)
         script: |
           set -e
@@ -223,6 +233,14 @@ workflows:
       - name: Decode GoogleService-Info.plist
         script: echo "$GOOGLE_SERVICE_INFO_PLIST" | base64 --decode > "$CM_BUILD_DIR/ios/Runner/GoogleService-Info.plist"
 
+      - name: Setup Rust + cargo-ndk (Tor/arti compila do source)
+        script: |
+          set -e
+          export PATH="$HOME/.cargo/bin:$PATH"
+          cargo install cargo-ndk --locked
+          rustup target add aarch64-apple-ios aarch64-apple-ios-sim
+          echo "rust targets iOS ok"
+
       - name: Get Flutter packages
         script: flutter pub get
 
@@ -312,6 +330,14 @@ workflows:
 
       - name: Decode google-services.json
         script: echo "$GOOGLE_SERVICES_JSON" | base64 --decode > "$CM_BUILD_DIR/android/app/google-services.json"
+
+      - name: Setup Rust + cargo-ndk (Tor/arti compila do source)
+        script: |
+          set -e
+          export PATH="$HOME/.cargo/bin:$PATH"
+          cargo install cargo-ndk --locked
+          rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+          echo "rust targets android ok"
 
       - name: Get Flutter packages
         script: flutter pub get
@@ -418,9 +444,17 @@ workflows:
       - name: Decode google-services.json
         script: echo "$GOOGLE_SERVICES_JSON" | base64 --decode > "$CM_BUILD_DIR/android/app/google-services.json"
 
+      - name: Setup Rust + cargo-ndk (Tor/arti compila do source)
+        script: |
+          set -e
+          export PATH="$HOME/.cargo/bin:$PATH"
+          cargo install cargo-ndk --locked
+          rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+          echo "rust targets android ok"
+
       - name: Get Flutter packages
         script: flutter pub get
-        
+
       - name: Build APK Release (para distribuir)
         script: flutter build apk --release --dart-define-from-file=env.json
         

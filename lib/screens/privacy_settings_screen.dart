@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../services/storage_service.dart';
+import '../services/tor_service.dart';
 
 class PrivacySettingsScreen extends StatefulWidget {
   const PrivacySettingsScreen({Key? key}) : super(key: key);
@@ -39,6 +41,8 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
     switch (key) {
       case 'tor_enabled':
         await storage.saveTorEnabled(value);
+        // v663: liga/desliga o Tor DE VERDADE (antes o toggle era só visual).
+        unawaited(TorService.instance.setEnabled(value));
         break;
       case 'nip44_enabled':
         await storage.saveNip44Enabled(value);
@@ -287,14 +291,30 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      _torEnabled 
-                          ? AppLocalizations.of(context).t('privacy_ip_hidden')
-                          : AppLocalizations.of(context).t('privacy_hides_real_ip'),
-                      style: TextStyle(
-                        color: _torEnabled ? Colors.green : const Color(0x99FFFFFF),
-                        fontSize: 13,
-                      ),
+                    AnimatedBuilder(
+                      animation: TorService.instance,
+                      builder: (context, _) {
+                        final tor = TorService.instance;
+                        String text;
+                        Color color;
+                        if (!_torEnabled) {
+                          text = AppLocalizations.of(context).t('privacy_hides_real_ip');
+                          color = const Color(0x99FFFFFF);
+                        } else if (tor.status == TorConnectionStatus.active) {
+                          text = AppLocalizations.of(context).t('privacy_ip_hidden');
+                          color = Colors.green;
+                        } else if (tor.status == TorConnectionStatus.connecting) {
+                          text = AppLocalizations.of(context).t('privacy_tor_connecting');
+                          color = Colors.orange;
+                        } else if (tor.status == TorConnectionStatus.error) {
+                          text = AppLocalizations.of(context).t('privacy_tor_unavailable');
+                          color = Colors.redAccent;
+                        } else {
+                          text = AppLocalizations.of(context).t('privacy_hides_real_ip');
+                          color = const Color(0x99FFFFFF);
+                        }
+                        return Text(text, style: TextStyle(color: color, fontSize: 13));
+                      },
                     ),
                   ],
                 ),

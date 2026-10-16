@@ -2,6 +2,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:bro_app/services/tor_http.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:nostr/nostr.dart';
 import 'nip04_service.dart';
@@ -140,7 +141,7 @@ class ChatService {
     
     try {
       broLog('💬 Chat: Conectando ao relay $url');
-      final channel = WebSocketChannel.connect(Uri.parse(url));
+      final channel = await TorHttp.connectWs(url);
       
       _connections[url] = channel;
       

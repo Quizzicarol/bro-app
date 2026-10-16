@@ -2,6 +2,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:http/http.dart' as http;
+import 'package:bro_app/services/tor_http.dart';
 
 /// Serviço para resolver Lightning Addresses e LNURL (LNURL-pay)
 /// Lightning Address: user@domain.com
@@ -106,7 +107,7 @@ class LnAddressService {
       broLog('🔍 Resolvendo LNURL...');
       broLog('🌐 URL: $url');
 
-      final response = await http.get(
+      final response = await TorHttp.get(
         Uri.parse(url),
         headers: {
           'Accept': 'application/json',
@@ -196,7 +197,7 @@ class LnAddressService {
       broLog('🔍 Resolvendo LN Address: $lnAddress');
       broLog('🌐 URL: $url');
 
-      final response = await http.get(
+      final response = await TorHttp.get(
         Uri.parse(url),
         headers: {
           'Accept': 'application/json',
@@ -340,7 +341,7 @@ class LnAddressService {
       broLog('🌐 URL: $invoiceUrl');
       final timeoutDuration = isBrix ? const Duration(seconds: 70) : const Duration(seconds: 15);
 
-      final response = await http.get(
+      final response = await TorHttp.get(
         Uri.parse(invoiceUrl),
         headers: {
           'Accept': 'application/json',

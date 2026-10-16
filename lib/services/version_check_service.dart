@@ -2,6 +2,7 @@
 import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:bro_app/services/tor_http.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -64,7 +65,7 @@ class VersionCheckService {
       
       broLog('🔄 Verificando atualização... versão atual: $currentVersion+$currentBuild');
       
-      final response = await http.get(
+      final response = await TorHttp.get(
         Uri.parse(_githubApiUrl),
         headers: {'Accept': 'application/vnd.github.v3+json'},
       ).timeout(const Duration(seconds: 10));

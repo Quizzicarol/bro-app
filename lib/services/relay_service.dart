@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:bro_app/services/tor_http.dart';
 import 'storage_service.dart';
 
 /// Gerenciador de Relays Nostr
@@ -58,7 +59,7 @@ class RelayService extends ChangeNotifier {
 
     try {
       broLog('🔌 Conectando ao relay: $url');
-      final channel = WebSocketChannel.connect(Uri.parse(url));
+      final channel = await TorHttp.connectWs(url);
       
       _connections[url] = channel;
       _relayStatus[url] = true;

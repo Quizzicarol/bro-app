@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:dio/dio.dart';
+import 'package:bro_app/services/tor_http.dart';
 import 'package:nostr/nostr.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:bro_app/services/storage_service.dart';
@@ -20,7 +21,7 @@ class BrixService {
     connectTimeout: const Duration(seconds: 15),
     receiveTimeout: const Duration(seconds: 15),
     headers: {'Content-Type': 'application/json'},
-  ));
+  )).withTor();
 
   String get serverUrl => _brixServerUrl;
 

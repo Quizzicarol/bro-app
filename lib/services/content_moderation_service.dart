@@ -1,6 +1,7 @@
 ﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:bro_app/services/tor_http.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nsfw_detector_flutter/nsfw_detector_flutter.dart';
@@ -275,9 +276,8 @@ class ContentModerationService {
     
     for (final relayUrl in relays) {
       try {
-        final ws = await WebSocket.connect(relayUrl).timeout(
-          const Duration(seconds: 8),
-        );
+        final ws = await TorHttp.connectRawWebSocket(relayUrl,
+            timeout: const Duration(seconds: 8));
         
         // Query for kind 1984 events with 'e' tags matching our event IDs
         // NIP-56: kind 1984, tags: ['e', eventId, reportType]
@@ -337,9 +337,8 @@ class ContentModerationService {
   Future<bool> _publishReport(String relayUrl, Event event) async {
     try {
       // CORREÇÃO v1.0.129+225: Publicar de fato no relay (antes era stub)
-      final ws = await WebSocket.connect(relayUrl).timeout(
-        const Duration(seconds: 8),
-      );
+      final ws = await TorHttp.connectRawWebSocket(relayUrl,
+          timeout: const Duration(seconds: 8));
       
       final eventJson = event.serialize();
       ws.add(eventJson);

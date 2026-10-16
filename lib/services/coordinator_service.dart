@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:nostr/nostr.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:bro_app/services/tor_http.dart';
 import 'package:bro_app/services/log_utils.dart';
 
 /// Representa um "cartão de visita" (anúncio kind 30082) de um coordinator.
@@ -169,7 +170,7 @@ class CoordinatorService {
 
     for (final relay in _relays) {
       try {
-        final channel = WebSocketChannel.connect(Uri.parse(relay));
+        final channel = await TorHttp.connectWs(relay);
         final subId = 'coord_${DateTime.now().millisecondsSinceEpoch % 100000}';
         channel.sink.add(jsonEncode(['REQ', subId, filter]));
 
@@ -236,7 +237,7 @@ class CoordinatorService {
 
     for (final relay in _relays) {
       try {
-        final channel = WebSocketChannel.connect(Uri.parse(relay));
+        final channel = await TorHttp.connectWs(relay);
         final subId = 'rep_${DateTime.now().millisecondsSinceEpoch % 100000}';
         channel.sink.add(jsonEncode(['REQ', subId, filter]));
 

@@ -1,6 +1,7 @@
 ﻿import 'package:flutter/foundation.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:dio/dio.dart';
+import 'package:bro_app/services/tor_http.dart';
 import 'api_service.dart';
 import 'nostr_order_service.dart';
 import '../config.dart';
@@ -107,7 +108,7 @@ class ProviderService {
         baseUrl: _apiService.baseUrl,
         connectTimeout: const Duration(seconds: 30),
         receiveTimeout: const Duration(seconds: 30),
-      ));
+      )).withTor();
 
       final formData = FormData.fromMap({
         'proof': MultipartFile.fromBytes(

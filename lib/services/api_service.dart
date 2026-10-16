@@ -7,6 +7,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:bro_app/services/push_diag.dart';
 import 'package:dio/dio.dart';
+import 'package:bro_app/services/tor_http.dart';
 import 'storage_service.dart';
 import 'nostr_service.dart';
 import 'pix_decoder_service.dart';
@@ -28,7 +29,7 @@ class ApiService {
     headers: {
       'Content-Type': 'application/json',
     },
-  ));
+  )).withTor();
   String _baseUrl = AppConfig.defaultBackendUrl;
   final _nostrService = NostrService();
   final _storage = StorageService();
@@ -68,7 +69,7 @@ class ApiService {
       headers: {
         'Content-Type': 'application/json',
       },
-    ));
+    )).withTor();
 
     // Interceptor para adicionar autenticaÃ§Ã£o Nostr (JWT)
     _dio.interceptors.add(InterceptorsWrapper(
@@ -700,7 +701,7 @@ class ApiService {
       headers: {
         'Content-Type': 'application/json',
       },
-    ));
+    )).withTor();
     _baseUrl = AppConfig.defaultBackendUrl;
   }
 

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:bro_app/services/tor_http.dart';
 
 /// Modelo de perfil Nostr
 class NostrProfile {
@@ -104,7 +105,7 @@ class NostrProfileService {
     WebSocketChannel? channel;
     
     try {
-      channel = WebSocketChannel.connect(Uri.parse(relayUrl));
+      channel = await TorHttp.connectWs(relayUrl);
 
       // Aguardar conexao estabelecer (captura SocketException/No route to host
       // que de outra forma escaparia como Unhandled Exception assincrona).

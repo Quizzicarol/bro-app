@@ -1,4 +1,5 @@
 ﻿import 'package:bro_app/services/log_utils.dart';
+import 'package:bro_app/services/tor_http.dart';
 import 'package:dio/dio.dart';
 
 /// Servico para buscar preco real do Bitcoin de APIs publicas.
@@ -10,7 +11,7 @@ class BitcoinPriceService {
   static final Dio _dio = Dio(BaseOptions(
     connectTimeout: const Duration(seconds: 10),
     receiveTimeout: const Duration(seconds: 10),
-  ));
+  )).withTor();
 
   /// Moedas que o app conhece (apenas para query no CoinGecko).
   static const Set<String> kSupportedFiats = {

@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:nostr/nostr.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:bro_app/services/tor_http.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:bro_app/services/order_reminder_service.dart';
 import 'package:bro_app/services/orders_storage.dart';
@@ -230,7 +231,7 @@ Future<List<Map<String, dynamic>>> _fetchFromRelay(
   WebSocketChannel? channel;
   
   try {
-    channel = WebSocketChannel.connect(Uri.parse(relayUrl));
+    channel = await TorHttp.connectWs(relayUrl);
     
     // Aguardar conexao
     try {
@@ -587,7 +588,7 @@ Future<void> _refreshFcmToken() async {
     final authHeader = 'Nostr ${base64Encode(utf8.encode(jsonEncode(eventMap)))}';
 
     // 4. Registrar token no BRIX server com NIP-98 auth
-    final response = await http.post(
+    final response = await TorHttp.post(
       Uri.parse(url),
       headers: {
         'Content-Type': 'application/json',
@@ -608,7 +609,7 @@ Future<void> _refreshFcmToken() async {
       // Retry once after 3s
       await Future.delayed(const Duration(seconds: 3));
       try {
-        final retryResp = await http.post(
+        final retryResp = await TorHttp.post(
           Uri.parse(url),
           headers: {
             'Content-Type': 'application/json',
@@ -652,7 +653,7 @@ Future<void> _refreshFcmToken() async {
       };
       final backendAuth = 'Nostr ${base64Encode(utf8.encode(jsonEncode(backendEventMap)))}';
 
-      final backendResp = await http.post(
+      final backendResp = await TorHttp.post(
         Uri.parse(backendUrl),
         headers: {
           'Content-Type': 'application/json',
@@ -668,7 +669,7 @@ Future<void> _refreshFcmToken() async {
         // Retry once after 3s
         await Future.delayed(const Duration(seconds: 3));
         try {
-          final retryResp = await http.post(
+          final retryResp = await TorHttp.post(
             Uri.parse(backendUrl),
             headers: {
               'Content-Type': 'application/json',
@@ -958,7 +959,7 @@ Future<String?> _fetchTerminalStatusFromNostr(String orderId) async {
   const terminalStatuses = {'liquidated', 'completed', 'cancelled', 'disputed'};
   for (final relay in _relays.take(3)) {
     try {
-      final channel = WebSocketChannel.connect(Uri.parse(relay));
+      final channel = await TorHttp.connectWs(relay);
       try {
         await channel.ready.timeout(const Duration(seconds: 3));
       } catch (_) {
@@ -1062,7 +1063,7 @@ Future<bool> _publishAutoLiquidation({
     // Publicar em pelo menos 1 relay
     for (final relay in _relays.take(3)) {
       try {
-        final channel = WebSocketChannel.connect(Uri.parse(relay));
+        final channel = await TorHttp.connectWs(relay);
         try {
           await channel.ready.timeout(const Duration(seconds: 5));
         } catch (_) {

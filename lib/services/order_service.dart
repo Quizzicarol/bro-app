@@ -1,5 +1,6 @@
 ﻿import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:bro_app/services/tor_http.dart';
 import 'package:flutter/foundation.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:bro_app/services/orders_storage.dart';
@@ -22,7 +23,7 @@ class OrderService {
     try {
       broLog('📝 Criando ordem: R\$ $amountBrl');
       
-      final response = await http.post(
+      final response = await TorHttp.post(
         Uri.parse('$baseUrl/orders/create'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
@@ -98,7 +99,7 @@ class OrderService {
       // Se não encontrou no cache e estamos em testMode com backend, tentar API
       if (AppConfig.testMode) {
         try {
-          final response = await http.get(
+          final response = await TorHttp.get(
             Uri.parse('$baseUrl/orders/$orderId'),
             headers: {'Content-Type': 'application/json'},
           ).timeout(const Duration(seconds: 3));
@@ -122,7 +123,7 @@ class OrderService {
   /// Listar ordens do usuário
   Future<List<Map<String, dynamic>>> getUserOrders(String userId) async {
     try {
-      final response = await http.get(
+      final response = await TorHttp.get(
         Uri.parse('$baseUrl/orders/user/$userId'),
         headers: {'Content-Type': 'application/json'},
       );
@@ -148,7 +149,7 @@ class OrderService {
     try {
       broLog('🚫 Cancelando ordem: $orderId');
       
-      final response = await http.post(
+      final response = await TorHttp.post(
         Uri.parse('$baseUrl/orders/$orderId/cancel'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({

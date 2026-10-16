@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:bro_app/services/tor_http.dart';
 import 'package:nostr/nostr.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -91,12 +92,12 @@ class OrderRealtimeService {
     broLog('[RT] OrderRealtimeService stopped');
   }
 
-  void _connectAndSubscribe(String url) {
+  Future<void> _connectAndSubscribe(String url) async {
     if (_connections.containsKey(url)) return;
     if (_pubkey == null) return;
 
     try {
-      final channel = WebSocketChannel.connect(Uri.parse(url));
+      final channel = await TorHttp.connectWs(url);
       _connections[url] = channel;
 
       channel.stream.listen(

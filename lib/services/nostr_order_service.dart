@@ -934,7 +934,16 @@ class NostrOrderService {
     } finally {
       timeout?.cancel();
       try {
-        await channel?.sink.close();
+        // v667: sink.close() SEM timeout travava PRA SEMPRE quando o relay
+        // estava morto (ex.: nos.lol com TCP timeout) — o handshake de
+        // fechamento nunca completava, o Future.wait dos publishers nunca
+        // resolvia e a UI ficava no spinner de "enviando" infinito mesmo
+        // com a mensagem já publicada nos relays bons (caso real: msg de
+        // mediação da disputa 2706f28d "travada" em 18/10).
+        await channel?.sink.close().timeout(
+          const Duration(seconds: 3),
+          onTimeout: () {},
+        );
       } catch (_) {}
     }
   }

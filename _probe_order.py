@@ -3,8 +3,8 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 import websocket
 
 RELAYS = ["wss://apexcord.duckdns.org", "wss://relay.primal.net"]
-PREFIX = "c95923aa"
-SINCE = int(datetime.datetime(2026,10,16,0,0,0).timestamp())
+PREFIX = "2706f28d"
+SINCE = int(datetime.datetime(2026,10,17,0,0,0).timestamp())
 
 def query(relay, filters, timeout=12):
     out = []
@@ -22,16 +22,22 @@ def query(relay, filters, timeout=12):
         print(f"  [{relay}] ERRO: {e}")
     return out
 
-seen = set()
 for relay in RELAYS:
-    evs = query(relay, [{"kinds":[30078,30079,30080],"#t":["bro-order"],"since":SINCE}])
+    evs = query(relay, [{"kinds":[1],"#t":["bro-mediacao","bro-disputa-chat"],"since":SINCE}])
+    hits = []
     for e in evs:
-        d = next((t[1] for t in e.get("tags",[]) if t[0]=="d" and len(t)>1), "")
-        if d.startswith(PREFIX) and e["id"] not in seen:
-            seen.add(e["id"])
-            ts = datetime.datetime.fromtimestamp(e["created_at"], datetime.timezone(datetime.timedelta(hours=-3))).strftime("%d/%m %H:%M:%S")
-            print(f"--- kind={e['kind']} {ts} pk={e['pubkey'][:8]} ---")
-            try:
-                print(json.dumps(json.loads(e["content"]), ensure_ascii=False, indent=1)[:800])
-            except Exception:
-                print(e["content"][:300])
+        r = next((t[1] for t in e.get("tags",[]) if t[0]=="r" and len(t)>1), "")
+        if r.startswith(PREFIX):
+            hits.append(e)
+    print(f"=== {relay}: {len(hits)} msgs de mediacao/chat da disputa {PREFIX} ===")
+    hits.sort(key=lambda e: e["created_at"])
+    for e in hits:
+        ts = datetime.datetime.fromtimestamp(e["created_at"], datetime.timezone(datetime.timedelta(hours=-3))).strftime("%d/%m %H:%M:%S")
+        try:
+            c = json.loads(e["content"])
+            tipo = c.get("type","?")
+            role = c.get("senderRole", c.get("target",""))
+            txt = (c.get("message") or "")[:60]
+        except Exception:
+            tipo, role, txt = "?", "?", ""
+        print(f"  {ts} pk={e['pubkey'][:8]} type={tipo} role/target={role} msg={txt!r}")

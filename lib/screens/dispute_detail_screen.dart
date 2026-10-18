@@ -115,7 +115,10 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
   String get reason => widget.dispute['reason'] as String? ?? 'Não informado';
   String get description => widget.dispute['description'] as String? ?? '';
   String get openedBy => widget.dispute['openedBy'] as String? ?? 'user';
-  String get userPubkey => widget.dispute['userPubkey'] as String? ?? '';
+  // v670b: override quando a disputa veio com userPubkey corrompido (versões
+  // antigas gravavam a pubkey do PROVEDOR nesse campo — disputa 2706f28d).
+  String? _resolvedUserPubkey;
+  String get userPubkey => _resolvedUserPubkey ?? (widget.dispute['userPubkey'] as String? ?? '');
   String get providerId => _resolvedProviderId ?? (widget.dispute['provider_id'] as String? ?? '');
   // v648: o provedor que recebe os fundos é SEMPRE o canônico (quando há duplo
   // aceite), senão o providerId normal. O escrow tem 2 partes; o canônico é a
@@ -151,6 +154,27 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
     // v669: semeia o registro de provedores com o que já sabemos da disputa
     _registerProvider(widget.dispute['provider_id'] as String?);
     if (openedBy == 'provider') _registerProvider(_openerPubkey);
+    // v670b: userPubkey corrompido? (versões antigas gravavam a pubkey do
+    // PROVEDOR no campo quando ele abria a disputa). Se vazio, igual a um
+    // provedor conhecido ou igual a quem abriu (sendo provedor), buscar o
+    // usuário REAL no evento da ordem (userPubkey lá é verificado por
+    // assinatura — v565).
+    final upk = userPubkey;
+    final suspeito = upk.isEmpty ||
+        upk == providerId ||
+        _knownProviders.contains(upk) ||
+        (upk == _openerPubkey && openedBy == 'provider');
+    if (suspeito) {
+      try {
+        final ord = await NostrOrderService().fetchOrderFromNostr(orderId)
+            .timeout(const Duration(seconds: 10), onTimeout: () => null);
+        final realUser = ord?['userPubkey'] as String? ?? '';
+        if (realUser.isNotEmpty && realUser != upk && mounted) {
+          setState(() => _resolvedUserPubkey = realUser);
+          broLog('🔧 [Disputa] userPubkey corrigido p/ ${realUser.substring(0, 8)} (era ${upk.isEmpty ? "vazio" : upk.substring(0, 8)})');
+        }
+      } catch (_) {}
+    }
     // Se não temos o providerId, tentar descobrir pelo accept event
     final initialProviderId = widget.dispute['provider_id'] as String? ?? '';
     if (initialProviderId.isEmpty) {

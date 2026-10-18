@@ -3761,7 +3761,13 @@ class NostrOrderService {
         'reason': reason,
         'description': description,
         'openedBy': openedBy,
-        'userPubkey': keychain.public,
+        // v670b: NÃO gravar a pubkey do publicante como userPubkey — quando o
+        // PROVEDOR abria a disputa, o campo ficava corrompido com a pubkey
+        // DELE (a tela de admin mostrava "Aberta por: Usuário" e o registro
+        // de provedores o rejeitava — disputa 2706f28d). Preferir o usuário
+        // real da ordem; se desconhecido e quem abre é o provedor, omitir.
+        'userPubkey': orderDetails?['userPubkey'] ?? (openedBy == 'provider' ? null : keychain.public),
+        'publisherPubkey': keychain.public,
         'amount_brl': orderDetails?['amount_brl'],
         'amount_sats': orderDetails?['amount_sats'],
         'payment_type': orderDetails?['payment_type'],

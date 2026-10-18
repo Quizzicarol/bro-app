@@ -140,12 +140,23 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
             if (eventKind == 1 && content['type'] == 'bro_dispute') {
               // Kind 1: notificação explícita de disputa (tem dados completos)
               orderId = content['orderId'] as String? ?? '';
+              // v670b: quando o PROVEDOR abre a disputa, versões antigas do app
+              // gravavam a pubkey DELE em userPubkey. Detectar e anular — a
+              // tela de detalhe busca o usuário real no evento da ordem.
+              var kind1UserPubkey = content['userPubkey'] ?? event['pubkey'] ?? '';
+              final kind1OpenedBy = content['openedBy'] ?? 'user';
+              if (kind1OpenedBy == 'provider' && kind1UserPubkey == event['pubkey']) {
+                kind1UserPubkey = '';
+              }
+              if (kind1UserPubkey.isNotEmpty && kind1UserPubkey == (content['provider_id'] ?? '')) {
+                kind1UserPubkey = '';
+              }
               disputeData = {
                 'orderId': orderId,
                 'reason': content['reason'] ?? 'Não informado',
                 'description': content['description'] ?? '',
-                'openedBy': content['openedBy'] ?? 'user',
-                'userPubkey': content['userPubkey'] ?? event['pubkey'] ?? '',
+                'openedBy': kind1OpenedBy,
+                'userPubkey': kind1UserPubkey,
                 'openerPubkey': event['pubkey'] ?? '', // v669: quem ABRIU (assinante)
                 'amount_brl': content['amount_brl'],
                 'amount_sats': content['amount_sats'],
@@ -162,6 +173,12 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
             } else if (content['status'] == 'disputed') {
               // Kind 30080: status update de disputa (pode não ter razão/descrição)
               orderId = content['orderId'] as String? ?? '';
+              // v670b: mesmo guarda do kind 1 — userPubkey nunca pode ser o provedor
+              var k3UserPubkey = content['userPubkey'] ?? '';
+              if (k3UserPubkey.isNotEmpty &&
+                  k3UserPubkey == (content['providerId'] ?? content['provider_id'] ?? '')) {
+                k3UserPubkey = '';
+              }
               disputeData = {
                 'orderId': orderId,
                 'reason': content['reason'] ?? 'Disputa via status update',
@@ -171,7 +188,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
                 // é o providerId, foi o PROVEDOR quem abriu. Caso real: disputa
                 // 2706f28d (aberta pelo provedor) aparecia "Aberta por: Usuário".
                 'openedBy': content['openedBy'] ?? (((content['publishedBy'] ?? event['pubkey']) == (content['providerId'] ?? content['provider_id'])) ? 'provider' : 'user'),
-                'userPubkey': content['userPubkey'] ?? event['pubkey'] ?? '',
+                'userPubkey': k3UserPubkey,
                 // v669: publishedBy = quem republicou/abriu; fallback = assinante
                 'openerPubkey': content['publishedBy'] ?? event['pubkey'] ?? '',
                 'amount_brl': content['amount_brl'],

@@ -68,13 +68,16 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
     }
   }
 
-  String _providerLabelFor(String pk) {
+  String _providerLabelFor(String pk, {bool verbose = false}) {
     final i = _knownProviders.indexOf(pk);
     if (i < 0) return 'Provedor';
     if (_knownProviders.length == 1) return 'Provedor';
     final letter = String.fromCharCode(65 + i);
     final isCanon = _canonicalProviderId != null && pk == _canonicalProviderId;
-    return 'Provedor $letter${isCanon ? ' (canônico)' : ''}';
+    // v672: verbose deixa explícito quem PERDEU a corrida (pedido da mediação:
+    // "tem que dizer se foi o canônico ou o perdedor").
+    if (isCanon) return 'Provedor $letter (canônico)';
+    return verbose ? 'Provedor $letter (perdeu a corrida)' : 'Provedor $letter';
   }
 
   Map<String, String> _buildSenderLabels() {
@@ -85,7 +88,8 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
   String _authorLabelFor(String? pubkey, {String? roleHint}) {
     if (pubkey != null && pubkey.isNotEmpty) {
       if (pubkey == userPubkey) return '👤 Usuário';
-      if (_knownProviders.contains(pubkey)) return '🏪 ${_providerLabelFor(pubkey)}';
+      // v672: verbose — cabeçalho/motivo dizem se é o canônico ou o perdedor
+      if (_knownProviders.contains(pubkey)) return '🏪 ${_providerLabelFor(pubkey, verbose: true)}';
     }
     if (roleHint == 'user') return '👤 Usuário';
     if (roleHint == 'provider') return '🏪 Provedor';
@@ -339,6 +343,11 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
       setState(() {
         _allAcceptingProviders = accepts;
         _canonicalProviderId = accepts.first; // o mais antigo = canônico
+        // v672: o chat pode ter descoberto o canônico ANTES deste fetch (ele
+        // entra no fim da lista) — forçar o canônico SEMPRE na posição 0,
+        // senão ele aparecia como "Provedor B (canônico)" em vez de A.
+        _knownProviders.remove(_canonicalProviderId);
+        _knownProviders.insert(0, _canonicalProviderId!);
         // v669: registrar todos no mapa de rótulos (canônico vira A)
         for (final pk in accepts) { _registerProvider(pk); }
         // Se o providerId resolvido não é o canônico, corrigir para o canônico

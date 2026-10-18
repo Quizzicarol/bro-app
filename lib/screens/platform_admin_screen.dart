@@ -49,8 +49,10 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
   // v651: cache local das disputas (carrega instantâneo, atualiza do relay em
   // background). Antes o admin buscava TUDO dos relays a cada abertura — lento
   // e "esquecia" o que já foi processado.
-  static const String _disputesCacheKey = 'admin_disputes_cache';
-  static const String _disputesCacheTimeKey = 'admin_disputes_cache_time';
+  // v670: cache versionado — o schema mudou (openerPubkey + openedBy por
+  // assinante). A chave nova ignora o cache salvo por versões antigas.
+  static const String _disputesCacheKey = 'admin_disputes_cache_v2';
+  static const String _disputesCacheTimeKey = 'admin_disputes_cache_v2_time';
 
   // AI Dispute Agent (Phase 4)
   List<Map<String, dynamic>> _agentAnalyses = [];
@@ -164,7 +166,11 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
                 'orderId': orderId,
                 'reason': content['reason'] ?? 'Disputa via status update',
                 'description': content['description'] ?? '',
-                'openedBy': content['openedBy'] ?? (content['userPubkey'] != null ? 'user' : 'provider'),
+                // v670: NÃO chutar 'user' só porque userPubkey existe (sempre
+                // existe!) — derivar de QUEM ASSINOU/publicou: se o publicante
+                // é o providerId, foi o PROVEDOR quem abriu. Caso real: disputa
+                // 2706f28d (aberta pelo provedor) aparecia "Aberta por: Usuário".
+                'openedBy': content['openedBy'] ?? (((content['publishedBy'] ?? event['pubkey']) == (content['providerId'] ?? content['provider_id'])) ? 'provider' : 'user'),
                 'userPubkey': content['userPubkey'] ?? event['pubkey'] ?? '',
                 // v669: publishedBy = quem republicou/abriu; fallback = assinante
                 'openerPubkey': content['publishedBy'] ?? event['pubkey'] ?? '',

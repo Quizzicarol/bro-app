@@ -304,7 +304,14 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
       final nostrService = NostrOrderService();
       final accepts = await nostrService.fetchAllAcceptsForOrder(orderId)
           .timeout(const Duration(seconds: 20), onTimeout: () => <String>[]);
-      if (!mounted || accepts.isEmpty) return;
+      if (!mounted) return;
+      if (accepts.isEmpty) {
+        // v670: log — o aceite do PERDEDOR pode ter sido deletado via NIP-09
+        // (v656), então 1 aceite sobrevivente = canônico. Zero = relay falhou.
+        broLog('⚠️ [Disputa] ${orderId.substring(0, 8)}: fetchAllAccepts vazio/timeout');
+        return;
+      }
+      broLog('📋 [Disputa] ${orderId.substring(0, 8)}: ${accepts.length} aceite(s): ${accepts.map((e) => e.substring(0, 8)).join(", ")}');
       setState(() {
         _allAcceptingProviders = accepts;
         _canonicalProviderId = accepts.first; // o mais antigo = canônico
@@ -1448,6 +1455,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
       onProvidersDiscovered: (pks) {
         final novos = pks.where((pk) => !_knownProviders.contains(pk)).toList();
         if (novos.isEmpty || !mounted) return;
+        broLog('🏷️ [Disputa] provedores via chat: ${novos.map((e) => e.substring(0, 8)).join(", ")}');
         setState(() {
           for (final pk in novos) { _registerProvider(pk); }
         });

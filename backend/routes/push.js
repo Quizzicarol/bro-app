@@ -239,14 +239,21 @@ router.post('/notify', notifyLimiter, async (req, res) => {
   // BRIX invoice requests stay data-only (need silent background processing)
   let notification = null;
   if (type === 'order_update' && !SILENT_SUBTYPES.has(subtype)) {
+    // v666: inclui #ordem + valores (R$/sats) no corpo — usuários não sabiam
+    // a qual ordem a notificação se referia.
+    const parts = [`#${String(order_id).substring(0, 8)}`];
+    const meta = watchtower.getOrderMeta ? watchtower.getOrderMeta(String(order_id)) : null;
+    if (meta && meta.amountBrl != null) parts.push(`R$ ${Number(meta.amountBrl).toFixed(2).replace('.', ',')}`);
+    if (meta && meta.amountSats != null) parts.push(`${Number(meta.amountSats).toLocaleString('pt-BR')} sats`);
+    const suffix = parts.join(' • ');
     const notifMap = {
-      accepted:           { title: '🤝 Ordem aceita!',        body: 'Um Bro aceitou sua ordem' },
-      payment_received:   { title: '📸 Comprovante recebido!', body: 'Verifique o comprovante e confirme' },
-      completed:          { title: '✅ Ordem concluída!',      body: 'Troca finalizada com sucesso' },
-      disputed:           { title: '⚠️ Disputa aberta',       body: 'Uma disputa foi aberta na sua ordem' },
-      cancelled:          { title: '❌ Ordem cancelada',       body: 'Uma ordem foi cancelada' },
+      accepted:           { title: '🤝 Ordem aceita!',        body: `Um Bro aceitou sua ordem — ${suffix}` },
+      payment_received:   { title: '📸 Comprovante recebido!', body: `Verifique o comprovante e confirme — ${suffix}` },
+      completed:          { title: '✅ Ordem concluída!',      body: `Troca finalizada com sucesso — ${suffix}` },
+      disputed:           { title: '⚠️ Disputa aberta',       body: `Uma disputa foi aberta na sua ordem — ${suffix}` },
+      cancelled:          { title: '❌ Ordem cancelada',       body: `Uma ordem foi cancelada — ${suffix}` },
     };
-    notification = notifMap[subtype] || { title: '📋 Atualização de ordem', body: 'Abra o app para ver as novidades' };
+    notification = notifMap[subtype] || { title: '📋 Atualização de ordem', body: `Abra o app para ver as novidades — ${suffix}` };
   }
 
   console.log(`[PUSH] /notify from=${senderPubkey.substring(0, 16)}... to=${target_pubkey.substring(0, 16)}... type=${type} subtype=${subtype || 'none'}`);

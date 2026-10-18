@@ -32,6 +32,16 @@ const BROADCAST_SEEN_FILE = process.env.NODE_ENV === 'production'
   : path.join(__dirname, '..', 'data', 'watchtower_broadcasts.json');
 const BROADCAST_SEEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+// v666: estado persistido do watchtower — dedup de pushes de status
+// (sobrevive a deploys: sem isso, um restart esquecia o que já notificou e
+// uma republicação velha gerava push "eco" horas depois — caso real: disputa
+// da ordem c95923aa notificada 11h após a abertura), metadados da ordem
+// (valores p/ enriquecer notificações) e quem abriu cada disputa.
+const WATCHTOWER_STATE_FILE = process.env.NODE_ENV === 'production'
+  ? '/data/watchtower_state.json'
+  : path.join(__dirname, '..', 'data', 'watchtower_state.json');
+const STATE_SEEN_PUSH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 // v637: store persistido dos lembretes VISÍVEIS de billCode. O fallback v611
 // disparava UM único push a +15min via setTimeout in-memory, perdido em todo
 // deploy — então um comprador offline por horas/dias nunca era relembrado e o
@@ -89,6 +99,10 @@ class NostrWatchtowerService {
     this._subscriptions = new Map(); // relay → subId
     this._seenEvents = new Set(); // dedup by event id
     this._seenPushes = new Set(); // dedup by orderId+status — ONE push per status per order
+    // v666: caches enriquecedores + anti-eco (persistidos em WATCHTOWER_STATE_FILE)
+    this._orderMeta = new Map(); // orderId → { amountBrl, amountSats }
+    this._disputeOpeners = new Map(); // orderId → pubkey de quem ABRIU a disputa
+    this._stateSaveTimer = null;
     this._reconnectTimers = new Map();
     this._eoseReceived = new Set(); // relays that finished historical catch-up
     this._orderUsers = new Map(); // orderId → userPubkey cache (from bro_order events)
@@ -194,6 +208,9 @@ class NostrWatchtowerService {
 
     // v637: carrega lembretes de billCode persistidos (sobrevivem a deploys)
     this._loadBillcodeWakeups();
+
+    // v666: carrega dedup de pushes + metadados de ordem + autores de disputa
+    this._loadWatchtowerState();
 
     for (const relay of RELAYS) {
       this._connectToRelay(relay);
@@ -562,6 +579,8 @@ class NostrWatchtowerService {
               this._orderUsers = new Map(entries.slice(-2000));
             }
           }
+          // v666: guarda valores (R$/sats) p/ enriquecer notificações futuras
+          this._cacheOrderMeta(orderId, content);
           // New order created — notify relevant users
           console.log(`🗼 [Watchtower] New order ${shortId} from ${senderPubkey.substring(0, 8)}`);
           await this._notifyNewOrder(senderPubkey, orderId, content, event);
@@ -626,6 +645,11 @@ class NostrWatchtowerService {
 
           if (!status) break;
 
+          // v666: cache de valores p/ notificações enriquecidas
+          this._cacheOrderMeta(orderId, content);
+          // v666: lembra quem ABRIU a disputa (anti-eco em republicações)
+          if (status === 'disputed') this._recordDisputeOpener(orderId, content, userPubkey, providerId);
+
           // Cache userPubkey if we see it for the first time
           // SECURITY v577: only seed cache from this event if the signer
           // IS that user (legitimate self-published status update).
@@ -673,10 +697,32 @@ class NostrWatchtowerService {
             } else if (senderPubkey === userPubkey && isValidPubkey(providerId)) {
               targetPubkey = providerId;
             }
+            // v666 anti-eco: se sabemos QUEM abriu a disputa, o alvo é sempre
+            // a OUTRA parte — mesmo quando a republicação veio do lado
+            // contrário. Sem isso, quem abriu a disputa recebia horas depois
+            // um push "Disputa aberta" sobre a própria disputa.
+            if (status === 'disputed') {
+              const opener = this._disputeOpeners.get(orderId);
+              if (opener) {
+                if (opener === userPubkey && isValidPubkey(providerId)) targetPubkey = providerId;
+                else if (opener === providerId && isValidPubkey(userPubkey)) targetPubkey = userPubkey;
+                else targetPubkey = null;
+              }
+            }
+          }
+
+          // v666: nunca notificar o AUTOR da disputa sobre a própria disputa
+          if (status === 'disputed' && targetPubkey && targetPubkey === this._disputeOpeners.get(orderId)) {
+            targetPubkey = null;
           }
 
           if (targetPubkey) {
             await this._sendOrderPush(targetPubkey, senderPubkey, status, orderId, shortId, routing);
+          }
+
+          // v666: avisa o ADMIN de toda disputa aberta (push separado e dedupado)
+          if (status === 'disputed') {
+            await this._sendAdminDisputePush(orderId, shortId, content, senderPubkey, targetPubkey);
           }
 
           // v584: limpa tracking de invoice pendente quando ordem termina
@@ -782,6 +828,7 @@ class NostrWatchtowerService {
     const pushKey = `${orderId}:${status}`;
     if (this._seenPushes.has(pushKey)) return false;
     this._seenPushes.add(pushKey);
+    this._scheduleStateSave(); // v666: dedup sobrevive a deploys
 
     // v514: Log AFTER dedup check so logs reflect actual pushes sent
     const sid = shortId || orderId.substring(0, 8);
@@ -793,6 +840,9 @@ class NostrWatchtowerService {
       this._seenPushes = new Set(arr.slice(-2000));
     }
 
+    // v666: corpo enriquecido com #ordem + valores (R$/sats) — usuários não
+    // sabiam a qual ordem a notificação se referia.
+    const suffix = this._orderInfoSuffix(orderId, sid);
     const notif = NOTIFICATION_MAP[status];
     if (!notif) {
       // Unknown status, send generic
@@ -802,7 +852,7 @@ class NostrWatchtowerService {
         subtype: status,
         order_id: orderId,
         source: 'watchtower',
-      }, { title: '📋 Atualização de ordem', body: `Status: ${status}` });
+      }, { title: '📋 Atualização de ordem', body: `Status: ${status} — ${suffix}` });
     }
 
     return this._sendPush(targetPubkey, {
@@ -811,7 +861,7 @@ class NostrWatchtowerService {
       subtype: status,
       order_id: orderId,
       source: 'watchtower',
-    }, notif);
+    }, { title: notif.title, body: `${notif.body} — ${suffix}` });
   }
 
   /**
@@ -1430,6 +1480,179 @@ class NostrWatchtowerService {
       seenEvents: this._seenEvents.size,
       stats: { ...this._stats },
     };
+  }
+
+  // ── v666: estado persistido + notificações enriquecidas ──────────────
+
+  /** v666: sufixo "#id • R$ X • Y sats" p/ corpos de notificação. */
+  _orderInfoSuffix(orderId, shortId) {
+    const parts = [`#${shortId || orderId.substring(0, 8)}`];
+    const meta = this._orderMeta.get(orderId);
+    if (meta && meta.amountBrl != null) {
+      parts.push(`R$ ${Number(meta.amountBrl).toFixed(2).replace('.', ',')}`);
+    }
+    if (meta && meta.amountSats != null) {
+      parts.push(`${Number(meta.amountSats).toLocaleString('pt-BR')} sats`);
+    }
+    return parts.join(' • ');
+  }
+
+  /**
+   * v666: cache de valores da ordem a partir de qualquer evento que os carregue
+   * (bro_order: amount/btcAmount; bro_order_update: amount_brl/amount_sats).
+   * Nunca sobrescreve valor conhecido com ausência de valor.
+   */
+  _cacheOrderMeta(orderId, content) {
+    if (!orderId || !content || typeof content !== 'object') return;
+    const brl = content.amount_brl != null ? Number(content.amount_brl)
+      : content.amount != null ? Number(content.amount) : null;
+    let sats = content.amount_sats != null ? Math.round(Number(content.amount_sats)) : null;
+    if (sats == null && content.btcAmount != null) {
+      const n = Number(content.btcAmount);
+      if (Number.isFinite(n)) sats = Math.round(n * 1e8);
+    }
+    const prev = this._orderMeta.get(orderId) || {};
+    const next = {
+      amountBrl: brl != null && Number.isFinite(brl) ? brl : prev.amountBrl,
+      amountSats: sats != null && Number.isFinite(sats) ? sats : prev.amountSats,
+    };
+    if (next.amountBrl == null && next.amountSats == null) return;
+    if (prev.amountBrl === next.amountBrl && prev.amountSats === next.amountSats) return;
+    this._orderMeta.set(orderId, next);
+    if (this._orderMeta.size > 4000) {
+      const entries = Array.from(this._orderMeta.entries());
+      this._orderMeta = new Map(entries.slice(-2000));
+    }
+    this._scheduleStateSave();
+  }
+
+  /** v666: público — usado pelo /push/notify p/ enriquecer corpos. */
+  getOrderMeta(orderId) {
+    return this._orderMeta.get(orderId) || null;
+  }
+
+  /**
+   * v666: registra quem ABRIU a disputa (campo openedBy do evento original).
+   * Republicações posteriores (sync da outra parte) não carregam openedBy —
+   * sem este cache o autor da disputa recebia um "eco" horas depois.
+   */
+  _recordDisputeOpener(orderId, content, userPubkey, providerId) {
+    if (!orderId || this._disputeOpeners.has(orderId)) return;
+    const openedBy = content && content.openedBy;
+    let opener = null;
+    if (openedBy === 'user' && isHexPubkey(userPubkey)) opener = userPubkey;
+    else if (openedBy === 'provider' && isHexPubkey(providerId)) opener = providerId;
+    else if (openedBy === 'user' || openedBy === 'provider') {
+      const pb = content.publishedBy;
+      if (isHexPubkey(pb)) opener = pb;
+    }
+    if (opener) {
+      this._disputeOpeners.set(orderId, opener);
+      if (this._disputeOpeners.size > 4000) {
+        const entries = Array.from(this._disputeOpeners.entries());
+        this._disputeOpeners = new Map(entries.slice(-2000));
+      }
+      this._scheduleStateSave();
+    }
+  }
+
+  /**
+   * v666: push pro ADMIN em toda disputa aberta. Antes o admin só via disputas
+   * ao abrir a tela de admin — com dinheiro real parado, precisa saber na hora.
+   * Dedup próprio; não dispara se o admin já é autor/alvo do push normal.
+   */
+  async _sendAdminDisputePush(orderId, shortId, content, senderPubkey, partyTarget) {
+    try {
+      const admin = (process.env.ADMIN_PUBKEY || '').toLowerCase();
+      if (!isHexPubkey(admin)) return false;
+      if (admin === senderPubkey || admin === partyTarget) return false;
+      const key = `${orderId}:disputed:admin`;
+      if (this._seenPushes.has(key)) return false;
+      this._seenPushes.add(key);
+      this._scheduleStateSave();
+      const reason = content && content.reason ? String(content.reason) : 'não informado';
+      const openedBy = content && content.openedBy === 'provider' ? 'provedor'
+        : content && content.openedBy === 'user' ? 'usuário' : 'uma das partes';
+      console.log(`🗼 [Watchtower] Disputa ${shortId} → push ADMIN`);
+      return await this._sendPush(admin, {
+        type: 'order_update',
+        sender_pubkey: senderPubkey,
+        subtype: 'disputed',
+        order_id: orderId,
+        source: 'watchtower_admin',
+      }, {
+        title: '⚖️ Nova disputa aberta',
+        body: `${this._orderInfoSuffix(orderId, shortId)} • aberta pelo ${openedBy} • Motivo: ${reason}`,
+      });
+    } catch (e) {
+      console.error(`[Watchtower] admin dispute push falhou: ${e.message}`);
+      return false;
+    }
+  }
+
+  _loadWatchtowerState() {
+    try {
+      if (!fs.existsSync(WATCHTOWER_STATE_FILE)) return;
+      const data = JSON.parse(fs.readFileSync(WATCHTOWER_STATE_FILE, 'utf8'));
+      if (!data || typeof data !== 'object') return;
+      const now = Date.now();
+      let pushes = 0, metas = 0, openers = 0;
+      for (const [key, ts] of Object.entries(data.seenPushes || {})) {
+        if (typeof ts !== 'number' || now - ts > STATE_SEEN_PUSH_TTL_MS) continue;
+        this._seenPushes.add(key);
+        pushes++;
+      }
+      for (const [orderId, meta] of Object.entries(data.orderMeta || {})) {
+        if (!meta || typeof meta !== 'object') continue;
+        this._orderMeta.set(orderId, { amountBrl: meta.amountBrl ?? null, amountSats: meta.amountSats ?? null });
+        metas++;
+      }
+      for (const [orderId, opener] of Object.entries(data.disputeOpeners || {})) {
+        if (!isHexPubkey(opener)) continue;
+        this._disputeOpeners.set(orderId, opener);
+        openers++;
+      }
+      console.log(`🗼 [Watchtower] Estado carregado: ${pushes} dedups, ${metas} metas, ${openers} disputas`);
+    } catch (e) {
+      console.log(`[Watchtower] Could not load state: ${e.message}`);
+    }
+  }
+
+  _scheduleStateSave() {
+    if (this._stateSaveTimer) clearTimeout(this._stateSaveTimer);
+    this._stateSaveTimer = setTimeout(() => {
+      try {
+        const dir = path.dirname(WATCHTOWER_STATE_FILE);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        let merged = {};
+        try {
+          if (fs.existsSync(WATCHTOWER_STATE_FILE)) {
+            merged = JSON.parse(fs.readFileSync(WATCHTOWER_STATE_FILE, 'utf8')) || {};
+          }
+        } catch (_) { /* ignore corrupted file */ }
+        const now = Date.now();
+        const seenPushes = { ...(merged.seenPushes || {}) };
+        for (const key of this._seenPushes) if (!seenPushes[key]) seenPushes[key] = now;
+        const prunedPushes = Object.fromEntries(
+          Object.entries(seenPushes)
+            .filter(([, ts]) => typeof ts === 'number' && now - ts <= STATE_SEEN_PUSH_TTL_MS)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 8000)
+        );
+        const orderMeta = { ...(merged.orderMeta || {}) };
+        for (const [k, v] of this._orderMeta) orderMeta[k] = v;
+        const disputeOpeners = { ...(merged.disputeOpeners || {}) };
+        for (const [k, v] of this._disputeOpeners) disputeOpeners[k] = v;
+        const out = {
+          seenPushes: prunedPushes,
+          orderMeta: Object.fromEntries(Object.entries(orderMeta).slice(-4000)),
+          disputeOpeners: Object.fromEntries(Object.entries(disputeOpeners).slice(-4000)),
+        };
+        fs.writeFileSync(WATCHTOWER_STATE_FILE, JSON.stringify(out), { encoding: 'utf8', mode: 0o600 });
+      } catch (e) {
+        console.error(`[Watchtower] Could not persist state: ${e.message}`);
+      }
+    }, 5000);
   }
 
   // ── v588: persistent dedup for 'new_order' broadcasts ────────────────

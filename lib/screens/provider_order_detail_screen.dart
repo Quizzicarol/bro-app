@@ -2772,6 +2772,10 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           ),
         );
         
+        // v666: popup de confirmação (igual ao lado do usuário, v630) — antes
+        // só havia um snackbar que sumia rápido e parecia que nada aconteceu.
+        _showProviderDisputeConfirmationDialog();
+        
         // Recarregar detalhes
         _loadOrderDetails();
       }
@@ -2833,6 +2837,59 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         );
       }
     }
+  }
+
+  /// v666: Popup de confirmação após o provedor abrir disputa.
+  /// Mesmas strings/prazos do popup do usuário (v630).
+  void _showProviderDisputeConfirmationDialog() {
+    if (!mounted) return;
+    final l = AppLocalizations.of(context)!;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.gavel, color: Color(0xFFFF6B6B)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                l.t('order_dispute_confirm_title'),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              l.t('order_dispute_confirm_intro'),
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            Text(l.t('order_dispute_confirm_step1'),
+                style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.4)),
+            const SizedBox(height: 10),
+            Text(l.t('order_dispute_confirm_step2'),
+                style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.4)),
+            const SizedBox(height: 10),
+            Text(l.t('order_dispute_confirm_step3'),
+                style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.4)),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF6B6B)),
+            child: Text(l.t('order_dispute_confirm_ok'),
+                style: const TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildReceiptSection() {

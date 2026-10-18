@@ -17,6 +17,9 @@ class DisputeChat extends StatefulWidget {
   /// v665b: rótulos customizados por pubkey do remetente (duplo aceite: o
   /// admin passa "Provedor A (canônico)" / "Provedor B" pra saber quem falou).
   final Map<String, String>? senderLabels;
+  /// v669: avisa a tela-mãe quais pubkeys de PROVEDOR apareceram no chat —
+  /// permite rotular A/B mesmo quando o fetch de aceites falhou.
+  final void Function(List<String> providerPubkeys)? onProvidersDiscovered;
 
   const DisputeChat({
     Key? key,
@@ -25,6 +28,7 @@ class DisputeChat extends StatefulWidget {
     required this.myRole,
     required this.recipientPubkeys,
     this.senderLabels,
+    this.onProvidersDiscovered,
   }) : super(key: key);
 
   @override
@@ -74,6 +78,17 @@ class _DisputeChatState extends State<DisputeChat> {
         _loading = false;
       });
       if (grew) _scrollToEnd();
+      // v669: avisa a tela-mãe quais provedores apareceram no chat (pra
+      // rotular Provedor A/B mesmo se o fetch de aceites falhou).
+      final cb = widget.onProvidersDiscovered;
+      if (cb != null) {
+        final pks = <String>{
+          for (final m in msgs)
+            if ((m['senderRole'] as String? ?? '') == 'provider')
+              (m['senderPubkey'] as String? ?? ''),
+        }..removeWhere((e) => e.isEmpty);
+        if (pks.isNotEmpty) cb(pks.toList());
+      }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }

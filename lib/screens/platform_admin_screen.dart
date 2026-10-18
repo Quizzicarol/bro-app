@@ -144,6 +144,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
                 'description': content['description'] ?? '',
                 'openedBy': content['openedBy'] ?? 'user',
                 'userPubkey': content['userPubkey'] ?? event['pubkey'] ?? '',
+                'openerPubkey': event['pubkey'] ?? '', // v669: quem ABRIU (assinante)
                 'amount_brl': content['amount_brl'],
                 'amount_sats': content['amount_sats'],
                 'payment_type': content['payment_type'],
@@ -165,6 +166,8 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
                 'description': content['description'] ?? '',
                 'openedBy': content['openedBy'] ?? (content['userPubkey'] != null ? 'user' : 'provider'),
                 'userPubkey': content['userPubkey'] ?? event['pubkey'] ?? '',
+                // v669: publishedBy = quem republicou/abriu; fallback = assinante
+                'openerPubkey': content['publishedBy'] ?? event['pubkey'] ?? '',
                 'amount_brl': content['amount_brl'],
                 'amount_sats': content['amount_sats'],
                 'payment_type': content['payment_type'],

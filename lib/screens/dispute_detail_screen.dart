@@ -47,6 +47,53 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
   List<String> _allAcceptingProviders = []; // todos que aceitaram (ordem cronológica)
   String? _canonicalProviderId; // o vencedor canônico (1º aceite)
   bool get _hasDoubleAccept => _allAcceptingProviders.length > 1;
+
+  // v669: registro dinâmico de TODOS os provedores conhecidos — aceites,
+  // provider_id da disputa, autor da abertura e autores de mensagens do
+  // chat/evidências. Antes os rótulos dependiam só do fetch de aceites;
+  // quando ele falhava (relay lento), todo mundo virava "Provedor" genérico
+  // e o mediador não sabia quem disse o quê.
+  final List<String> _knownProviders = [];
+
+  void _registerProvider(String? pk) {
+    if (pk == null || pk.isEmpty) return;
+    if (pk == userPubkey) return;
+    if (_knownProviders.contains(pk)) return;
+    if (_canonicalProviderId != null &&
+        pk == _canonicalProviderId &&
+        _knownProviders.isNotEmpty) {
+      _knownProviders.insert(0, pk); // canônico sempre é o A
+    } else {
+      _knownProviders.add(pk);
+    }
+  }
+
+  String _providerLabelFor(String pk) {
+    final i = _knownProviders.indexOf(pk);
+    if (i < 0) return 'Provedor';
+    if (_knownProviders.length == 1) return 'Provedor';
+    final letter = String.fromCharCode(65 + i);
+    final isCanon = _canonicalProviderId != null && pk == _canonicalProviderId;
+    return 'Provedor $letter${isCanon ? ' (canônico)' : ''}';
+  }
+
+  Map<String, String> _buildSenderLabels() {
+    return { for (final pk in _knownProviders) pk: _providerLabelFor(pk) };
+  }
+
+  /// v669: rótulo de autor genérico (chat/evidência/motivo da disputa).
+  String _authorLabelFor(String? pubkey, {String? roleHint}) {
+    if (pubkey != null && pubkey.isNotEmpty) {
+      if (pubkey == userPubkey) return '👤 Usuário';
+      if (_knownProviders.contains(pubkey)) return '🏪 ${_providerLabelFor(pubkey)}';
+    }
+    if (roleHint == 'user') return '👤 Usuário';
+    if (roleHint == 'provider') return '🏪 Provedor';
+    return '❓ Desconhecido';
+  }
+
+  /// v669: pubkey de quem ABRIU a disputa (salvo pela tela de admin).
+  String get _openerPubkey => widget.dispute['openerPubkey'] as String? ?? '';
   
   // v235: Histórico de mensagens de mediação
   List<Map<String, dynamic>> _mediatorMessages = [];
@@ -101,6 +148,9 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
   
   /// Inicializa dados: busca provedor (se necessário) e comprovante
   Future<void> _initData() async {
+    // v669: semeia o registro de provedores com o que já sabemos da disputa
+    _registerProvider(widget.dispute['provider_id'] as String?);
+    if (openedBy == 'provider') _registerProvider(_openerPubkey);
     // Se não temos o providerId, tentar descobrir pelo accept event
     final initialProviderId = widget.dispute['provider_id'] as String? ?? '';
     if (initialProviderId.isEmpty) {
@@ -109,6 +159,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
         final foundProvider = await nostrService.fetchOrderProviderPubkey(orderId);
         if (foundProvider != null && mounted) {
           setState(() => _resolvedProviderId = foundProvider);
+          _registerProvider(foundProvider); // v669
           broLog('✅ Provider descoberto para disputa: ${foundProvider.substring(0, 8)}');
         }
       } catch (e) {
@@ -178,6 +229,14 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
         setState(() {
           _allEvidence = evidence;
           _loadingEvidence = false;
+          // v669: registrar autores de evidências no mapa de rótulos
+          for (final ev in evidence) {
+            final spk = ev['senderPubkey'] as String? ?? '';
+            final role = ev['senderRole'] as String? ?? '';
+            if (spk.isEmpty || spk == userPubkey) continue;
+            if (role == 'mediator') continue;
+            _registerProvider(spk);
+          }
         });
       }
     } catch (e) {
@@ -244,11 +303,13 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
     try {
       final nostrService = NostrOrderService();
       final accepts = await nostrService.fetchAllAcceptsForOrder(orderId)
-          .timeout(const Duration(seconds: 12), onTimeout: () => <String>[]);
+          .timeout(const Duration(seconds: 20), onTimeout: () => <String>[]);
       if (!mounted || accepts.isEmpty) return;
       setState(() {
         _allAcceptingProviders = accepts;
         _canonicalProviderId = accepts.first; // o mais antigo = canônico
+        // v669: registrar todos no mapa de rótulos (canônico vira A)
+        for (final pk in accepts) { _registerProvider(pk); }
         // Se o providerId resolvido não é o canônico, corrigir para o canônico
         // (a resolução/escrow deve apontar para ele).
         if (_hasDoubleAccept && _resolvedProviderId != _canonicalProviderId) {
@@ -527,7 +588,8 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
                     const Text('Disputa Aberta', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.orange)),
                     const SizedBox(height: 4),
                     Text(
-                      'Aberta por: ${openedBy == 'user' ? '👤 Usuário' : '🏪 Provedor'}',
+                      // v669: mostra QUEM abriu (Provedor A/B quando há duplo aceite)
+                      'Aberta por: ${_authorLabelFor(_openerPubkey.isNotEmpty ? _openerPubkey : null, roleHint: openedBy)}',
                       style: const TextStyle(color: Colors.white70, fontSize: 14),
                     ),
                   ],
@@ -798,6 +860,14 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
       title: '📌 Motivo da Disputa',
       icon: Icons.warning_amber,
       children: [
+        // v669: deixa claro QUEM escreveu o motivo/descrição
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            'Escrito por: ${_authorLabelFor(_openerPubkey.isNotEmpty ? _openerPubkey : null, roleHint: openedBy)}',
+            style: const TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+        ),
         Text(reason, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500)),
         if (description.isNotEmpty) ...[
           const SizedBox(height: 12),
@@ -1242,9 +1312,10 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
             
             // v246: Cor por papel
             final roleColor = isMediator ? Colors.purple : (isUser ? Colors.blue : Colors.green);
+            // v669: provedor rotulado (A/B) quando há mais de um conhecido
             final roleLabel = isMediator
                 ? 'Mediador'
-                : (isUser ? 'Usuário' : (role == 'provider' ? 'Provedor' : 'Parte'));
+                : (isUser ? 'Usuário' : (role == 'provider' ? _providerLabelFor(evSenderPubkey) : 'Parte'));
             final roleIcon = isMediator ? Icons.gavel : (isUser ? Icons.person : Icons.storefront);
             
             String dateStr = '';
@@ -1361,31 +1432,26 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
     }
     final recipients = <String>[
       if (userPubkey.isNotEmpty) userPubkey,
-      // v648: incluir TODOS os provedores que aceitaram (duplo aceite) no chat,
-      // para todos saberem o que aconteceu. Sem duplo aceite, é só o canônico.
-      ...(_hasDoubleAccept ? _allAcceptingProviders : [if (providerId.isNotEmpty) providerId]),
+      // v669: incluir TODOS os provedores conhecidos (aceites + descobertos
+      // via chat/evidência) — antes dependia só do fetch de aceites.
+      ..._knownProviders,
     ];
-    // v665b: com duplo aceite, rotular cada provedor (A = canônico, B, C...)
-    // pra mediação saber quem mandou cada mensagem (antes ambos apareciam
-    // como "Provedor" — impossível distinguir).
-    Map<String, String>? senderLabels;
-    if (_hasDoubleAccept) {
-      senderLabels = {};
-      for (var i = 0; i < _allAcceptingProviders.length; i++) {
-        final pk = _allAcceptingProviders[i];
-        if (pk == _canonicalProviderId) {
-          senderLabels[pk] = 'Provedor A (canônico)';
-        } else {
-          senderLabels[pk] = 'Provedor ${String.fromCharCode(66 + i)}';
-        }
-      }
-    }
+    // v669: rótulos SEMPRE (1 provedor → "Provedor"; 2+ → A (canônico)/B/C).
+    // Recalculados a cada build conforme novos provedores são descobertos.
+    final senderLabels = _buildSenderLabels();
     return DisputeChat(
       orderId: orderId,
       myPrivateKey: adminPrivKey,
       myRole: 'admin',
       recipientPubkeys: recipients,
       senderLabels: senderLabels,
+      onProvidersDiscovered: (pks) {
+        final novos = pks.where((pk) => !_knownProviders.contains(pk)).toList();
+        if (novos.isEmpty || !mounted) return;
+        setState(() {
+          for (final pk in novos) { _registerProvider(pk); }
+        });
+      },
     );
   }
 

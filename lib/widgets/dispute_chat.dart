@@ -14,6 +14,9 @@ class DisputeChat extends StatefulWidget {
   final String myPrivateKey;
   final String myRole; // 'user' | 'provider' | 'admin'
   final List<String> recipientPubkeys; // as OUTRAS duas partes
+  /// v665b: rótulos customizados por pubkey do remetente (duplo aceite: o
+  /// admin passa "Provedor A (canônico)" / "Provedor B" pra saber quem falou).
+  final Map<String, String>? senderLabels;
 
   const DisputeChat({
     Key? key,
@@ -21,6 +24,7 @@ class DisputeChat extends StatefulWidget {
     required this.myPrivateKey,
     required this.myRole,
     required this.recipientPubkeys,
+    this.senderLabels,
   }) : super(key: key);
 
   @override
@@ -295,6 +299,10 @@ class _DisputeChatState extends State<DisputeChat> {
     final roleColor = _roleColor(role);
     final text = (m['message'] as String?) ?? '';
     final time = _formatTime((m['sentAt'] as String?) ?? '');
+    // v665b: rótulo customizado por pubkey (duplo aceite: Provedor A/B) tem
+    // prioridade sobre o rótulo genérico do papel.
+    final senderPk = (m['senderPubkey'] as String?) ?? '';
+    final customLabel = widget.senderLabels?[senderPk];
 
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
@@ -322,7 +330,7 @@ class _DisputeChatState extends State<DisputeChat> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              _roleLabel(role),
+              customLabel ?? _roleLabel(role),
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.bold,

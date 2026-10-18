@@ -1365,11 +1365,27 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
       // para todos saberem o que aconteceu. Sem duplo aceite, é só o canônico.
       ...(_hasDoubleAccept ? _allAcceptingProviders : [if (providerId.isNotEmpty) providerId]),
     ];
+    // v665b: com duplo aceite, rotular cada provedor (A = canônico, B, C...)
+    // pra mediação saber quem mandou cada mensagem (antes ambos apareciam
+    // como "Provedor" — impossível distinguir).
+    Map<String, String>? senderLabels;
+    if (_hasDoubleAccept) {
+      senderLabels = {};
+      for (var i = 0; i < _allAcceptingProviders.length; i++) {
+        final pk = _allAcceptingProviders[i];
+        if (pk == _canonicalProviderId) {
+          senderLabels[pk] = 'Provedor A (canônico)';
+        } else {
+          senderLabels[pk] = 'Provedor ${String.fromCharCode(66 + i)}';
+        }
+      }
+    }
     return DisputeChat(
       orderId: orderId,
       myPrivateKey: adminPrivKey,
       myRole: 'admin',
       recipientPubkeys: recipients,
+      senderLabels: senderLabels,
     );
   }
 

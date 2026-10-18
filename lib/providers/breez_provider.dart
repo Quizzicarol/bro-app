@@ -1381,6 +1381,7 @@ class BreezProvider with ChangeNotifier {
         return {
           'id': payment.id,
           'paymentType': payment.paymentType.toString(),
+          'method': payment.method.toString(), // v673: lightning/spark/deposit/withdraw — rótulo correto na carteira
           'type': isReceived ? 'received' : 'sent',
           'direction': isReceived ? 'incoming' : 'outgoing',
           'status': payment.status.toString(),

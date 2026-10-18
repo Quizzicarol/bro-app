@@ -110,6 +110,22 @@ class _WalletScreenState extends State<WalletScreen> {
 
       final balance = await breezProvider.getBalance();
       final payments = await breezProvider.listPayments();
+
+      // v673: forense automático — registrar pagamentos GRANDES (>= 500 mil sats)
+      // no log local com TODOS os detalhes. Caso 18/out: um envio interno de
+      // 5,89M sats apareceu pro usuário sem rastro em nenhuma camada (Nostr,
+      // L1, BRIX) — com isso, o log do aparelho responde sozinho.
+      for (final p in payments) {
+        try {
+          final rawAmt = p['amountSats'] ?? p['amount'] ?? 0;
+          final amtInt = rawAmt is int ? rawAmt : (rawAmt as num).toInt();
+          if (amtInt >= 500000) {
+            final h = p['paymentHash']?.toString() ?? '';
+            final pid = p['id']?.toString() ?? '';
+            broLog('🔎 [BigTx] ${p['type'] ?? p['direction']} $amtInt sats status=${p['status']} desc="${p['description']}" hash=${h.substring(0, h.length > 16 ? 16 : h.length)} id=${pid.substring(0, pid.length > 16 ? 16 : pid.length)}');
+          }
+        } catch (_) {}
+      }
       
       // Buscar preço BTC na moeda de exibição (BRL para pt, USD para en/es).
       try {
@@ -3283,6 +3299,10 @@ class _WalletScreenState extends State<WalletScreen> {
     final description = payment['description']?.toString() ?? '';
     final paymentHash = payment['paymentHash']?.toString() ?? '';
     final paymentId = payment['id']?.toString() ?? '';
+    // v673: método real do SDK (lightning/spark/deposit/withdraw) — um SAQUE
+    // on-chain era rotulado "Enviado via Lightning" e virava mistério pro
+    // usuário (caso 18/out: registro txid:vout de 5,89M sats rotulado errado).
+    final method = payment['method']?.toString() ?? '';
     
     // v411: Extract BRIX memo from description (format: "BRIX: <memo>")
     String? brixMemo;
@@ -3396,7 +3416,16 @@ class _WalletScreenState extends State<WalletScreen> {
       isGanhoBro = true;
     }
     
-    if (isGanhoBro) {
+    if (method.contains('withdraw')) {
+      // v673: saque on-chain rotulado corretamente (não é "envio Lightning")
+      typeLabel = AppLocalizations.of(context).t('wallet_type_withdraw_onchain');
+      typeColor = Colors.orange;
+      typeIcon = Icons.arrow_upward;
+    } else if (method.contains('deposit')) {
+      typeLabel = AppLocalizations.of(context).t('wallet_type_deposit_onchain');
+      typeColor = Colors.green;
+      typeIcon = Icons.arrow_downward;
+    } else if (isGanhoBro) {
       typeLabel = AppLocalizations.of(context).t('wallet_type_bro_earning');
       typeColor = Colors.green;
       typeIcon = Icons.volunteer_activism;
@@ -3546,7 +3575,21 @@ class _WalletScreenState extends State<WalletScreen> {
                   ),
                   const SizedBox(height: 8),
                 ],
-                _buildDetailRow(AppLocalizations.of(context).t('wallet_network'), 'Lightning Network'),
+                _buildDetailRow(
+                  AppLocalizations.of(context).t('wallet_network'),
+                  // v673: saque/depósito são on-chain, não Lightning
+                  (method.contains('withdraw') || method.contains('deposit'))
+                      ? AppLocalizations.of(context).t('wallet_network_bitcoin')
+                      : 'Lightning Network',
+                ),
+
+                // v673: MOSTRAR a descrição da transação — sem ela, um envio
+                // interno/automático vira "transação misteriosa" pro usuário
+                // (caso real 18/out: envio interno sem descrição visível virou
+                // ticket de suporte). Com a descrição, ele vê na hora do que
+                // se trata ("Bro - Ordem X", "BRIX", etc.).
+                if (description.isNotEmpty)
+                  _buildDetailRow(AppLocalizations.of(context).t('wallet_description'), description),
 
                 // v630: Detalhamento universal de taxas — mostra a taxa REAL de
                 // rede/roteamento (campo `fees` do SDK Spark) em TODA transação,

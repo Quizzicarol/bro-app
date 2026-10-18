@@ -12,6 +12,73 @@ const axios = require('axios');
 const nostrListener = require('./nostrListenerService');
 const db = require('../models/database');
 const paymentVerifier = require('./paymentVerifier');
+const fs = require('fs');
+const path = require('path');
+
+// v668: registro persistente de E2E vistos — o mesmo E2E em DUAS ordens é
+// comprovante reutilizado (fraude certa). Sobrevive a restarts do servidor.
+const E2E_REGISTRY_FILE = process.env.NODE_ENV === 'production'
+  ? '/data/e2e_registry.json'
+  : path.join(__dirname, '..', 'data', 'e2e_registry.json');
+let e2eRegistry = new Map(); // e2e → { orderId, ts }
+let e2eSaveTimer = null;
+
+function _loadE2eRegistry() {
+  try {
+    if (!fs.existsSync(E2E_REGISTRY_FILE)) return;
+    const data = JSON.parse(fs.readFileSync(E2E_REGISTRY_FILE, 'utf8'));
+    for (const [e2e, rec] of Object.entries(data || {})) {
+      if (rec && typeof rec === 'object') e2eRegistry.set(e2e, rec);
+    }
+    if (e2eRegistry.size > 0) console.log(`⚖️ [DisputeAgent] E2E registry: ${e2eRegistry.size} carregados`);
+  } catch (e) {
+    console.log(`[DisputeAgent] E2E registry load: ${e.message}`);
+  }
+}
+_loadE2eRegistry();
+
+function _scheduleE2eSave() {
+  if (e2eSaveTimer) clearTimeout(e2eSaveTimer);
+  e2eSaveTimer = setTimeout(() => {
+    try {
+      const dir = path.dirname(E2E_REGISTRY_FILE);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      const out = Object.fromEntries(Array.from(e2eRegistry.entries()).slice(-20000));
+      fs.writeFileSync(E2E_REGISTRY_FILE, JSON.stringify(out), { encoding: 'utf8', mode: 0o600 });
+    } catch (e) {
+      console.error(`[DisputeAgent] E2E registry save: ${e.message}`);
+    }
+  }, 5000);
+}
+
+/**
+ * v668: cross-order E2E check. Se o E2E já foi visto em OUTRA ordem, é
+ * comprovante reutilizado (fraude certa) — retorna finding high. Senão
+ * registra e retorna null.
+ */
+function _checkE2eRegistry(e2e, dispute) {
+  try {
+    const orderId = dispute.order_id || dispute.orderId || '';
+    const prev = e2eRegistry.get(e2e);
+    if (prev && prev.orderId && orderId && prev.orderId !== orderId) {
+      return {
+        id: 'payment_e2e_reused_other_order',
+        severity: 'high',
+        detail: `E2E já usado em OUTRA ordem (${String(prev.orderId).substring(0, 8)}) — comprovante reutilizado`,
+        scoreDelta: -0.45,
+        favors: 'user',
+      };
+    }
+    if (!prev) {
+      e2eRegistry.set(e2e, { orderId, ts: Date.now() });
+      if (e2eRegistry.size > 40000) {
+        e2eRegistry = new Map(Array.from(e2eRegistry.entries()).slice(-20000));
+      }
+      _scheduleE2eSave();
+    }
+    return null;
+  } catch (_) { return null; }
+}
 
 // ============================================
 // Configuration
@@ -565,6 +632,10 @@ class DisputeAgentService {
         res = paymentVerifier.verifyAny(c.value, {
           expectedAmountBrl: dispute.amount_brl,
           orderCreatedAt: dispute.createdAt,
+          // v668: chave Pix esperada + janela temporal impossível
+          // (E2E anterior à ordem = impossível; E2E futuro = forjado)
+          expectedPixKey: dispute.pix_key || dispute.pixKey || null,
+          notBeforeMs: dispute.createdAt ? new Date(dispute.createdAt).getTime() : null,
         });
       } catch (e) {
         out.push({
@@ -583,6 +654,11 @@ class DisputeAgentService {
           detail: `${c.source}: ${res.type} estruturalmente válido`,
           scoreDelta: 0.05, // small boost when code passes checks
         });
+      }
+      // v668: cross-order — mesmo E2E em outra ordem = comprovante reutilizado
+      if (res && res.type === 'pix_e2e' && res.ispb) {
+        const dup = _checkE2eRegistry(c.value.trim(), dispute);
+        if (dup) out.push(dup);
       }
       for (const f of (res.findings || [])) {
         out.push({

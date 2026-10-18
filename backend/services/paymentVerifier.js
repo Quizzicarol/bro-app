@@ -94,6 +94,14 @@ function verifyPixBrCode(brCode, opts = {}) {
     additional: tlv.get('62') || null,
   };
 
+  // v668: extrai a chave Pix de dentro da tag 26 (sub-TLV EMV: 00=GUI, 01=chave)
+  const mai = result.parsed.merchantAccount;
+  if (mai) {
+    const sub = _parseEmvTlv(mai);
+    result.parsed.pixKey = sub.get('01') || null;
+    result.parsed.pixGui = sub.get('00') || null;
+  }
+
   if (opts.expectedAmountBrl != null && result.parsed.amount) {
     const codeAmt = parseFloat(result.parsed.amount);
     const expected = parseFloat(opts.expectedAmountBrl);
@@ -107,7 +115,21 @@ function verifyPixBrCode(brCode, opts = {}) {
     }
   }
 
-  result.valid = true;
+  // v668: a chave Pix embutida no QR TEM que ser a chave da ordem — QR
+  // apontando pra outra chave = pagamento foi pra outro destino (fraude/erro).
+  if (opts.expectedPixKey && result.parsed.pixKey) {
+    const a = String(result.parsed.pixKey).trim().toLowerCase();
+    const b = String(opts.expectedPixKey).trim().toLowerCase();
+    if (a && b && a !== b) {
+      findings.push({
+        id: 'pix_key_mismatch',
+        severity: 'high',
+        detail: `Chave do QR (${a}) != chave da ordem (${b})`,
+      });
+    }
+  }
+
+  result.valid = !findings.some(f => f.severity === 'high');
   return result;
 }
 
@@ -154,6 +176,27 @@ function verifyPixE2E(e2e, opts = {}) {
       }
     } catch (_) { /* ignore */ }
   }
+
+  // v668: E2E datado ANTES da ordem existir = impossível (o pagador só
+  // conhece o destino depois do aceite). E2E no futuro = forjado.
+  try {
+    const e2eMs = Date.UTC(yyyy, mm - 1, dd, hh, mi);
+    const SKEW_MS = 15 * 60 * 1000; // tolerância p/ relógio dos PSPs
+    if (opts.notBeforeMs && e2eMs < opts.notBeforeMs - SKEW_MS) {
+      findings.push({
+        id: 'e2e_before_order',
+        severity: 'high',
+        detail: 'E2E datado ANTES da criação da ordem — pagamento impossível/forjado',
+      });
+    }
+    if (e2eMs > Date.now() + SKEW_MS) {
+      findings.push({
+        id: 'e2e_future',
+        severity: 'high',
+        detail: 'E2E datado no FUTURO — forjado',
+      });
+    }
+  } catch (_) { /* ignore */ }
 
   return { valid: findings.every(f => f.severity !== 'high'), findings, ispb: v.substring(1, 9) };
 }

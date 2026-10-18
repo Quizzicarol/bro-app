@@ -419,6 +419,24 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
           }
         }
 
+        // v665: enriquecer disputas SEM valor — o evento bro_dispute nem sempre
+        // carrega amount_brl (ex.: disputa aberta pelo provedor). Buscar o
+        // valor no evento da ORDEM (kind 30078) para o card mostrar o R$.
+        final allNostr = [...openNostr, ...resolvedNostr];
+        for (final d in allNostr) {
+          if (d['amount_brl'] != null) continue;
+          final oid = d['orderId'] as String? ?? '';
+          if (oid.isEmpty) continue;
+          try {
+            final order = await NostrOrderService().fetchOrderFromNostr(oid)
+                .timeout(const Duration(seconds: 10), onTimeout: () => null);
+            if (order != null && order['amount'] != null) {
+              d['amount_brl'] = order['amount'];
+              broLog('💰 Disputa ${oid.substring(0, 8)}: valor R\$ ${order['amount']} recuperado da ordem');
+            }
+          } catch (_) {}
+        }
+
         setState(() {
           _totals = totals;
           _pendingRecords = pending;

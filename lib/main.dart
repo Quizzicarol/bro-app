@@ -124,6 +124,20 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     return;
   }
 
+  // v676: nudge silencioso do backend pra re-registrar o token FCM (tokens
+  // velhos param de receber push; isso acorda o app em background e cura
+  // sozinho — invisível pro usuário, data-only sem notificação).
+  if (message.data['type'] == 'system' &&
+      message.data['subtype'] == 'token_refresh') {
+    try {
+      await refreshFcmTokenFromPush();
+      broLog('[FCM-BG] token_refresh: token re-registrado (nudge do backend)');
+    } catch (e) {
+      broLog('[FCM-BG] token_refresh erro: $e');
+    }
+    return;
+  }
+
   if (message.data['type'] != 'brix_invoice_request' &&
       message.data['type'] != 'brix_pending_claim') return;
 

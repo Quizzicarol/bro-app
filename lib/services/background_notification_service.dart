@@ -527,6 +527,11 @@ bool _isValidSecureUrl(String url) {
   }
 }
 
+/// v676: wrapper PÚBLICO — o handler FCM de background (main.dart) chama isto
+/// quando o backend manda o nudge silencioso `system/token_refresh` (sweeper
+/// de tokens velhos). Re-registra o token nos dois servidores sem UI.
+Future<void> refreshFcmTokenFromPush() => _refreshFcmToken();
+
 Future<void> _refreshFcmToken() async {
   try {
     // 1. Recuperar pubkey e private key do storage seguro

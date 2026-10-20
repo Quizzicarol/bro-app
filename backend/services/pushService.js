@@ -129,6 +129,7 @@ function init() {
     admin = firebaseAdmin;
     messaging = firebaseAdmin.messaging();
     console.log('[PUSH] Firebase Admin initialized — push notifications enabled');
+    _startStaleTokenSweep(); // v676: cura automática de tokens velhos
   } catch (e) {
     console.log(`[PUSH] Firebase Admin not available: ${e.message}`);
     console.log('[PUSH] Push notifications disabled (install firebase-admin to enable)');
@@ -307,6 +308,39 @@ async function sendPush(targetPubkey, data, notification = null) {
  */
 function isEnabled() {
   return messaging !== null;
+}
+
+// ── v676: stale-token sweep (cura invisível) ─────────────────────────
+// Tokens sem re-registro há > 3 dias recebem um push SILENCIOSO (data-only,
+// zero UI) a cada 6h: o app acorda em background e re-registra o token
+// (refreshFcmTokenFromPush no app). Tokens mortos (FCM not-registered) são
+// removidos pelo sendPush existente. Caso real 20/out: iPhone sem abrir o app
+// por dias → token velho → broadcasts de novas ordens não chegaram. Tudo no
+// backend; o usuário nunca é incomodado.
+const STALE_TOKEN_AGE_MS = 3 * 24 * 60 * 60 * 1000;   // > 3 dias sem re-registro
+const STALE_TOKEN_SWEEP_MS = 6 * 60 * 60 * 1000;      // varre a cada 6h
+let _staleSweepTimer = null;
+
+function _startStaleTokenSweep() {
+  if (_staleSweepTimer) return;
+  _staleSweepTimer = setInterval(_sweepStaleTokens, STALE_TOKEN_SWEEP_MS);
+  if (_staleSweepTimer.unref) _staleSweepTimer.unref();
+  console.log('[PUSH] Stale-token sweep ativo (a cada 6h, idade > 3 dias)');
+}
+
+async function _sweepStaleTokens() {
+  if (!messaging) return;
+  const now = Date.now();
+  let nudged = 0;
+  for (const [pubkey, entry] of tokenStore) {
+    const updatedAt = typeof entry.updatedAt === 'number' ? entry.updatedAt : 0;
+    if (now - updatedAt < STALE_TOKEN_AGE_MS) continue;
+    nudged++;
+    // data-only (notification=null) → apns-push-type: background +
+    // content-available: 1 (default do sendPush) → acorda o isolate de fundo.
+    await sendPush(pubkey, { type: 'system', subtype: 'token_refresh' }, null);
+  }
+  if (nudged > 0) console.log(`[PUSH] stale-token sweep: ${nudged} token(s) cutucados`);
 }
 
 /**

@@ -12,6 +12,7 @@ import '../services/local_collateral_service.dart';
 import '../services/payment_monitor_service.dart';
 import '../services/secure_storage_service.dart';
 import '../services/nostr_service.dart';
+import '../services/nostr_order_service.dart';
 import '../services/bitcoin_price_service.dart';
 import 'provider_orders_screen.dart';
 
@@ -188,7 +189,11 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
       // CONDIÇÃO CORRIGIDA: Só ativa se:
       // 1. O saldo disponível é suficiente para o tier E
       // 2. Houve um aumento real de saldo (depósito ocorreu)
-      if (availableBalance >= minRequired && balanceIncrease >= (_amountNeededSats * 0.90).round()) {
+      // v675: OU o saldo JÁ cobre o tier completo — quem depositou ANTES de
+      // abrir a tela tinha o saldo inicial já com o depósito → aumento=0 →
+      // NUNCA ativava (caso real 20/out: "paguei a garantia e não confirmou").
+      final alreadyCovered = availableBalance >= widget.tier.requiredCollateralSats;
+      if ((availableBalance >= minRequired && balanceIncrease >= (_amountNeededSats * 0.90).round()) || alreadyCovered) {
         // Pagamento recebido! Ativar tier
         broLog('✅ Depósito detectado! Aumento de $balanceIncrease sats');
         await _onPaymentReceived();
@@ -240,7 +245,10 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
     final minDeposit = (_amountNeededSats * 0.90).round();
     
     // CONDIÇÃO CORRIGIDA: Verificar saldo suficiente E aumento real
-    if (availableBalance >= minRequired && balanceIncrease >= minDeposit) {
+    // v675: mesma exceção do polling — saldo já cobrindo o tier completo
+    // dispensa a prova de aumento (depósito feito antes de abrir a tela).
+    final alreadyCovered = availableBalance >= widget.tier.requiredCollateralSats;
+    if ((availableBalance >= minRequired && balanceIncrease >= minDeposit) || alreadyCovered) {
       // Ativar o tier
       broLog('✅ Condições atendidas: disponível=$availableBalance >= $minRequired, aumento=$balanceIncrease >= $minDeposit');
       await _activateTier(availableBalance);
@@ -275,6 +283,27 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
     );
     
     broLog('✅ Tier salvo localmente para pubkey: ${pubkey?.substring(0, 8) ?? "null"}');
+
+    // v675: publicar o tier no Nostr (kind 30082). A função existia desde
+    // sempre mas NUNCA era chamada — por isso a garantia "não aparecia no
+    // sistema" e se perdia numa reinstalação. Fire-and-forget: falha de
+    // relay não bloqueia a ativação local.
+    try {
+      final orderProvider = context.read<OrderProvider>();
+      final privKey = orderProvider.nostrPrivateKey;
+      if (privKey != null && privKey.isNotEmpty) {
+        NostrOrderService().publishProviderTier(
+          privateKey: privKey,
+          tierId: widget.tier.id,
+          tierName: widget.tier.name,
+          depositedSats: widget.tier.requiredCollateralSats,
+          maxOrderValue: widget.tier.maxOrderValueBrl.round(),
+          activatedAt: DateTime.now().toIso8601String(),
+        ).then((ok) => broLog('📡 Tier publicado no Nostr: ${ok ? "OK" : "falhou (relays)"}'));
+      }
+    } catch (e) {
+      broLog('⚠️ Falha ao publicar tier no Nostr (não crítico): $e');
+    }
 
     // ✅ IMPORTANTE: Marcar como modo provedor para persistir entre sessões COM PUBKEY
     await SecureStorageService.setProviderMode(true, userPubkey: pubkey);

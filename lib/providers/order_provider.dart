@@ -3241,6 +3241,34 @@ class OrderProvider with ChangeNotifier {
         return false;
       }
 
+      // v674: GUARDA ANTI-LIQUIDACAO-INJUSTA — antes de liquidar, conferir o
+      // status REAL no Nostr. Caso real 20/out (ordem 053f0b91): o app do
+      // provedor perdeu o update 'completed' no caos de relays e liquidou uma
+      // ordem CONCLUIDA — o comprador recebeu push de "auto-liquidada" de
+      // madrugada de uma ordem que já tinha terminado. Se a rede diz que o
+      // status é terminal, corrige o local e NÃO liquida.
+      try {
+        final remote = await _nostrOrderService.fetchOrderFromNostr(orderId)
+            .timeout(const Duration(seconds: 20), onTimeout: () => null);
+        final remoteStatus = remote?['status']?.toString() ?? '';
+        const terminalRemoto = {'completed', 'cancelled', 'liquidated', 'disputed'};
+        if (terminalRemoto.contains(remoteStatus)) {
+          broLog('[AutoLiquidation] ordem ${orderId.substring(0, 8)} já é $remoteStatus na rede — NÃO liquidando (corrigindo local)');
+          final idx = _orders.indexWhere((o) => o.id == orderId);
+          if (idx != -1 && _orders[idx].status != remoteStatus) {
+            _orders[idx] = _orders[idx].copyWith(status: remoteStatus);
+            await _saveOrders();
+          }
+          _isLoading = false;
+          _immediateNotify();
+          return false;
+        }
+      } catch (e) {
+        // Relay fora: segue o fluxo local (o provedor não pode ficar sem
+        // receber por relay caído), mas loga alto p/ diagnóstico.
+        broLog('[AutoLiquidation] AVISO: não consegui confirmar status na rede ($e) — prosseguindo');
+      }
+
       // Publicar no Nostr com status 'liquidated'
       final privateKey = _nostrService.privateKey;
       if (privateKey == null) {

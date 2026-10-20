@@ -60,6 +60,13 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
 
       // Obter saldo da carteira
       final breezProvider = context.read<BreezProvider>();
+      // v674: sincronizar ANTES de ler o saldo — sem isso, quem ACABOU de
+      // depositar via Spark via o saldo VELHO e não conseguia ativar a
+      // garantia (caso 20/out: provedor pagou a garantia e o tier não
+      // confirmava — "fiz o pagamento e não confirmou").
+      try {
+        await breezProvider.forceSyncWallet();
+      } catch (_) {}
       final balanceInfo = await breezProvider.getBalance();
       final balanceStr = balanceInfo['balance']?.toString() ?? '0';
       _walletBalance = int.tryParse(balanceStr) ?? 0;

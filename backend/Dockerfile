@@ -1,4 +1,7 @@
-FROM node:20-slim
+# v677: node:20 → node:22 (Node 20 é EOL desde abr/2026 e NÃO recebeu o
+# security release de 21/out/2026 — CVEs high incl. Brotli RCE + TLS bypass).
+# A linha 22.x recebeu a correção (22.23.4).
+FROM node:22-slim
 
 WORKDIR /app
 

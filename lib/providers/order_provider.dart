@@ -3545,7 +3545,9 @@ class OrderProvider with ChangeNotifier {
         if (providerId.toString().isEmpty) return false;
         if (providerId == _currentUserPubkey) return false;
         final meta = order.metadata ?? const {};
-        if (meta['disputeProviderPaid'] == true) return false;
+        // v678: já reembolsada mas SEM a taxa paga ainda é candidata (a taxa
+        // será enviada no loop abaixo — antes disputas nunca pagavam os 2%)
+        if (meta['disputeProviderPaid'] == true && PlatformFeeService.isFeePaid(order.id)) return false;
         final wasDisputed = order.status == 'disputed'
             || meta['wasDisputed'] == true
             || meta['disputePaymentPending'] == true;
@@ -3565,6 +3567,30 @@ class OrderProvider with ChangeNotifier {
             // Resolvida a favor do comprador → nada a pagar.
             continue;
           }
+
+          // v678: a taxa da plataforma (2%, paga pelo comprador) TAMBÉM é
+          // devida quando a disputa resolve a favor do provedor. Antes ela só
+          // saía no fluxo de confirmação manual da tela — ordens resolvidas
+          // via disputa NUNCA pagavam (caso real: ordem 7ca88f64, resolvida
+          // 22/out, taxa nunca entrou na carteira da plataforma). Guarda
+          // isFeePaid impede duplicidade.
+          if (!PlatformFeeService.isFeePaid(order.id)) {
+            try {
+              final expectedSats = (order.btcAmount * 100000000).toInt();
+              if (expectedSats > 0) {
+                final feeOk = await PlatformFeeService.sendPlatformFee(
+                  orderId: order.id,
+                  totalSats: expectedSats,
+                );
+                broLog('[DisputeAutoPay] Taxa plataforma p/ ordem ${order.id.substring(0, 8)}: ${feeOk ? "paga" : "falhou (retenta no próximo sync)"}');
+              }
+            } catch (e) {
+              broLog('[DisputeAutoPay] erro ao pagar taxa: $e');
+            }
+          }
+          // Já reembolsada numa rodada anterior → só a taxa faltava → pronto
+          final alreadyReimbursed = (order.metadata ?? const {})['disputeProviderPaid'] == true;
+          if (alreadyReimbursed) continue;
           broLog('[DisputeAutoPay] Ordem ${order.id.substring(0, 8)} resolvida p/ provedor — pagando reembolso ao admin...');
           final success = await onAutoPayDisputeReimbursement!(order.id, order);
           if (success) {

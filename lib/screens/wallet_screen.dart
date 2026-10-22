@@ -187,8 +187,17 @@ class _WalletScreenState extends State<WalletScreen> {
         // dele e ficam disponíveis para uso, mas não são "ganho como Bro" nem
         // uma transação real do user — é apenas reserva interna. Quando a
         // ordem for paga ao provedor, aparecerá uma saída separada.
+        // v677: MAS só esconder se o depósito VIROU ordem (consumado). Se o
+        // usuário saiu antes da confirmação e a ordem não foi criada (bug
+        // 22/out), o depósito DEVE aparecer — senão o dinheiro "some".
         if (isReceived && description == 'Bro Payment') {
-          return false;
+          if (paymentHash.isNotEmpty) {
+            final opRef2 = context.read<OrderProvider>();
+            final consumed = opRef2.orders.any((o) => o.paymentHash == paymentHash);
+            if (consumed) return false;
+          } else {
+            return false; // sem hash não dá pra saber — manter comportamento antigo
+          }
         }
         
         // OCULTAR: Auto-pagamentos Lightning de ordens pagas com saldo da carteira

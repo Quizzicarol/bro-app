@@ -236,6 +236,12 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
       ).catchError((e) => broLog('recordFee erro: $e')));
     }
 
+    // v677: ordem criada/publicada — limpa a intenção pendente (a recuperação
+    // automática não precisa mais rodar pra esse pagamento).
+    if (orderId.isNotEmpty) {
+      unawaited(OrderProvider.clearPendingOrderIntent());
+    }
+
     return orderId.isEmpty ? null : orderId;
   }
 

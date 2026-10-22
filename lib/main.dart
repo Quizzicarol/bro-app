@@ -1,4 +1,5 @@
-﻿import 'dart:convert';
+﻿import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -654,6 +655,13 @@ class BroApp extends StatelessWidget {
 
           // RECONCILIACAO AUTOMATICA: Conectar callback de pagamento ao OrderProvider
           final orderProvider = context.read<OrderProvider>();
+
+          // v677: recuperar ordem cujo pagamento confirmou COM O APP FECHADO
+          // (ex.: usuária saiu pra atender ligação no meio do pagamento).
+          // Se a carteira ainda não subiu, o checker falha e tenta no próximo start.
+          unawaited(orderProvider.recoverPendingOrderIntent(
+            (String h) => breezProvider.checkPaymentStatus(h),
+          ).catchError((e) => broLog('[Recover] erro: $e')));
 
           // v441: Connect real-time order subscription to trigger sync
           OrderRealtimeService().onOrderEvent = () {

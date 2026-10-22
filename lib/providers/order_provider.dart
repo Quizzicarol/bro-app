@@ -3322,6 +3322,90 @@ class OrderProvider with ChangeNotifier {
 
   /// v132: Verifica ordens 'liquidated' do USU�RIO que ainda n�o foram pagas
   /// e dispara auto-pagamento via callback (setado pelo main.dart)
+  // v677: intenção de ordem pendente — pagamento de depósito confirmado COM
+  // O APP FECHADO. payment_screen salva a intenção ao criar o invoice;
+  // lightning_payment_screen limpa ao criar a ordem; se o app morrer no meio,
+  // a recuperação abaixo cria+publica a ordem sozinha no próximo start.
+  static const String _pendingOrderIntentKey = 'pending_order_intent';
+  bool _recoveryAttempted = false;
+
+  static Future<void> savePendingOrderIntent(Map<String, dynamic> intent) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_pendingOrderIntentKey, jsonEncode(intent));
+  }
+
+  static Future<void> clearPendingOrderIntent() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_pendingOrderIntentKey);
+  }
+
+  Future<void> recoverPendingOrderIntent(
+      Future<Map<String, dynamic>> Function(String paymentHash) statusChecker) async {
+    if (_recoveryAttempted) return;
+    _recoveryAttempted = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_pendingOrderIntentKey);
+      if (raw == null || raw.isEmpty) return;
+      Map<String, dynamic> intent;
+      try {
+        intent = jsonDecode(raw) as Map<String, dynamic>;
+      } catch (_) {
+        await prefs.remove(_pendingOrderIntentKey);
+        return;
+      }
+      final hash = intent['paymentHash']?.toString() ?? '';
+      if (hash.isEmpty) {
+        await prefs.remove(_pendingOrderIntentKey);
+        return;
+      }
+      // Já existe ordem local com esse pagamento? (foi criada antes de sair)
+      if (_orders.any((o) => o.paymentHash == hash)) {
+        await prefs.remove(_pendingOrderIntentKey);
+        return;
+      }
+      // O pagamento realmente entrou?
+      Map<String, dynamic> st;
+      try {
+        st = await statusChecker(hash);
+      } catch (_) {
+        _recoveryAttempted = false; // carteira não pronta — tenta de novo
+        return;
+      }
+      if (st['paid'] != true) {
+        // Limpa intents velhas (invoice morto, usuário desistiu há dias)
+        final created = DateTime.tryParse(intent['createdAt']?.toString() ?? '');
+        if (created != null && DateTime.now().difference(created).inDays >= 2) {
+          await prefs.remove(_pendingOrderIntentKey);
+          broLog('[Recover] intenção expirada (>2d sem pagamento) — descartada');
+        }
+        return;
+      }
+      broLog('[Recover] Pagamento confirmado com app fechado — criando ordem...');
+      final order = await createOrder(
+        billType: intent['billType']?.toString() ?? 'pix',
+        billCode: intent['billCode']?.toString() ?? '',
+        amount: (intent['billAmount'] as num?)?.toDouble() ?? 0,
+        btcAmount: (intent['btcAmount'] as num?)?.toDouble() ?? 0,
+        btcPrice: (intent['btcPrice'] as num?)?.toDouble() ?? 0,
+      );
+      if (order == null) {
+        _recoveryAttempted = false; // tenta de novo no próximo start
+        return;
+      }
+      try {
+        await setOrderPaymentHash(order.id, hash, intent['invoice']?.toString() ?? '');
+      } catch (_) {}
+      try {
+        await updateOrderStatus(orderId: order.id, status: 'payment_received');
+      } catch (_) {}
+      await prefs.remove(_pendingOrderIntentKey);
+      broLog('[Recover] Ordem ${order.id.substring(0, 8)} recuperada e publicada');
+    } catch (e) {
+      broLog('[Recover] erro: $e');
+    }
+  }
+
   bool _isAutoPayingLiquidations = false;
   
   Future<void> _autoPayLiquidatedOrders() async {

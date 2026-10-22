@@ -1292,6 +1292,25 @@ class _PaymentScreenState extends State<PaymentScreen> {
           _isProcessing = false;
         });
         
+        // v677: persistir a INTENÇÃO da ordem ANTES de navegar. Se o usuário
+        // sair do app antes da confirmação do pagamento (ex.: atender uma
+        // ligação), o OrderProvider detecta o pagamento no próximo start e
+        // cria+publica a ordem sozinho (caso real 22/out: sats entraram na
+        // carteira, a tela morreu, e a ordem nunca nasceu — dinheiro
+        // "invisível" pro usuário).
+        unawaited(OrderProvider.savePendingOrderIntent({
+          'paymentHash': paymentHash,
+          'invoice': inv,
+          'billType': _billData!['billType'] as String,
+          'billCode': _codeController.text.trim(),
+          'billAmount': billAmount,
+          'btcAmount': btcAmount,
+          'btcPrice': btcPrice,
+          'totalBrl': totalBrl,
+          'amountSats': amountSats,
+          'createdAt': DateTime.now().toIso8601String(),
+        }));
+        
         // 🔥 NOVO FLUXO: NÃO criar ordem agora!
         // Ordem será criada SOMENTE quando pagamento for confirmado
         // Passar dados da conta para LightningPaymentScreen criar a ordem depois

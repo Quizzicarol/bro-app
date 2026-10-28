@@ -158,6 +158,10 @@ workflows:
         # Agora: 2000000000 + commits-desde-2026-09-28 — sempre maior que o anterior
         # e sem numero feio de timestamp. agvtool seta direto no Xcode.
         script: |
+          # v682: o clone do Codemagic e SHALLOW (depth 50) — sem unshallow o
+          # rev-list --count fica travado em 50 e o CFBundleVersion nunca sobe
+          # (falha real 28/out: upload rejeitado, versao duplicada 2000000050).
+          git fetch --unshallow --quiet 2>/dev/null || git fetch --deepen=500 --quiet 2>/dev/null || true
           COMMITS_TODAY=$(git rev-list --count HEAD --since="2026-09-28 00:00:00")
           BUILD_NUMBER=$(( 2000000000 + COMMITS_TODAY ))
           echo "iOS build number FINAL: $BUILD_NUMBER (commits hoje: $COMMITS_TODAY)"
@@ -257,6 +261,7 @@ workflows:
 
       - name: Build iOS
         script: |
+          git fetch --unshallow --quiet 2>/dev/null || git fetch --deepen=500 --quiet 2>/dev/null || true
           COMMITS_TODAY=$(git rev-list --count HEAD --since="2026-09-28 00:00:00")
           BUILD_NUMBER=$(( 2000000000 + COMMITS_TODAY ))
           echo "iOS build number FINAL: $BUILD_NUMBER (commits hoje: $COMMITS_TODAY)"
@@ -523,6 +528,7 @@ workflows:
 
       - name: Build iOS
         script: |
+          git fetch --unshallow --quiet 2>/dev/null || git fetch --deepen=500 --quiet 2>/dev/null || true
           COMMITS_TODAY=$(git rev-list --count HEAD --since="2026-09-28 00:00:00")
           BUILD_NUMBER=$(( 2000000000 + COMMITS_TODAY ))
           echo "iOS build number FINAL: $BUILD_NUMBER (commits hoje: $COMMITS_TODAY)"

@@ -4009,6 +4009,7 @@ class NostrOrderService {
     required String adminInvoice,
     required int amountSats,
     String? userPubkey,
+    String? reason, // v680: motivo da cobrança de mediação (opcional)
   }) async {
     try {
       final keychain = Keychain(privateKey);
@@ -4019,6 +4020,7 @@ class NostrOrderService {
         'adminInvoice': adminInvoice,
         'adminPubkey': keychain.public,
         'amountSats': amountSats,
+        if (reason != null && reason.isNotEmpty) 'reason': reason, // v680
         'createdAt': DateTime.now().toIso8601String(),
       });
       
@@ -4095,6 +4097,57 @@ class NostrOrderService {
       if (result != null) return result;
     }
     return null;
+  }
+
+  /// v680: busca cobranças de mediação (bro_admin_reimbursement) destinadas a
+  /// MIM (tag #p) — usado pelo autopay de chargebacks. Só eventos ASSINADOS
+  /// pelo admin (AppConfig.adminPubkey, fail-closed) e com assinatura válida.
+  /// Retorna o mais recente por orderId.
+  Future<List<Map<String, dynamic>>> fetchMyAdminChargebacks(String myPubkey) async {
+    final byOrder = <String, Map<String, dynamic>>{};
+    // vSEC: fail-closed — sem adminPubkey no build, nenhuma cobrança é válida
+    if (AppConfig.adminPubkey.isEmpty) return [];
+    final results = await Future.wait(
+      _relays.map((relay) async {
+        try {
+          return await _fetchFromRelay(
+            relay,
+            kinds: [kindBroPaymentProof],
+            tags: {'#p': [myPubkey], '#t': ['bro-admin-reimbursement']},
+            limit: 50,
+          );
+        } catch (_) {
+          return <Map<String, dynamic>>[];
+        }
+      }),
+    );
+    for (final events in results) {
+      for (final event in events) {
+        try {
+          if (!_isEventSignatureValid(event)) continue; // v662
+          if (event['pubkey'] != AppConfig.adminPubkey) continue; // só o admin
+          final content = event['parsedContent'] ?? jsonDecode(event['content']);
+          if (content['type'] != 'bro_admin_reimbursement') continue;
+          final orderId = content['orderId'] as String?;
+          final invoice = content['adminInvoice'] as String?;
+          final amount = (content['amountSats'] as num?)?.toInt() ?? 0;
+          if (orderId == null || orderId.isEmpty || invoice == null || invoice.isEmpty || amount <= 0) continue;
+          final ts = event['created_at'] as int? ?? 0;
+          final existing = byOrder[orderId];
+          if (existing == null || ts > (existing['_ts'] as int)) {
+            byOrder[orderId] = {
+              'orderId': orderId,
+              'amountSats': amount,
+              'reason': content['reason'] as String? ?? '',
+              '_ts': ts,
+            };
+          }
+        } catch (_) {}
+      }
+    }
+    final out = byOrder.values.toList()
+      ..sort((a, b) => (a['_ts'] as int).compareTo(b['_ts'] as int));
+    return out;
   }
 
   /// Publica resolução de disputa no Nostr (kind 1 com tag bro-resolucao)

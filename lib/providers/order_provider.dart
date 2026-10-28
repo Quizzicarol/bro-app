@@ -3552,6 +3552,50 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
+  // v680: Auto-pagamento de COBRANÇAS DE MEDIAÇÃO do admin (chargebacks em
+  // ordens concluídas — ex.: bug de corrida entregou sats indevidamente).
+  // O mediador abre o caso na tela de admin (invoice assinado pela chave admin
+  // com #p=destinatário); aqui, no sync, o app do devedor encontra e paga
+  // sozinho — ninguém precisa pedir nada a ninguém. A validação (assinatura
+  // admin, valor, expiração, teto de sanidade) acontece no callback do
+  // main.dart — reutilizado do reembolso de disputa.
+  bool _isPayingChargebacks = false;
+
+  Future<void> _autoPayAdminChargebacks() async {
+    if (onAutoPayDisputeReimbursement == null) return;
+    if (_isPayingChargebacks) return;
+    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return;
+    _isPayingChargebacks = true;
+    try {
+      final chargebacks = await _nostrOrderService.fetchMyAdminChargebacks(_currentUserPubkey!);
+      for (final cb in chargebacks) {
+        final orderId = cb['orderId'] as String;
+        final order = getOrderById(orderId);
+        if (order == null) continue; // não tenho essa ordem — ignora
+        final meta = order.metadata ?? const {};
+        if (meta['adminChargebackPaid'] == true) continue;
+        broLog('[Chargeback] Cobrança de mediação p/ ordem ${orderId.substring(0, 8)} (${cb['amountSats']} sats) — pagando...');
+        final ok = await onAutoPayDisputeReimbursement!(orderId, order);
+        if (ok) {
+          final idx = _orders.indexWhere((o) => o.id == orderId);
+          if (idx != -1) {
+            _orders[idx] = _orders[idx].copyWith(metadata: {
+              ...(_orders[idx].metadata ?? {}),
+              'adminChargebackPaid': true,
+              'adminChargebackPaidAt': DateTime.now().toIso8601String(),
+            });
+            await _saveOrders();
+          }
+          broLog('[Chargeback] ✅ Cobrança da ordem ${orderId.substring(0, 8)} paga');
+        }
+      }
+    } catch (e) {
+      broLog('[Chargeback] Erro geral: $e');
+    } finally {
+      _isPayingChargebacks = false;
+    }
+  }
+
   // Auto-pagamento EM BACKGROUND do reembolso de disputa resolvida a favor do
   // provedor. Roda no sync (não depende do comprador abrir a tela da ordem).
   //
@@ -4752,6 +4796,9 @@ class OrderProvider with ChangeNotifier {
       
       // Auto-pagamento em background do reembolso de disputa (resolved_provider)
       await _autoPayDisputeReimbursements();
+      
+      // v680: Auto-pagamento de cobranças de mediação do admin (chargebacks)
+      await _autoPayAdminChargebacks();
       
       // v622: Reconciliar taxas da plataforma que ficaram para trás
       await _reconcilePlatformFees();

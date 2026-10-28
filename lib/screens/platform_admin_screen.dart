@@ -10,6 +10,7 @@ import '../services/nostr_order_service.dart';
 import '../services/storage_service.dart';
 import '../services/api_service.dart';
 import '../providers/order_provider.dart';
+import '../providers/breez_provider.dart';
 import '../config.dart';
 import 'dispute_detail_screen.dart';
 
@@ -681,6 +682,10 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
                   _buildAgentSection(),
                   const SizedBox(height: 24),
 
+                  // v680: Cobrança de mediação (chargeback pós-conclusão)
+                  _buildChargebackCard(),
+                  const SizedBox(height: 24),
+
                   // DISPUTAS ABERTAS
                   _buildDisputesSection(),
                   const SizedBox(height: 24),
@@ -1261,6 +1266,194 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
   }
 
   // ========== SEÇÃO AI DISPUTE AGENT (Phase 4) ==========
+
+  // v680: 💸 Cobrança de Mediação — o admin abre um caso numa ordem JÁ
+  // CONCLUÍDA (ex.: alguém recebeu sats indevidamente por bug de corrida).
+  // Gera um invoice da carteira do admin, assina com a chave admin e publica
+  // com #p=devedor. O app do devedor encontra no sync e paga sozinho.
+  Widget _buildChargebackCard() {
+    return Card(
+      color: const Color(0xFF1A1A2E),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.gavel, color: Colors.amber, size: 22),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text('💸 Cobrança de Mediação',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Para casos PÓS-conclusão: alguém recebeu sats indevidamente. Você gera uma cobrança assinada pelo admin e o app da pessoa paga sozinho ao abrir.',
+              style: TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _showChargebackDialog,
+                icon: const Icon(Icons.add_card, size: 18),
+                label: const Text('Abrir cobrança de mediação'),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.amber, foregroundColor: Colors.black),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showChargebackDialog() {
+    final orderIdCtrl = TextEditingController();
+    final amountCtrl = TextEditingController();
+    final reasonCtrl = TextEditingController();
+    final parties = <Map<String, String>>[];
+    String? selected;
+    String status = '';
+    bool loading = false;
+    bool publishing = false;
+
+    Future<void> fetchParties(StateSetter setD) async {
+      final orderId = orderIdCtrl.text.trim();
+      if (orderId.isEmpty) return;
+      setD(() { loading = true; status = 'Buscando ordem nos relays...'; parties.clear(); selected = null; });
+      try {
+        final nostr = NostrOrderService();
+        final order = await nostr.fetchOrderFromNostr(orderId);
+        final completed = await nostr.fetchOrderCompleteEvent(orderId);
+        final accepts = await nostr.fetchAllAcceptsForOrder(orderId);
+        if (order == null) { setD(() { loading = false; status = 'Ordem não encontrada nos relays.'; }); return; }
+        final seen = <String>{};
+        final userPk = order['userPubkey']?.toString() ?? '';
+        if (userPk.isNotEmpty && seen.add(userPk)) {
+          parties.add({'pubkey': userPk, 'label': 'Usuário (comprador) — ${userPk.substring(0, 8)}'});
+        }
+        final completer = completed?['providerId']?.toString() ?? order['providerId']?.toString() ?? '';
+        if (completer.isNotEmpty && seen.add(completer)) {
+          parties.add({'pubkey': completer, 'label': 'Provedor canônico (recebeu os sats) — ${completer.substring(0, 8)}'});
+        }
+        for (final pk in accepts) {
+          if (pk.isNotEmpty && seen.add(pk)) {
+            parties.add({'pubkey': pk, 'label': 'Provedor (corrida) — ${pk.substring(0, 8)}'});
+          }
+        }
+        final btc = (order['btcAmount'] as num?)?.toDouble() ?? 0;
+        if (btc > 0) amountCtrl.text = (btc * 100000000).round().toString();
+        setD(() { loading = false; status = parties.isEmpty ? 'Nenhuma parte encontrada.' : '${parties.length} parte(s) encontrada(s).'; });
+      } catch (e) {
+        setD(() { loading = false; status = 'Erro: $e'; });
+      }
+    }
+
+    Future<void> publish(StateSetter setD) async {
+      final orderId = orderIdCtrl.text.trim();
+      final amount = int.tryParse(amountCtrl.text.trim()) ?? 0;
+      if (orderId.isEmpty || selected == null || amount <= 0) {
+        setD(() => status = 'Preencha ordem, parte e valor.');
+        return;
+      }
+      setD(() { publishing = true; status = 'Gerando invoice na carteira do admin...'; });
+      try {
+        final breez = context.read<BreezProvider>();
+        if (!breez.isInitialized) { setD(() { publishing = false; status = 'Carteira não inicializada.'; }); return; }
+        final inv = await breez.createInvoice(
+          amountSats: amount,
+          description: 'Bro mediação ordem #${orderId.substring(0, 8)}',
+        );
+        final bolt11 = (inv?['bolt11'] ?? inv?['invoice']) as String?;
+        if (inv?['success'] != true || bolt11 == null) { setD(() { publishing = false; status = 'Falha ao gerar invoice.'; }); return; }
+        final privateKey = context.read<OrderProvider>().nostrPrivateKey;
+        if (privateKey == null) { setD(() { publishing = false; status = 'Chave admin não disponível.'; }); return; }
+        setD(() => status = 'Publicando cobrança no Nostr...');
+        final ok = await NostrOrderService().publishAdminReimbursementInvoice(
+          privateKey: privateKey,
+          orderId: orderId,
+          adminInvoice: bolt11,
+          amountSats: amount,
+          userPubkey: selected,
+          reason: reasonCtrl.text.trim(),
+        );
+        setD(() {
+          publishing = false;
+          status = ok ? '✅ Cobrança publicada! O app da pessoa paga sozinho ao abrir.' : '❌ Falha ao publicar. Tente de novo.';
+        });
+      } catch (e) {
+        setD(() { publishing = false; status = 'Erro: $e'; });
+      }
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setD) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A2E),
+          title: const Text('💸 Cobrança de Mediação', style: TextStyle(color: Colors.white)),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: orderIdCtrl,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      labelText: 'ID da ordem', labelStyle: TextStyle(color: Colors.white54)),
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      onPressed: loading ? null : () => fetchParties(setD),
+                      child: Text(loading ? 'Buscando...' : 'Buscar partes da ordem'),
+                    ),
+                  ),
+                  ...parties.map((p) => RadioListTile<String>(
+                        dense: true,
+                        title: Text(p['label']!, style: const TextStyle(color: Colors.white, fontSize: 13)),
+                        value: p['pubkey']!,
+                        groupValue: selected,
+                        onChanged: (v) => setD(() => selected = v),
+                      )),
+                  TextField(
+                    controller: amountCtrl,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      labelText: 'Valor (sats)', labelStyle: TextStyle(color: Colors.white54)),
+                  ),
+                  TextField(
+                    controller: reasonCtrl,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      labelText: 'Motivo (opcional)', labelStyle: TextStyle(color: Colors.white54)),
+                  ),
+                  const SizedBox(height: 8),
+                  if (status.isNotEmpty)
+                    Text(status, style: const TextStyle(color: Colors.amber, fontSize: 12)),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fechar')),
+            ElevatedButton(
+              onPressed: publishing ? null : () => publish(setD),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.amber, foregroundColor: Colors.black),
+              child: Text(publishing ? 'Publicando...' : 'Gerar e publicar cobrança'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildAgentSection() {
     final pendingCount = _agentAnalyses.length;

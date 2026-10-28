@@ -713,7 +713,17 @@ class NostrOrderService {
           if (pubkey == null || pubkey.isEmpty || createdAt == null) continue;
           if (seenPubkeys.contains(pubkey)) continue;
           seenPubkeys.add(pubkey);
-          accepts.add({'pubkey': pubkey, 'created_at': createdAt});
+          // v679: ordenar pela chave IMUTÁVEL content.acceptedAt (gravada no
+          // momento do aceite). O created_at do EVENTO renova a cada republish
+          // (evento replaceable) e podia quebrar a corrida — o billCode ia
+          // pro provedor errado (caso real 28/out, ordem e32e493e).
+          int sortKey = createdAt;
+          final acceptedAtStr = content['acceptedAt'] as String?;
+          if (acceptedAtStr != null) {
+            final parsed = DateTime.tryParse(acceptedAtStr);
+            if (parsed != null) sortKey = (parsed.millisecondsSinceEpoch / 1000).round();
+          }
+          accepts.add({'pubkey': pubkey, 'created_at': sortKey});
         } catch (_) {}
       }
     }
@@ -5304,14 +5314,20 @@ class NostrOrderService {
             try {
               final content = event['parsedContent'] ?? jsonDecode(event['content']);
               if (content['orderId'] == orderId) {
+                // v679: preferir content.acceptedAt (IMUTÁVEL) ao created_at
+                // do evento (renova a cada republish e quebrava a corrida).
+                int ts = event['created_at'] as int? ?? 0x7FFFFFFFFFFFFFFF;
+                final accStr = content['acceptedAt'] as String?;
+                final accParsed = accStr != null ? DateTime.tryParse(accStr) : null;
+                if (accParsed != null) ts = (accParsed.millisecondsSinceEpoch / 1000).round();
                 final providerId = content['providerId'] as String?;
                 if (providerId != null && providerId.isNotEmpty) {
-                  candidates.add({'pubkey': providerId, 'created_at': event['created_at'] as int? ?? 0x7FFFFFFFFFFFFFFF});
+                  candidates.add({'pubkey': providerId, 'created_at': ts});
                   continue;
                 }
                 final eventPubkey = event['pubkey'] as String?;
                 if (eventPubkey != null && eventPubkey.isNotEmpty) {
-                  candidates.add({'pubkey': eventPubkey, 'created_at': event['created_at'] as int? ?? 0x7FFFFFFFFFFFFFFF});
+                  candidates.add({'pubkey': eventPubkey, 'created_at': ts});
                 }
               }
             } catch (_) {}

@@ -4617,6 +4617,40 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return;
       }
       
+      // v679: GUARDA ANTI-FRAUDE DE CORRIDA — o comprovante TEM que vir do
+      // provedor que o app está rastreando (o mesmo que recebeu o billCode).
+      // Caso real 28/out (e32e493e): o billCode foi revelado ao PERDEDOR da
+      // corrida (que pagou o boleto de verdade) e o CANÔNICO publicou o
+      // complete sem ter o código — e recebeu os sats. Completer ≠ rastreado
+      // → NÃO pagar, orientar disputa.
+      try {
+        final trackedProvider = order?.providerId ?? orderDetails?['provider_id']?.toString() ?? '';
+        if (trackedProvider.isNotEmpty) {
+          final completeEvt = await NostrOrderService().fetchOrderCompleteEvent(widget.orderId)
+              .timeout(const Duration(seconds: 10), onTimeout: () => null);
+          final completerId = completeEvt?['providerId']?.toString() ?? '';
+          if (completerId.isNotEmpty && completerId != trackedProvider) {
+            broLog('🚨 [ConfirmPayment] comprovante de ${completerId.substring(0, 8)} mas o rastreado é ${trackedProvider.substring(0, 8)} — BLOQUEANDO pagamento');
+            if (mounted) {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(l.t('order_completer_mismatch')),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 8),
+                ),
+              );
+              setState(() {
+                _isConfirming = false;
+              });
+            }
+            return;
+          }
+        }
+      } catch (e) {
+        broLog('⚠️ guarda de corrida falhou (seguindo): $e');
+      }
+      
       // SEGURANÇA v449: Validar que o valor da invoice corresponde ao esperado da ordem
       // Invoice deve ser base + 3% provider fee. Tolerância de 5% para arredondamentos.
       try {

@@ -2036,6 +2036,19 @@ class OrderProvider with ChangeNotifier {
         final allAccepts = await _nostrOrderService
             .fetchAllAcceptsForOrder(order.id)
             .timeout(const Duration(seconds: 10), onTimeout: () => <String>[]);
+        // v679: FAIL-CLOSED. Se a verificação de aceites falhar (lista vazia
+        // por timeout/relay) ou o providerId local NÃO constar nos aceites da
+        // rede, NÃO revelar o billCode neste ciclo (retenta no próximo sync).
+        // Caso real 28/out (ordem e32e493e): falha aberta → billCode foi pro
+        // provedor que PERDEU a corrida, que pagou o boleto com dinheiro real.
+        if (allAccepts.isEmpty) {
+          broLog('🛡️ v679: ${order.id.substring(0, 8)} — verificação de aceites vazia/timeout. NÃO revelando billCode neste ciclo (fail-closed).');
+          continue;
+        }
+        if (!allAccepts.contains(order.providerId)) {
+          broLog('🛡️ v679: ${order.id.substring(0, 8)} — providerId local NÃO consta nos aceites da rede. NÃO revelando (fail-closed).');
+          continue;
+        }
         if (allAccepts.length > 1) {
           final winner = allAccepts.first;
           broLog('🏁 v541: ordem ${order.id.substring(0, 8)} tem ${allAccepts.length} accepts. Winner=${winner.substring(0, 8)}');
@@ -2068,6 +2081,9 @@ class OrderProvider with ChangeNotifier {
             final meta = Map<String, dynamic>.from(_orders[idx].metadata ?? {});
             meta['billCode_nip44_sent'] = true;
             meta['billCode_nip44_sent_at'] = DateTime.now().millisecondsSinceEpoch;
+            // v679: registrar PARA QUEM revelamos — a guarda do comprador
+            // (_handleConfirmPayment) bloqueia complete vindo de OUTRO provedor
+            meta['billCode_nip44_sent_to'] = order.providerId;
             _orders[idx] = _orders[idx].copyWith(metadata: meta);
           }
           broLog('🔐 v438: billCode NIP-44 sent for ${order.id.substring(0, 8)}');
@@ -2788,6 +2804,23 @@ class OrderProvider with ChangeNotifier {
 
 
       // Publicar conclus�?£o no Nostr
+      // v679: BLOQUEIO ANTI-FRAUDE — sem o código de pagamento (billCode em
+      // plaintext ou recebido cifrado) o provedor NÃO PODE ter pago a conta.
+      // Completar sem ele = comprovante necessariamente falso. Caso real
+      // 28/out (e32e493e): o canônico publicou complete SEM ter recebido o
+      // billCode (que foi pro perdedor da corrida) e recebeu os sats sem
+      // pagar o boleto.
+      final hasPlainBill = order.billCode.isNotEmpty && order.billCode != '[encrypted]';
+      final metaBill = order.metadata?['billCode_nip44'] as String?;
+      final hasEncryptedBill = metaBill != null && metaBill.isNotEmpty;
+      if (!hasPlainBill && !hasEncryptedBill) {
+        _error = 'Código de pagamento não recebido ainda. Aguarde o comprador enviar os dados da conta antes de concluir.';
+        broLog('🛡️ [completeOrderAsProvider] BLOQUEADO: sem billCode — impossível ter pago (ordem $orderId)');
+        _isLoading = false;
+        _immediateNotify();
+        return false;
+      }
+
       // v563: timeout explícito de 25s. Antes não havia timeout aqui — se um
       // relay travasse, a função podia bloquear 90s+ levando o outer timeout
       // do _uploadReceipt a disparar e fazer o usuário precisar reenviar.

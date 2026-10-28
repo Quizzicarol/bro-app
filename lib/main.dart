@@ -730,6 +730,23 @@ class BroApp extends StatelessWidget {
               return false;
             }
             
+            // v679: guarda anti-corrida — só pagar invoice de QUEM o app
+            // rastreia como provedor (completer == order.providerId). Caso
+            // e32e493e (28/out): complete do canônico sem billCode quase foi
+            // pago enquanto o perdedor (com o código) pagou o boleto de verdade.
+            try {
+              final completeEvt2 = await NostrOrderService().fetchOrderCompleteEvent(orderId)
+                  .timeout(const Duration(seconds: 10), onTimeout: () => null);
+              final completerId = completeEvt2?['providerId']?.toString() ?? '';
+              final tracked = order.providerId ?? '';
+              if (completerId.isNotEmpty && tracked.isNotEmpty && completerId != tracked) {
+                broLog('🚨 [AutoPay-Main] comprovante de ${completerId.substring(0,8)} ≠ rastreado ${tracked.substring(0,8)} — NÃO pagando (anti-corrida)');
+                return false;
+              }
+            } catch (e) {
+              broLog('⚠️ [AutoPay-Main] guarda de corrida falhou (seguindo): $e');
+            }
+
             // v449: Validar invoice amount antes de pagar (segurança contra invoice inflado)
             final baseSats = (order.btcAmount * 100000000).round();
             final expectedWithFee = baseSats + (baseSats * AppConfig.providerFeePercent).round();

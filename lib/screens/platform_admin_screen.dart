@@ -1321,11 +1321,20 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
     bool publishing = false;
 
     Future<void> fetchParties(StateSetter setD) async {
-      final orderId = orderIdCtrl.text.trim();
+      var orderId = orderIdCtrl.text.trim();
       if (orderId.isEmpty) return;
       setD(() { loading = true; status = 'Buscando ordem nos relays...'; parties.clear(); selected = null; });
       try {
         final nostr = NostrOrderService();
+        // v681: aceitar PREFIXO (ex: e32e493e) — resolve pro ID completo antes
+        if (orderId.length < 36) {
+          setD(() => status = 'Resolvendo ID completo da ordem...');
+          final full = await nostr.resolveOrderIdByPrefix(orderId);
+          if (full != null) {
+            orderId = full;
+            orderIdCtrl.text = full;
+          }
+        }
         final order = await nostr.fetchOrderFromNostr(orderId);
         final completed = await nostr.fetchOrderCompleteEvent(orderId);
         final accepts = await nostr.fetchAllAcceptsForOrder(orderId);

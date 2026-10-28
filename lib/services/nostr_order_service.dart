@@ -1191,9 +1191,19 @@ class NostrOrderService {
   Future<Map<String, dynamic>?> fetchOrderFromNostr(String orderId) async {
     
     // Buscar em todos os relays em paralelo
-    final results = await Future.wait(
+    var results = await Future.wait(
       _relays.take(3).map((relay) => _fetchOrderFromRelay(relay, orderId).catchError((_) => null)),
     );
+    
+    // v681: se os 3 primeiros falharem (damus 503, nos.lol morto etc), tentar
+    // o resto + fallbacks antes de desistir — caso real: cobrança de mediação
+    // não achava uma ordem que existia no primal/apexcord.
+    if (results.every((r) => r == null)) {
+      final extra = <String>[..._relays.skip(3), ..._fallbackRelays];
+      results = await Future.wait(
+        extra.map((relay) => _fetchOrderFromRelay(relay, orderId).catchError((_) => null)),
+      );
+    }
     
     // Usar o resultado MAIS RECENTE (maior created_at)
     Map<String, dynamic>? newest;
@@ -1216,6 +1226,43 @@ class NostrOrderService {
     return newest;
   }
   
+  /// v681: resolve um PREFIXO de orderId (ex: "e32e493e") para o ID completo
+  /// varrendo ordens recentes em TODOS os relays + fallbacks. Retorna o
+  /// próprio input se já parecer completo, ou null se não achar.
+  Future<String?> resolveOrderIdByPrefix(String prefix) async {
+    if (prefix.isEmpty) return null;
+    if (prefix.length >= 36) return prefix;
+    final allRelays = <String>[..._relays, ..._fallbackRelays];
+    final results = await Future.wait(
+      allRelays.map((relay) async {
+        try {
+          return await _fetchFromRelay(
+            relay,
+            kinds: [kindBroOrder],
+            tags: {'#t': ['bro-order']},
+            limit: 300,
+          ).timeout(const Duration(seconds: 10), onTimeout: () => <Map<String, dynamic>>[]);
+        } catch (_) {
+          return <Map<String, dynamic>>[];
+        }
+      }),
+    );
+    for (final events in results) {
+      for (final event in events) {
+        try {
+          final tags = event['tags'] as List? ?? const [];
+          for (final t in tags) {
+            if (t is List && t.length >= 2 && t[0] == 'd') {
+              final d = t[1] as String?;
+              if (d != null && d.startsWith(prefix)) return d;
+            }
+          }
+        } catch (_) {}
+      }
+    }
+    return null;
+  }
+
   /// Helper: Busca ordem de um relay específico
   Future<Map<String, dynamic>?> _fetchOrderFromRelay(String relay, String orderId) async {
     try {

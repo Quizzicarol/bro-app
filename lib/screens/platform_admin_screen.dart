@@ -682,8 +682,8 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
                   _buildAgentSection(),
                   const SizedBox(height: 24),
 
-                  // v680: Cobrança de mediação (chargeback pós-conclusão)
-                  _buildChargebackCard(),
+                  // v680: Cobrança de mediação (resolução pós-conclusão)
+                  _buildMediationChargeCard(),
                   const SizedBox(height: 24),
 
                   // DISPUTAS ABERTAS
@@ -1271,7 +1271,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
   // CONCLUÍDA (ex.: alguém recebeu sats indevidamente por bug de corrida).
   // Gera um invoice da carteira do admin, assina com a chave admin e publica
   // com #p=devedor. O app do devedor encontra no sync e paga sozinho.
-  Widget _buildChargebackCard() {
+  Widget _buildMediationChargeCard() {
     return Card(
       color: const Color(0xFF1A1A2E),
       child: Padding(
@@ -1298,7 +1298,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: _showChargebackDialog,
+                onPressed: _showMediationDialog,
                 icon: const Icon(Icons.add_card, size: 18),
                 label: const Text('Abrir cobrança de mediação'),
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.amber, foregroundColor: Colors.black),
@@ -1310,7 +1310,7 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
     );
   }
 
-  void _showChargebackDialog() {
+  void _showMediationDialog() {
     final orderIdCtrl = TextEditingController();
     final amountCtrl = TextEditingController();
     final reasonCtrl = TextEditingController();

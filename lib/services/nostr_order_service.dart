@@ -4147,10 +4147,10 @@ class NostrOrderService {
   }
 
   /// v680: busca cobranças de mediação (bro_admin_reimbursement) destinadas a
-  /// MIM (tag #p) — usado pelo autopay de chargebacks. Só eventos ASSINADOS
-  /// pelo admin (AppConfig.adminPubkey, fail-closed) e com assinatura válida.
+  /// MIM (tag #p) — usado pelo autopay de cobranças de mediação. Só eventos
+  /// ASSINADOS pelo admin (AppConfig.adminPubkey, fail-closed) e com assinatura válida.
   /// Retorna o mais recente por orderId.
-  Future<List<Map<String, dynamic>>> fetchMyAdminChargebacks(String myPubkey) async {
+  Future<List<Map<String, dynamic>>> fetchMyMediationCharges(String myPubkey) async {
     final byOrder = <String, Map<String, dynamic>>{};
     // vSEC: fail-closed — sem adminPubkey no build, nenhuma cobrança é válida
     if (AppConfig.adminPubkey.isEmpty) return [];

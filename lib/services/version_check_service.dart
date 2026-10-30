@@ -246,8 +246,10 @@ class VersionCheckService {
                 _openDownloadUrl();
                 if (!_isCritical) Navigator.pop(ctx);
               },
-              icon: Icon(Platform.isIOS ? Icons.apple : Icons.download, size: 18),
-              label: Text(Platform.isIOS ? 'Abrir TestFlight' : 'Baixar APK'),
+              icon: Icon(Platform.isIOS ? Icons.apple : Icons.system_update, size: 18),
+              // v683: rótulo único "Atualizar" — Android baixa o APK mais
+              // recente; iOS abre o TestFlight (comportamento já existente).
+              label: const Text('Atualizar'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: _isCritical ? Colors.red : Colors.blue,
                 foregroundColor: Colors.white,

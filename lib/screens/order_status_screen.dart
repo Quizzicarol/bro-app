@@ -3255,26 +3255,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       if (mounted) {
         Navigator.pop(context); // Fechar loading IMEDIATAMENTE
         
-        // Atualizar status local para "em disputa"
         final orderProvider = context.read<OrderProvider>();
-        await orderProvider.updateOrderStatus(
-          orderId: widget.orderId,
-          status: 'disputed',
-          // v630: embute motivo/descrição/valor/ponto do fluxo no próprio status
-          // update (kind 30080) para o admin ver os dados mesmo se o kind 1
-          // bro-disputa não chegar aos relays (era a causa do "disputa via status update").
-          nostrExtra: {
-            'reason': reason,
-            'description': description,
-            'openedBy': 'user',
-            'amount_brl': widget.amountBrl,
-            'amount_sats': widget.amountSats,
-            'payment_type': _orderDetails?['payment_type'],
-            'previous_status': _currentStatus,
-          },
-        );
+        final previousStatus = _currentStatus; // v684: capturar ANTES do setState
         
-        // Atualizar UI ANTES de publicar no Nostr (que é lento)
+        // v684: FEEDBACK IMEDIATO — status local + snackbar + popup de
+        // confirmação ANTES de qualquer await de Nostr. Antes o popup ficava
+        // refém do updateOrderStatus (publicação em relay lento/travado) e a
+        // usuária ficava sem saber se a disputa abriu (caso real 30/out).
         setState(() {
           _currentStatus = 'disputed';
           _disputeReason = reason;
@@ -3290,10 +3277,27 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             duration: const Duration(seconds: 4),
           ),
         );
-
-        // v630: confirmação explícita na tela com os prazos de resposta,
-        // para o usuário saber que a solicitação foi enviada e o que esperar.
         _showDisputeConfirmationDialog();
+        
+        // Atualizar status local + publicar no Nostr EM BACKGROUND.
+        // v630: embute motivo/descrição/valor/ponto do fluxo no próprio status
+        // update (kind 30080) para o admin ver os dados mesmo se o kind 1
+        // bro-disputa não chegar aos relays.
+        orderProvider.updateOrderStatus(
+          orderId: widget.orderId,
+          status: 'disputed',
+          nostrExtra: {
+            'reason': reason,
+            'description': description,
+            'openedBy': 'user',
+            'amount_brl': widget.amountBrl,
+            'amount_sats': widget.amountSats,
+            'payment_type': _orderDetails?['payment_type'],
+            'previous_status': previousStatus,
+          },
+        ).catchError((e) {
+          broLog('⚠️ v684: updateOrderStatus(disputed) falhou em background: $e');
+        });
 
         // v541: Nao envia push manualmente. Watchtower detecta o evento
         // bro_dispute no Nostr e envia notificacao automaticamente.

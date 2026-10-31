@@ -1005,7 +1005,18 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) {
         setState(() => _statusMessage = AppLocalizations.of(context).t('login_loading_history'));
         final orderProvider = context.read<OrderProvider>();
-        await orderProvider.loadOrdersForUser(publicKey);
+        // v684: TIMEOUT — sem isso, relay lento/travado deixava o login preso
+        // no "aguardando" para sempre; o usuário matava o app e, na confusão,
+        // podia acabar com outra identidade (caso real: Fábio, 30/out). As
+        // chaves já foram salvas acima — o histórico completa no sync do home.
+        try {
+          await orderProvider.loadOrdersForUser(publicKey)
+              .timeout(const Duration(seconds: 30), onTimeout: () {
+            broLog('⏰ v684: loadOrdersForUser estourou 30s — entrando mesmo assim (sync continua no home)');
+          });
+        } catch (e) {
+          broLog('⚠️ v684: loadOrdersForUser falhou ($e) — entrando mesmo assim');
+        }
         broLog('✅ Ordens carregadas para ${publicKey.substring(0, 8)}...');
       }
 

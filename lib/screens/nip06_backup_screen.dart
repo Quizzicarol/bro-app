@@ -135,6 +135,47 @@ class _Nip06BackupScreenState extends State<Nip06BackupScreen> {
   Future<void> _saveAndUseKeys() async {
     if (_derivedPrivateKey == null || _derivedPublicKey == null) return;
     
+    // v685: NUNCA trocar a identidade Nostr de quem já está logado por esta
+    // tela. O propósito aqui é backup/restauração de CARTEIRA. Se a seed
+    // colada deriva uma identidade DIFERENTE da atual (ex.: seed de outra
+    // carteira, como a Wallet of Satoshi), salvar essas chaves APAGA o
+    // vínculo do usuário (BRIX, histórico, disputas) — caso real do Fábio
+    // (30/out). Regra permanente: identidade só muda pelo login explícito.
+    final currentPub = await _storage.getNostrPublicKey();
+    if (currentPub != null && currentPub.isNotEmpty && currentPub != _derivedPublicKey) {
+      broLog('🛡️ v685: BLOQUEADA troca de identidade via tela de backup (seed deriva pubkey diferente da logada)');
+      if (!mounted) return;
+      await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              const Icon(Icons.shield, color: Colors.orange),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(AppLocalizations.of(ctx).t('nip06_identity_blocked_title'),
+                    style: const TextStyle(color: Colors.white, fontSize: 16)),
+              ),
+            ],
+          ),
+          content: Text(
+            AppLocalizations.of(ctx).t('nip06_identity_blocked'),
+            style: const TextStyle(color: Color(0xB3FFFFFF), fontSize: 14, height: 1.4),
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx),
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF6B6B)),
+              child: Text(AppLocalizations.of(ctx).t('ok'), style: const TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(

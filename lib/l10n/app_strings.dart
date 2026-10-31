@@ -549,6 +549,10 @@ const Map<String, String> ptBR = {
   'privacy_nip44_description': 'Criptografia mais segura para mensagens diretas',
   'privacy_hide_balance': 'Ocultar Saldo',
   'privacy_hide_balance_desc': 'Esconde valores na tela inicial',
+  'privacy_biometric_lock': 'Travar app com biometria',
+  'privacy_biometric_lock_desc': 'Pede digital/face ou PIN ao abrir o Bro. Os dados biométricos ficam só no chip do seu aparelho — nunca saem dele.',
+  'privacy_biometric_unavailable': 'Este aparelho não tem biometria nem PIN configurado.',
+  'biometric_unlock': 'Desbloquear',
   'privacy_publish_receipts': 'Publicar Recibos no Nostr',
   'privacy_publish_receipts_desc': 'Compartilha comprovantes como notas públicas',
   'privacy_payments_visible': 'Seus pagamentos serão visíveis para seus seguidores',
@@ -595,6 +599,8 @@ const Map<String, String> ptBR = {
   'nip06_public_key': 'Chave Pública',
   'nip06_private_key': 'Chave Privada (⚠️ secreta)',
   'nip06_save_and_use': 'Salvar e Usar Estas Chaves',
+  'nip06_identity_blocked_title': 'Identidade protegida',
+  'nip06_identity_blocked': 'Esta seed gera uma identidade Nostr DIFERENTE da que está logada. Para proteger sua conta (BRIX, histórico, disputas), o Bro não troca sua identidade por aqui.\n\nPara restaurar SÓ a carteira, use o botão "Restaurar Carteira". Para trocar de identidade, saia da conta e entre com a chave privada correspondente.',
 
   // ==================== pix_payment_screen ====================
   'pix_title': 'Pagamento PIX',
@@ -2136,6 +2142,10 @@ const Map<String, String> enUS = {
   'privacy_recommended': 'Recommended',
   'privacy_nip44_description': 'More secure encryption for direct messages',
   'privacy_hide_balance': 'Hide Balance',
+  'privacy_biometric_lock': 'Lock app with biometrics',
+  'privacy_biometric_lock_desc': 'Asks for fingerprint/face or PIN when opening Bro. Biometric data stays in your device chip only — it never leaves it.',
+  'privacy_biometric_unavailable': 'This device has no biometrics or PIN configured.',
+  'biometric_unlock': 'Unlock',
   'privacy_hide_balance_desc': 'Hides values on the home screen',
   'privacy_publish_receipts': 'Publish Receipts on Nostr',
   'privacy_publish_receipts_desc': 'Share receipts as public notes',
@@ -2183,6 +2193,8 @@ const Map<String, String> enUS = {
   'nip06_public_key': 'Public Key',
   'nip06_private_key': 'Private Key (⚠️ secret)',
   'nip06_save_and_use': 'Save and Use These Keys',
+  'nip06_identity_blocked_title': 'Identity protected',
+  'nip06_identity_blocked': 'This seed derives a DIFFERENT Nostr identity than the one logged in. To protect your account (BRIX, history, disputes), Bro will not switch your identity here.\n\nTo restore ONLY the wallet, use the "Restore Wallet" button. To switch identity, log out and log in with the matching private key.',
 
   // ==================== pix_payment_screen ====================
   'pix_title': 'PIX Payment',
@@ -3725,6 +3737,10 @@ const Map<String, String> esES = {
   'privacy_nip44_description': 'Cifrado más seguro para mensajes directos',
   'privacy_hide_balance': 'Ocultar Saldo',
   'privacy_hide_balance_desc': 'Esconde valores en la pantalla principal',
+  'privacy_biometric_lock': 'Bloquear app con biometría',
+  'privacy_biometric_lock_desc': 'Pide huella/rostro o PIN al abrir Bro. Los datos biométricos quedan solo en el chip de tu aparato — nunca salen de él.',
+  'privacy_biometric_unavailable': 'Este dispositivo no tiene biometría ni PIN configurado.',
+  'biometric_unlock': 'Desbloquear',
   'privacy_publish_receipts': 'Publicar Recibos en Nostr',
   'privacy_publish_receipts_desc': 'Comparte comprobantes como notas públicas',
   'privacy_payments_visible': 'Tus pagos serán visibles para tus seguidores',
@@ -3771,6 +3787,8 @@ const Map<String, String> esES = {
   'nip06_public_key': 'Clave Pública',
   'nip06_private_key': 'Clave Privada (⚠️ secreta)',
   'nip06_save_and_use': 'Guardar y Usar Estas Claves',
+  'nip06_identity_blocked_title': 'Identidad protegida',
+  'nip06_identity_blocked': 'Esta seed deriva una identidad Nostr DIFERENTE de la que está conectada. Para proteger tu cuenta (BRIX, historial, disputas), Bro no cambia tu identidad aquí.\n\nPara restaurar SOLO la cartera, usa el botón "Restaurar Cartera". Para cambiar de identidad, cierra sesión y entra con la clave privada correspondiente.',
 
   // ==================== pix_payment_screen ====================
   'pix_title': 'Pago PIX',

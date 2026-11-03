@@ -264,6 +264,28 @@ class _DisputeChatState extends State<DisputeChat> {
             ),
           ),
           const Divider(height: 1),
+          // v692: aviso permanente — as partes estavam RESOLVENDO a negociação
+          // pelo chat da disputa (caso 33ed1ced: o comprador colou o código
+          // Pix no chat). Em má-fé, isso distorce evidências e atrapalha a
+          // mediação. Fica sempre visível, não some com scroll.
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.orange.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange.withValues(alpha: 0.35)),
+            ),
+            child: Text(
+              t.t('dispute_chat_no_side_deals'),
+              style: TextStyle(
+                fontSize: 11.5,
+                height: 1.35,
+                color: Colors.orange.shade800,
+              ),
+            ),
+          ),
           // Lista de mensagens
           ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 80, maxHeight: 340),

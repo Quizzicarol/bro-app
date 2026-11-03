@@ -4627,8 +4627,20 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       // corrida (que pagou o boleto de verdade) e o CANÔNICO publicou o
       // complete sem ter o código — e recebeu os sats. Completer ≠ rastreado
       // → NÃO pagar, orientar disputa.
+      // v691: o "rastreado" NÃO pode ser o order.providerId — campo MUTÁVEL
+      // que o perdedor pode sobrescrever ao republicar (caso real 33ed1ced:
+      // billCode foi certinho pro canônico 867ffa2b, mas a ordem marcava o
+      // perdedor e1e326ba — o guarda bloquearia o pagamento LEGÍTIMO).
+      // Fonte da verdade = aceites ordenados por acceptedAt (imutável).
       try {
-        final trackedProvider = order?.providerId ?? orderDetails?['provider_id']?.toString() ?? '';
+        var trackedProvider = order?.providerId ?? orderDetails?['provider_id']?.toString() ?? '';
+        try {
+          final accepts = await NostrOrderService().fetchAllAcceptsForOrder(widget.orderId)
+              .timeout(const Duration(seconds: 8), onTimeout: () => <String>[]);
+          if (accepts.isNotEmpty) {
+            trackedProvider = accepts.first; // canônico = acceptedAt mais antigo
+          }
+        } catch (_) {}
         if (trackedProvider.isNotEmpty) {
           final completeEvt = await NostrOrderService().fetchOrderCompleteEvent(widget.orderId)
               .timeout(const Duration(seconds: 10), onTimeout: () => null);

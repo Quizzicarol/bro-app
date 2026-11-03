@@ -111,6 +111,33 @@ class _DisputeChatState extends State<DisputeChat> {
     if (text.isEmpty || _sending) return;
 
     final t = AppLocalizations.of(context);
+
+    // v691: colar código Pix (BR Code) no chat da disputa é como os usuários
+    // "resolveram por conta" a corrida 33ed1ced — e pode sair pagamento duplo.
+    // Avisar antes de enviar (não bloqueia: em mediação pode ser necessário).
+    if (text.startsWith('000201') && text.contains('br.gov.bcb.pix')) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          title: const Text('⚠️ Código de pagamento no chat', style: TextStyle(color: Colors.white)),
+          content: const Text(
+            'Você está colando um código Pix no chat da disputa. Se mais de um provedor estiver na conversa, os DOIS podem pagar a mesma conta. Só envie se o mediador pediu.',
+            style: TextStyle(color: Colors.white70, height: 1.4),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(t.t('cancel'))),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+              child: const Text('Enviar mesmo assim', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true) return;
+    }
+
     // v690: só pubkeys Nostr válidas (64 hex). O placeholder 'temp' (rota sem
     // argumentos) passava no filtro de vazio e a cifragem NIP-44 explodia —
     // a Carol via "falha de conexão" ao responder a disputa 4f486f3d.

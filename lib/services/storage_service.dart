@@ -736,6 +736,17 @@ class StorageService {
     return _prefs?.getBool('share_receipts') ?? false;
   }
 
+  // Trava biométrica (opt-in, padrão DESLIGADO — issue do repo público)
+  Future<void> saveBiometricLock(bool enabled) async {
+    if (_prefs == null) await init();
+    await _prefs?.setBool('biometric_lock', enabled);
+  }
+
+  Future<bool> getBiometricLock() async {
+    if (_prefs == null) await init();
+    return _prefs?.getBool('biometric_lock') ?? false;
+  }
+
   // ===== GENERIC DATA STORAGE =====
   
   Future<void> saveData(String key, String value) async {

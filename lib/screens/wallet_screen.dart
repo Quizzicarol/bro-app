@@ -10,6 +10,8 @@ import '../providers/provider_balance_provider.dart';
 import '../providers/order_provider.dart';
 import '../models/order.dart';
 import '../services/storage_service.dart';
+import '../services/export_service.dart';
+import '../services/bitcoin_price_service.dart';
 import '../services/nostr_service.dart';
 import '../services/lnaddress_service.dart';
 import '../services/local_collateral_service.dart';
@@ -487,9 +489,40 @@ class _WalletScreenState extends State<WalletScreen> {
             Text(AppLocalizations.of(context).t('wallet_title'), style: const TextStyle(fontWeight: FontWeight.bold)),
           ],
         ),
+        actions: [
+          // Exportar movimentações (pedido do usuário Roberto, out/2026) —
+          // CSV gerado localmente, compartilhado pelo sheet nativo.
+          IconButton(
+            icon: const Icon(Icons.file_download_outlined, color: Color(0xFFFF9800)),
+            tooltip: 'Baixar movimentações (CSV)',
+            onPressed: _exportMovements,
+          ),
+        ],
       ),
       body: _buildBody(),
     );
+  }
+
+  Future<void> _exportMovements() async {
+    try {
+      final breez = context.read<BreezProvider>();
+      final payments = await breez.listPaymentsForExport();
+      if (!mounted) return;
+      if (payments.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Sem movimentações para exportar ainda.')),
+        );
+        return;
+      }
+      final usd = await BitcoinPriceService.getBitcoinPriceIn('USD');
+      final f = await ExportService.buildWalletCsv(payments, btcUsd: usd);
+      await ExportService.share(f, 'Bro — movimentações da carteira');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao exportar: $e'), backgroundColor: Colors.red),
+      );
+    }
   }
 
   Widget _buildBody() {

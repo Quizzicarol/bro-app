@@ -51,6 +51,8 @@
 	<string>Precisamos acessar suas fotos para selecionar imagens de QR codes</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Acesso ao microfone não é necessário</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Usado para travar/destravar o app com biometria (opcional, ativado por você em Privacidade). Os dados biométricos nunca saem do aparelho.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>UIBackgroundModes</key>

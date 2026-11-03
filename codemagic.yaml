@@ -161,7 +161,11 @@ workflows:
           set -e
           ZSP=/tmp/zsp
           if [ ! -x "$ZSP" ]; then
-            curl -sSL -o "$ZSP" "https://github.com/zapstore/zsp/releases/download/v2.0.1/zsp-2.0.1-darwin-arm64"
+            # PIN 0.4.17: a 2.0.x (rewrite "agent friendly", nov/2026) falha no
+            # darwin com "command is not supported" no comando identity —
+            # reproduzido: 2.0.1-linux funciona, 2.0.1-darwin não. 0.4.17
+            # testada na VM com p12 e gera a prova (kind 30509) normalmente.
+            curl -sSL -o "$ZSP" "https://github.com/zapstore/zsp/releases/download/v0.4.17/zsp-0.4.17-darwin-arm64"
             chmod +x "$ZSP"
           fi
           echo "⚡ Publicando no Zapstore a partir da release do GitHub..."
@@ -468,7 +472,7 @@ workflows:
           set -e
           ZSP=/tmp/zsp
           if [ ! -x "$ZSP" ]; then
-            curl -sSL -o "$ZSP" "https://github.com/zapstore/zsp/releases/download/v2.0.1/zsp-2.0.1-darwin-arm64"
+            curl -sSL -o "$ZSP" "https://github.com/zapstore/zsp/releases/download/v0.4.17/zsp-0.4.17-darwin-arm64"
             chmod +x "$ZSP"
           fi
           echo "⚡ Publicando no Zapstore a partir da release do GitHub..."

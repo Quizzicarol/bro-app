@@ -82,6 +82,29 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   bool _openingStuckDispute = false;
   static const Duration _stuckReportThreshold = Duration(minutes: 20);
 
+  // v691: corrida perdida — EU aceitei mas outro Bro tem o acceptedAt mais
+  // antigo (canônico). A ordem NÃO é minha: o billCode (corretamente) foi pro
+  // canônico. Sem este aviso o perdedor acha que a ordem é dele e abre disputa
+  // (caso real 33ed1ced — e aí o comprador colou o código no chat da disputa!).
+  bool? _lostRace;
+
+  Future<void> _checkLostRace() async {
+    try {
+      final myPk = NostrService().publicKey;
+      if (myPk == null || myPk.isEmpty) return;
+      final accepts = await NostrOrderService().fetchAllAcceptsForOrder(widget.orderId)
+          .timeout(const Duration(seconds: 10), onTimeout: () => <String>[]);
+      if (!mounted || accepts.isEmpty) return; // fail-open: sem dados, não marca
+      final lost = accepts.first != myPk;
+      if (lost != _lostRace) {
+        setState(() => _lostRace = lost);
+        if (lost) {
+          broLog('🏁 v691: corrida perdida em ${widget.orderId.substring(0, 8)} — canônico=${accepts.first.substring(0, 8)}');
+        }
+      }
+    } catch (_) {}
+  }
+
   @override
   void initState() {
     super.initState();
@@ -92,6 +115,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       _fetchResolutionIfNeeded();
       _fetchProviderMediatorMessages();
       _fetchProviderProofImage();
+      _checkLostRace(); // v691
     });
   }
 
@@ -207,6 +231,25 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   Future<void> _openStuckDispute() async {
     if (_openingStuckDispute) return;
     final loc = AppLocalizations.of(context)!;
+    // v691: perdedor da corrida NÃO abre disputa por billcode — o código foi
+    // (corretamente) para o canônico. Explicar em vez de criar caso falso.
+    if (_lostRace == true) {
+      await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          title: const Text('🏁 Outro Bro foi mais rápido', style: TextStyle(color: Colors.white)),
+          content: const Text(
+            'Outro provedor aceitou esta ordem antes de você. O código de pagamento foi (corretamente) entregue a ele — por isso ele nunca chegaria para você. Não pague nada nesta ordem.',
+            style: TextStyle(color: Colors.white70, height: 1.4),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(loc.t('ok'))),
+          ],
+        ),
+      );
+      return;
+    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -247,6 +290,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   /// v614: true quando a ordem foi aceita há >20min e ainda não temos billcode.
   /// Usado para revelar o botão "abrir disputa por código não recebido".
   bool _shouldShowStuckReport() {
+    if (_lostRace == true) return true; // v691: banner permanente de corrida perdida
     if (_orderDetails == null) return false;
     final acceptedStr = _orderDetails!['acceptedAt'] as String?;
     if (acceptedStr == null) return false;
@@ -256,6 +300,31 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   }
 
   Widget _buildStuckReportButton() {
+    // v691: perdi a corrida → banner explicativo no lugar de qualquer ação
+    if (_lostRace == true) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.orange.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.orange.withOpacity(0.5)),
+        ),
+        child: const Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('🏁', style: TextStyle(fontSize: 18)),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Outro Bro foi mais rápido e aceitou esta ordem antes de você. O código de pagamento foi entregue a ele corretamente. Esta ordem não é sua — não pague nada.',
+                style: TextStyle(color: Colors.orange, fontSize: 13, height: 1.4),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     final loc = AppLocalizations.of(context)!;
     return SizedBox(
       width: double.infinity,

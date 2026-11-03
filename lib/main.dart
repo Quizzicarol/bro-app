@@ -751,7 +751,14 @@ class BroApp extends StatelessWidget {
               final completeEvt2 = await NostrOrderService().fetchOrderCompleteEvent(orderId)
                   .timeout(const Duration(seconds: 10), onTimeout: () => null);
               final completerId = completeEvt2?['providerId']?.toString() ?? '';
-              final tracked = order.providerId ?? '';
+              // v691: providerId é MUTÁVEL (perdedor pode sobrescrever numa
+              // republicação — 33ed1ced). Resolver o canônico pelos aceites.
+              var tracked = order.providerId ?? '';
+              try {
+                final accepts = await NostrOrderService().fetchAllAcceptsForOrder(orderId)
+                    .timeout(const Duration(seconds: 8), onTimeout: () => <String>[]);
+                if (accepts.isNotEmpty) tracked = accepts.first;
+              } catch (_) {}
               if (completerId.isNotEmpty && tracked.isNotEmpty && completerId != tracked) {
                 broLog('🚨 [AutoPay-Main] comprovante de ${completerId.substring(0,8)} ≠ rastreado ${tracked.substring(0,8)} — NÃO pagando (anti-corrida)');
                 return false;

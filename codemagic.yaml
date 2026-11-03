@@ -175,6 +175,14 @@ workflows:
           else
             unset GITHUB_TOKEN GH_TOKEN  # repo público: anônimo funciona
           fi
+          # NIP-C1: o Zapstore exige prova ATIVA ligando o certificado de
+          # assinatura do APK à npub do projeto (erro real 03/11: o proof era
+          # do keystore ANTIGO; v2 não tinha prova). Renova a cada build
+          # (validade 1 ano, idempotente). CM_KEYSTORE_* vem do grupo de
+          # assinatura android do Codemagic.
+          echo "🔗 Renovando prova de identidade (cert ↔ npub)..."
+          SIGN_WITH="$ZAPSTORE_NSEC" KEYSTORE_PASSWORD="$CM_KEYSTORE_PASSWORD" \
+            "$ZSP" identity --link-key "$CM_KEYSTORE_PATH" --link-key-expiry 1y
           SIGN_WITH="$ZAPSTORE_NSEC" "$ZSP" publish -r github.com/Brostr/bro
           echo "✅ Zapstore atualizado"
         
@@ -454,6 +462,9 @@ workflows:
           else
             unset GITHUB_TOKEN GH_TOKEN
           fi
+          echo "🔗 Renovando prova de identidade (cert ↔ npub)..."
+          SIGN_WITH="$ZAPSTORE_NSEC" KEYSTORE_PASSWORD="$CM_KEYSTORE_PASSWORD" \
+            "$ZSP" identity --link-key "$CM_KEYSTORE_PATH" --link-key-expiry 1y
           SIGN_WITH="$ZAPSTORE_NSEC" "$ZSP" publish -r github.com/Brostr/bro
           echo "✅ Zapstore atualizado"
 

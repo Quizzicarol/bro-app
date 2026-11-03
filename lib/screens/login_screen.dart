@@ -656,17 +656,21 @@ class _LoginScreenState extends State<LoginScreen> {
                 });
 
                 try {
+                  // v689: NORMALIZAR nsec→hex ANTES de usar (bug real: Fábio
+                  // colou nsec e levou "Could not parse BigInt" — este fluxo
+                  // nunca convertia, ao contrário do login principal).
+                  final hexKey = _nostrService.normalizePrivateKey(nostrKey);
                   // Derivar chave pública Nostr
-                  final publicKey = _nostrService.getPublicKey(nostrKey);
+                  final publicKey = _nostrService.getPublicKey(hexKey);
                   
                   broLog('🔧 LOGIN AVANÇADO: chaves configuradas');
 
                   // Salvar chaves Nostr
                   await _storage.saveNostrKeys(
-                    privateKey: nostrKey,
+                    privateKey: hexKey,
                     publicKey: publicKey,
                   );
-                  _nostrService.setKeys(nostrKey, publicKey);
+                  _nostrService.setKeys(hexKey, publicKey);
 
                   // LOGIN AVANÇADO: FORÇA a troca de seed (o usuário escolheu explicitamente)
                   await _storage.forceUpdateBreezMnemonic(seed, ownerPubkey: publicKey);

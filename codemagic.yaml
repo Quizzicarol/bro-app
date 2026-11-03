@@ -201,8 +201,32 @@ workflows:
             if [ ! -s "$KEY12" ]; then
               echo "❌ conversão JKS→PKCS12 falhou (p12 vazio)"; exit 1
             fi
+            # O identity PEDE confirmação interativa (TTY) pra publicar — e CI
+            # não tem TTY (erro real 03/11). Solução: --offline cospe o evento
+            # ASSINADO (a assinatura com nsec funciona sem TTY) e publicamos
+            # nós mesmos via websocket.
             SIGN_WITH="$ZAPSTORE_NSEC" KEYSTORE_PASSWORD="$CM_KEYSTORE_PASSWORD" \
-              "$ZSP" identity --link-key "$KEY12" --link-key-expiry 1y
+              "$ZSP" identity --link-key "$KEY12" --link-key-expiry 1y --offline --json > /tmp/proof_event.json
+            if [ ! -s /tmp/proof_event.json ]; then
+              echo "❌ evento de prova vazio"; exit 1
+            fi
+            pip3 install --quiet --user websocket-client 2>/dev/null || pip3 install --quiet --break-system-packages websocket-client
+            python3 - <<'PYEOF'
+import json, websocket
+ev = json.load(open("/tmp/proof_event.json"))
+assert ev.get("sig"), "evento de prova NÃO está assinado"
+ok = 0
+for url in ["wss://relay.primal.net", "wss://relay.damus.io", "wss://relay.zapstore.dev"]:
+    try:
+        ws = websocket.create_connection(url, timeout=15)
+        ws.send(json.dumps(["EVENT", ev]))
+        ws.close()
+        ok += 1
+        print("prova publicada em", url)
+    except Exception as e:
+        print("falha em", url, ":", e)
+assert ok >= 1, "nenhum relay aceitou a prova"
+PYEOF
           fi
           SIGN_WITH="$ZAPSTORE_NSEC" "$ZSP" publish -r github.com/Brostr/bro
           echo "✅ Zapstore atualizado"
@@ -496,7 +520,27 @@ workflows:
               echo "❌ conversão JKS→PKCS12 falhou (p12 vazio)"; exit 1
             fi
             SIGN_WITH="$ZAPSTORE_NSEC" KEYSTORE_PASSWORD="$CM_KEYSTORE_PASSWORD" \
-              "$ZSP" identity --link-key "$KEY12" --link-key-expiry 1y
+              "$ZSP" identity --link-key "$KEY12" --link-key-expiry 1y --offline --json > /tmp/proof_event.json
+            if [ ! -s /tmp/proof_event.json ]; then
+              echo "❌ evento de prova vazio"; exit 1
+            fi
+            pip3 install --quiet --user websocket-client 2>/dev/null || pip3 install --quiet --break-system-packages websocket-client
+            python3 - <<'PYEOF'
+import json, websocket
+ev = json.load(open("/tmp/proof_event.json"))
+assert ev.get("sig"), "evento de prova NÃO está assinado"
+ok = 0
+for url in ["wss://relay.primal.net", "wss://relay.damus.io", "wss://relay.zapstore.dev"]:
+    try:
+        ws = websocket.create_connection(url, timeout=15)
+        ws.send(json.dumps(["EVENT", ev]))
+        ws.close()
+        ok += 1
+        print("prova publicada em", url)
+    except Exception as e:
+        print("falha em", url, ":", e)
+assert ok >= 1, "nenhum relay aceitou a prova"
+PYEOF
           fi
           SIGN_WITH="$ZAPSTORE_NSEC" "$ZSP" publish -r github.com/Brostr/bro
           echo "✅ Zapstore atualizado"

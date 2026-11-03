@@ -3552,6 +3552,45 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
+  // v688: tenta o canal redundante do backend quando o billCode não chega
+  // pelos relays (o comprador posta o blob NIP-44 no backend; o provedor
+  // busca aqui). Throttle de 30s por ordem. Retorna true se achou.
+  final Map<String, int> _billcodeFallbackTried = {};
+
+  Future<bool> fetchBillcodeFallbackOnce(String orderId) async {
+    final last = _billcodeFallbackTried[orderId] ?? 0;
+    if (DateTime.now().millisecondsSinceEpoch - last < 30000) return false;
+    _billcodeFallbackTried[orderId] = DateTime.now().millisecondsSinceEpoch;
+    try {
+      final res = await _nostrOrderService.fetchBillcodeFallback(orderId);
+      if (res == null) return false;
+      final idx = _orders.indexWhere((o) => o.id == orderId);
+      if (idx == -1) return false;
+      final meta = Map<String, dynamic>.from(_orders[idx].metadata ?? {});
+      final existing = (meta['billCode'] as String?) ?? '';
+      if (existing.isNotEmpty && existing != '[encrypted]') return true; // já tem
+      meta['billCode_nip44'] = res['blob'];
+      // Descriptografar já (lado provedor): ECDH(myPriv, senderPub)
+      final myPriv = nostrPrivateKey;
+      if (myPriv != null) {
+        try {
+          final plain = _nostrOrderService.decryptNip44(res['blob']!, myPriv, res['senderPubkey']!);
+          if (plain.isNotEmpty) meta['billCode'] = plain;
+        } catch (e) {
+          broLog('⚠️ v688 fallback decrypt falhou: $e');
+        }
+      }
+      _orders[idx] = _orders[idx].copyWith(metadata: meta);
+      await _saveOrders();
+      notifyListeners();
+      broLog('✅ v688: billCode via canal redundante (backend) p/ ${orderId.substring(0, 8)}');
+      return true;
+    } catch (e) {
+      broLog('⚠️ v688 fetchBillcodeFallbackOnce: $e');
+      return false;
+    }
+  }
+
   // v680: Auto-pagamento de COBRANÇAS DE MEDIAÇÃO do admin (resolução de bug
   // ou injustiça real em ordens concluídas — ex.: corrida entregou sats
   // indevidamente). NÃO é "chargeback" bancário: ninguém paga por fraude de

@@ -1,5 +1,6 @@
 ﻿import 'dart:async';
 import 'dart:convert';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:nostr/nostr.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -531,11 +532,55 @@ class NostrOrderService {
 
       final successCount = results.where((r) => r).length;
       broLog('🔐 publishEncryptedBillCode: orderId=${orderId.substring(0, 8)} → $successCount/${_relays.length} relays (nip44, provider=${providerPubkey.substring(0, 8)})');
+      // v688: canal redundante — além dos relays, deposita o blob cifrado no
+      // backend, que acorda o provedor via FCM silencioso. Se os relays
+      // falharem no aparelho do comprador, o código ainda chega (72d248d8).
+      unawaited(_postBillcodeFallback(orderId, providerPubkey, signerPubkey, encryptedBillCode));
       return successCount > 0;
     } catch (e) {
       broLog('❌ publishEncryptedBillCode EXCEPTION: $e');
       return false;
     }
+  }
+
+  /// v688: POST do blob NIP-44 pro canal redundante do backend. Nunca lança.
+  Future<void> _postBillcodeFallback(String orderId, String providerPubkey, String senderPubkey, String blob) async {
+    try {
+      final dio = Dio(BaseOptions(
+        baseUrl: AppConfig.defaultBackendUrl,
+        connectTimeout: const Duration(seconds: 8),
+        receiveTimeout: const Duration(seconds: 8),
+      ));
+      final resp = await dio.post('/billcode-fallback', data: {
+        'orderId': orderId,
+        'providerPubkey': providerPubkey,
+        'senderPubkey': senderPubkey,
+        'blob': blob,
+      });
+      broLog('📦 billcode fallback POST: ${resp.statusCode} pushed=${resp.data?['pushed']}');
+    } catch (e) {
+      broLog('⚠️ billcode fallback POST falhou (não-fatal): $e');
+    }
+  }
+
+  /// v688 (lado do provedor): busca o blob no canal redundante do backend.
+  /// Devolve {blob, senderPubkey} ou null.
+  Future<Map<String, String>?> fetchBillcodeFallback(String orderId) async {
+    try {
+      final dio = Dio(BaseOptions(
+        baseUrl: AppConfig.defaultBackendUrl,
+        connectTimeout: const Duration(seconds: 8),
+        receiveTimeout: const Duration(seconds: 8),
+      ));
+      final resp = await dio.get('/billcode-fallback/$orderId');
+      if (resp.statusCode == 200 && resp.data?['ok'] == true) {
+        return {
+          'blob': resp.data['blob'] as String,
+          'senderPubkey': resp.data['senderPubkey'] as String,
+        };
+      }
+    } catch (_) {}
+    return null;
   }
 
   /// Busca ordens aceitas por um provedor (raw)

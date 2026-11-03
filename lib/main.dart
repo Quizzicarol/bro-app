@@ -97,6 +97,18 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       return;
     }
 
+    // v688: 'billcode_fallback' — o billCode chegou pelo canal redundante do
+    // backend (quando os relays falham no aparelho do comprador). Silencioso:
+    // baixa o blob, descriptografa e grava na ordem local (lado provedor).
+    if (subtype == 'billcode_fallback') {
+      try {
+        await handleBillcodeFallbackInBackground(message.data);
+      } catch (e) {
+        broLog('[FCM-BG] billcode_fallback handler crashed: $e');
+      }
+      return;
+    }
+
     broLog('[FCM-BG] order_update received — system notification handles display');
 
     // v553: Marca a chave de dedup como ja exibida pelo sistema. Quando o

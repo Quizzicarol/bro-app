@@ -315,6 +315,14 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       }
 
       broLog('🔄 [POLLING] Verificando status da ordem ${widget.orderId.substring(0, 8)} (status=$currentStatus)...');
+      // v688: enquanto o billCode não chega, tenta também o canal redundante
+      // (backend+FCM) — os relays podem estar falhando no aparelho do
+      // comprador (throttle de 30s por ordem dentro do método).
+      if (!hasBillCode) {
+        context.read<OrderProvider>().fetchBillcodeFallbackOnce(widget.orderId).then((got) {
+          if (got && mounted) _loadOrderDetails(forceSync: true);
+        });
+      }
       await _loadOrderDetails(forceSync: true);
 
       // CORREÇÃO v234: Recalcular _timeRemaining a cada tick pra manter o countdown atualizado

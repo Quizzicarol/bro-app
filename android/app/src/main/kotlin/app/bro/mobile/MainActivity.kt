@@ -5,11 +5,12 @@ import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
-class MainActivity: FlutterActivity() {
+// FlutterFragmentActivity: exigida pelo plugin local_auth (trava biométrica).
+class MainActivity: FlutterFragmentActivity() {
     private val CHANNEL = "app.bro.mobile/settings"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {

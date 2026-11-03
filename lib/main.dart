@@ -52,6 +52,7 @@ import 'services/platform_fee_service.dart';
 import 'services/provider_payment_guard.dart';
 import 'providers/theme_provider.dart';
 import 'widgets/alfa_banner.dart';
+import 'widgets/biometric_gate.dart';
 
 import 'services/nostr_service.dart';
 import 'services/background_notification_service.dart';
@@ -1014,11 +1015,15 @@ class BroApp extends StatelessWidget {
                 ],
                 // Banner ALFA em todas as telas
                 builder: (context, child) {
-                  return Column(
-                    children: [
-                      const AlfaBanner(),
-                      Expanded(child: child ?? const SizedBox()),
-                    ],
+                  // Trava biométrica opcional (opt-in na tela de Privacidade):
+                  // cobre o app ao abrir/voltar do background até desbloquear.
+                  return BiometricGate(
+                    child: Column(
+                      children: [
+                        const AlfaBanner(),
+                        Expanded(child: child ?? const SizedBox()),
+                      ],
+                    ),
                   );
                 },
                 home: isLoggedIn 

@@ -74,6 +74,11 @@ class BreezProvider with ChangeNotifier {
     return [];
   }
 
+  /// Exportação de movimentações (stub)
+  Future<List<Map<String, dynamic>>> listPaymentsForExport({int limit = 1000}) async {
+    return [];
+  }
+
   Future<Map<String, dynamic>?> getNodeInfo() async {
     return null;
   }

@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../providers/order_provider.dart';
 import '../models/order.dart';
 import '../config.dart';
+import '../services/export_service.dart';
+import '../services/bitcoin_price_service.dart';
 
 /// Tela de histórico de ordens completadas pelo provedor
 /// Mostra todas as ordens finalizadas para verificação futura ou disputas
@@ -43,6 +45,30 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt)); // Mais recentes primeiro
   }
 
+  // Exportar ordens concluídas em CSV (pedido do usuário Roberto, out/2026) —
+  // data, valor fiat (BRL), preço BTC da ordem, sats e USD aproximado.
+  Future<void> _exportCompletedOrders() async {
+    try {
+      final orderProvider = context.read<OrderProvider>();
+      final orders = _getCompletedOrders(orderProvider);
+      if (!mounted) return;
+      if (orders.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Sem ordens concluídas para exportar ainda.')),
+        );
+        return;
+      }
+      final usd = await BitcoinPriceService.getBitcoinPriceIn('USD');
+      final f = await ExportService.buildProviderOrdersCsv(orders, btcUsd: usd);
+      await ExportService.share(f, 'Bro — ordens concluídas (provedor)');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao exportar: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context)!;
@@ -52,6 +78,11 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
         backgroundColor: const Color(0xFF1E1E1E),
         title: Text(l.t('prov_hist_title')),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.file_download_outlined),
+            tooltip: 'Baixar ordens concluídas (CSV)',
+            onPressed: _exportCompletedOrders,
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _refreshOrders,

@@ -769,6 +769,42 @@ class BreezProvider with ChangeNotifier {
       return [];
     }
   }
+
+  /// EXPORTAÇÃO (pedido Roberto out/2026): lista completa de pagamentos com
+  /// todos os campos necessários para o CSV de movimentações. Tudo local.
+  Future<List<Map<String, dynamic>>> listPaymentsForExport({int limit = 1000}) async {
+    if (!_isInitialized || _sdk == null) return [];
+    try {
+      final resp = await _sdk!.listPayments(
+        request: spark.ListPaymentsRequest(limit: limit),
+      );
+      final out = <Map<String, dynamic>>[];
+      for (var p in resp.payments) {
+        String? paymentHash;
+        String description = '';
+        if (p.details is spark.PaymentDetails_Lightning) {
+          final d = p.details as spark.PaymentDetails_Lightning;
+          paymentHash = d.htlcDetails.paymentHash;
+          description = d.description ?? '';
+        }
+        out.add({
+          'id': p.id,
+          'direction': p.paymentType.toString().contains('receive') ? 'recebimento' : 'envio',
+          'amountSats': int.tryParse(p.amount.toString()) ?? 0,
+          'feeSats': int.tryParse(p.fees.toString()) ?? 0,
+          'timestamp': int.tryParse(p.timestamp.toString()) ?? 0,
+          'status': p.status.toString(),
+          'method': p.method.toString(),
+          'description': description,
+          'paymentHash': paymentHash ?? '',
+        });
+      }
+      return out;
+    } catch (e) {
+      broLog('❌ listPaymentsForExport: $e');
+      return [];
+    }
+  }
   
   /// DIAGNÓSTICO: Verifica uma lista de paymentHashes para ver quais foram pagos
   Future<Map<String, bool>> checkMultiplePayments(List<String> paymentHashes) async {

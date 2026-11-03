@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../services/storage_service.dart';
+import '../services/biometric_lock_service.dart';
 
 class PrivacySettingsScreen extends StatefulWidget {
   const PrivacySettingsScreen({Key? key}) : super(key: key);
@@ -14,6 +15,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
   bool _nip44Enabled = true;
   bool _hideBalance = false;
   bool _sharePaymentReceipts = false;
+  bool _biometricLock = false;
   bool _isLoading = true;
 
   @override
@@ -30,6 +32,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
     _nip44Enabled = await storage.getNip44Enabled();
     _hideBalance = await storage.getHideBalance();
     _sharePaymentReceipts = await storage.getShareReceipts();
+    _biometricLock = await storage.getBiometricLock();
     setState(() => _isLoading = false);
   }
 
@@ -48,6 +51,9 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
         break;
       case 'share_receipts':
         await storage.saveShareReceipts(value);
+        break;
+      case 'biometric_lock':
+        await BiometricLockService().setEnabled(value);
         break;
     }
     if (!mounted) return;
@@ -107,6 +113,8 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                   _buildSectionTitle(AppLocalizations.of(context).t('privacy_display'), Icons.visibility),
                   const SizedBox(height: 12),
                   _buildHideBalanceSetting(),
+                  const SizedBox(height: 12),
+                  _buildBiometricLockSetting(),
                   const SizedBox(height: 24),
                   
                   // Relays
@@ -488,6 +496,79 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
             onChanged: (value) {
               setState(() => _hideBalance = value);
               _saveSetting('hide_balance', value);
+            },
+            activeColor: const Color(0xFFFF6B6B),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBiometricLockSetting() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0x0DFFFFFF),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0x33FFFFFF)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: const BoxDecoration(
+              color: Color(0x1AFFFFFF),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              _biometricLock ? Icons.fingerprint : Icons.fingerprint_outlined,
+              color: const Color(0x99FFFFFF),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  AppLocalizations.of(context).t('privacy_biometric_lock'),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  AppLocalizations.of(context).t('privacy_biometric_lock_desc'),
+                  style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: _biometricLock,
+            onChanged: (value) async {
+              // Opt-in consciente: ao ativar, verificar se o aparelho tem
+              // biometria/PIN e já testar o desbloqueio uma vez — evita o
+              // usuário se trancar fora sem nunca ter visto o prompt.
+              if (value) {
+                final bio = BiometricLockService();
+                if (!await bio.isAvailable()) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(AppLocalizations.of(context).t('privacy_biometric_unavailable')),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                }
+                final ok = await bio.unlock();
+                if (!ok) return; // cancelou/falhou — não ativa
+              }
+              setState(() => _biometricLock = value);
+              _saveSetting('biometric_lock', value);
             },
             activeColor: const Color(0xFFFF6B6B),
           ),

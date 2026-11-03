@@ -3905,7 +3905,10 @@ class NostrOrderService {
     final seenOrderIds = <String>{}; // Para deduplicar por orderId
     
     final results = await Future.wait(
-      _relays.map((relay) async {
+      // v687: incluir fallback relays — a lista de disputas do admin não pode
+      // sumir quando damus/nos.lol falham (caso real 72d248d8: a disputa só
+      // apareceu 3 dias depois).
+      [..._relays, ..._fallbackRelays].map((relay) async {
         try {
           // Buscar AMBAS as fontes em paralelo
           final fetches = await Future.wait([

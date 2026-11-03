@@ -181,8 +181,25 @@ workflows:
           # (validade 1 ano, idempotente). CM_KEYSTORE_* vem do grupo de
           # assinatura android do Codemagic.
           echo "🔗 Renovando prova de identidade (cert ↔ npub)..."
-          SIGN_WITH="$ZAPSTORE_NSEC" KEYSTORE_PASSWORD="$CM_KEYSTORE_PASSWORD" \
-            "$ZSP" identity --link-key "$CM_KEYSTORE_PATH" --link-key-expiry 1y
+          # zsp NÃO lê JKS (erro real: "JKS format not supported" / darwin
+          # "command is not supported"). Converte p/ PKCS12 via keytool antes.
+          # Diagnóstico explícito: falhar CLARO em vez de mudo.
+          echo "   keystore: ${CM_KEYSTORE_PATH:-VAZIO!} | keytool: $(command -v keytool || echo AUSENTE)"
+          if [ -z "$CM_KEYSTORE_PATH" ] || [ ! -f "$CM_KEYSTORE_PATH" ]; then
+            echo "⚠️ CM_KEYSTORE_PATH ausente — pulando prova de identidade"
+          else
+            KEY12=/tmp/release_proof.p12
+            rm -f "$KEY12"
+            keytool -importkeystore -srckeystore "$CM_KEYSTORE_PATH" \
+              -destkeystore "$KEY12" -deststoretype PKCS12 \
+              -srcstorepass "$CM_KEYSTORE_PASSWORD" -deststorepass "$CM_KEYSTORE_PASSWORD" \
+              -noprompt
+            if [ ! -s "$KEY12" ]; then
+              echo "❌ conversão JKS→PKCS12 falhou (p12 vazio)"; exit 1
+            fi
+            SIGN_WITH="$ZAPSTORE_NSEC" KEYSTORE_PASSWORD="$CM_KEYSTORE_PASSWORD" \
+              "$ZSP" identity --link-key "$KEY12" --link-key-expiry 1y
+          fi
           SIGN_WITH="$ZAPSTORE_NSEC" "$ZSP" publish -r github.com/Brostr/bro
           echo "✅ Zapstore atualizado"
         
@@ -463,8 +480,20 @@ workflows:
             unset GITHUB_TOKEN GH_TOKEN
           fi
           echo "🔗 Renovando prova de identidade (cert ↔ npub)..."
-          SIGN_WITH="$ZAPSTORE_NSEC" KEYSTORE_PASSWORD="$CM_KEYSTORE_PASSWORD" \
-            "$ZSP" identity --link-key "$CM_KEYSTORE_PATH" --link-key-expiry 1y
+          echo "   keystore: ${CM_KEYSTORE_PATH:-VAZIO!} | keytool: $(command -v keytool || echo AUSENTE)"
+          if [ -n "$CM_KEYSTORE_PATH" ] && [ -f "$CM_KEYSTORE_PATH" ]; then
+            KEY12=/tmp/release_proof.p12
+            rm -f "$KEY12"
+            keytool -importkeystore -srckeystore "$CM_KEYSTORE_PATH" \
+              -destkeystore "$KEY12" -deststoretype PKCS12 \
+              -srcstorepass "$CM_KEYSTORE_PASSWORD" -deststorepass "$CM_KEYSTORE_PASSWORD" \
+              -noprompt
+            if [ ! -s "$KEY12" ]; then
+              echo "❌ conversão JKS→PKCS12 falhou (p12 vazio)"; exit 1
+            fi
+            SIGN_WITH="$ZAPSTORE_NSEC" KEYSTORE_PASSWORD="$CM_KEYSTORE_PASSWORD" \
+              "$ZSP" identity --link-key "$KEY12" --link-key-expiry 1y
+          fi
           SIGN_WITH="$ZAPSTORE_NSEC" "$ZSP" publish -r github.com/Brostr/bro
           echo "✅ Zapstore atualizado"
 

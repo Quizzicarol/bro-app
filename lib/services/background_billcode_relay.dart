@@ -23,12 +23,77 @@ library;
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../config.dart';
 import 'log_utils.dart';
 import 'nostr_order_service.dart';
 import 'orders_storage.dart';
 import 'storage_service.dart';
+
+/// v688: canal redundante — o backend avisa via FCM silencioso que o billCode
+/// chegou por ELE (caminho usado quando os relays falham no aparelho do
+/// comprador). Baixamos o blob NIP-44, descriptografamos com a chave local e
+/// gravamos no metadata da ordem — mesmo destino do caminho via relay.
+@pragma('vm:entry-point')
+Future<bool> handleBillcodeFallbackInBackground(Map<String, dynamic> data) async {
+  final orderId = data['order_id']?.toString();
+  if (orderId == null || orderId.isEmpty) return false;
+  try {
+    final storage = StorageService();
+    await storage.init();
+    final myPubkey = (await storage.getNostrPublicKey())?.toLowerCase();
+    final privKey = await storage.getNostrPrivateKey();
+    if (myPubkey == null || myPubkey.isEmpty || privKey == null || privKey.isEmpty) {
+      return false;
+    }
+
+    final dio = Dio(BaseOptions(
+      baseUrl: AppConfig.defaultBackendUrl,
+      connectTimeout: const Duration(seconds: 8),
+      receiveTimeout: const Duration(seconds: 8),
+    ));
+    final resp = await dio.get('/billcode-fallback/$orderId');
+    if (resp.statusCode != 200 || resp.data?['ok'] != true) return false;
+    // Só processa se o blob é destinado a MIM
+    final forProvider = (resp.data['providerPubkey'] as String? ?? '').toLowerCase();
+    if (forProvider != myPubkey) return false;
+    final blob = resp.data['blob'] as String;
+    final senderPubkey = resp.data['senderPubkey'] as String;
+
+    String plain = '';
+    try {
+      plain = NostrOrderService().decryptNip44(blob, privKey, senderPubkey);
+    } catch (e) {
+      broLog('[BG-Fallback] decrypt falhou: $e');
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final ordersJson = await OrdersStorage.read(prefs, myPubkey);
+    if (ordersJson == null || ordersJson.isEmpty) return false;
+    final decoded = jsonDecode(ordersJson);
+    if (decoded is! List) return false;
+    bool found = false;
+    for (final item in decoded) {
+      if (item is Map && item['id']?.toString() == orderId) {
+        final meta = Map<String, dynamic>.from(item['metadata'] ?? {});
+        meta['billCode_nip44'] = blob;
+        if (plain.isNotEmpty) meta['billCode'] = plain;
+        item['metadata'] = meta;
+        found = true;
+        break;
+      }
+    }
+    if (!found) return false;
+    await OrdersStorage.write(prefs, myPubkey, jsonEncode(decoded));
+    broLog('[BG-Fallback] ✅ billCode via backend gravado p/ ${orderId.substring(0, 8)}');
+    return true;
+  } catch (e) {
+    broLog('[BG-Fallback] erro: $e');
+    return false;
+  }
+}
 
 /// Returns true on success (event was accepted by at least 1 relay), false
 /// on any failure (skipped, dedup hit, parse error, publish failure).

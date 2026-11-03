@@ -139,6 +139,10 @@ app.use('/collateral', requireAuth, collateralRoutes);
 app.use('/escrow', requireAuth, escrowRoutes);
 app.use('/agent', requireAuth, agentRoutes);
 app.use('/push', requireAuth, pushRoutes);
+// v688: canal redundante do billCode (blob NIP-44 via backend+FCM quando os
+// relays falham no aparelho do comprador — caso 72d248d8). Sem auth: o blob é
+// ciphertext inútil pra terceiros e o pareamento é validado no watchtower.
+app.use('/', require('./routes/billcode_fallback')(watchtower));
 
 // Job para verificar ordens expiradas (roda a cada 5 minutos)
 cron.schedule('*/5 * * * *', async () => {

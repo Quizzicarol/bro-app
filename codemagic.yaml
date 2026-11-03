@@ -11,6 +11,14 @@ workflows:
     name: Android + iOS (Testers)
     max_build_duration: 120
     instance_type: mac_mini_m2
+
+    # Cache acelera MUITO os builds repetidos (pub/gradle/pods). Seguro:
+    # pub get e pod install validam/atualizam o que estiver em cache.
+    cache:
+      cache_paths:
+        - $HOME/.pub-cache
+        - $HOME/.gradle/caches
+        - $CM_BUILD_DIR/ios/Pods
     
     integrations:
       app_store_connect: Bro App
@@ -140,6 +148,25 @@ workflows:
               --latest
           fi
           echo "✅ GitHub release published: https://github.com/$REPO/releases/tag/$TAG"
+
+      - name: Publish to Zapstore
+        # Automatiza o que era manual (parou na v133). Requer ZAPSTORE_NSEC no
+        # grupo bro_secrets (a nsec da npub14dku... do projeto). Sem a var,
+        # pula com aviso sem derrubar o build.
+        script: |
+          if [ -z "$ZAPSTORE_NSEC" ]; then
+            echo "⏭️  ZAPSTORE_NSEC não configurado (grupo bro_secrets) — pulando Zapstore."
+            exit 0
+          fi
+          set -e
+          ZSP=/tmp/zsp
+          if [ ! -x "$ZSP" ]; then
+            curl -sSL -o "$ZSP" "https://github.com/zapstore/zsp/releases/download/v2.0.1/zsp-2.0.1-darwin-arm64"
+            chmod +x "$ZSP"
+          fi
+          echo "⚡ Publicando no Zapstore a partir da release do GitHub..."
+          SIGN_WITH="$ZAPSTORE_NSEC" GH_TOKEN="$GH_TOKEN" "$ZSP" publish -r github.com/Brostr/bro
+          echo "✅ Zapstore atualizado"
         
       - name: Decode GoogleService-Info.plist
         script: echo "$GOOGLE_SERVICE_INFO_PLIST" | base64 --decode > "$CM_BUILD_DIR/ios/Runner/GoogleService-Info.plist"
@@ -199,6 +226,11 @@ workflows:
     name: iOS TestFlight (release/*)
     max_build_duration: 90
     instance_type: mac_mini_m2
+
+    cache:
+      cache_paths:
+        - $HOME/.pub-cache
+        - $CM_BUILD_DIR/ios/Pods
 
     integrations:
       app_store_connect: Bro App
@@ -296,6 +328,11 @@ workflows:
     max_build_duration: 90
     instance_type: mac_mini_m2
 
+    cache:
+      cache_paths:
+        - $HOME/.pub-cache
+        - $HOME/.gradle/caches
+
     environment:
       groups:
         - bro_secrets
@@ -386,6 +423,22 @@ workflows:
               --latest
           fi
           echo "✅ GitHub release published: https://github.com/$REPO/releases/tag/$TAG"
+
+      - name: Publish to Zapstore
+        script: |
+          if [ -z "$ZAPSTORE_NSEC" ]; then
+            echo "⏭️  ZAPSTORE_NSEC não configurado (grupo bro_secrets) — pulando Zapstore."
+            exit 0
+          fi
+          set -e
+          ZSP=/tmp/zsp
+          if [ ! -x "$ZSP" ]; then
+            curl -sSL -o "$ZSP" "https://github.com/zapstore/zsp/releases/download/v2.0.1/zsp-2.0.1-darwin-arm64"
+            chmod +x "$ZSP"
+          fi
+          echo "⚡ Publicando no Zapstore a partir da release do GitHub..."
+          SIGN_WITH="$ZAPSTORE_NSEC" GH_TOKEN="$GH_TOKEN" "$ZSP" publish -r github.com/Brostr/bro
+          echo "✅ Zapstore atualizado"
 
     artifacts:
       - build/**/outputs/**/*.apk

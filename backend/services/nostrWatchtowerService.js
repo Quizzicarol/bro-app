@@ -99,6 +99,11 @@ class NostrWatchtowerService {
     this._subscriptions = new Map(); // relay → subId
     this._seenEvents = new Set(); // dedup by event id
     this._seenPushes = new Set(); // dedup by orderId+status — ONE push per status per order
+    // v688: ordens em estado TERMINAL (orderId → ts). Republicações Nostr
+    // chegam com created_at NOVO e furavam todos os gates (idade, EOSE, dedup
+    // de 7 dias expirado) → usuário recebia push de "ordem concluída" dias
+    // depois (reclamação real 03/11). Persistido no state, TTL 30 dias.
+    this._terminalOrders = new Map();
     // v666: caches enriquecedores + anti-eco (persistidos em WATCHTOWER_STATE_FILE)
     this._orderMeta = new Map(); // orderId → { amountBrl, amountSats }
     this._disputeOpeners = new Map(); // orderId → pubkey de quem ABRIU a disputa
@@ -767,6 +772,16 @@ class NostrWatchtowerService {
             }
           }
 
+          // v688: marca estado terminal — republicações futuras não re-empurram
+          if (status === 'completed' || status === 'liquidated' || status === 'cancelled') {
+            this._terminalOrders.set(orderId, Date.now());
+            if (this._terminalOrders.size > 5000) {
+              const tEntries = Array.from(this._terminalOrders.entries());
+              this._terminalOrders = new Map(tEntries.slice(-2500));
+            }
+            this._scheduleStateSave();
+          }
+
           // v611: ordem progrediu além de "accepted" → não faz mais sentido
           // tentar acordar o criador pro billCode. Cancela retries.
           if (status === 'payment_submitted' || status === 'awaiting_confirmation' ||
@@ -861,6 +876,14 @@ class NostrWatchtowerService {
     // First event to arrive wins; echoes from the other party are suppressed.
     const pushKey = `${orderId}:${status}`;
     if (this._seenPushes.has(pushKey)) return false;
+
+    // v688: ordem já terminal nunca re-empurra status terminal (republish).
+    if ((status === 'completed' || status === 'liquidated' || status === 'cancelled') &&
+        this._terminalOrders.has(orderId)) {
+      console.log(`🗼 [Watchtower] ${orderId.substring(0, 8)} já é terminal — suprimindo re-push '${status}' (republish)`);
+      return false;
+    }
+
     this._seenPushes.add(pushKey);
     this._scheduleStateSave(); // v666: dedup sobrevive a deploys
 
@@ -918,6 +941,32 @@ class NostrWatchtowerService {
       accepter_pubkey: accepterPubkey,
       source: 'watchtower',
     }, null);  // null = silent / data-only / wakes background isolate
+  }
+
+  /**
+   * v688: expõe o provedor registrado p/ a ordem (quem assinou o aceite).
+   * Usado pela rota /billcode-fallback p/ validar o pareamento antes de
+   * empurrar push.
+   */
+  getProviderForOrder(orderId) {
+    return this._orderProviders.get(orderId) || null;
+  }
+
+  /**
+   * v688: push SILENCIOSO avisando o provedor que o billCode chegou pelo
+   * canal redundante (backend) — ele baixa o blob via GET /billcode-fallback.
+   */
+  async pushBillcodeFallback(providerPubkey, senderPubkey, orderId) {
+    if (!this._running) return false;
+    if (providerPubkey === senderPubkey) return false;
+    console.log(`🗼 [Watchtower] billcode_fallback → push silencioso p/ provedor ${providerPubkey.substring(0, 8)} (ordem ${orderId.substring(0, 8)})`);
+    return this._sendPush(providerPubkey, {
+      type: 'order_update',
+      sender_pubkey: senderPubkey,
+      subtype: 'billcode_fallback',
+      order_id: orderId,
+      source: 'billcode_fallback',
+    }, null);  // silencioso — acorda o background isolate do provedor
   }
 
   /**
@@ -1646,7 +1695,14 @@ class NostrWatchtowerService {
         this._disputeOpeners.set(orderId, opener);
         openers++;
       }
-      console.log(`🗼 [Watchtower] Estado carregado: ${pushes} dedups, ${metas} metas, ${openers} disputas`);
+      // v688: ordens terminais (TTL 30d — suficiente pra qualquer republish útil)
+      let terms = 0;
+      for (const [orderId, ts] of Object.entries(data.terminalOrders || {})) {
+        if (typeof ts !== 'number' || now - ts > 30 * 24 * 60 * 60 * 1000) continue;
+        this._terminalOrders.set(orderId, ts);
+        terms++;
+      }
+      console.log(`🗼 [Watchtower] Estado carregado: ${pushes} dedups, ${metas} metas, ${openers} disputas, ${terms} terminais`);
     } catch (e) {
       console.log(`[Watchtower] Could not load state: ${e.message}`);
     }
@@ -1677,10 +1733,13 @@ class NostrWatchtowerService {
         for (const [k, v] of this._orderMeta) orderMeta[k] = v;
         const disputeOpeners = { ...(merged.disputeOpeners || {}) };
         for (const [k, v] of this._disputeOpeners) disputeOpeners[k] = v;
+        const terminalOrders = { ...(merged.terminalOrders || {}) };
+        for (const [k, v] of this._terminalOrders) terminalOrders[k] = v;
         const out = {
           seenPushes: prunedPushes,
           orderMeta: Object.fromEntries(Object.entries(orderMeta).slice(-4000)),
           disputeOpeners: Object.fromEntries(Object.entries(disputeOpeners).slice(-4000)),
+          terminalOrders: Object.fromEntries(Object.entries(terminalOrders).slice(-4000)),
         };
         fs.writeFileSync(WATCHTOWER_STATE_FILE, JSON.stringify(out), { encoding: 'utf8', mode: 0o600 });
       } catch (e) {

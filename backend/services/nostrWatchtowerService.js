@@ -297,6 +297,15 @@ class NostrWatchtowerService {
             '#t': ['bro-update'],
             since,
           },
+          {
+            // v687: kind 1 bro-disputa — o app publica a disputa em kind 1 NA
+            // HORA, mas o status update 30080 pode só aparecer numa republi-
+            // cação DIAS depois (caso real 72d248d8: kind 1 em 31/out 23:56,
+            // 30080 só em 03/nov → disputa invisível na tela de admin).
+            kinds: [1],
+            '#t': ['bro-disputa'],
+            since,
+          },
         ]);
         ws.send(req);
       });
@@ -625,6 +634,31 @@ class NostrWatchtowerService {
           } else {
             console.log(`⚠️ [Watchtower] Order ${shortId} accepted but no userPubkey found (content: ${content.userPubkey || 'empty'}, cache: ${this._orderUsers.has(orderId) ? 'hit' : 'miss'})`);
           }
+          break;
+        }
+
+        case 'bro_dispute': {
+          // v687: disputa via kind 1. Quem ABRIU é o assinante (verificado por
+          // verifyEvent) — content.openedBy pode mentir, então derivamos:
+          // assinante == providerId → 'provider', senão → 'user'.
+          const providerIdD = content.provider_id || content.providerId || this._orderProviders.get(orderId);
+          const cachedUserD = this._orderUsers.get(orderId);
+          const userPkD = (isValidPubkey(cachedUserD) ? cachedUserD : null)
+            || (isValidPubkey(content.userPubkey) && content.userPubkey !== senderPubkey ? content.userPubkey : null);
+          const openedByD = (providerIdD && senderPubkey === providerIdD) ? 'provider' : 'user';
+          this._recordDisputeOpener(orderId, { openedBy: openedByD }, userPkD, providerIdD);
+          this._cacheOrderMeta(orderId, content);
+          // alvo = a OUTRA parte (dedup por seenPushes torna isto idempotente
+          // em relação ao caminho 30080 status-disputed)
+          let targetD = null;
+          if (openedByD === 'provider' && isValidPubkey(userPkD)) targetD = userPkD;
+          else if (openedByD === 'user' && isValidPubkey(providerIdD)) targetD = providerIdD;
+          if (targetD) {
+            await this._sendOrderPush(targetD, senderPubkey, 'disputed', orderId, shortId, 'other');
+          }
+          // admin SEMPRE é avisado (dedup `${orderId}:disputed:admin`)
+          await this._sendAdminDisputePush(orderId, shortId, content, senderPubkey, targetD);
+          console.log(`⚖️ [Watchtower] Disputa kind1 ${shortId} aberta por ${openedByD} → admin notificado`);
           break;
         }
 

@@ -1069,21 +1069,23 @@ class BroApp extends StatelessWidget {
               }
               if (settings.name == '/provider-orders') {
                 final args = settings.arguments as Map<String, dynamic>?;
-                final providerId = args?['providerId'] as String? ?? 'temp';
+                // v690: placeholder 'temp' vazava pra disputas/chats (caso
+                // 4f486f3d). Default = pubkey real do usuário logado.
+                final providerId = args?['providerId'] as String? ?? NostrService().publicKey ?? '';
                 return MaterialPageRoute(
                   builder: (context) => ProviderOrdersScreen(providerId: providerId),
                 );
               }
               if (settings.name == '/provider-my-orders') {
                 final args = settings.arguments as String?;
-                final providerId = args ?? 'temp';
+                final providerId = args ?? NostrService().publicKey ?? '';
                 return MaterialPageRoute(
                   builder: (context) => ProviderMyOrdersScreen(providerId: providerId),
                 );
               }
               if (settings.name == '/provider-history') {
                 final args = settings.arguments as String?;
-                final providerId = args ?? 'temp';
+                final providerId = args ?? NostrService().publicKey ?? '';
                 return MaterialPageRoute(
                   builder: (context) => ProviderOrderHistoryScreen(providerId: providerId),
                 );
@@ -1103,8 +1105,8 @@ class BroApp extends StatelessWidget {
               '/marketplace': (context) => const MarketplaceScreen(),
               '/brix': (context) => const BrixScreen(),
               '/provider-education': (context) => const ProviderEducationScreen(),
-              '/provider-collateral': (context) => const ProviderCollateralScreen(providerId: 'temp'),
-              '/provider-order-detail': (context) => const ProviderOrderDetailScreen(orderId: 'temp', providerId: 'temp'),
+              '/provider-collateral': (context) => ProviderCollateralScreen(providerId: NostrService().publicKey ?? ''),
+              '/provider-order-detail': (context) => ProviderOrderDetailScreen(orderId: 'temp', providerId: NostrService().publicKey ?? ''),
               '/provider-balance': (context) => const ProviderBalanceScreen(),
               '/platform-balance': (context) => const PlatformBalanceScreen(),
                 '/admin-bro-2024': (context) => const PlatformAdminScreen(),

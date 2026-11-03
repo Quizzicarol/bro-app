@@ -32,8 +32,11 @@ String compressImageToBase64ForNip44(
 
   // Tenta combinações de (dimensão máxima, qualidade), da maior para a menor,
   // sempre reamostrando a partir do ORIGINAL (qualidade não acumula perda).
-  const dims = <int>[1000, 800, 640, 512, 400, 320, 256];
-  const qualities = <int>[60, 45, 35, 25, 18];
+  // v690: comprovantes ilegíveis na mediação — ladder sobe pra 1400px/q75
+  // antes de cair (o teto NIP-44 continua mandando; só tenta qualidade maior
+  // primeiro). Documento lido em tela de celular precisa disso.
+  const dims = <int>[1400, 1200, 1000, 800, 640, 512, 400];
+  const qualities = <int>[75, 62, 50, 40, 30, 20];
 
   for (final dim in dims) {
     final needsResize = decoded.width > dim || decoded.height > dim;

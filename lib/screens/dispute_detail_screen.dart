@@ -123,7 +123,12 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
   // antigas gravavam a pubkey do PROVEDOR nesse campo — disputa 2706f28d).
   String? _resolvedUserPubkey;
   String get userPubkey => _resolvedUserPubkey ?? (widget.dispute['userPubkey'] as String? ?? '');
-  String get providerId => _resolvedProviderId ?? (widget.dispute['provider_id'] as String? ?? '');
+  // v690: o placeholder de rota 'temp' vazou pra dentro de disputas reais
+  // (caso 4f486f3d) — tratar como ausente e deixar a resolução via Nostr agir.
+  String get providerId {
+    final raw = widget.dispute['provider_id'] as String? ?? '';
+    return _resolvedProviderId ?? (raw == 'temp' ? '' : raw);
+  }
   // v648: o provedor que recebe os fundos é SEMPRE o canônico (quando há duplo
   // aceite), senão o providerId normal. O escrow tem 2 partes; o canônico é a
   // parte provedora legítima.
@@ -181,7 +186,7 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
     }
     // Se não temos o providerId, tentar descobrir pelo accept event
     final initialProviderId = widget.dispute['provider_id'] as String? ?? '';
-    if (initialProviderId.isEmpty) {
+    if (initialProviderId.isEmpty || initialProviderId == 'temp') {
       try {
         final nostrService = NostrOrderService();
         final foundProvider = await nostrService.fetchOrderProviderPubkey(orderId);

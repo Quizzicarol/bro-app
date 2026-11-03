@@ -14,6 +14,7 @@ import '../services/escrow_service.dart';
 import '../services/dispute_service.dart';
 import '../services/notification_service.dart';
 import '../services/nostr_order_service.dart';
+import '../services/nostr_service.dart';
 import '../services/api_service.dart';
 import '../config.dart';
 import '../l10n/app_localizations.dart';
@@ -2733,13 +2734,19 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       await disputeService.initialize();
       
       // Preparar detalhes da ordem para o suporte
+      // v690: NUNCA publicar o placeholder 'temp' das rotas — resolve a pubkey
+      // real do provedor logado (caso 4f486f3d: 'temp' quebrou a tela do
+      // admin E o chat da mediação, que tentava cifrar NIP-44 pra 'temp').
+      final effectiveProviderId = (widget.providerId.isEmpty || widget.providerId == 'temp')
+          ? (NostrService().publicKey ?? '')
+          : widget.providerId;
       final orderDetails = {
         'amount_brl': _orderDetails?['amount_brl'],
         'amount_sats': _orderDetails?['amount_sats'],
         'status': _orderDetails?['status'],
         'payment_type': _orderDetails?['payment_type'],
         'pix_key': _orderDetails?['pix_key'],
-        'provider_id': widget.providerId,
+        'provider_id': effectiveProviderId,
       };
       
       // Criar a disputa

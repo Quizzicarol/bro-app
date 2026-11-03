@@ -111,8 +111,12 @@ class _DisputeChatState extends State<DisputeChat> {
     if (text.isEmpty || _sending) return;
 
     final t = AppLocalizations.of(context);
-    final recipients =
-        widget.recipientPubkeys.where((p) => p.trim().isNotEmpty).toList();
+    // v690: só pubkeys Nostr válidas (64 hex). O placeholder 'temp' (rota sem
+    // argumentos) passava no filtro de vazio e a cifragem NIP-44 explodia —
+    // a Carol via "falha de conexão" ao responder a disputa 4f486f3d.
+    final recipients = widget.recipientPubkeys
+        .where((p) => RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(p.trim()))
+        .toList();
     if (recipients.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(t.t('dispute_chat_no_parties'))),

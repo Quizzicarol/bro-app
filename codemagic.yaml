@@ -55,7 +55,8 @@ workflows:
         script: echo "$GOOGLE_SERVICES_JSON" | base64 --decode > "$CM_BUILD_DIR/android/app/google-services.json"
 
       - name: Get Flutter packages
-        script: flutter pub get
+        # v692: o cache de pub revive clones git MORTOS (breez-sdk-liquid-flutter saiu do ar -> pub get quebrava no CI 03/11). Remover antes de resolver.
+        script: rm -rf "$HOME/.pub-cache/git/breez-sdk-liquid-flutter"* 2>/dev/null; flutter pub get
         
       - name: Neutralize breez spark passkey (unused; breaks CocoaPods)
         script: |
@@ -211,22 +212,8 @@ workflows:
               echo "❌ evento de prova vazio"; exit 1
             fi
             pip3 install --quiet --user websocket-client 2>/dev/null || pip3 install --quiet --break-system-packages websocket-client
-            python3 - <<'PYEOF'
-import json, websocket
-ev = json.load(open("/tmp/proof_event.json"))
-assert ev.get("sig"), "evento de prova NÃO está assinado"
-ok = 0
-for url in ["wss://relay.primal.net", "wss://relay.damus.io", "wss://relay.zapstore.dev"]:
-    try:
-        ws = websocket.create_connection(url, timeout=15)
-        ws.send(json.dumps(["EVENT", ev]))
-        ws.close()
-        ok += 1
-        print("prova publicada em", url)
-    except Exception as e:
-        print("falha em", url, ":", e)
-assert ok >= 1, "nenhum relay aceitou a prova"
-PYEOF
+            echo "aW1wb3J0IGpzb24sIHdlYnNvY2tldApldiA9IGpzb24ubG9hZChvcGVuKCIvdG1wL3Byb29mX2V2ZW50Lmpzb24iKSkKYXNzZXJ0IGV2LmdldCgic2lnIiksICJ1bnNpZ25lZCBwcm9vZiBldmVudCIKb2sgPSAwCmZvciB1cmwgaW4gWyJ3c3M6Ly9yZWxheS5wcmltYWwubmV0IiwgIndzczovL3JlbGF5LmRhbXVzLmlvIiwgIndzczovL3JlbGF5LnphcHN0b3JlLmRldiJdOgogICAgdHJ5OgogICAgICAgIHdzID0gd2Vic29ja2V0LmNyZWF0ZV9jb25uZWN0aW9uKHVybCwgdGltZW91dD0xNSkKICAgICAgICB3cy5zZW5kKGpzb24uZHVtcHMoWyJFVkVOVCIsIGV2XSkpCiAgICAgICAgd3MuY2xvc2UoKQogICAgICAgIG9rICs9IDEKICAgICAgICBwcmludCgicHJvb2YgcHVibGlzaGVkIHRvIiwgdXJsKQogICAgZXhjZXB0IEV4Y2VwdGlvbiBhcyBlOgogICAgICAgIHByaW50KCJmYWlsZWQiLCB1cmwsICI6IiwgZSkKYXNzZXJ0IG9rID49IDEsICJubyByZWxheSBhY2NlcHRlZCB0aGUgcHJvb2YiCg==" | base64 -d > /tmp/pub_ev.py
+            python3 /tmp/pub_ev.py
           fi
           SIGN_WITH="$ZAPSTORE_NSEC" "$ZSP" publish -r github.com/Brostr/bro
           echo "✅ Zapstore atualizado"
@@ -323,7 +310,8 @@ PYEOF
         script: echo "$GOOGLE_SERVICE_INFO_PLIST" | base64 --decode > "$CM_BUILD_DIR/ios/Runner/GoogleService-Info.plist"
 
       - name: Get Flutter packages
-        script: flutter pub get
+        # v692: o cache de pub revive clones git MORTOS (breez-sdk-liquid-flutter saiu do ar -> pub get quebrava no CI 03/11). Remover antes de resolver.
+        script: rm -rf "$HOME/.pub-cache/git/breez-sdk-liquid-flutter"* 2>/dev/null; flutter pub get
 
       - name: Neutralize breez spark passkey (unused; breaks CocoaPods)
         script: |
@@ -419,7 +407,8 @@ PYEOF
         script: echo "$GOOGLE_SERVICES_JSON" | base64 --decode > "$CM_BUILD_DIR/android/app/google-services.json"
 
       - name: Get Flutter packages
-        script: flutter pub get
+        # v692: o cache de pub revive clones git MORTOS (breez-sdk-liquid-flutter saiu do ar -> pub get quebrava no CI 03/11). Remover antes de resolver.
+        script: rm -rf "$HOME/.pub-cache/git/breez-sdk-liquid-flutter"* 2>/dev/null; flutter pub get
 
       - name: Build APK Release (Android)
         script: flutter build apk --release --dart-define-from-file=env.json
@@ -525,22 +514,8 @@ PYEOF
               echo "❌ evento de prova vazio"; exit 1
             fi
             pip3 install --quiet --user websocket-client 2>/dev/null || pip3 install --quiet --break-system-packages websocket-client
-            python3 - <<'PYEOF'
-import json, websocket
-ev = json.load(open("/tmp/proof_event.json"))
-assert ev.get("sig"), "evento de prova NÃO está assinado"
-ok = 0
-for url in ["wss://relay.primal.net", "wss://relay.damus.io", "wss://relay.zapstore.dev"]:
-    try:
-        ws = websocket.create_connection(url, timeout=15)
-        ws.send(json.dumps(["EVENT", ev]))
-        ws.close()
-        ok += 1
-        print("prova publicada em", url)
-    except Exception as e:
-        print("falha em", url, ":", e)
-assert ok >= 1, "nenhum relay aceitou a prova"
-PYEOF
+            echo "aW1wb3J0IGpzb24sIHdlYnNvY2tldApldiA9IGpzb24ubG9hZChvcGVuKCIvdG1wL3Byb29mX2V2ZW50Lmpzb24iKSkKYXNzZXJ0IGV2LmdldCgic2lnIiksICJ1bnNpZ25lZCBwcm9vZiBldmVudCIKb2sgPSAwCmZvciB1cmwgaW4gWyJ3c3M6Ly9yZWxheS5wcmltYWwubmV0IiwgIndzczovL3JlbGF5LmRhbXVzLmlvIiwgIndzczovL3JlbGF5LnphcHN0b3JlLmRldiJdOgogICAgdHJ5OgogICAgICAgIHdzID0gd2Vic29ja2V0LmNyZWF0ZV9jb25uZWN0aW9uKHVybCwgdGltZW91dD0xNSkKICAgICAgICB3cy5zZW5kKGpzb24uZHVtcHMoWyJFVkVOVCIsIGV2XSkpCiAgICAgICAgd3MuY2xvc2UoKQogICAgICAgIG9rICs9IDEKICAgICAgICBwcmludCgicHJvb2YgcHVibGlzaGVkIHRvIiwgdXJsKQogICAgZXhjZXB0IEV4Y2VwdGlvbiBhcyBlOgogICAgICAgIHByaW50KCJmYWlsZWQiLCB1cmwsICI6IiwgZSkKYXNzZXJ0IG9rID49IDEsICJubyByZWxheSBhY2NlcHRlZCB0aGUgcHJvb2YiCg==" | base64 -d > /tmp/pub_ev.py
+            python3 /tmp/pub_ev.py
           fi
           SIGN_WITH="$ZAPSTORE_NSEC" "$ZSP" publish -r github.com/Brostr/bro
           echo "✅ Zapstore atualizado"
@@ -582,7 +557,8 @@ PYEOF
         script: echo "$GOOGLE_SERVICES_JSON" | base64 --decode > "$CM_BUILD_DIR/android/app/google-services.json"
 
       - name: Get Flutter packages
-        script: flutter pub get
+        # v692: o cache de pub revive clones git MORTOS (breez-sdk-liquid-flutter saiu do ar -> pub get quebrava no CI 03/11). Remover antes de resolver.
+        script: rm -rf "$HOME/.pub-cache/git/breez-sdk-liquid-flutter"* 2>/dev/null; flutter pub get
         
       - name: Build APK Release (para distribuir)
         script: flutter build apk --release --dart-define-from-file=env.json
@@ -621,7 +597,8 @@ PYEOF
         script: echo "$GOOGLE_SERVICES_JSON" | base64 --decode > "$CM_BUILD_DIR/android/app/google-services.json"
 
       - name: Get Flutter packages
-        script: flutter pub get
+        # v692: o cache de pub revive clones git MORTOS (breez-sdk-liquid-flutter saiu do ar -> pub get quebrava no CI 03/11). Remover antes de resolver.
+        script: rm -rf "$HOME/.pub-cache/git/breez-sdk-liquid-flutter"* 2>/dev/null; flutter pub get
         
       - name: Generate env.json from CI variables
         script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","ADMIN_PASSWORD_HASH":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" "$ADMIN_PASSWORD_HASH" > "$CM_BUILD_DIR/env.json"
@@ -671,7 +648,8 @@ PYEOF
         script: xcode-project use-profiles
         
       - name: Get Flutter packages
-        script: flutter pub get
+        # v692: o cache de pub revive clones git MORTOS (breez-sdk-liquid-flutter saiu do ar -> pub get quebrava no CI 03/11). Remover antes de resolver.
+        script: rm -rf "$HOME/.pub-cache/git/breez-sdk-liquid-flutter"* 2>/dev/null; flutter pub get
         
       - name: Decode GoogleService-Info.plist
         script: echo "$GOOGLE_SERVICE_INFO_PLIST" | base64 --decode > "$CM_BUILD_DIR/ios/Runner/GoogleService-Info.plist"
@@ -737,7 +715,8 @@ PYEOF
         script: echo "$GOOGLE_SERVICES_JSON" | base64 --decode > "$CM_BUILD_DIR/android/app/google-services.json"
 
       - name: Get Flutter packages
-        script: flutter pub get
+        # v692: o cache de pub revive clones git MORTOS (breez-sdk-liquid-flutter saiu do ar -> pub get quebrava no CI 03/11). Remover antes de resolver.
+        script: rm -rf "$HOME/.pub-cache/git/breez-sdk-liquid-flutter"* 2>/dev/null; flutter pub get
         
       - name: Analyze code
         script: flutter analyze --no-fatal-infos --no-fatal-warnings || true

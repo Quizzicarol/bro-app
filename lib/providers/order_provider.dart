@@ -1529,6 +1529,28 @@ class OrderProvider with ChangeNotifier {
       final allPendingOrders = results[0];
       final userOrders = results[1];
       final providerOrders = results[2];
+
+      // v697: NÃO oferecer ordem que JÁ tem aceite — era a fábrica de corridas.
+      // O evento da ordem (30078) só o CRIADOR pode atualizar p/ 'accepted';
+      // se ele está offline, o relay segue mostrando 'pending' e outro provedor
+      // aceita de novo (casos 33ed1ced e e32e493e). Cruzar com os aceites
+      // (30079) antes de listar como disponível. Falha de rede = fail-open
+      // (não esconder ordens por timeout).
+      final acceptedElsewhere = <String>{};
+      final pendingIds = allPendingOrders.where((o) => o.amount > 0).map((o) => o.id).toList();
+      for (int i = 0; i < pendingIds.length; i += 5) {
+        final batch = pendingIds.skip(i).take(5).toList();
+        final acceptsBatch = await Future.wait(batch.map((id) =>
+          _nostrOrderService.fetchAllAcceptsForOrder(id)
+              .timeout(const Duration(seconds: 4), onTimeout: () => <String>[])
+              .catchError((_) => <String>[])));
+        for (int j = 0; j < batch.length; j++) {
+          if (acceptsBatch[j].isNotEmpty) acceptedElsewhere.add(batch[j]);
+        }
+      }
+      if (acceptedElsewhere.isNotEmpty) {
+        broLog('v697: ${acceptedElsewhere.length} ordem(ns) já com aceite — fora das Disponíveis');
+      }
       
       broLog('ðŸ�?��?? syncProvider: pending=${allPendingOrders.length}, user=${userOrders.length}, provider=${providerOrders.length}');
       
@@ -1632,6 +1654,7 @@ class OrderProvider with ChangeNotifier {
             }
           }
           
+          if (acceptedElsewhere.contains(pendingOrder.id)) continue; // v697: já tem aceite — não oferecer
           newAvailableOrders.add(pendingOrder);
           addedToAvailable++;
         }

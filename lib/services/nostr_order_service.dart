@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:nostr/nostr.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'package:bro_app/services/log_utils.dart';
@@ -155,6 +156,21 @@ class NostrOrderService {
     'wss://nos.lol',
   ];
 
+  // v701: versão REAL do app nos eventos — suporte/forense sem suposição
+  // ("qual versão ele tinha?" agora tem resposta nos relays; o mentor pediu
+  // isso na pergunta 6 e o bug do 9887605c mostrou a falta dela).
+  static String? _appVersionCache;
+  static Future<String> _appVersion() async {
+    if (_appVersionCache != null) return _appVersionCache!;
+    try {
+      final info = await PackageInfo.fromPlatform();
+      _appVersionCache = '${info.version}+${info.buildNumber}';
+    } catch (_) {
+      _appVersionCache = 'unknown';
+    }
+    return _appVersionCache!;
+  }
+
   // v259: Relays de fallback - usados SOMENTE quando os principais falham
   // Não são usados para publicação, apenas para leitura de emergência
   // v653: Apex cord promovido para o conjunto principal; removido daqui p/ não
@@ -243,9 +259,11 @@ class NostrOrderService {
       // the billCode field present (empty string) for parser backward
       // compatibility — old code does `content['billCode']?.toString() ?? ''`.
       final publishedBillCode = _omitPlaintextBillCode ? '' : encryptedBillCode;
+      final appVer = await _appVersion(); // v701
       final content = jsonEncode({
         'type': 'bro_order',
         'version': '1.0',
+        'appVersion': appVer,
         'orderId': orderId,
         'userPubkey': keychain.public,
         'billType': billType,
@@ -1693,9 +1711,11 @@ class NostrOrderService {
         return null;
       }
 
+      final appVer = await _appVersion(); // v701
       final content = jsonEncode({
         'type': 'bro_order',
         'version': '1.0',
+        'appVersion': appVer,
         'orderId': order.id,
         'userPubkey': keychain.public,
         'billType': order.billType,

@@ -223,7 +223,10 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
             orderMap['amount'] = o.amount;
             orderMap['payment_type'] = o.billType;
             orderMap['created_at'] = o.createdAt.toIso8601String();
-            orderMap['user_name'] = '${o.userPubkey?.substring(0, 6) ?? "anon"}';
+            // v695: NÃO expor o ID do comprador na lista pública de ordens
+            // disponíveis (privacidade — qualquer provedor via o prefixo da
+            // chave). Em "Minhas" mantém (aí já há relação de ordem aceita).
+            orderMap['user_name'] = 'anônimo';
             return orderMap;
           })
           .toList();

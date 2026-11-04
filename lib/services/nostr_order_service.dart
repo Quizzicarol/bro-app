@@ -146,10 +146,13 @@ class NostrOrderService {
   // cobertura — a redundância é mantida. Publicar nele também ajuda o
   // coordinator a indexar as ordens/eventos do Bro.
   final List<String> _relays = [
+    // v695: ordem importa para take(3) — os saudáveis primeiro. damus nos
+    // 503ava e nos.lol morre direto: eles na frente = toda busca pagava 5s de
+    // timeout à toa (lista de Disponíveis lenta — reclamação da Carol 04/11).
     'wss://apexcord.duckdns.org',
+    'wss://relay.primal.net',
     'wss://relay.damus.io',
     'wss://nos.lol',
-    'wss://relay.primal.net',
   ];
 
   // v259: Relays de fallback - usados SOMENTE quando os principais falham
@@ -605,12 +608,14 @@ class NostrOrderService {
       try {
         final results = await Future.wait([
           // 1. Ordens com tag #p do provedor
+          // v695: timeout 5s→3s — relay morto não segura a lista (os outros
+          // já responderam; o merge cobre a redundância).
           _fetchFromRelay(relay, kinds: [kindBroOrder], tags: {'#p': [providerPubkey]}, limit: 100)
-            .timeout(const Duration(seconds: 5), onTimeout: () => <Map<String, dynamic>>[])
+            .timeout(const Duration(seconds: 3), onTimeout: () => <Map<String, dynamic>>[])
             .catchError((_) => <Map<String, dynamic>>[]),
           // 2. Eventos de aceitação/update/complete publicados por este provedor + disputas tagueadas
           _fetchFromRelay(relay, kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete], authors: [providerPubkey], limit: 200)
-            .timeout(const Duration(seconds: 5), onTimeout: () => <Map<String, dynamic>>[])
+            .timeout(const Duration(seconds: 3), onTimeout: () => <Map<String, dynamic>>[])
             .catchError((_) => <Map<String, dynamic>>[]),
         ]);
         return results;

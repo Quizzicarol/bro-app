@@ -80,17 +80,17 @@ class FeeBreakdownCard extends StatelessWidget {
             
             const Divider(height: 24),
             
-            // Provider fee (Bro)
+            // v695: taxas CONSOLIDADAS numa linha só (Bro 3% + coordenação 2%),
+            // igual ao status da ordem. Antes mostrava só "Taxa Bro" e a de
+            // coordenação ficava escondida num TODO — o total não batia com a
+            // soma das linhas visíveis (pedido da Carol, 04/11).
             _buildFeeRow(
-              label: 'Taxa Bro (${providerFeePercent.toStringAsFixed(0)}%)',
-              valueBrl: providerFee,
-              valueSats: (providerFee * brlToSatsRate).round(),
+              label: 'Taxas (${(providerFeePercent + platformFeePercent).toStringAsFixed(0)}%)',
+              valueBrl: providerFee + platformFee,
+              valueSats: ((providerFee + platformFee) * brlToSatsRate).round(),
               isTotal: false,
               color: const Color(0xFFFFB74D), // orange 300
             ),
-            
-            // Platform fee - escondido por enquanto (não estamos cobrando)
-            // TODO: Descomentar quando ativar taxa de plataforma
             
             // Network fee (only for on-chain)
             if (networkFee != null) ...[

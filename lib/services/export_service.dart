@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -91,7 +92,22 @@ class ExportService {
     );
   }
 
-  static Future<void> share(File f, String subject) async {
-    await Share.shareXFiles([XFile(f.path)], subject: subject);
+  static Future<void> share(File f, String subject, {BuildContext? context}) async {
+    // v700: no iOS o share sheet EXIGE sharePositionOrigin (é um popover que
+    // precisa saber de onde abrir) — sem ele o share_plus lança
+    // PlatformException("sharePositionOrigin: argument must be set")
+    // (erro real do Roberto, 04/11). Calcula o Rect da tela de origem.
+    Rect? origin;
+    if (context != null && Platform.isIOS) {
+      final box = context.findRenderObject() as RenderBox?;
+      if (box != null && box.hasSize) {
+        origin = box.localToGlobal(Offset.zero) & box.size;
+      }
+    }
+    await Share.shareXFiles(
+      [XFile(f.path)],
+      subject: subject,
+      sharePositionOrigin: origin,
+    );
   }
 }

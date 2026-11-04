@@ -60,7 +60,7 @@ class _ProviderOrderHistoryScreenState extends State<ProviderOrderHistoryScreen>
       }
       final usd = await BitcoinPriceService.getBitcoinPriceIn('USD');
       final f = await ExportService.buildProviderOrdersCsv(orders, btcUsd: usd);
-      await ExportService.share(f, 'Bro — ordens concluídas (provedor)');
+      await ExportService.share(f, 'Bro — ordens concluídas (provedor)', context: context);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

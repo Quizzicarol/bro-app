@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:nostr/nostr.dart';
+import 'storage_service.dart';
 
 /// Modelo de perfil Nostr
 class NostrProfile {
@@ -63,14 +65,79 @@ class NostrProfileService {
   // Cache de perfis
   final Map<String, NostrProfile> _profileCache = {};
 
-  // Lista de relays populares
+  // Lista de relays (o do Bro primeiro — é onde publicamos)
   static const List<String> defaultRelays = [
+    'wss://apexcord.duckdns.org',
+    'wss://relay.primal.net',
     'wss://relay.damus.io',
     'wss://relay.nostr.band',
     'wss://nos.lol',
     'wss://relay.snort.social',
     'wss://nostr.wine',
   ];
+
+  /// v694: publica o perfil como kind 0 ASSINADO pela chave do usuário.
+  /// É assim que o nome fica VINCULADO à npub de verdade: reimportou a chave,
+  /// o nome volta sozinho (o login/sync lê o kind 0). Antes o perfil era SÓ
+  /// local — o nome do Fábio sumiu na reimportação (03/11).
+  Future<bool> publishProfile({required String name, String? about}) async {
+    try {
+      final storage = StorageService();
+      final priv = await storage.getNostrPrivateKey();
+      final pub = await storage.getNostrPublicKey();
+      if (priv == null || priv.isEmpty || pub == null || pub.isEmpty) return false;
+      if (name.trim().isEmpty) return false;
+
+      final keychain = Keychain(priv);
+      final content = jsonEncode({
+        'name': name.trim(),
+        'display_name': name.trim(),
+        if (about != null && about.trim().isNotEmpty) 'about': about.trim(),
+      });
+      final event = Event.from(
+        kind: 0,
+        tags: const <List<String>>[],
+        content: content,
+        privkey: keychain.private,
+      );
+
+      int ok = 0;
+      await Future.wait(defaultRelays.map((relay) async {
+        WebSocketChannel? channel;
+        try {
+          channel = WebSocketChannel.connect(Uri.parse(relay));
+          try {
+            await channel.ready.timeout(const Duration(seconds: 5));
+          } catch (_) {}
+          channel.sink.add(jsonEncode(['EVENT', event.toJson()]));
+          // OK do relay é bem-vindo mas não bloqueante
+          await Future.delayed(const Duration(seconds: 2));
+          await channel.sink.close();
+          ok++;
+        } catch (_) {
+          try { await channel?.sink.close(); } catch (_) {}
+        }
+      }));
+
+      if (ok == 0) return false;
+
+      // Salvar local + atualizar cache
+      await storage.saveNostrProfile(name: name.trim(), displayName: name.trim(), about: about?.trim());
+      final existing = _profileCache[pub];
+      _profileCache[pub] = NostrProfile(
+        pubkey: pub,
+        name: name.trim(),
+        displayName: name.trim(),
+        picture: existing?.picture,
+        about: about?.trim() ?? existing?.about,
+      );
+      broLog('✅ Perfil publicado (kind 0) em $ok/${defaultRelays.length} relays: ${name.trim()}');
+      return true;
+    } catch (e) {
+      broLog('❌ publishProfile: $e');
+      return false;
+    }
+  }
 
   /// Busca perfil Nostr pelo pubkey
   Future<NostrProfile?> fetchProfile(String pubkey, {List<String>? relays}) async {

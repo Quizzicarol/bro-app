@@ -2,6 +2,7 @@
 import 'package:flutter/services.dart';
 import '../l10n/app_localizations.dart';
 import '../services/storage_service.dart';
+import '../services/nostr_profile_service.dart';
 
 class NostrProfileScreen extends StatefulWidget {
   const NostrProfileScreen({Key? key}) : super(key: key);
@@ -30,16 +31,38 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
   Future<void> _loadProfile() async {
     final publicKey = await _storage.getNostrPublicKey();
     final privateKey = await _storage.getNostrPrivateKey();
+    // v694: carregar o perfil SALVO (a tela nunca lia o storage — vivia "Anon")
+    final savedName = await _storage.getNostrProfileName();
+    final savedAbout = await _storage.getNostrProfileAbout();
     
     setState(() {
       _publicKey = publicKey;
       _privateKey = privateKey;
       _npub = publicKey != null ? _toNpub(publicKey) : null;
+      _profile = {
+        if (savedName != null) 'name': savedName,
+        if (savedAbout != null) 'about': savedAbout,
+      };
       _lightningAddress = null; // Removido - será implementado no futuro
       _isLoading = false;
     });
     
-    // TODO: Fetch profile from relays
+    // v694: buscar o kind 0 nos relays — se o nome foi publicado na npub,
+    // restaura SOZINHO mesmo depois de reinstalar/reimportar (caso Fábio).
+    if (publicKey != null) {
+      try {
+        final remote = await NostrProfileService().fetchProfile(publicKey)
+            .timeout(const Duration(seconds: 8), onTimeout: () => null);
+        if (remote != null && remote.name != null && mounted) {
+          setState(() => _profile = {'name': remote.name, 'about': remote.about});
+          await _storage.saveNostrProfile(
+            name: remote.name,
+            displayName: remote.displayName,
+            about: remote.about,
+          );
+        }
+      } catch (_) {}
+    }
   }
 
   String _toNpub(String hex) {
@@ -128,8 +151,10 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
   }
 
   void _showEditProfileDialog() {
-    final nameController = TextEditingController();
-    final aboutController = TextEditingController();
+    // v694: pré-preencher com o nome atual (não mostrar 'Anon' como nome real)
+    final currentName = (_profile?['name']?.toString() ?? '') == 'Anon' ? '' : (_profile?['name']?.toString() ?? '');
+    final nameController = TextEditingController(text: currentName);
+    final aboutController = TextEditingController(text: _profile?['about']?.toString() ?? '');
     
     showDialog(
       context: context,
@@ -209,13 +234,24 @@ class _NostrProfileScreenState extends State<NostrProfileScreen> {
             child: Text(AppLocalizations.of(context).t('cancel'), style: const TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
-            onPressed: () {
-              // TODO: Publicar perfil nos relays Nostr
+            onPressed: () async {
+              // v694: PUBLICA de verdade (kind 0 assinado pela chave) — antes
+              // era TODO e mostrava "em breve". Nome vinculado à npub.
+              final name = nameController.text.trim();
+              final about = aboutController.text.trim();
+              if (name.isEmpty) return;
               Navigator.pop(context);
+              final ok = await NostrProfileService().publishProfile(name: name, about: about);
+              if (!mounted) return;
+              setState(() {
+                _profile = {...?_profile, 'name': name, 'about': about};
+              });
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text(AppLocalizations.of(context).t('profile_publish_coming_soon')),
-                  backgroundColor: const Color(0xFFFF6B6B),
+                  content: Text(ok
+                      ? '✅ Perfil publicado! Seu nome agora segue sua npub em qualquer aparelho.'
+                      : '⚠️ Salvo localmente, mas a publicação nos relays falhou. Tente de novo.'),
+                  backgroundColor: ok ? Colors.green : Colors.orange,
                 ),
               );
             },

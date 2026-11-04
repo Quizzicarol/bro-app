@@ -1544,6 +1544,53 @@ class NostrOrderService {
     return best;
   }
 
+  /// v696: busca o comprovante (bro_complete com proofImage_nip44) DIRETO nos
+  /// relays — usado quando o sync local perdeu o evento na hora. A prova
+  /// EXISTE mas o usuário via o aviso de "versão antiga" injustamente
+  /// (caso 04/11, ordem 2ee6ddd0). Retorna {proofImage_nip44, senderPubkey}.
+  Future<Map<String, String>?> fetchProofFromRelay(String orderId) async {
+    final allRelays = <String>[..._relays, ..._fallbackRelays];
+    final results = await Future.wait(
+      allRelays.map((relay) async {
+        try {
+          final fetches = await Future.wait([
+            _fetchFromRelay(relay, kinds: [kindBroComplete], tags: {'#orderId': [orderId]}, limit: 10),
+            _fetchFromRelay(relay, kinds: [kindBroComplete], tags: {'#d': ['${orderId}_complete']}, limit: 10),
+          ]);
+          Map<String, dynamic>? best;
+          int bestTs = 0;
+          for (final event in [...fetches[0], ...fetches[1]]) {
+            try {
+              if (!_isEventSignatureValid(event)) continue;
+              final content = event['parsedContent'] ?? jsonDecode(event['content']);
+              if (content['type'] != 'bro_complete') continue;
+              if (content['orderId'] != orderId) continue;
+              final enc = content['proofImage_nip44'] as String?;
+              if (enc == null || enc.isEmpty) continue;
+              final ts = event['created_at'] as int? ?? 0;
+              if (ts >= bestTs) {
+                bestTs = ts;
+                best = event;
+              }
+            } catch (_) {}
+          }
+          return best;
+        } catch (_) {
+          return null;
+        }
+      }),
+    );
+    for (final ev in results) {
+      if (ev == null) continue;
+      final content = ev['parsedContent'] ?? jsonDecode(ev['content']);
+      return {
+        'proofImage_nip44': content['proofImage_nip44'] as String,
+        'senderPubkey': ev['pubkey'] as String,
+      };
+    }
+    return null;
+  }
+
   /// v133: Publica invoice refresh para ordem liquidada (provider side)
   /// Usa d-tag diferente para não sobrescrever o evento bro_complete original
   Future<bool> publishInvoiceRefresh({

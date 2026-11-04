@@ -516,7 +516,7 @@ class _WalletScreenState extends State<WalletScreen> {
       }
       final usd = await BitcoinPriceService.getBitcoinPriceIn('USD');
       final f = await ExportService.buildWalletCsv(payments, btcUsd: usd);
-      await ExportService.share(f, 'Bro — movimentações da carteira');
+      await ExportService.share(f, 'Bro — movimentações da carteira', context: context);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

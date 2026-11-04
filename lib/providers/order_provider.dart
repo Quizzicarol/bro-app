@@ -3625,6 +3625,56 @@ class OrderProvider with ChangeNotifier {
   // main.dart — reutilizado do reembolso de disputa.
   bool _isPayingMediationCharges = false;
 
+  // v699: corrida perdida no SYNC (não só ao abrir a ordem) — se EU aceitei
+  // mas NÃO sou o canônico (acceptedAt imutável, v679), a ordem nunca foi
+  // minha. Sem isso, ela aparecia em "Minhas" como CONCLUÍDA quando o vencedor
+  // concluía (caso real: Fábio, ordem feeb44a9, 03/11 — ele não pagou nada e a
+  // ordem fantasma constava como concluída na lista dele).
+  bool _markingLostRaces = false;
+
+  Future<void> _markLostRaces() async {
+    if (_markingLostRaces) return;
+    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return;
+    _markingLostRaces = true;
+    try {
+      final candidates = _orders.where((o) =>
+        o.providerId == _currentUserPubkey &&
+        o.userPubkey != _currentUserPubkey &&
+        (o.status == 'accepted' || o.status == 'awaiting_confirmation' || o.status == 'completed') &&
+        o.metadata?['lostRace'] != true &&
+        o.metadata?['raceChecked'] != true).toList();
+      for (final o in candidates.take(5)) {
+        try {
+          final accepts = await _nostrOrderService.fetchAllAcceptsForOrder(o.id)
+              .timeout(const Duration(seconds: 8), onTimeout: () => <String>[]);
+          if (accepts.isEmpty) continue; // fail-open: sem dados, não marca
+          if (!accepts.contains(_currentUserPubkey)) continue; // nem aceitei — nada a marcar
+          final idx = _orders.indexWhere((x) => x.id == o.id);
+          if (idx == -1) continue;
+          if (accepts.first != _currentUserPubkey) {
+            _orders[idx] = _orders[idx].copyWith(metadata: {
+              ...(_orders[idx].metadata ?? {}),
+              'lostRace': true,
+              'lostRaceTo': accepts.first,
+            });
+            broLog('🏁 v699: corrida PERDIDA em ${o.id.substring(0, 8)} (canônico=${accepts.first.substring(0, 8)}) — sai das Minhas');
+          } else {
+            _orders[idx] = _orders[idx].copyWith(metadata: {
+              ...(_orders[idx].metadata ?? {}),
+              'raceChecked': true,
+            });
+          }
+        } catch (_) {}
+      }
+      if (candidates.isNotEmpty) {
+        await _saveOrders();
+        notifyListeners();
+      }
+    } finally {
+      _markingLostRaces = false;
+    }
+  }
+
   Future<void> _autoPayMediationCharges() async {
     if (onAutoPayDisputeReimbursement == null) return;
     if (_isPayingMediationCharges) return;
@@ -4864,6 +4914,9 @@ class OrderProvider with ChangeNotifier {
       
       // v680: Auto-pagamento de cobranças de mediação do admin (resoluções)
       await _autoPayMediationCharges();
+      
+      // v699: marcar corridas perdidas (tira ordem fantasma das Minhas)
+      _markLostRaces();
       
       // v622: Reconciliar taxas da plataforma que ficaram para trás
       await _reconcilePlatformFees();

@@ -218,7 +218,9 @@ workflows:
           # v693: `publish -r github...` abre SELETOR INTERATIVO de APK (TTY —
           # erro real 03/11). Publicar PELO CONFIG: o zapstore.yaml já tem
           # `match: arm64-v8a` e o repo — seleção automática, sem TTY.
-          SIGN_WITH="$ZAPSTORE_NSEC" "$ZSP" publish zapstore.yaml
+          # E `--quiet`: no prompts, auto-yes (sem isso o gather-metadata
+          # também abre prompt — mesmo erro, uma etapa depois).
+          SIGN_WITH="$ZAPSTORE_NSEC" "$ZSP" publish zapstore.yaml --quiet
           echo "✅ Zapstore atualizado"
         
       - name: Decode GoogleService-Info.plist
@@ -520,7 +522,7 @@ workflows:
             echo "aW1wb3J0IGpzb24sIHdlYnNvY2tldApldiA9IGpzb24ubG9hZChvcGVuKCIvdG1wL3Byb29mX2V2ZW50Lmpzb24iKSkKYXNzZXJ0IGV2LmdldCgic2lnIiksICJ1bnNpZ25lZCBwcm9vZiBldmVudCIKb2sgPSAwCmZvciB1cmwgaW4gWyJ3c3M6Ly9yZWxheS5wcmltYWwubmV0IiwgIndzczovL3JlbGF5LmRhbXVzLmlvIiwgIndzczovL3JlbGF5LnphcHN0b3JlLmRldiJdOgogICAgdHJ5OgogICAgICAgIHdzID0gd2Vic29ja2V0LmNyZWF0ZV9jb25uZWN0aW9uKHVybCwgdGltZW91dD0xNSkKICAgICAgICB3cy5zZW5kKGpzb24uZHVtcHMoWyJFVkVOVCIsIGV2XSkpCiAgICAgICAgd3MuY2xvc2UoKQogICAgICAgIG9rICs9IDEKICAgICAgICBwcmludCgicHJvb2YgcHVibGlzaGVkIHRvIiwgdXJsKQogICAgZXhjZXB0IEV4Y2VwdGlvbiBhcyBlOgogICAgICAgIHByaW50KCJmYWlsZWQiLCB1cmwsICI6IiwgZSkKYXNzZXJ0IG9rID49IDEsICJubyByZWxheSBhY2NlcHRlZCB0aGUgcHJvb2YiCg==" | base64 -d > /tmp/pub_ev.py
             python3 /tmp/pub_ev.py
           fi
-          SIGN_WITH="$ZAPSTORE_NSEC" "$ZSP" publish zapstore.yaml
+          SIGN_WITH="$ZAPSTORE_NSEC" "$ZSP" publish zapstore.yaml --quiet
           echo "✅ Zapstore atualizado"
 
     artifacts:

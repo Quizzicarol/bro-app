@@ -366,6 +366,7 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       
       // Processar ordens que EU ACEITEI como provedor
       for (final order in myOrdersFromProvider) {
+        if (order.metadata?['lostRace'] == true) continue; // v699: corrida perdida
         final orderMap = order.toJson();
         orderMap['amount'] = order.amount;
         orderMap['payment_type'] = order.billType;

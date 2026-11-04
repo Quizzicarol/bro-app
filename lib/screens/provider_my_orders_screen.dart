@@ -54,6 +54,8 @@ class _ProviderMyOrdersScreenState extends State<ProviderMyOrdersScreen> {
     
     // Filtrar ordens que este provedor aceitou e ainda não completou
     return orderProvider.orders.where((order) {
+      // v699: corrida perdida nunca foi minha — fora da lista (caso Fábio)
+      if (order.metadata?['lostRace'] == true) return false;
       final isMyOrder = order.providerId == nostrPubkey;
       final isActiveStatus = order.status == 'accepted' || 
                             order.status == 'awaiting_confirmation';

@@ -388,7 +388,9 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         orderMap['amount'] = order.amount;
         orderMap['payment_type'] = order.billType;
         orderMap['created_at'] = order.createdAt.toIso8601String();
-        orderMap['user_name'] = '${order.userPubkey?.substring(0, 6) ?? "anon"}';
+        // v698: anonimizar TAMBÉM neste construtor — a v695 cobriu só o outro
+        // caminho e o ID do comprador continuou aparecendo em Disponíveis.
+        orderMap['user_name'] = 'anônimo';
         available.add(orderMap);
       }
       

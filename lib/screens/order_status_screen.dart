@@ -2318,6 +2318,36 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     );
   }
 
+  /// v696: busca a prova DIRETO nos relays quando nem o metadata local nem o
+  /// cache têm a imagem. Descriptografa (sender = assinante do bro_complete),
+  /// salva no cache write-once e faz rebuild. Roda uma vez por abertura.
+  bool _fetchingProofRelay = false;
+  Future<void> _fetchProofFromRelayOnce() async {
+    if (_fetchingProofRelay) return;
+    _fetchingProofRelay = true;
+    try {
+      final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+      if (orderProvider.getProofImageFromCache(widget.orderId) != null) return;
+      final privateKey = orderProvider.nostrPrivateKey;
+      if (privateKey == null) return;
+      final res = await NostrOrderService().fetchProofFromRelay(widget.orderId)
+          .timeout(const Duration(seconds: 15), onTimeout: () => null);
+      if (res == null) return;
+      final plain = Nip44Service().decryptBetween(
+        res['proofImage_nip44']!,
+        privateKey,
+        res['senderPubkey']!,
+      );
+      if (plain.isNotEmpty && !plain.startsWith('[encrypted:')) {
+        await orderProvider.cacheProofImage(widget.orderId, plain);
+        broLog('✅ v696: prova recuperada direto dos relays');
+        if (mounted) setState(() {});
+      }
+    } catch (e) {
+      broLog('⚠️ v696 fetchProofFromRelay: $e');
+    }
+  }
+
   Widget _buildReceiptCard() {
     final l = AppLocalizations.of(context)!;
     // Tentar pegar metadata da ordem
@@ -2421,6 +2451,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         receiptUrl = cachedProof;
         broLog('🔓 proofImage recuperado do cache write-once');
       }
+    }
+
+    // v696: ainda sem prova? Buscar DIRETO nos relays (o sync local pode ter
+    // perdido o evento na hora — a prova EXISTE mas o usuário via o aviso de
+    // "versão antiga" injustamente; caso real 04/11, ordem 2ee6ddd0).
+    if (receiptUrl == null || receiptUrl.isEmpty || receiptUrl.startsWith('[encrypted:')) {
+      _fetchProofFromRelayOnce();
     }
     
     final confirmationCode = metadata?['confirmation_code'] as String?;

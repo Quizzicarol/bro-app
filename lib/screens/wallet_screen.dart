@@ -164,10 +164,22 @@ class _WalletScreenState extends State<WalletScreen> {
                            p['direction'] == 'incoming' ||
                            p['type'] == 'Receive';
         
-        // v703: taxas da plataforma AGORA APARECEM como lançamento separado
-        // (formato WoS, pedido de usuário real por email 05/11) — escondê-las
-        // parecia "taxa oculta". O rótulo amigável é montado em _buildPaymentItem.
+        // v704: a taxa da plataforma NÃO vira item separado na lista (feedback
+        // da Carol: polui o histórico, um item de taxa por ordem). Ela fica
+        // CONSOLIDADA no total e no detalhamento da transação da ordem —
+        // visível com transparência, mas sem linha extra (meio-termo entre o
+        // escondido de antes e o item separado da v703).
         final paymentHash = p['paymentHash']?.toString() ?? '';
+        if (paymentHash.isNotEmpty) {
+          if (PlatformFeeService.feePaymentHashes.contains(paymentHash)) return false;
+          final opFee = context.read<OrderProvider>();
+          if (opFee.orders.any((o) => o.metadata?['feePaymentHash'] == paymentHash)) return false;
+        }
+        final descLower = description.toLowerCase();
+        if (descLower.contains('platform fee') ||
+            descLower.contains('bro platform fee')) {
+          return false;
+        }
         
         // OCULTAR: Lado RECEBIDO do auto-pagamento com saldo da carteira
         // É uma transação interna — só queremos mostrar o lado "enviado" como depósito
@@ -3017,6 +3029,43 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
+  /// v704: taxa da plataforma REAL paga pela ordem (em sats). Procura o
+  /// paymentHash da taxa (salvo na ordem, sobrevive à reinstalação via Nostr)
+  /// dentro do histórico do SDK; se não achar o pagamento, estima 2% do valor
+  /// base quando a taxa consta como paga. Retorna 0 quando não há taxa paga
+  /// identificável. Usado pra CONSOLIDAR a taxa no total da transação da
+  /// ordem e detalhar linha a linha no detalhe — sem item separado na lista.
+  int _platformFeeForOrder(String orderId, {int? baseSats}) {
+    try {
+      final op = context.read<OrderProvider>();
+      Order? order;
+      for (final o in op.orders) {
+        if (o.id == orderId ||
+            (orderId.length >= 8 && o.id.startsWith(orderId)) ||
+            (o.id.length >= 8 && orderId.startsWith(o.id.substring(0, 8)))) {
+          order = o;
+          break;
+        }
+      }
+      if (order == null) return 0;
+      final feeHash = order.metadata?['feePaymentHash']?.toString() ?? '';
+      if (feeHash.isNotEmpty) {
+        for (final p in _payments) {
+          if (p['paymentHash']?.toString() == feeHash) {
+            final a = p['amountSats'] ?? p['amount'] ?? 0;
+            return a is int ? a : (a as num).toInt();
+          }
+        }
+      }
+      if (PlatformFeeService.isFeePaid(order.id)) {
+        final base = baseSats ?? (order.btcAmount * 100000000).round();
+        final est = (base * AppConfig.platformFeePercent).round();
+        return est < 1 ? 1 : est;
+      }
+    } catch (_) {}
+    return 0;
+  }
+
   Widget _buildPaymentItem(Map<String, dynamic> payment) {
     final isReceived = payment['type'] == 'received' || 
                        payment['direction'] == 'incoming' ||
@@ -3118,38 +3167,12 @@ class _WalletScreenState extends State<WalletScreen> {
       if (marketplaceProduct.isEmpty) marketplaceProduct = 'Produto';
     }
     
-    // v703: taxa da plataforma como lançamento SEPARADO (formato WoS) —
-    // detectada pelo paymentHash registrado no ato do pagamento OU pelo
-    // feePaymentHash salvo na ordem (sobrevive à reinstalação via Nostr).
-    bool isPlatformFeePayment = false;
-    String? feeOrderPrefix;
-    if (!isReceived && paymentHash.isNotEmpty) {
-      if (PlatformFeeService.feePaymentHashes.contains(paymentHash)) {
-        isPlatformFeePayment = true;
-      }
-      for (final o in orderProvider.orders) {
-        if (o.metadata?['feePaymentHash'] == paymentHash) {
-          isPlatformFeePayment = true;
-          feeOrderPrefix = o.id.substring(0, 8);
-          break;
-        }
-      }
-    }
-
     // Determinar o label e cor baseado no tipo
     String label;
     Color iconColor;
     IconData icon;
     
-    if (isPlatformFeePayment) {
-      // v703: a taxa que antes era invisível agora aparece nomeada — acaba a
-      // impressão de "taxa oculta" (a WoS mostra esse lançamento separado).
-      label = feeOrderPrefix != null
-          ? AppLocalizations.of(context).tp('wallet_platform_fee_order', {'orderId': feeOrderPrefix})
-          : AppLocalizations.of(context).t('wallet_platform_fee');
-      iconColor = Colors.purpleAccent;
-      icon = Icons.percent;
-    } else if (isMarketplace) {
+    if (isMarketplace) {
       // v246: Transação do Marketplace
       if (isReceived) {
         label = AppLocalizations.of(context).tp('wallet_marketplace_sale', {'product': marketplaceProduct});
@@ -3234,15 +3257,18 @@ class _WalletScreenState extends State<WalletScreen> {
     final showBroStyle = isBroEarning || isBroOrderPayment;
     final showMarketplaceStyle = isMarketplace;
 
-    // v703: valor exibido = TOTAL debitado (pagamento + taxa de rede), como
-    // a WoS mostra. A taxa da plataforma (2%) tem seu PRÓPRIO lançamento na
-    // lista — nada de esconder em "spread" (parecia taxa oculta e o número
-    // nunca batia com o débito real: 9297 vs 9422, caso do email 05/11).
+    // v704: CONSOLIDADO — saída de ordem mostra o TOTAL real da operação
+    // (pagamento + taxa de rede + taxa da plataforma), com o detalhamento por
+    // linha no detalhe da transação. Nem item separado na lista (polui), nem
+    // escondida (parecia taxa oculta — email do usuário 05/11).
     int displayAmount = (amount is int) ? amount : (amount as num).toInt();
     if (!isReceived) {
       final netFeeRaw = payment['fees'];
       final netFee = netFeeRaw is int ? netFeeRaw : (netFeeRaw is num ? netFeeRaw.toInt() : 0);
       displayAmount += netFee;
+      if (correlatedOrderId != null) {
+        displayAmount += _platformFeeForOrder(correlatedOrderId!, baseSats: displayAmount - netFee);
+      }
     }
     // Ganho como Bro: incluir taxa de 3% do provedor no valor exibido
     if (isBroEarning || isBroOrderPayment) {
@@ -3478,17 +3504,7 @@ class _WalletScreenState extends State<WalletScreen> {
       isGanhoBro = true;
     }
     
-    // v703: taxa da plataforma com rótulo próprio no detalhe também.
-    final bool isPlatformFeePayment = !isReceived &&
-        paymentHash.isNotEmpty &&
-        (PlatformFeeService.feePaymentHashes.contains(paymentHash) ||
-         orderProvider.orders.any((o) => o.metadata?['feePaymentHash'] == paymentHash));
-
-    if (isPlatformFeePayment) {
-      typeLabel = AppLocalizations.of(context).t('wallet_type_platform_fee');
-      typeColor = Colors.purpleAccent;
-      typeIcon = Icons.percent;
-    } else if (method.contains('withdraw')) {
+    if (method.contains('withdraw')) {
       // v673: saque on-chain rotulado corretamente (não é "envio Lightning")
       typeLabel = AppLocalizations.of(context).t('wallet_type_withdraw_onchain');
       typeColor = Colors.orange;
@@ -3515,14 +3531,17 @@ class _WalletScreenState extends State<WalletScreen> {
       typeIcon = Icons.arrow_upward;
     }
     
-    // v703: mesmo critério da lista — total debitado = pagamento + taxa de
-    // rede. A taxa da plataforma aparece como lançamento próprio no histórico
-    // (não é mais embutida aqui em "spread").
+    // v704: mesmo critério da lista — total consolidado = pagamento + taxa de
+    // rede + taxa da plataforma. O detalhamento linha a linha fica na seção
+    // de taxas logo abaixo (transparência sem poluir o histórico).
     int detailAmount = (amount is int) ? amount : (amount as num).toInt();
     final int baseSats = detailAmount; // Valor original do pagamento Lightning (sats do PIX)
     if (!isReceived) {
       final netFeeRaw = payment['fees'];
       detailAmount += netFeeRaw is int ? netFeeRaw : (netFeeRaw is num ? netFeeRaw.toInt() : 0);
+      if (correlatedOrderId != null) {
+        detailAmount += _platformFeeForOrder(correlatedOrderId!, baseSats: baseSats);
+      }
     }
     // Ganho como Bro: incluir taxa de 3% do provedor no valor exibido
     if (isGanhoBro) {
@@ -3701,6 +3720,21 @@ class _WalletScreenState extends State<WalletScreen> {
                       ),
                       const SizedBox(height: 8),
                       _buildDetailRow(feeLabel, feeValue),
+                      // v704: taxa da plataforma consolidada AQUI no detalhe —
+                      // nunca escondida, mas sem virar item separado na lista.
+                      if (!isReceived && correlatedOrderId != null) ...[
+                        Builder(builder: (context) {
+                          final pf = _platformFeeForOrder(correlatedOrderId!, baseSats: baseSats);
+                          if (pf <= 0) return const SizedBox.shrink();
+                          final pfText = _btcPrice > 0
+                              ? '$pf sats (~$_fiatSymbol ${(pf / 100000000 * _btcPrice).toStringAsFixed(2)})'
+                              : '$pf sats';
+                          return _buildDetailRow(
+                            '💜 ${AppLocalizations.of(context).t('wallet_platform_fee')} (2%)',
+                            pfText,
+                          );
+                        }),
+                      ],
                       const SizedBox(height: 8),
                       Container(
                         width: double.infinity,

@@ -164,18 +164,10 @@ class _WalletScreenState extends State<WalletScreen> {
                            p['direction'] == 'incoming' ||
                            p['type'] == 'Receive';
         
-        // OCULTAR: Taxas de plataforma (são internas, não devem aparecer para o usuário)
-        // 1. Filtrar por payment hash (mais confiável)
+        // v703: taxas da plataforma AGORA APARECEM como lançamento separado
+        // (formato WoS, pedido de usuário real por email 05/11) — escondê-las
+        // parecia "taxa oculta". O rótulo amigável é montado em _buildPaymentItem.
         final paymentHash = p['paymentHash']?.toString() ?? '';
-        if (paymentHash.isNotEmpty && PlatformFeeService.feePaymentHashes.contains(paymentHash)) {
-          return false;
-        }
-        // 2. Fallback: filtrar por descrição
-        final descLower = description.toLowerCase();
-        if (descLower.contains('platform fee') || 
-            descLower.contains('bro platform fee')) {
-          return false;
-        }
         
         // OCULTAR: Lado RECEBIDO do auto-pagamento com saldo da carteira
         // É uma transação interna — só queremos mostrar o lado "enviado" como depósito
@@ -3126,12 +3118,38 @@ class _WalletScreenState extends State<WalletScreen> {
       if (marketplaceProduct.isEmpty) marketplaceProduct = 'Produto';
     }
     
+    // v703: taxa da plataforma como lançamento SEPARADO (formato WoS) —
+    // detectada pelo paymentHash registrado no ato do pagamento OU pelo
+    // feePaymentHash salvo na ordem (sobrevive à reinstalação via Nostr).
+    bool isPlatformFeePayment = false;
+    String? feeOrderPrefix;
+    if (!isReceived && paymentHash.isNotEmpty) {
+      if (PlatformFeeService.feePaymentHashes.contains(paymentHash)) {
+        isPlatformFeePayment = true;
+      }
+      for (final o in orderProvider.orders) {
+        if (o.metadata?['feePaymentHash'] == paymentHash) {
+          isPlatformFeePayment = true;
+          feeOrderPrefix = o.id.substring(0, 8);
+          break;
+        }
+      }
+    }
+
     // Determinar o label e cor baseado no tipo
     String label;
     Color iconColor;
     IconData icon;
     
-    if (isMarketplace) {
+    if (isPlatformFeePayment) {
+      // v703: a taxa que antes era invisível agora aparece nomeada — acaba a
+      // impressão de "taxa oculta" (a WoS mostra esse lançamento separado).
+      label = feeOrderPrefix != null
+          ? AppLocalizations.of(context).tp('wallet_platform_fee_order', {'orderId': feeOrderPrefix})
+          : AppLocalizations.of(context).t('wallet_platform_fee');
+      iconColor = Colors.purpleAccent;
+      icon = Icons.percent;
+    } else if (isMarketplace) {
       // v246: Transação do Marketplace
       if (isReceived) {
         label = AppLocalizations.of(context).tp('wallet_marketplace_sale', {'product': marketplaceProduct});
@@ -3216,13 +3234,15 @@ class _WalletScreenState extends State<WalletScreen> {
     final showBroStyle = isBroEarning || isBroOrderPayment;
     final showMarketplaceStyle = isMarketplace;
 
-    // Integrar taxa da plataforma ao valor exibido (spread) para não aparecer separada
-    // Quando é um pagamento enviado correlacionado com uma ordem, o total inclui a taxa
+    // v703: valor exibido = TOTAL debitado (pagamento + taxa de rede), como
+    // a WoS mostra. A taxa da plataforma (2%) tem seu PRÓPRIO lançamento na
+    // lista — nada de esconder em "spread" (parecia taxa oculta e o número
+    // nunca batia com o débito real: 9297 vs 9422, caso do email 05/11).
     int displayAmount = (amount is int) ? amount : (amount as num).toInt();
-    if (!isReceived && correlatedOrderId != null && PlatformFeeService.isFeePaid(correlatedOrderId!)) {
-      final feeRaw = (displayAmount * AppConfig.platformFeePercent).round();
-      final fee = feeRaw < 1 ? 1 : feeRaw;
-      displayAmount = displayAmount + fee;
+    if (!isReceived) {
+      final netFeeRaw = payment['fees'];
+      final netFee = netFeeRaw is int ? netFeeRaw : (netFeeRaw is num ? netFeeRaw.toInt() : 0);
+      displayAmount += netFee;
     }
     // Ganho como Bro: incluir taxa de 3% do provedor no valor exibido
     if (isBroEarning || isBroOrderPayment) {
@@ -3458,7 +3478,17 @@ class _WalletScreenState extends State<WalletScreen> {
       isGanhoBro = true;
     }
     
-    if (method.contains('withdraw')) {
+    // v703: taxa da plataforma com rótulo próprio no detalhe também.
+    final bool isPlatformFeePayment = !isReceived &&
+        paymentHash.isNotEmpty &&
+        (PlatformFeeService.feePaymentHashes.contains(paymentHash) ||
+         orderProvider.orders.any((o) => o.metadata?['feePaymentHash'] == paymentHash));
+
+    if (isPlatformFeePayment) {
+      typeLabel = AppLocalizations.of(context).t('wallet_type_platform_fee');
+      typeColor = Colors.purpleAccent;
+      typeIcon = Icons.percent;
+    } else if (method.contains('withdraw')) {
       // v673: saque on-chain rotulado corretamente (não é "envio Lightning")
       typeLabel = AppLocalizations.of(context).t('wallet_type_withdraw_onchain');
       typeColor = Colors.orange;
@@ -3485,12 +3515,14 @@ class _WalletScreenState extends State<WalletScreen> {
       typeIcon = Icons.arrow_upward;
     }
     
-    // Integrar taxa no valor exibido (mesmo spread do histórico)
+    // v703: mesmo critério da lista — total debitado = pagamento + taxa de
+    // rede. A taxa da plataforma aparece como lançamento próprio no histórico
+    // (não é mais embutida aqui em "spread").
     int detailAmount = (amount is int) ? amount : (amount as num).toInt();
     final int baseSats = detailAmount; // Valor original do pagamento Lightning (sats do PIX)
-    if (!isReceived && correlatedOrderId != null && PlatformFeeService.isFeePaid(correlatedOrderId!)) {
-      final feeRaw = (detailAmount * AppConfig.platformFeePercent).round();
-      detailAmount = detailAmount + (feeRaw < 1 ? 1 : feeRaw);
+    if (!isReceived) {
+      final netFeeRaw = payment['fees'];
+      detailAmount += netFeeRaw is int ? netFeeRaw : (netFeeRaw is num ? netFeeRaw.toInt() : 0);
     }
     // Ganho como Bro: incluir taxa de 3% do provedor no valor exibido
     if (isGanhoBro) {

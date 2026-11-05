@@ -565,7 +565,19 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                   return;
                 }
                 final ok = await bio.unlock();
-                if (!ok) return; // cancelou/falhou — não ativa
+                if (!ok) {
+                  // v703: falha VISÍVEL — antes era `return` silencioso e o
+                  // toggle simplesmente não ligava, sem explicação (caso real:
+                  // logcat mostrava enabled=false e ninguém sabia por quê).
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(AppLocalizations.of(context).t('biometric_unlock_failed')),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                }
               }
               setState(() => _biometricLock = value);
               _saveSetting('biometric_lock', value);

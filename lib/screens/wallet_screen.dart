@@ -3225,11 +3225,29 @@ class _WalletScreenState extends State<WalletScreen> {
         icon = Icons.arrow_downward;
       }
     } else {
+      // Depósito/renovação de garantia (tier) — nunca "Enviado" genérico
+      final isGuarantee = description.startsWith('Bro Garantia') || description.contains('Garantia Bro');
       // Verificar se é pagamento com saldo da carteira ou depósito Lightning
       final isWalletPayment = payment['isWalletPayment'] == true;
-      if (isWalletPayment) {
+      if (isGuarantee) {
+        final tierGuess = description
+            .replaceAll('Bro Garantia', '')
+            .replaceAll('Garantia Bro - Tier', '')
+            .replaceAll('Garantia Bro', '')
+            .replaceAll('(renovação)', '')
+            .trim();
+        final isRenewal = description.contains('renova');
+        label = AppLocalizations.of(context).tp(
+          isRenewal ? 'wallet_guarantee_renewal' : 'wallet_guarantee_deposit',
+          {'tier': tierGuess.isEmpty ? 'Tier' : tierGuess},
+        );
+        iconColor = Colors.amber;
+        icon = Icons.lock;
+      } else if (isWalletPayment) {
         // v449: Unificado com bill payment — mesma label independente do método
-        label = AppLocalizations.of(context).t('wallet_bill_payment');
+        label = correlatedOrderId != null
+            ? AppLocalizations.of(context).tp('wallet_bill_payment_order', {'orderId': correlatedOrderId!.substring(0, 8)})
+            : AppLocalizations.of(context).t('wallet_bill_payment');
         iconColor = Colors.red;
         icon = Icons.arrow_upward;
       } else if (description == 'Bro Wallet Payment' || description == 'Bro Payment') {
@@ -3242,8 +3260,10 @@ class _WalletScreenState extends State<WalletScreen> {
         iconColor = Colors.amber;
         icon = Icons.receipt_long;
       } else if (description.contains('Ordem') || description.contains('conta')) {
-        // Pagamento de conta (descrição contém info de ordem)
-        label = AppLocalizations.of(context).t('wallet_bill_payment');
+        // Pagamento de conta — v706: com nº da ordem quando correlacionada
+        label = correlatedOrderId != null
+            ? AppLocalizations.of(context).tp('wallet_bill_payment_order', {'orderId': correlatedOrderId!.substring(0, 8)})
+            : AppLocalizations.of(context).t('wallet_bill_payment');
         iconColor = Colors.red;
         icon = Icons.arrow_upward;
       } else {
@@ -3692,9 +3712,11 @@ class _WalletScreenState extends State<WalletScreen> {
                   final int? networkFeeSats = feesRaw is int
                       ? feesRaw
                       : (feesRaw is num ? feesRaw.toInt() : null);
-                  final feeLabel = isReceived
-                      ? AppLocalizations.of(context).t('wallet_routing_fee')
-                      : AppLocalizations.of(context).t('wallet_withdrawal_fee');
+                  // v706: rótulo honesto — pagamento de conta paga taxa da
+                  // rede SPARK (não é "saque"; saque on-chain tem rótulo próprio)
+                  final feeLabel = method.contains('withdraw')
+                      ? AppLocalizations.of(context).t('wallet_withdrawal_fee')
+                      : AppLocalizations.of(context).t('wallet_spark_fee');
                   String feeValue;
                   if (networkFeeSats == null) {
                     feeValue = AppLocalizations.of(context).t('wallet_not_available');
@@ -3720,6 +3742,22 @@ class _WalletScreenState extends State<WalletScreen> {
                       ),
                       const SizedBox(height: 8),
                       _buildDetailRow(feeLabel, feeValue),
+                      // v706: TODAS as taxas condensadas aqui — Bro provedor
+                      // (3%), app Bro (2%) e Spark. A nota embaixo virou uma
+                      // linha só; o detalhamento é que explica (pedido Carol).
+                      if (!isReceived && correlatedOrderId != null) ...[
+                        Builder(builder: (context) {
+                          final provFee = (baseSats * AppConfig.providerFeePercent).round();
+                          if (provFee <= 0) return const SizedBox.shrink();
+                          final pfText = _btcPrice > 0
+                              ? '$provFee sats (~$_fiatSymbol ${(provFee / 100000000 * _btcPrice).toStringAsFixed(2)})'
+                              : '$provFee sats';
+                          return _buildDetailRow(
+                            '💪 ${AppLocalizations.of(context).t('wallet_provider_fee')} (3%)',
+                            pfText,
+                          );
+                        }),
+                      ],
                       // v704: taxa da plataforma consolidada AQUI no detalhe —
                       // nunca escondida, mas sem virar item separado na lista.
                       if (!isReceived && correlatedOrderId != null) ...[

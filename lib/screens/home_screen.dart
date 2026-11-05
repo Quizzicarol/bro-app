@@ -12,6 +12,7 @@ import '../services/bitcoin_price_service.dart';
 import '../providers/locale_provider.dart';
 import '../services/storage_service.dart';
 import '../services/secure_storage_service.dart';
+import '../services/biometric_lock_service.dart';
 import '../services/local_collateral_service.dart';
 import '../services/platform_fee_service.dart';
 import '../services/version_check_service.dart';
@@ -67,9 +68,73 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _checkAndShowBackupReminder();
       _checkForAppUpdate();
       _checkBatteryOptimization(); // v390: Prompt battery exempt for bg notifications
+      _checkBiometricOffer(); // v703: oferecer trava biométrica UMA vez
       // Start BRIX invoice relay service (global, any screen)
       BrixRelayService().start(context);
     });
+  }
+
+  /// v703: oferta one-time de ativação da trava biométrica. Quem nunca abriu
+  /// a tela de Privacidade nem sabia que a trava existia (o toggle nunca era
+  /// ligado — caso real: biometria nunca pedida no Samsung nem no iPhone).
+  /// Mostra UMA vez; a resposta (ativa ou "agora não") marca como oferecido.
+  Future<void> _checkBiometricOffer() async {
+    await Future.delayed(const Duration(seconds: 3)); // não brigar com outros prompts
+    if (!mounted) return;
+    final bio = BiometricLockService();
+    try {
+      if (await bio.isEnabled()) return; // já usa — nada a oferecer
+      if (await bio.hasBeenOffered()) return; // já oferecemos uma vez
+      if (!await bio.isAvailable()) return; // aparelho sem biometria/PIN
+      await bio.markOffered(); // marca ANTES de mostrar: one-time de verdade
+      if (!mounted) return;
+      final l = AppLocalizations.of(context);
+      final enable = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          title: Text(l.t('biometric_offer_title'),
+              style: const TextStyle(color: Colors.white, fontSize: 17)),
+          content: Text(l.t('biometric_offer_body'),
+              style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.4)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(l.t('biometric_offer_later'),
+                  style: const TextStyle(color: Colors.white54)),
+            ),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.pop(ctx, true),
+              icon: const Icon(Icons.fingerprint, size: 18),
+              label: Text(l.t('biometric_offer_enable')),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFF6B35),
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      );
+      if (enable != true || !mounted) return;
+      // Testa o desbloqueio UMA vez antes de ativar (evita trancar o usuário
+      // pra fora sem ele nunca ter visto o prompt do sistema).
+      final ok = await bio.unlock();
+      if (!mounted) return;
+      if (ok) {
+        await bio.setEnabled(true);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(l.t('biometric_offer_enabled')),
+          backgroundColor: Colors.green,
+        ));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(l.t('biometric_unlock_failed')),
+          backgroundColor: Colors.orange,
+        ));
+      }
+    } catch (e) {
+      broLog('⚠️ [HOME] Oferta de biometria falhou: $e');
+    }
   }
 
   @override

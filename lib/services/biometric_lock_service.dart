@@ -22,6 +22,16 @@ class BiometricLockService {
 
   Future<bool> isEnabled() async => _storage.getBiometricLock();
 
+  /// v703: a oferta de ativação já foi mostrada alguma vez?
+  Future<bool> hasBeenOffered() async => _storage.getBiometricLockOffered();
+
+  /// Marcar a oferta como exibida (mostramos UMA vez, independente da resposta).
+  Future<void> markOffered() async => _storage.saveBiometricLockOffered(true);
+
+  /// v703: último erro do prompt do sistema — exposto para feedback VISÍVEL
+  /// (antes a falha era silenciosa: toggle não ligava e ninguém sabia por quê).
+  String? lastUnlockError;
+
   Future<void> setEnabled(bool value) async {
     await _storage.saveBiometricLock(value);
     if (!value) _unlockedThisSession = true; // desativar libera a sessão
@@ -64,8 +74,10 @@ class BiometricLockService {
         ),
       );
       if (ok) _unlockedThisSession = true;
+      lastUnlockError = null;
       return ok;
     } catch (e) {
+      lastUnlockError = e.toString();
       broLog('⚠️ Falha na autenticação biométrica: $e');
       return false;
     }

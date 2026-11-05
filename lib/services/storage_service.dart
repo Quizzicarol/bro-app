@@ -747,6 +747,19 @@ class StorageService {
     return _prefs?.getBool('biometric_lock') ?? false;
   }
 
+  // v703: controle da OFERTA de ativação (dialog one-time na home). Sem isso
+  // quem nunca entrou em Privacidade nem sabia que a trava existia — o
+  // toggle nunca era ligado (caso real: Carol e o iPhone dela).
+  Future<void> saveBiometricLockOffered(bool offered) async {
+    if (_prefs == null) await init();
+    await _prefs?.setBool('biometric_lock_offered', offered);
+  }
+
+  Future<bool> getBiometricLockOffered() async {
+    if (_prefs == null) await init();
+    return _prefs?.getBool('biometric_lock_offered') ?? false;
+  }
+
   // ===== GENERIC DATA STORAGE =====
   
   Future<void> saveData(String key, String value) async {

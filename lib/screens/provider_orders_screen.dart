@@ -1320,9 +1320,15 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
 
   Widget _buildStatsCard() {
     final l = AppLocalizations.of(context)!;
-    final completedOrders = _myOrders.where((o) => o['status'] == 'completed').length;
-    final pendingOrders = _myOrders.where((o) => o['status'] != 'completed' && o['status'] != 'cancelled').length;
-    final totalOrders = _myOrders.length;
+    // Corridas perdidas (lostRace) NÃO são ordens do provedor — contar elas
+    // inflava "em andamento" pra sempre e nada batia com a realidade.
+    bool live(Map<String, dynamic> o) => o['metadata']?['lostRace'] != true;
+    const terminal = ['completed', 'liquidated', 'cancelled', 'refunded'];
+    final completedOrders = _myOrders.where((o) =>
+        (o['status'] == 'completed' || o['status'] == 'liquidated') && live(o)).length;
+    final pendingOrders = _myOrders.where((o) =>
+        !terminal.contains(o['status']) && live(o)).length;
+    final totalOrders = _myOrders.where(live).length;
     
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1372,7 +1378,10 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
 
   Widget _buildEarningsCard() {
     final l = AppLocalizations.of(context)!;
-    final completedOrders = _myOrders.where((o) => o['status'] == 'completed');
+    // Mesmo filtro das estatísticas: só ordens reais (sem corrida perdida).
+    final completedOrders = _myOrders.where((o) =>
+        (o['status'] == 'completed' || o['status'] == 'liquidated') &&
+        o['metadata']?['lostRace'] != true);
     double totalEarnings = 0;
     for (final order in completedOrders) {
       final amount = (order['amount'] as num).toDouble();

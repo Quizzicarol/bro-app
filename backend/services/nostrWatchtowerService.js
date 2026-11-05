@@ -114,6 +114,11 @@ class NostrWatchtowerService {
     // vSEC: orderId → providerPubkey cache (from bro_accept events). Used to
     // authorize /push/notify: only the two order parties may notify each other.
     this._orderProviders = new Map();
+    // v702: orderId → [{pubkey, acceptedAt}] — TODOS os aceites vistos, pra
+    // detectar billCode revelado ao PERDEDOR da corrida (incidente b4a2c42d:
+    // código foi pro provedor errado, que pagou R$ de verdade). Tripwire:
+    // #p do bro_billcode_encrypted ≠ canônico → push imediato pro admin.
+    this._orderAccepts = new Map();
     this._running = false;
     this._stats = { eventsProcessed: 0, pushesSent: 0, pushesFailed: 0, sigFailed: 0 };
     // SECURITY: Rate limit pushes per target pubkey (max 10 per 5 min)
@@ -623,6 +628,25 @@ class NostrWatchtowerService {
               this._orderProviders = new Map(pEntries.slice(-2000));
             }
           }
+          // v702: registra aceite com acceptedAt (imutável no content) pra
+          // tripwire de corrida. Se o mesmo provedor re-publicar, mantém o
+          // acceptedAt original.
+          if (isValidPubkey(senderPubkey)) {
+            let list = this._orderAccepts.get(orderId);
+            if (!list) { list = []; this._orderAccepts.set(orderId, list); }
+            if (!list.some(a => a.pubkey === senderPubkey)) {
+              let ts = typeof event.created_at === 'number' ? event.created_at : Math.floor(Date.now() / 1000);
+              if (typeof content.acceptedAt === 'string') {
+                const parsed = Date.parse(content.acceptedAt);
+                if (!isNaN(parsed)) ts = Math.floor(parsed / 1000);
+              }
+              list.push({ pubkey: senderPubkey, acceptedAt: ts });
+              if (this._orderAccepts.size > 4000) {
+                const aEntries = Array.from(this._orderAccepts.entries());
+                this._orderAccepts = new Map(aEntries.slice(-2000));
+              }
+            }
+          }
           if (isValidPubkey(userPubkeyA) && userPubkeyA !== senderPubkey) {
             await this._sendOrderPush(userPubkeyA, senderPubkey, 'accepted', orderId, shortId);
             // v574: also send a SILENT data-only push to wake the buyer's
@@ -839,6 +863,36 @@ class NostrWatchtowerService {
           // do provedor destravou o app). Cancelamos quaisquer retries
           // pendentes para evitar push visível desnecessário.
           this._cancelBillcodeRelayRetries(orderId, 'observed bro_billcode_encrypted');
+
+          // v702 TRIPWIRE: o #p do evento é o destinatário do código. Se não
+          // for o aceite CANÔNICO (menor acceptedAt), é o bug de corrida — o
+          // perdedor vai receber o código e pode pagar com dinheiro real
+          // (incidente real b4a2c42d). Alerta o admin IMEDIATAMENTE.
+          try {
+            const pTag = (event.tags || []).find(t => Array.isArray(t) && t[0] === 'p');
+            const target = pTag && typeof pTag[1] === 'string' ? pTag[1].toLowerCase() : null;
+            const accepts = this._orderAccepts.get(orderId) || [];
+            if (target && accepts.length > 0) {
+              const canonical = [...accepts].sort((a, b) => a.acceptedAt - b.acceptedAt)[0].pubkey.toLowerCase();
+              if (target !== canonical) {
+                console.error(`🚨🚨 [Watchtower] RACE-BUG: billCode de ${orderId.substring(0, 8)} foi para ${target.substring(0, 8)} mas o canônico é ${canonical.substring(0, 8)}!`);
+                const adminPk = (process.env.ADMIN_PUBKEY || '').toLowerCase();
+                if (/^[0-9a-f]{64}$/.test(adminPk)) {
+                  await this._sendPush(adminPk, {
+                    type: 'admin_race_alert',
+                    order_id: orderId,
+                    sent_to: target,
+                    canonical,
+                  }, {
+                    title: '🚨 Bro: código entregue ao provedor ERRADO',
+                    body: `Ordem ${orderId.substring(0, 8)}: código foi para ${target.substring(0, 8)}, canônico é ${canonical.substring(0, 8)}. Verifique pagamentos duplicados AGORA.`,
+                  }, { bypassDedup: true });
+                }
+              }
+            }
+          } catch (e) {
+            console.error(`⚠️ [Watchtower] race tripwire falhou: ${e.message}`);
+          }
           break;
         }
 

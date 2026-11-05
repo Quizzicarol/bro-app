@@ -1154,7 +1154,10 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             ],
           ]
           // ========== AGUARDANDO CONFIRMAÇÃO DO USUÁRIO ==========
-          else if (isAwaitingConfirmation) ...[
+          // v702: perdedor de corrida NÃO vê esta seção — ele não é o provedor
+          // da ordem; mostrar "aguardando confirmação" induz a achar que a
+          // ordem é dele (o bug que gerou pagamento indevido em b4a2c42d).
+          else if (isAwaitingConfirmation && _lostRace != true) ...[
             _buildAmountCard(amount, providerFee),
             const SizedBox(height: 16),
             _buildStatusCard(),
@@ -1163,7 +1166,9 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             const SizedBox(height: 16),
           ]
           // ========== BRO ACEITOU - PRECISA PAGAR A CONTA ==========
-          else if (isAccepted) ...[
+          // v702: perdedor de corrida NUNCA vê o código — evita pagamento
+          // indevido mesmo se o código tiver sido revelado por engano.
+          else if (isAccepted && _lostRace != true) ...[
             _buildAmountCard(amount, providerFee),
             const SizedBox(height: 16),
             _buildStatusCard(),

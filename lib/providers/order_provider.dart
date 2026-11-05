@@ -2072,29 +2072,50 @@ class OrderProvider with ChangeNotifier {
           broLog('🛡️ v679: ${order.id.substring(0, 8)} — providerId local NÃO consta nos aceites da rede. NÃO revelando (fail-closed).');
           continue;
         }
-        if (allAccepts.length > 1) {
-          final winner = allAccepts.first;
-          broLog('🏁 v541: ordem ${order.id.substring(0, 8)} tem ${allAccepts.length} accepts. Winner=${winner.substring(0, 8)}');
-          if (winner != order.providerId) {
-            // O providerId armazenado localmente perdeu a corrida.
-            // Atualizar para o vencedor. Proximo sync vai propagar para os relays.
-            broLog('⚠️ v541: providerId local (${order.providerId!.substring(0, 8)}) perdeu corrida. Corrigindo para winner.');
-            final idx = _orders.indexWhere((o) => o.id == order.id);
-            if (idx != -1) {
-              _orders[idx] = _orders[idx].copyWith(providerId: winner);
-              await _saveOnlyUserOrders();
-              _immediateNotify();
-            }
-            // Nao envia billCode para o provider perdedor. Pula para proxima ordem.
+        // v702: O canônico SEMPRE manda — mesmo com UM aceite visível. O bug:
+        // a checagem de vencedor só rodava quando allAccepts.length > 1, então
+        // se o aceite do vencedor ainda não tinha propagado pros relays que o
+        // app consultou, o código ia pro PERDEDOR (que pagou de verdade —
+        // ordem b4a2c42d, 04/11). Agora: alvo = canônico por acceptedAt,
+        // sempre, e com janela de propagação antes de decidir.
+        final acceptsWithTimes = await _nostrOrderService
+            .fetchAllAcceptsWithTimes(order.id)
+            .timeout(const Duration(seconds: 10), onTimeout: () => <Map<String, dynamic>>[]);
+        if (acceptsWithTimes.isNotEmpty) {
+          final newestAcceptTs = (acceptsWithTimes.last['acceptedAt'] as int) * 1000;
+          final ageMs = DateTime.now().millisecondsSinceEpoch - newestAcceptTs;
+          // Janela de propagação: aceite mais novo com menos de 90s = ainda
+          // podem chegar aceites de outros relays. NÃO decide agora.
+          if (ageMs < 90000) {
+            broLog('⏳ v702: ${order.id.substring(0, 8)} — aceite mais novo tem ${(ageMs / 1000).round()}s (<90s janela de propagação). Adiando entrega pro próximo sync.');
             continue;
           }
+        }
+        final canonical = allAccepts.first;
+        if (canonical != order.providerId) {
+          broLog('🏁 v702: ${order.id.substring(0, 8)} — providerId local (${order.providerId!.substring(0, 8)}) ≠ canônico (${canonical.substring(0, 8)}). Corrigindo referência.');
+          final idx = _orders.indexWhere((o) => o.id == order.id);
+          if (idx != -1) {
+            _orders[idx] = _orders[idx].copyWith(providerId: canonical);
+            await _saveOnlyUserOrders();
+            _immediateNotify();
+          }
+          // Se já revelamos pra OUTRO antes desta correção, é incidente real:
+          final sentTo = order.metadata?['billCode_nip44_sent_to'] as String?;
+          if (sentTo != null && sentTo.isNotEmpty && sentTo != canonical) {
+            broLog('🚨🚨 v702 INCIDENTE: billCode de ${order.id.substring(0, 8)} foi para $sentTo mas o canônico é $canonical — MEDIAÇÃO NECESSÁRIA');
+          }
+          continue; // entrega no próximo ciclo, já com providerId curado
+        }
+        if (allAccepts.length > 1) {
+          broLog('🏁 v541: ordem ${order.id.substring(0, 8)} tem ${allAccepts.length} accepts. Winner=${canonical.substring(0, 8)} (eu já aponto pra ele ✓)');
         }
 
         final ok = await _nostrOrderService.publishEncryptedBillCode(
           privateKey: privateKey,
           orderId: order.id,
           billCode: order.billCode,
-          providerPubkey: order.providerId!,
+          providerPubkey: canonical, // v702: SEMPRE o canônico
           orderUserPubkey: _currentUserPubkey!,
         );
         if (ok) {
@@ -2106,7 +2127,7 @@ class OrderProvider with ChangeNotifier {
             meta['billCode_nip44_sent_at'] = DateTime.now().millisecondsSinceEpoch;
             // v679: registrar PARA QUEM revelamos — a guarda do comprador
             // (_handleConfirmPayment) bloqueia complete vindo de OUTRO provedor
-            meta['billCode_nip44_sent_to'] = order.providerId;
+            meta['billCode_nip44_sent_to'] = canonical; // v702: canônico, não o local
             _orders[idx] = _orders[idx].copyWith(metadata: meta);
           }
           broLog('🔐 v438: billCode NIP-44 sent for ${order.id.substring(0, 8)}');

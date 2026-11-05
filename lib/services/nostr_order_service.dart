@@ -799,6 +799,46 @@ class NostrOrderService {
     return accepts.map((e) => e['pubkey'] as String).toList();
   }
 
+  /// v702: mesma ordenação canônica (acceptedAt imutável), mas devolvendo os
+  /// timestamps — a entrega do billCode precisa saber a IDADE do aceite mais
+  /// novo pra respeitar a janela de propagação entre relays antes de decidir.
+  Future<List<Map<String, dynamic>>> fetchAllAcceptsWithTimes(String orderId) async {
+    final pubkeys = await fetchAllAcceptsForOrder(orderId);
+    if (pubkeys.isEmpty) return [];
+    // refaz o fetch completo pra pegar os timestamps (barato: relays quentes)
+    final allRelays = <String>[..._relays, ..._fallbackRelays];
+    final results = await Future.wait(
+      allRelays.map((relay) => _fetchFromRelay(
+        relay,
+        kinds: [kindBroAccept],
+        tags: {'#d': ['${orderId}_accept']},
+        limit: 20,
+      ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[])
+       .catchError((_) => <Map<String, dynamic>>[])),
+    );
+    final out = <Map<String, dynamic>>[];
+    final seen = <String>{};
+    for (final events in results) {
+      for (final event in events) {
+        try {
+          final content = event['parsedContent'] ?? jsonDecode(event['content']);
+          if (content['orderId'] != orderId || content['type'] != 'bro_accept') continue;
+          final pk = event['pubkey'] as String?;
+          if (pk == null || !seen.add(pk)) continue;
+          int ts = event['created_at'] as int? ?? 0;
+          final aa = content['acceptedAt'] as String?;
+          if (aa != null) {
+            final parsed = DateTime.tryParse(aa);
+            if (parsed != null) ts = (parsed.millisecondsSinceEpoch / 1000).round();
+          }
+          out.add({'pubkey': pk, 'acceptedAt': ts});
+        } catch (_) {}
+      }
+    }
+    out.sort((a, b) => (a['acceptedAt'] as int).compareTo(b['acceptedAt'] as int));
+    return out;
+  }
+
   /// v656: Deleta o accept de um provedor que PERDEU a corrida (NIP-09 kind 5).
   /// Sem isso, o bro_accept do perdedor fica gravado nos relays (slot separado
   /// por pubkey) e o _fetchProviderOrdersRaw o trata como prova de posse —

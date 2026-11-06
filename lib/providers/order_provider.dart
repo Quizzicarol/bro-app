@@ -3743,6 +3743,28 @@ class OrderProvider with ChangeNotifier {
   // ordem fantasma constava como concluída na lista dele).
   bool _markingLostRaces = false;
 
+  /// v716: cura providerId gravado ERRADO antes da v714 (aceite tardio
+  /// sobrescrevia). Se há comprovante na metadata, o provedor É o autor
+  /// assinante do comprovante — regra v713/v714. Caso real 58ebf198:
+  /// mostrava c4bc52b5 (iPhone da Carol, aceite tardio) mas quem pagou e
+  /// comprovou foi 95a800b7.
+  void _healProviderIdFromProof() {
+    var changed = false;
+    for (var i = 0; i < _orders.length; i++) {
+      final o = _orders[i];
+      final sender = o.metadata?['proofImage_senderPubkey']?.toString();
+      if (sender == null || sender.isEmpty) continue;
+      if (o.providerId == sender) continue;
+      _orders[i] = o.copyWith(providerId: sender);
+      changed = true;
+      broLog('🩹 v716: providerId de ${o.id.substring(0, 8)} curado pro autor do comprovante (${sender.substring(0, 8)})');
+    }
+    if (changed) {
+      _saveOnlyUserOrders();
+      _immediateNotify();
+    }
+  }
+
   Future<void> _markLostRaces() async {
     if (_markingLostRaces) return;
     if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return;
@@ -5057,6 +5079,9 @@ class OrderProvider with ChangeNotifier {
       
       // v699: marcar corridas perdidas (tira ordem fantasma das Minhas)
       _markLostRaces();
+
+      // v716: curar providerId corrompido por aceite tardio (pré-v714)
+      _healProviderIdFromProof();
       
       // v622: Reconciliar taxas da plataforma que ficaram para trás
       await _reconcilePlatformFees();

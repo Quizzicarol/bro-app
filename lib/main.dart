@@ -758,25 +758,50 @@ class BroApp extends StatelessWidget {
               return false;
             }
             
-            // v679: guarda anti-corrida — só pagar invoice de QUEM o app
-            // rastreia como provedor (completer == order.providerId). Caso
-            // e32e493e (28/out): complete do canônico sem billCode quase foi
-            // pago enquanto o perdedor (com o código) pagou o boleto de verdade.
+            // v723: REGRA DA PROVA DE POSSE também no autopay. Antes o guarda
+            // usava fetchOrderCompleteEvent que PREFERE invoice_refresh — o
+            // refresh do canônico passava no guarda (completer==rastreado) e o
+            // canônico era PAGO sem ter trabalhado (caso 58ebf198: 64 sats
+            // pro iPhone da Carol; quem pagou o Pix foi 95a800b7).
             try {
-              final completeEvt2 = await NostrOrderService().fetchOrderCompleteEvent(orderId)
-                  .timeout(const Duration(seconds: 10), onTimeout: () => null);
-              final completerId = completeEvt2?['providerId']?.toString() ?? '';
-              // v691: providerId é MUTÁVEL (perdedor pode sobrescrever numa
-              // republicação — 33ed1ced). Resolver o canônico pelos aceites.
-              var tracked = order.providerId ?? '';
-              try {
+              final proof = await NostrOrderService().fetchProofWithInvoice(orderId)
+                  .timeout(const Duration(seconds: 12), onTimeout: () => null);
+              if (proof != null) {
+                final proofSender = proof['senderPubkey']!;
                 final accepts = await NostrOrderService().fetchAllAcceptsForOrder(orderId)
                     .timeout(const Duration(seconds: 8), onTimeout: () => <String>[]);
-                if (accepts.isNotEmpty) tracked = accepts.first;
-              } catch (_) {}
-              if (completerId.isNotEmpty && tracked.isNotEmpty && completerId != tracked) {
-                broLog('🚨 [AutoPay-Main] comprovante de ${completerId.substring(0,8)} ≠ rastreado ${tracked.substring(0,8)} — NÃO pagando (anti-corrida)');
-                return false;
+                if (accepts.isEmpty) {
+                  broLog('🛡️ [AutoPay-Main] aceites não verificáveis — NÃO pagando (fail-closed)');
+                  return false;
+                }
+                if (!accepts.contains(proofSender)) {
+                  broLog('🚨 [AutoPay-Main] prova de ${proofSender.substring(0, 8)} que NÃO participou da corrida — NÃO pagando');
+                  return false;
+                }
+                final proofInv = proof['providerInvoice'];
+                if (proofInv != null && proofInv.isNotEmpty) {
+                  providerInvoice = proofInv; // paga a invoice de QUEM PROVOU
+                  broLog('🏁 [AutoPay-Main] pagando invoice de quem comprovou: ${proofSender.substring(0, 8)}');
+                } else {
+                  broLog('⏳ [AutoPay-Main] prova sem invoice — aguardando invoice de ${proofSender.substring(0, 8)}');
+                  return false;
+                }
+              } else {
+                // Sem prova no relay (ordem liquidada sem comprovante) — guarda
+                // anti-corrida legado: só paga se completer == canônico.
+                final completeEvt2 = await NostrOrderService().fetchOrderCompleteEvent(orderId)
+                    .timeout(const Duration(seconds: 10), onTimeout: () => null);
+                final completerId = completeEvt2?['providerId']?.toString() ?? '';
+                var tracked = order.providerId ?? '';
+                try {
+                  final accepts = await NostrOrderService().fetchAllAcceptsForOrder(orderId)
+                      .timeout(const Duration(seconds: 8), onTimeout: () => <String>[]);
+                  if (accepts.isNotEmpty) tracked = accepts.first;
+                } catch (_) {}
+                if (completerId.isNotEmpty && tracked.isNotEmpty && completerId != tracked) {
+                  broLog('🚨 [AutoPay-Main] comprovante de ${completerId.substring(0,8)} ≠ rastreado ${tracked.substring(0,8)} — NÃO pagando (anti-corrida)');
+                  return false;
+                }
               }
             } catch (e) {
               broLog('⚠️ [AutoPay-Main] guarda de corrida falhou (seguindo): $e');
@@ -789,7 +814,7 @@ class BroApp extends StatelessWidget {
             final minAllowed = (expectedWithFee * 0.97).floor();
             try {
               if (breezProvider.isInitialized) {
-                final decoded = await breezProvider.decodeInvoice(providerInvoice);
+                final decoded = await breezProvider.decodeInvoice(providerInvoice!);
                 // vSEC: decode FALHOU (null ou success=false) → BLOQUEAR.
                 // Antes, o `if (decoded != null && success == true)` deixava
                 // o fluxo SEGUIR E PAGAR sem validar valor/expiração quando o
@@ -847,7 +872,7 @@ class BroApp extends StatelessWidget {
                 Map<String, dynamic>? payResult;
                 
                 if (breezProvider.isInitialized) {
-                  payResult = await breezProvider.payInvoice(providerInvoice);
+                  payResult = await breezProvider.payInvoice(providerInvoice!);
                 } else {
                   broLog('⚠️ [AutoPay-Main] Nenhuma carteira inicializada');
                   return false;

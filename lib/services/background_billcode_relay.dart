@@ -189,6 +189,36 @@ Future<bool> handleAcceptRelayInBackground(Map<String, dynamic> data) async {
     return false;
   }
 
+  // v725: NUNCA publicar sem provar que o accepter É o canônico. Este handler
+  // publicava-pra-verificar-depois (otimização de latência da v574) e o
+  // watchtower empurra o PRIMEIRO accept que ELE viu (ordem de chegada, não
+  // acceptedAt) — resultado: o código ia pro PERDEDOR da corrida, que pagava
+  // de verdade (caso 43b789c7, 06/11 — o tripwire v702 disparou e alertou a
+  // admin: sent_to=4b72ee02, canonical=0b31181f). Se o accepter não for o
+  // canônico (ou os relays estiverem parciais), NÃO publicamos: o caminho de
+  // foreground (quórum v712 no OrderProvider) entrega no próximo sync.
+  try {
+    final svcCheck = NostrOrderService();
+    final accepts = await svcCheck.fetchAllAcceptsForOrder(orderId)
+        .timeout(const Duration(seconds: 10), onTimeout: () => <String>[]);
+    if (accepts.isEmpty) {
+      broLog('[BG-Relay] v725: aceites não verificáveis — NÃO publicando (foreground entrega via quórum)');
+      return false;
+    }
+    if (svcCheck.lastAcceptsRelayCoverage < 2) {
+      broLog('[BG-Relay] v725: cobertura < 2 relays — NÃO publicando agora');
+      return false;
+    }
+    if (accepts.first.toLowerCase() != accepterPubkey) {
+      broLog('[BG-Relay] v725: accepter ${accepterPubkey.substring(0, 8)} NÃO é o canônico (${accepts.first.substring(0, 8)}) — perdedor de corrida NÃO recebe o código');
+      return false;
+    }
+    broLog('[BG-Relay] v725: accepter É o canônico (${accepts.first.substring(0, 8)}, ${svcCheck.lastAcceptsRelayCoverage} relays) — publicando');
+  } catch (e) {
+    broLog('[BG-Relay] v725: verificação falhou — não publicando: $e');
+    return false;
+  }
+
   // vSEC: confirmação do accepter. IMPORTANTE (latência): PUBLICAMOS PRIMEIRO
   // e verificamos DEPOIS. Antes eu verificava ANTES (fetchAllAcceptsForOrder),
   // mas NostrOrderService é SINGLETON — a verify-query abria WebSockets nos

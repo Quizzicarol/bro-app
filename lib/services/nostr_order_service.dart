@@ -105,9 +105,10 @@ class NostrOrderService {
     if (currentStatus == 'cancelled') return newStatus == 'disputed';
     // v708: cancel SO de estados iniciais — disputa resolvida NUNCA vira cancelled
     if (newStatus == 'cancelled') return currentStatus.isEmpty || currentStatus == 'draft' || currentStatus == 'pending';
-    // v708: disputed NUNCA vira cancelled — so completed (resolucao do mediador)
+    // v719: disputed → cancelled VOLTA a valer (resolução resolved_user da
+    // mediação). Cancelamento manual segue bloqueado nas pontas (v708).
     if (currentStatus == 'disputed') {
-      return newStatus == 'completed';
+      return newStatus == 'completed' || newStatus == 'cancelled';
     }
     // Status finais NÃO regridem — completed/liquidated é definitivo
     const finalStatuses = ['completed', 'liquidated'];

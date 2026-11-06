@@ -190,7 +190,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     if (currentStatus == 'cancelled') return newStatus == 'disputed';
     // v708: cancel SO de estados iniciais — disputa resolvida NUNCA vira cancelled
     if (newStatus == 'cancelled') return currentStatus.isEmpty || currentStatus == 'draft' || currentStatus == 'pending';
-    if (currentStatus == 'disputed') return newStatus == 'completed';
+    // v719: disputed → cancelled volta a valer (resolução resolved_user);
+    // o botão de cancelar continua bloqueado (guarda em _handleCancelOrder).
+    if (currentStatus == 'disputed') return newStatus == 'completed' || newStatus == 'cancelled';
     const finalStatuses = ['completed', 'liquidated'];
     if (finalStatuses.contains(currentStatus)) return false;
     if (newStatus == 'disputed') return true;

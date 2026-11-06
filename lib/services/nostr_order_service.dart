@@ -743,6 +743,11 @@ class NostrOrderService {
     return acceptedIds;
   }
 
+  /// v712: quantos relays responderam no último fetchAllAcceptsForOrder
+  /// (0..N). A entrega do billCode exige >= 2 — um relay sozinho pode estar
+  /// com um subconjunto parcial dos aceites.
+  int lastAcceptsRelayCoverage = 0;
+
   /// v541: Busca TODOS os provedores que aceitaram uma ordem (kind 30079).
   /// Retorna lista de pubkeys dos provedores que publicaram bro_accept para
   /// esta ordem, ordenados pelo created_at (primeiro = mais antigo).
@@ -761,17 +766,27 @@ class NostrOrderService {
     // (v648) consulta todos. Se o aceite vencedor só chegou num relay de fallback,
     // o comprador podia revelar o billCode para o provedor ERRADO. Alinhar os dois.
     final allRelays = <String>[..._relays, ..._fallbackRelays];
+    // v712: medir COBERTURA — quantos relays responderam (ok ou vazio).
+    // Fetch parcial (só 1 relay vivo) produzia "canônico" falso e o billCode
+    // ia pro perdedor (caso 58ebf198, 06/11 — dois provedores com o código).
     final results = await Future.wait(
-      allRelays.map((relay) => _fetchFromRelay(
-        relay,
-        kinds: [kindBroAccept],
-        tags: {'#d': ['${orderId}_accept']},
-        limit: 20,
-      ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[])
-       .catchError((_) => <Map<String, dynamic>>[])),
+      allRelays.map((relay) async {
+        try {
+          final events = await _fetchFromRelay(
+            relay,
+            kinds: [kindBroAccept],
+            tags: {'#d': ['${orderId}_accept']},
+            limit: 20,
+          ).timeout(const Duration(seconds: 8));
+          return (events: events, ok: true);
+        } catch (_) {
+          return (events: <Map<String, dynamic>>[], ok: false);
+        }
+      }),
     );
-    for (final events in results) {
-      for (final event in events) {
+    lastAcceptsRelayCoverage = results.where((r) => r.ok).length;
+    for (final answer in results) {
+      for (final event in answer.events) {
         try {
           final content = event['parsedContent'] ?? jsonDecode(event['content']);
           if (content['orderId'] != orderId) continue;

@@ -2101,6 +2101,17 @@ class OrderProvider with ChangeNotifier {
           }
         }
         final canonical = allAccepts.first;
+        // v712: QUÓRUM ANTI-PARCIAL — um fetch pode ficar incompleto por
+        // MINUTOS sob divergência de relays (caso 58ebf198, 06/11: cada ciclo
+        // via um subconjunto DIFERENTE, o "canônico" mudava entre ciclos e o
+        // código foi pra dois provedores — perdedor pagou R$ de verdade).
+        // Regra: (a) >= 2 relays responderam; (b) o MESMO canônico em dois
+        // ciclos com >= 60s entre eles. Qualquer dúvida → adia.
+        final coverage = _nostrOrderService.lastAcceptsRelayCoverage;
+        if (coverage < 2) {
+          broLog('🛡️ v712: ${order.id.substring(0, 8)} — só $coverage relay(s) responderam. Adiando (fail-closed).');
+          continue;
+        }
         if (canonical != order.providerId) {
           broLog('🏁 v702: ${order.id.substring(0, 8)} — providerId local (${order.providerId!.substring(0, 8)}) ≠ canônico (${canonical.substring(0, 8)}). Corrigindo referência.');
           final idx = _orders.indexWhere((o) => o.id == order.id);
@@ -2115,6 +2126,22 @@ class OrderProvider with ChangeNotifier {
             broLog('🚨🚨 v702 INCIDENTE: billCode de ${order.id.substring(0, 8)} foi para $sentTo mas o canônico é $canonical — MEDIAÇÃO NECESSÁRIA');
           }
           continue; // entrega no próximo ciclo, já com providerId curado
+        }
+        // v712 (b): canônico estável em dois ciclos com >= 60s de distância
+        final meta712 = Map<String, dynamic>.from(order.metadata ?? {});
+        final pendingCanonical = meta712['billCode_pending_canonical'] as String?;
+        final pendingSince = (meta712['billCode_pending_since'] as num?)?.toInt() ?? 0;
+        final nowMs712 = DateTime.now().millisecondsSinceEpoch;
+        if (pendingCanonical != canonical || (nowMs712 - pendingSince) < 60000) {
+          meta712['billCode_pending_canonical'] = canonical;
+          meta712['billCode_pending_since'] = nowMs712;
+          final idx712 = _orders.indexWhere((o) => o.id == order.id);
+          if (idx712 != -1) {
+            _orders[idx712] = _orders[idx712].copyWith(metadata: meta712);
+            await _saveOnlyUserOrders();
+          }
+          broLog('⏳ v712: ${order.id.substring(0, 8)} — canônico ${canonical.substring(0, 8)} anotado; confirmando no próximo ciclo (>=60s) antes de revelar.');
+          continue;
         }
         if (allAccepts.length > 1) {
           broLog('🏁 v541: ordem ${order.id.substring(0, 8)} tem ${allAccepts.length} accepts. Winner=${canonical.substring(0, 8)} (eu já aponto pra ele ✓)');
@@ -2137,6 +2164,8 @@ class OrderProvider with ChangeNotifier {
             // v679: registrar PARA QUEM revelamos — a guarda do comprador
             // (_handleConfirmPayment) bloqueia complete vindo de OUTRO provedor
             meta['billCode_nip44_sent_to'] = canonical; // v702: canônico, não o local
+            meta.remove('billCode_pending_canonical'); // v712: quórum concluído
+            meta.remove('billCode_pending_since');
             _orders[idx] = _orders[idx].copyWith(metadata: meta);
           }
           broLog('🔐 v438: billCode NIP-44 sent for ${order.id.substring(0, 8)}');
@@ -3652,6 +3681,15 @@ class OrderProvider with ChangeNotifier {
   final Map<String, int> _billcodeFallbackTried = {};
 
   Future<bool> fetchBillcodeFallbackOnce(String orderId) async {
+    // v712: perdedor de corrida NUNCA busca o código — nem pelo fallback
+    // (o watchtower pode ter o blob endereçado a outro, mas se chegou aqui
+    // por engano, não mostramos). A tela de detalhe já esconde a seção de
+    // pagamento; isto é a segunda tranca.
+    final order = getOrderById(orderId);
+    if (order?.metadata?['lostRace'] == true) {
+      broLog('🛡️ v712: fallback de billCode bloqueado — corrida perdida em ${orderId.substring(0, 8)}');
+      return false;
+    }
     final last = _billcodeFallbackTried[orderId] ?? 0;
     if (DateTime.now().millisecondsSinceEpoch - last < 30000) return false;
     _billcodeFallbackTried[orderId] = DateTime.now().millisecondsSinceEpoch;

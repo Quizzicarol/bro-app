@@ -2871,11 +2871,32 @@ class NostrOrderService {
     if (update == null) return order;
     
     final newStatus = update['status'] as String?;
-    final providerId = update['providerId'] as String?;
+    final updateProviderId = update['providerId'] as String?;
     var proofImage = update['proofImage'] as String?;
     final proofImageNip44 = update['proofImage_nip44'] as String?;
     final encryption = update['encryption'] as String?;
     final completedAt = update['completedAt'] as String?;
+    // v714: providerId SÓ troca por prova de trabalho (comprovante anexado).
+    // Aceites/updates tardios não roubam mais a referência (caso 58ebf198:
+    // o iPhone da Carol apareceu como "provedora" da ordem que outro provedor
+    // pagou). Quem comprovou = quem recebe (regra v713) — a exibição segue a
+    // mesma verdade.
+    String? resolveProviderId() {
+      final hasProof = (update['proofImage'] != null && (update['proofImage'] as String).isNotEmpty) ||
+          (update['proofImage_nip44'] != null && (update['proofImage_nip44'] as String).isNotEmpty);
+      if (hasProof) {
+        // autor ASSINANTE do evento com comprovante = provedor real (a
+        // assinatura não mente; o campo content poderia ser forjado)
+        final author = update['eventAuthorPubkey'] as String?;
+        if (author != null && author.isNotEmpty) return author;
+        if (updateProviderId != null && updateProviderId.isNotEmpty) return updateProviderId;
+      }
+      if (order.providerId == null || order.providerId!.isEmpty) {
+        return updateProviderId; // primeiro preenchimento (aceite)
+      }
+      return order.providerId; // já definido: não troca por update tardio
+    }
+    final providerId = resolveProviderId();
     final eventCreatedAt = update['created_at'] as int?; // Nostr event timestamp (Unix seconds)
     final providerInvoice = update['providerInvoice'] as String?; // CRÍTICO: Invoice do provedor
     

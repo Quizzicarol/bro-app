@@ -223,7 +223,14 @@ class OrderRealtimeService {
       title = '📸 Comprovante recebido!';
       body = 'Verifique o comprovante e confirme';
       dedupType = 'payment_received';
-    } else if (kind == _kindComplete || status == 'completed') {
+    } else if (kind == _kindComplete && status != 'completed') {
+      // v728: kind 30081 = COMPROVANTE chegou (a ordem NÃO concluiu — falta o
+      // usuário confirmar). Antes caía como "Ordem concluída!" e a Carol via
+      // notificação de concluída faltando a confirmação (43b789c7, 06/11).
+      title = '📸 Comprovante recebido!';
+      body = 'Verifique o comprovante e confirme';
+      dedupType = 'payment_received';
+    } else if (status == 'completed') {
       title = '✅ Ordem concluída!';
       body = 'Troca finalizada com sucesso';
       dedupType = 'completed';

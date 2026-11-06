@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:intl/intl.dart';
 import '../l10n/app_localizations.dart';
@@ -13,6 +14,8 @@ import '../providers/locale_provider.dart';
 import '../services/storage_service.dart';
 import '../services/secure_storage_service.dart';
 import '../services/biometric_lock_service.dart';
+import '../services/nostr_order_service.dart';
+import '../config.dart';
 import '../services/local_collateral_service.dart';
 import '../services/platform_fee_service.dart';
 import '../services/version_check_service.dart';
@@ -70,9 +73,88 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _checkBatteryOptimization(); // v390: Prompt battery exempt for bg notifications
       _checkBiometricOffer(); // v703: oferecer trava biométrica UMA vez
       _checkMediationDebt(); // v709: aviso de cobrança de mediação pendente
+      _checkAdminPaymentRequest(); // v728: mediação quer te pagar → gerar invoice
       // Start BRIX invoice relay service (global, any screen)
       BrixRelayService().start(context);
     });
+  }
+
+  /// v728: se a mediação pediu um invoice (push admin_payment_request),
+  /// oferece gerar com um toque ao abrir o app. A intenção fica gravada até
+  /// o invoice ser publicado (provedor sem contato público consegue receber).
+  Future<void> _checkAdminPaymentRequest() async {
+    await Future.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final keys = prefs.getKeys().where((k) => k.startsWith('admin_payment_request_')).toList();
+      if (keys.isEmpty) return;
+      final orderId = keys.first.replaceFirst('admin_payment_request_', '');
+      final amountSats = int.tryParse(prefs.getString(keys.first) ?? '0') ?? 0;
+      if (amountSats <= 0) return;
+      final l = AppLocalizations.of(context);
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          title: Text(l.tp('admin_payment_title', {'amount': amountSats.toString()}),
+              style: const TextStyle(color: Colors.white, fontSize: 17)),
+          content: Text(
+            l.tp('admin_payment_body', {'orderId': orderId.substring(0, 8)}),
+            style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.4),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(l.t('later'), style: const TextStyle(color: Colors.white54)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF6B35)),
+              child: Text(l.t('admin_payment_generate')),
+            ),
+          ],
+        ),
+      );
+      if (go != true || !mounted) return; // mantém a intenção pra próxima abertura
+      final breez = context.read<BreezProvider>();
+      final inv = await breez.createInvoice(
+        amountSats: amountSats,
+        description: 'Bro - Pagamento de mediação ${orderId.substring(0, 8)}',
+      );
+      final bolt11 = inv?['bolt11'] as String? ?? inv?['invoice'] as String?;
+      if (bolt11 == null || bolt11.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(l.t('admin_payment_invoice_error')),
+          backgroundColor: Colors.red,
+        ));
+        return;
+      }
+      final priv = await StorageService().getNostrPrivateKey();
+      if (priv == null || priv.isEmpty) return;
+      final ok = await NostrOrderService().publishAdminPaymentInvoice(
+        privateKey: priv,
+        orderId: orderId,
+        invoice: bolt11,
+        amountSats: amountSats,
+        adminPubkey: AppConfig.adminPubkey,
+      );
+      if (!mounted) return;
+      if (ok) {
+        await prefs.remove(keys.first);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(l.t('admin_payment_sent')),
+          backgroundColor: Colors.green,
+        ));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(l.t('admin_payment_relay_error')),
+          backgroundColor: Colors.orange,
+        ));
+      }
+    } catch (e) {
+      broLog('⚠️ [HOME] admin payment request falhou: $e');
+    }
   }
 
   /// v709: se há cobrança de mediação NÃO paga (auto-pay falhou por saldo),

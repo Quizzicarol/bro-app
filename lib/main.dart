@@ -787,21 +787,13 @@ class BroApp extends StatelessWidget {
                   return false;
                 }
               } else {
-                // Sem prova no relay (ordem liquidada sem comprovante) — guarda
-                // anti-corrida legado: só paga se completer == canônico.
-                final completeEvt2 = await NostrOrderService().fetchOrderCompleteEvent(orderId)
-                    .timeout(const Duration(seconds: 10), onTimeout: () => null);
-                final completerId = completeEvt2?['providerId']?.toString() ?? '';
-                var tracked = order.providerId ?? '';
-                try {
-                  final accepts = await NostrOrderService().fetchAllAcceptsForOrder(orderId)
-                      .timeout(const Duration(seconds: 8), onTimeout: () => <String>[]);
-                  if (accepts.isNotEmpty) tracked = accepts.first;
-                } catch (_) {}
-                if (completerId.isNotEmpty && tracked.isNotEmpty && completerId != tracked) {
-                  broLog('🚨 [AutoPay-Main] comprovante de ${completerId.substring(0,8)} ≠ rastreado ${tracked.substring(0,8)} — NÃO pagando (anti-corrida)');
-                  return false;
-                }
+                // v727: SEM prova no relay = NÃO PAGA. Ponto. O guarda legado
+                // (completer vs canônico) deixava passar quando só existia
+                // invoice_refresh — foi assim que o canônico recebeu 64 sats
+                // sem ninguém ter pago o Pix (43b789c7, 06/11). Se um dia
+                // aparecer prova, o próximo sync paga certinho.
+                broLog('🛡️ [AutoPay-Main] sem comprovante no relay — NÃO pagando (v727). Aguardando prova.');
+                return false;
               }
             } catch (e) {
               broLog('⚠️ [AutoPay-Main] guarda de corrida falhou (seguindo): $e');

@@ -2375,6 +2375,10 @@ class NostrOrderService {
             'encryption': encryption,
             'providerInvoice': providerInvoice,
             'completedAt': content['completedAt'],
+            // v718: se ESTE evento tem prova, o autor dele é a autoridade
+            'proofAuthorPubkey': (proofImage != null || proofImageNip44 != null)
+                ? event['pubkey'] as String?
+                : existingUpdate?['proofAuthorPubkey'],
             'created_at': createdAt,
           };
         }
@@ -2831,6 +2835,11 @@ class NostrOrderService {
                 'providerInvoice': providerInvoice ?? previousUpdate?['providerInvoice'] ?? accum?['providerInvoice'],
                 'completedAt': content['completedAt'] ?? previousUpdate?['completedAt'] ?? accum?['completedAt'],
                 'billCode_nip44': billCodeNip44 ?? previousUpdate?['billCode_nip44'] ?? accum?['billCode_nip44'],
+                // v718: o autor DA PROVA — explícito. O update mais novo pode
+                // ser um republish sem prova de OUTRO autor; sem este campo o
+                // providerId ficava poluído (caso 58ebf198: prova de 95a800b7
+                // + autor de update tardio c4bc52b5 → tela e pagamento errados).
+                'proofAuthorPubkey': accum?['eventAuthorPubkey'] ?? previousUpdate?['proofAuthorPubkey'],
                 'created_at': createdAt,
               };
             }
@@ -2882,6 +2891,11 @@ class NostrOrderService {
     // pagou). Quem comprovou = quem recebe (regra v713) — a exibição segue a
     // mesma verdade.
     String? resolveProviderId() {
+      // v718: o autor DA PROVA manda — explícito do mapa de updates (o evento
+      // mais novo pode ser republish de outro autor; o acumulador guarda
+      // quem publicou o comprovante de verdade).
+      final proofAuthor = update['proofAuthorPubkey'] as String?;
+      if (proofAuthor != null && proofAuthor.isNotEmpty) return proofAuthor;
       final hasProof = (update['proofImage'] != null && (update['proofImage'] as String).isNotEmpty) ||
           (update['proofImage_nip44'] != null && (update['proofImage_nip44'] as String).isNotEmpty);
       if (hasProof) {
@@ -2976,7 +2990,10 @@ class NostrOrderService {
       // Preservar dados NIP-44 para re-descriptografia futura
       if (proofImageNip44 != null && proofImageNip44.isNotEmpty) {
         updatedMetadata['proofImage_nip44'] = proofImageNip44;
-        updatedMetadata['proofImage_senderPubkey'] = update['eventAuthorPubkey'] as String? ?? providerId;
+        // v718: autor DA PROVA (não o do update tardio) — era a fonte da
+        // poluição c4bc52b5 no caso 58ebf198
+        updatedMetadata['proofImage_senderPubkey'] = update['proofAuthorPubkey'] as String?
+            ?? update['eventAuthorPubkey'] as String? ?? providerId;
       }
       if (completedAt != null) {
         updatedMetadata['proofReceivedAt'] = completedAt;

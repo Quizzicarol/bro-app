@@ -103,11 +103,11 @@ class NostrOrderService {
     if (newStatus == currentStatus) return false;
     // cancelled é TERMINAL ABSOLUTO - só disputed pode sobrescrever
     if (currentStatus == 'cancelled') return newStatus == 'disputed';
-    // cancelled SEMPRE vence (ação explícita do usuário)
-    if (newStatus == 'cancelled') return true;
-    // CORREÇÃO v349: disputed pode transicionar para completed/cancelled (resolução)
+    // v708: cancel SO de estados iniciais — disputa resolvida NUNCA vira cancelled
+    if (newStatus == 'cancelled') return currentStatus.isEmpty || currentStatus == 'draft' || currentStatus == 'pending';
+    // v708: disputed NUNCA vira cancelled — so completed (resolucao do mediador)
     if (currentStatus == 'disputed') {
-      return newStatus == 'completed' || newStatus == 'cancelled';
+      return newStatus == 'completed';
     }
     // Status finais NÃO regridem — completed/liquidated é definitivo
     const finalStatuses = ['completed', 'liquidated'];

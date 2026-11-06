@@ -2085,6 +2085,15 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           'icon': Icons.check_circle_outline,
           'color': Colors.blue,
         };
+      case 'payment_received':
+        // v725: status cru aparecia na tela de aceite (screenshot da Carol).
+        // payment_received = o usuário já depositou os sats da ordem.
+        return {
+          'title': AppLocalizations.of(context)!.t('prov_det_status_payment_received'),
+          'description': AppLocalizations.of(context)!.t('prov_det_status_payment_received_desc'),
+          'icon': Icons.paid_outlined,
+          'color': Colors.green,
+        };
       case 'payment_submitted':
       case 'awaiting_confirmation':
         return {

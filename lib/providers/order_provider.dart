@@ -3748,20 +3748,48 @@ class OrderProvider with ChangeNotifier {
   /// assinante do comprovante — regra v713/v714. Caso real 58ebf198:
   /// mostrava c4bc52b5 (iPhone da Carol, aceite tardio) mas quem pagou e
   /// comprovou foi 95a800b7.
-  void _healProviderIdFromProof() {
+  Future<void> _healProviderIdFromProof() async {
     var changed = false;
+    final healedOrders = <Order>[];
+    var checked = 0;
     for (var i = 0; i < _orders.length; i++) {
       final o = _orders[i];
-      final sender = o.metadata?['proofImage_senderPubkey']?.toString();
+      // v717d: ordens TERMINAIS não reescrevemos (história liquidada fica como
+      // está — correção financeira é via mediação, não retroativa local).
+      const terminal = ['completed', 'liquidated', 'cancelled'];
+      if (terminal.contains(o.status)) continue;
+      var sender = o.metadata?['proofImage_senderPubkey']?.toString();
+      // v717d: a metadata pode ter o autor POLUÍDO pelo merge accept×complete
+      // (58ebf198: proofImage_senderPubkey=c4bc52b5, autor real=95a800b7).
+      // O relay é autoridade: o evento que TEM o comprovante, assinado.
+      if (o.status == 'awaiting_confirmation' || o.metadata?['proofReceivedAt'] != null) {
+        try {
+          final proof = await _nostrOrderService.fetchProofFromRelay(o.id)
+              .timeout(const Duration(seconds: 6), onTimeout: () => null);
+          if (proof?['senderPubkey'] != null && proof!['senderPubkey']!.isNotEmpty) {
+            sender = proof['senderPubkey'];
+          }
+        } catch (_) {}
+      }
       if (sender == null || sender.isEmpty) continue;
+      checked++;
       if (o.providerId == sender) continue;
       _orders[i] = o.copyWith(providerId: sender);
+      healedOrders.add(_orders[i]);
       changed = true;
       broLog('🩹 v716: providerId de ${o.id.substring(0, 8)} curado pro autor do comprovante (${sender.substring(0, 8)})');
     }
+    broLog('🩹 v717: cura de providerId rodou — $checked ordem(ns) com prova, ${healedOrders.length} curada(s)');
     if (changed) {
       _saveOnlyUserOrders();
       _immediateNotify();
+      // v717: REPUBLICAR o 30078 corrigido — senão o relay segue com o
+      // providerId errado e re-corrompe o local a cada sync (caso 58ebf198:
+      // a tela mostrava o aceite tardio mesmo após a cura local).
+      for (final healed in healedOrders) {
+        _publishOrderToNostr(healed).then((_) =>
+            broLog('🩹 v717: ordem ${healed.id.substring(0, 8)} republicada com providerId curado'));
+      }
     }
   }
 

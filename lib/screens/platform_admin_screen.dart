@@ -1319,6 +1319,10 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
     String status = '';
     bool loading = false;
     bool publishing = false;
+    // v728: pagar provedor como mediadora (invoice expirado/ausente nos relays)
+    bool requestingInvoice = false;
+    String offeredInvoice = '';
+    bool payingOffer = false;
 
     Future<void> fetchParties(StateSetter setD) async {
       var orderId = orderIdCtrl.text.trim();
@@ -1398,6 +1402,56 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
       }
     }
 
+    // v728: pede o invoice ao provedor via push e espera ele publicar.
+    Future<void> requestProviderInvoice(StateSetter setD) async {
+      final orderId = orderIdCtrl.text.trim();
+      final amount = int.tryParse(amountCtrl.text.trim()) ?? 0;
+      if (orderId.isEmpty || selected == null || amount <= 0) {
+        setD(() => status = 'Preencha ordem, provedor e valor.');
+        return;
+      }
+      setD(() { requestingInvoice = true; status = 'Push enviado. Aguardando ele gerar o invoice (até ~90s)...'; });
+      try {
+        final resp = await ApiService().post('/push/admin-payment-request', {
+          'target_pubkey': selected,
+          'order_id': orderId,
+          'amount_sats': amount,
+        });
+        if (resp?['ok'] != true) {
+          setD(() { requestingInvoice = false; status = '⚠️ Push não chegou (provedor sem token ou offline).'; });
+          return;
+        }
+        // Espera ele publicar o invoice nos relays (bro_admin_payment_invoice)
+        for (var i = 0; i < 9; i++) {
+          await Future.delayed(const Duration(seconds: 10));
+          final offer = await NostrOrderService().fetchAdminPaymentInvoice(orderId);
+          final inv = offer?['invoice']?.toString() ?? '';
+          if (inv.isNotEmpty) {
+            setD(() { requestingInvoice = false; offeredInvoice = inv; status = '✅ Invoice dele chegou!'; });
+            return;
+          }
+        }
+        setD(() { requestingInvoice = false; status = '⏳ Ele ainda não respondeu. Peça de novo quando ele abrir o app.'; });
+      } catch (e) {
+        setD(() { requestingInvoice = false; status = 'Erro: $e'; });
+      }
+    }
+
+    // v728: paga o invoice que o provedor publicou.
+    Future<void> payOfferedInvoice(StateSetter setD) async {
+      setD(() { payingOffer = true; status = 'Pagando...'; });
+      try {
+        final breez = context.read<BreezProvider>();
+        final pay = await breez.payInvoice(offeredInvoice);
+        setD(() {
+          payingOffer = false;
+          status = pay?['success'] == true ? '✅ PAGO! O provedor recebeu os sats.' : '❌ Falha: ${pay?['error']}';
+        });
+      } catch (e) {
+        setD(() { payingOffer = false; status = 'Erro: $e'; });
+      }
+    }
+
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -1447,6 +1501,47 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
                   const SizedBox(height: 8),
                   if (status.isNotEmpty)
                     Text(status, style: const TextStyle(color: Colors.amber, fontSize: 12)),
+
+                  // v728: PAGAR provedor como mediadora — quando não há invoice
+                  // dele nos relays (expirou). Chama por push, ele gera com um
+                  // toque, e você paga aqui mesmo.
+                  const Divider(color: Colors.white12, height: 24),
+                  const Text('💜 Pagar provedor (invoice ausente/expirado)',
+                      style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 6),
+                  if (offeredInvoice.isEmpty)
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: requestingInvoice ? null : () => requestProviderInvoice(setD),
+                        icon: const Icon(Icons.call_made, size: 16),
+                        label: Text(requestingInvoice ? 'Aguardando invoice dele...' : 'Solicitar invoice ao provedor'),
+                        style: OutlinedButton.styleFrom(foregroundColor: Colors.lightBlueAccent),
+                      ),
+                    )
+                  else ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.green.withOpacity(0.4)),
+                      ),
+                      child: Text('✅ Invoice recebido!\n${offeredInvoice.substring(0, 48)}…',
+                          style: const TextStyle(color: Colors.green, fontSize: 11)),
+                    ),
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: payingOffer ? null : () => payOfferedInvoice(setD),
+                        icon: const Icon(Icons.bolt, size: 16),
+                        label: Text(payingOffer ? 'Pagando...' : 'Pagar agora'),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.black),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

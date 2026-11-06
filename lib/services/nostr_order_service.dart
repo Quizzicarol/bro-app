@@ -4366,6 +4366,78 @@ class NostrOrderService {
     }
   }
 
+  /// v728: o PROVEDOR publica o invoice pro pagamento da mediação (resposta
+  /// ao push admin_payment_request). #p = admin, d-tag fixa por ordem.
+  Future<bool> publishAdminPaymentInvoice({
+    required String privateKey,
+    required String orderId,
+    required String invoice,
+    required int amountSats,
+    required String adminPubkey,
+  }) async {
+    try {
+      final keychain = Keychain(privateKey);
+      final content = jsonEncode({
+        'type': 'bro_admin_payment_invoice',
+        'orderId': orderId,
+        'invoice': invoice,
+        'amountSats': amountSats,
+        'providerPubkey': keychain.public,
+        'createdAt': DateTime.now().toIso8601String(),
+      });
+      final event = Event.from(
+        kind: kindBroPaymentProof,
+        tags: [
+          ['d', '${orderId}_admin_payment'],
+          ['t', broTag],
+          ['t', 'bro-admin-payment'],
+          ['p', adminPubkey],
+        ],
+        content: content,
+        privkey: keychain.private,
+      );
+      final results = await Future.wait(
+        _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
+      );
+      final ok = results.where((r) => r).isNotEmpty;
+      broLog('📤 publishAdminPaymentInvoice: ${ok ? "OK" : "falhou"} (${orderId.substring(0, 8)})');
+      return ok;
+    } catch (e) {
+      broLog('❌ publishAdminPaymentInvoice: $e');
+      return false;
+    }
+  }
+
+  /// v728: admin busca o invoice que o provedor publicou (mais recente).
+  Future<Map<String, dynamic>?> fetchAdminPaymentInvoice(String orderId) async {
+    final allRelays = <String>[..._relays, ..._fallbackRelays];
+    final results = await Future.wait(allRelays.map((relay) async {
+      try {
+        final events = await _fetchFromRelay(
+          relay,
+          kinds: [kindBroPaymentProof],
+          tags: {'#d': ['${orderId}_admin_payment']},
+          limit: 5,
+        ).timeout(const Duration(seconds: 6), onTimeout: () => <Map<String, dynamic>>[]);
+        Map<String, dynamic>? best;
+        var bestTs = 0;
+        for (final ev in events) {
+          try {
+            final content = ev['parsedContent'] ?? jsonDecode(ev['content']);
+            if (content['type'] != 'bro_admin_payment_invoice') continue;
+            final ts = ev['created_at'] as int? ?? 0;
+            if (ts >= bestTs) { bestTs = ts; best = {...content, 'eventAuthor': ev['pubkey']}; }
+          } catch (_) {}
+        }
+        return best;
+      } catch (_) {
+        return null;
+      }
+    }));
+    for (final r in results) { if (r != null) return r; }
+    return null;
+  }
+
   /// v709: o DEVEDOR publica recibo do pagamento da cobrança de mediação —
   /// torna o pagamento auditável nos relays (antes invisível: Lightning não
   /// passa pelo Nostr e a admin só sabia olhando a própria carteira).

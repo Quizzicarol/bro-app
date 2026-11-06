@@ -75,6 +75,25 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   broLog('[FCM-BG] Background message: ${message.data}');
 
+  // v728: 'admin_payment_request' — a mediação quer PAGAR o provedor mas não
+  // tem invoice dele (expirou dos relays). Grava a intenção: ao abrir o app
+  // (home), o diálogo oferece gerar o invoice com um toque. FORA do gate de
+  // order_update — é um tipo próprio (a notificação visível o sistema mostra).
+  if (message.data['type'] == 'admin_payment_request') {
+    try {
+      final oid = message.data['order_id']?.toString() ?? '';
+      final amt = message.data['amount_sats']?.toString() ?? '';
+      if (oid.isNotEmpty && amt.isNotEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('admin_payment_request_$oid', amt);
+        broLog('[FCM-BG] admin_payment_request gravado: ordem ${oid.substring(0, 8)} $amt sats');
+      }
+    } catch (e) {
+      broLog('[FCM-BG] admin_payment_request falhou: $e');
+    }
+    return;
+  }
+
   // v492: order_update notifications are now delivered via FCM notification+data field
   // The system (Android/iOS) shows the notification automatically — no local notification needed
   // This fixes background notification delivery on BOTH platforms (data-only was "best effort")

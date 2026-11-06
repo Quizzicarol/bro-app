@@ -395,6 +395,50 @@ router.post('/broadcast', broadcastLimiter, async (req, res) => {
 });
 
 /**
+ * POST /push/admin-payment-request
+ * Body: { target_pubkey, order_id, amount_sats }
+ * Auth: NIP-98 + ADMIN_PUBKEY required
+ *
+ * v728: "Pagar provedor como mediadora" — a admin chama o provedor pra gerar
+ * um invoice de recebimento (quando NÃO há invoice dele nos relays, ex.:
+ * expirou). O app dele mostra o pedido ao abrir, ele gera com um toque e
+ * publica pra admin pagar. Fecha o buraco "provedor sem contato" (caso real
+ * 58ebf198: 64 sats presos sem canal).
+ */
+router.post('/admin-payment-request', notifyLimiter, async (req, res) => {
+  if (!ADMIN_PUBKEY || !/^[0-9a-f]{64}$/.test(ADMIN_PUBKEY)) {
+    return res.status(503).json({ error: 'ADMIN_PUBKEY not configured' });
+  }
+  if ((req.verifiedPubkey || '').toLowerCase() !== ADMIN_PUBKEY) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const { target_pubkey, order_id, amount_sats } = req.body;
+  if (!target_pubkey || typeof target_pubkey !== 'string' || !/^[0-9a-f]{64}$/.test(target_pubkey)) {
+    return res.status(400).json({ error: 'Invalid target_pubkey' });
+  }
+  if (!order_id || typeof order_id !== 'string' || order_id.length < 6 || order_id.length > 64 || !/^[a-zA-Z0-9_-]+$/.test(order_id)) {
+    return res.status(400).json({ error: 'Invalid order_id' });
+  }
+  const amount = Number(amount_sats);
+  if (!Number.isSafeInteger(amount) || amount < 1 || amount > 50000000) {
+    return res.status(400).json({ error: 'Invalid amount_sats (1..50.000.000)' });
+  }
+
+  console.log(`[PUSH] /admin-payment-request → ${target_pubkey.substring(0, 8)} ordem ${String(order_id).substring(0, 8)} ${amount} sats`);
+  const sent = await pushService.sendPush(target_pubkey, {
+    type: 'admin_payment_request',
+    order_id: String(order_id),
+    amount_sats: String(amount),
+    sender_pubkey: ADMIN_PUBKEY,
+  }, {
+    title: '💜 Pagamento da mediação',
+    body: `A mediação tem ${amount.toLocaleString('pt-BR')} sats pra você (ordem #${String(order_id).substring(0, 8)}). Abra o app pra gerar seu invoice.`,
+  });
+  res.json({ ok: sent });
+});
+
+/**
  * POST /push/admin-wake-order
  * Body: { order_id: string }   // full orderId or unique short prefix (>=6 chars)
  * Auth: NIP-98 + ADMIN_PUBKEY required

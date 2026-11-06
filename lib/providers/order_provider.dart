@@ -2212,6 +2212,12 @@ class OrderProvider with ChangeNotifier {
     final index = _orders.indexWhere((o) => o.id == orderId);
     if (index != -1) {
       final currentStatus = _orders[index].status;
+      // v708: cancel respeita a progressao (ver _isStatusMoreRecent).
+      if (status == 'cancelled' &&
+          !(currentStatus.isEmpty || currentStatus == 'draft' || currentStatus == 'pending')) {
+        broLog('⛔ updateOrderStatusLocalOnly: cancel bloqueado em "$currentStatus" (v708)');
+        return;
+      }
       if (status != 'cancelled' && status != 'disputed' && !_isStatusMoreRecent(status, currentStatus)) {
         broLog('updateOrderStatusLocalOnly: bloqueado $currentStatus -> $status');
         return;
@@ -2265,6 +2271,13 @@ class OrderProvider with ChangeNotifier {
       // CORRE�?�?��?�?O v1.0.129: Verificar se o novo status �?© progress�?£o v�?¡lida
       // Exce�?§�?£o: 'cancelled' e 'disputed' sempre s�?£o aceitos (a�?§�?µes expl�?­citas)
       final currentStatus = _orders[index].status;
+      // v708: 'cancelled' NAO e mais excecao livre — cancel local direto nao
+      // pode mais derrubar disputa, resolucao ou ordem em andamento.
+      if (status == 'cancelled' &&
+          !(currentStatus.isEmpty || currentStatus == 'draft' || currentStatus == 'pending')) {
+        broLog('⛔ updateOrderStatusLocal: cancel bloqueado em status "$currentStatus" (v708)');
+        return;
+      }
       if (status != 'cancelled' && status != 'disputed' && !_isStatusMoreRecent(status, currentStatus)) {
         broLog('âš ï¸ updateOrderStatusLocal: bloqueado $currentStatus â�?��?? $status (regress�?£o)');
         return;
@@ -2315,6 +2328,34 @@ class OrderProvider with ChangeNotifier {
 
       // GUARDA v1.0.129+232: 'completed' S~ pode ser publicado se a ordem est~ num estado avan~ado
       // Isso evita auto-complete indevido quando a ordem ainda est~ em pending/payment_received
+      // v708: cancel SO de estados iniciais E nunca com aceite na rede
+      // (fail-closed: nao conseguiu verificar os relays, nao cancela).
+      if (status == 'cancelled') {
+        final existingCancelOrder = getOrderById(orderId);
+        final cancelCurrentStatus = existingCancelOrder?.status ?? '';
+        if (!(cancelCurrentStatus.isEmpty || cancelCurrentStatus == 'draft' || cancelCurrentStatus == 'pending')) {
+          broLog('⛔ BLOQUEADO: cancelled em status "$cancelCurrentStatus" (v708)');
+          _isLoading = false;
+          _immediateNotify();
+          return false;
+        }
+        try {
+          final cancelAccepts = await _nostrOrderService
+              .fetchAllAcceptsForOrder(orderId)
+              .timeout(const Duration(seconds: 10), onTimeout: () => <String>['__timeout__']);
+          if (cancelAccepts.isNotEmpty) {
+            broLog('⛔ BLOQUEADO: cancel com aceite na rede (${cancelAccepts.length}) (v708)');
+            _isLoading = false;
+            _immediateNotify();
+            return false;
+          }
+        } catch (_) {
+          _isLoading = false;
+          _immediateNotify();
+          return false;
+        }
+      }
+
       if (status == 'completed') {
         final existingOrder = getOrderById(orderId);
         final currentStatus = existingOrder?.status ?? '';
@@ -5358,11 +5399,16 @@ class OrderProvider with ChangeNotifier {
     }
     // Se o novo status �?© 'cancelled', SEMPRE aceitar (cancelamento �?© a�?§�?£o expl�?­cita do usu�?¡rio)
     if (newStatus == 'cancelled') {
-      return true;
+      // v708: cancel SO de estados iniciais. Antes: "sempre aceitar" — um
+      // cancel sobrescrevia disputa RESOLVIDA e ordem em andamento (caso
+      // 33ed1ced: provedor pagou o boleto, mediacao deu ganho a ele, e o
+      // usuario cancelou 4h depois ficando com os sats).
+      return currentStatus.isEmpty || currentStatus == 'draft' || currentStatus == 'pending';
     }
     // CORRE��O v349: disputed pode transicionar para completed/cancelled (resolu��o)
     if (currentStatus == 'disputed') {
-      return newStatus == 'completed' || newStatus == 'cancelled';
+      // v708: disputed NUNCA vira cancelled — so completed (resolucao do mediador)
+      return newStatus == 'completed';
     }
     // Status finais N�O regridem  completed/liquidated � definitivo
     const finalStatuses = ['completed', 'liquidated'];

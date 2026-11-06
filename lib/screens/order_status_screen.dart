@@ -188,8 +188,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   bool _isStatusMoreRecent(String newStatus, String currentStatus) {
     if (newStatus == currentStatus) return false;
     if (currentStatus == 'cancelled') return newStatus == 'disputed';
-    if (newStatus == 'cancelled') return true;
-    if (currentStatus == 'disputed') return newStatus == 'completed' || newStatus == 'cancelled';
+    // v708: cancel SO de estados iniciais — disputa resolvida NUNCA vira cancelled
+    if (newStatus == 'cancelled') return currentStatus.isEmpty || currentStatus == 'draft' || currentStatus == 'pending';
+    if (currentStatus == 'disputed') return newStatus == 'completed';
     const finalStatuses = ['completed', 'liquidated'];
     if (finalStatuses.contains(currentStatus)) return false;
     if (newStatus == 'disputed') return true;
@@ -681,6 +682,54 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   Future<void> _handleCancelOrder() async {
     final l = AppLocalizations.of(context)!;
+    // v708: BLOQUEIO de cancelamento indevido (caso real 33ed1ced, 05/11 —
+    // ordem com disputa RESOLVIDA foi cancelada 4h depois e o provedor que
+    // pagou o boleto ficou sem os sats). Só cancela estado inicial E sem
+    // aceite na rede. A guarda central em updateOrderStatus repete a checagem.
+    final guardProvider = Provider.of<OrderProvider>(context, listen: false);
+    final guardOrder = guardProvider.getOrderById(widget.orderId);
+    final guardStatus = guardOrder?.status ?? '';
+    const nonCancellable = ['accepted', 'payment_received', 'processing', 'awaiting_confirmation', 'completing', 'completed', 'liquidated', 'disputed'];
+    if (nonCancellable.contains(guardStatus)) {
+      await showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(l.t('order_cancel_blocked_title')),
+          content: Text(l.t('order_cancel_blocked_content')),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: Text(l.t('understood'))),
+          ],
+        ),
+      );
+      return;
+    }
+    try {
+      final accepts = await NostrOrderService()
+          .fetchAllAcceptsForOrder(widget.orderId)
+          .timeout(const Duration(seconds: 10), onTimeout: () => <String>['__timeout__']);
+      if (accepts.isNotEmpty) {
+        if (!mounted) return;
+        await showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(l.t('order_cancel_blocked_title')),
+            content: Text(l.t('order_cancel_blocked_content')),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: Text(l.t('understood'))),
+            ],
+          ),
+        );
+        return;
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(l.t('order_cancel_blocked_content')),
+        backgroundColor: Colors.orange,
+      ));
+      return; // fail-closed
+    }
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(

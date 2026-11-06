@@ -206,6 +206,14 @@ class StorageService {
     return _prefs?.getBool('is_logged_in') ?? false;
   }
 
+  /// v721: marcar logado sem mexer nas chaves (auto-recuperação de sessão
+  /// quando a flag NSUserDefaults some mas a chave sobrevive no Keychain —
+  //  iOS reinstalação/update preserva Keychain mas não necessariamente prefs).
+  Future<void> markLoggedIn() async {
+    if (_prefs == null) await init();
+    await _prefs?.setBool('is_logged_in', true);
+  }
+
   // ===== BREEZ MNEMONIC (VINCULADO AO USUÁRIO NOSTR) =====
   // CRÍTICO: Cada usuário Nostr tem SUA PRÓPRIA seed!
   // Seeds são salvas com chave baseada no pubkey do usuário.

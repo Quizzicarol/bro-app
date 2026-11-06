@@ -896,6 +896,22 @@ class NostrWatchtowerService {
           break;
         }
 
+        case 'bro_admin_reimbursement_paid': {
+          // v709: devedor quitou a cobrança de mediação — avisa a admin
+          // (antes ela só sabia olhando a própria carteira).
+          const adminTarget = (event.tags || []).find(t => Array.isArray(t) && t[0] === 'p')?.[1];
+          if (adminTarget) {
+            await this._sendPush(adminTarget, {
+              type: 'mediation_charge_paid',
+              order_id: orderId,
+            }, {
+              title: '✅ Cobrança de mediação paga',
+              body: `${String(content.paidBy || '?').substring(0, 8)}… quitou ${content.amountSats} sats da ordem ${String(content.orderId || orderId).substring(0, 8)}.`,
+            });
+          }
+          break;
+        }
+
         default:
           // Unknown event type, ignore
           break;

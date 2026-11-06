@@ -1206,6 +1206,15 @@ class OrderProvider with ChangeNotifier {
     required double btcPrice,
     String currency = 'BRL',
   }) async {
+    // v709: devedor de cobrança de mediação NÃO cria ordem nova até quitar.
+    // (Caso real: e94caad7 recebeu 22.920 sats indevidos, ficou 8 dias online
+    // sem pagar e seguiria operando normalmente sem esta trava.)
+    if (_hasUnpaidMediationCharge) {
+      _error = 'Você tem uma cobrança de mediação pendente de $_unpaidMediationSats sats. Quite-a para criar novas ordens.';
+      broLog('⛔ createOrder bloqueado: cobrança de mediação pendente ($_unpaidMediationSats sats)');
+      _immediateNotify();
+      return null;
+    }
     // VALIDA�?�?��?�?O CR�?TICA: Nunca criar ordem com amount = 0
     if (amount <= 0) {
       _error = 'Valor da ordem inv�?¡lido';
@@ -3737,6 +3746,12 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
+  // v709: cobrança de mediação não paga — trava criação de ordens + aviso
+  bool _hasUnpaidMediationCharge = false;
+  int _unpaidMediationSats = 0;
+  bool get hasUnpaidMediationCharge => _hasUnpaidMediationCharge;
+  int get unpaidMediationSats => _unpaidMediationSats;
+
   Future<void> _autoPayMediationCharges() async {
     if (onAutoPayDisputeReimbursement == null) return;
     if (_isPayingMediationCharges) return;
@@ -3744,6 +3759,7 @@ class OrderProvider with ChangeNotifier {
     _isPayingMediationCharges = true;
     try {
       final charges = await _nostrOrderService.fetchMyMediationCharges(_currentUserPubkey!);
+      var unpaidSats = 0;
       for (final cb in charges) {
         final orderId = cb['orderId'] as String;
         final order = getOrderById(orderId);
@@ -3764,8 +3780,30 @@ class OrderProvider with ChangeNotifier {
             await _saveOrders();
           }
           broLog('[Mediacao] ✅ Cobrança da ordem ${orderId.substring(0, 8)} paga');
+          // v709: recibo NO RELAY — o pagamento vira auditável sem precisar
+          // olhar a carteira da admin (era invisível: Lightning não passa
+          // pelo Nostr; a confirmação dependia de checagem manual).
+          final pk = _nostrService.privateKey;
+          final adminPk = cb['adminPubkey']?.toString() ?? '';
+          if (pk != null && pk.isNotEmpty && adminPk.isNotEmpty) {
+            _nostrOrderService.publishMediationChargePaid(
+              privateKey: pk,
+              orderId: orderId,
+              adminPubkey: adminPk,
+              amountSats: (cb['amountSats'] as num?)?.toInt() ?? 0,
+            ).then((ok2) => broLog('[Mediacao] recibo publicado nos relays: $ok2'));
+          }
+        } else {
+          // v709: falha NÃO é mais silenciosa — marca dívida pendente (trava
+          // createOrder + aviso na home até quitar).
+          unpaidSats += (cb['amountSats'] as num?)?.toInt() ?? 0;
+          broLog('[Mediacao] ⚠️ FALHA ao pagar cobrança da ordem ${orderId.substring(0, 8)} — marcando dívida pendente');
         }
       }
+      final hadFlag = _hasUnpaidMediationCharge;
+      _hasUnpaidMediationCharge = unpaidSats > 0;
+      _unpaidMediationSats = unpaidSats;
+      if (_hasUnpaidMediationCharge != hadFlag) _immediateNotify();
     } catch (e) {
       broLog('[Mediacao] Erro geral: $e');
     } finally {

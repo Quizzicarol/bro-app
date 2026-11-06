@@ -1019,6 +1019,13 @@ class NostrWatchtowerService {
    * empurrar push.
    */
   getProviderForOrder(orderId) {
+    // v712: CANÔNICO = menor acceptedAt. Antes devolvia o ÚLTIMO aceite visto
+    // (o cache sobrescrevia a cada bro_accept) — o fallback de billCode podia
+    // empurrar o código pro PERDEDOR da corrida (caso 58ebf198, 06/11).
+    const accepts = this._orderAccepts.get(orderId);
+    if (accepts && accepts.length > 0) {
+      return [...accepts].sort((a, b) => a.acceptedAt - b.acceptedAt)[0].pubkey;
+    }
     return this._orderProviders.get(orderId) || null;
   }
 

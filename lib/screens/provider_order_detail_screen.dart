@@ -95,12 +95,12 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       final accepts = await NostrOrderService().fetchAllAcceptsForOrder(widget.orderId)
           .timeout(const Duration(seconds: 10), onTimeout: () => <String>[]);
       if (!mounted || accepts.isEmpty) return; // fail-open: sem dados, não marca
-      final lost = accepts.first != myPk;
-      if (lost != _lostRace) {
-        setState(() => _lostRace = lost);
-        if (lost) {
-          broLog('🏁 v691: corrida perdida em ${widget.orderId.substring(0, 8)} — canônico=${accepts.first.substring(0, 8)}');
-        }
+      // v712: STICKY — uma vez perdedor, NUNCA desmarca. Um fetch parcial (só
+      // meu aceite visível) fazia a ordem "voltar" e a tela piscar entre
+      // perdedor/provedor (péssima experiência da Carol como perdedora, 06/11).
+      if (accepts.first != myPk && _lostRace != true) {
+        setState(() => _lostRace = true);
+        broLog('🏁 v691: corrida perdida em ${widget.orderId.substring(0, 8)} — canônico=${accepts.first.substring(0, 8)}');
       }
     } catch (_) {}
   }

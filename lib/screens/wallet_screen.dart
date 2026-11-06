@@ -3202,7 +3202,10 @@ class _WalletScreenState extends State<WalletScreen> {
         icon = Icons.flash_on;
       }
     } else if (isBroEarning || isBroOrderPayment) {
-      label = AppLocalizations.of(context).t('wallet_bro_earning');
+      // v724: ganho COM nº da ordem — ordens de valores iguais confundiam
+      label = correlatedOrderId != null
+          ? AppLocalizations.of(context).tp('wallet_bro_earning_order', {'orderId': correlatedOrderId!.substring(0, 8)})
+          : AppLocalizations.of(context).t('wallet_bro_earning');
       iconColor = Colors.green;
       icon = Icons.volunteer_activism;
     } else if (isReceived) {

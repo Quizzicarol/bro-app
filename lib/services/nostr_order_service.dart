@@ -1660,9 +1660,60 @@ class NostrOrderService {
       return {
         'proofImage_nip44': content['proofImage_nip44'] as String,
         'senderPubkey': ev['pubkey'] as String,
+        if (content['providerInvoice'] != null)
+          'providerInvoice': content['providerInvoice'] as String,
       };
     }
     return null;
+  }
+
+  /// v723: prova + invoice de QUEM PROVOU. Se o evento da prova não tem
+  /// invoice, busca o invoice_refresh MAIS RECENTE assinado pelo MESMO autor
+  /// da prova — NUNCA o refresh de outro participante (caso 58ebf198: o
+  /// refresh do canônico 0b31181f passou no guarda do autopay e foi pago sem
+  /// ter pago o Pix; quem pagou foi 95a800b7).
+  Future<Map<String, String>?> fetchProofWithInvoice(String orderId) async {
+    final proof = await fetchProofFromRelay(orderId);
+    if (proof == null) return null;
+    final author = proof['senderPubkey']!;
+    var invoice = proof['providerInvoice'];
+    if (invoice == null || invoice.isEmpty) {
+      final allRelays = <String>[..._relays, ..._fallbackRelays];
+      final refreshes = await Future.wait(allRelays.map((relay) async {
+        try {
+          final events = await _fetchFromRelay(
+            relay,
+            kinds: [kindBroComplete],
+            tags: {'#d': ['${orderId}_invoice_refresh']},
+            limit: 10,
+          ).timeout(const Duration(seconds: 6), onTimeout: () => <Map<String, dynamic>>[]);
+          Map<String, dynamic>? best;
+          var bestTs = 0;
+          for (final ev in events) {
+            if (ev['pubkey'] != author) continue; // SÓ o autor da prova
+            try {
+              final content = ev['parsedContent'] ?? jsonDecode(ev['content']);
+              if (content['type'] != 'bro_invoice_refresh') continue;
+              final ts = ev['created_at'] as int? ?? 0;
+              if (ts >= bestTs) { bestTs = ts; best = ev; }
+            } catch (_) {}
+          }
+          return best;
+        } catch (_) {
+          return null;
+        }
+      }));
+      for (final ev in refreshes) {
+        if (ev == null) continue;
+        final content = ev['parsedContent'] ?? jsonDecode(ev['content']);
+        final inv = content['providerInvoice'] as String?;
+        if (inv != null && inv.isNotEmpty) { invoice = inv; break; }
+      }
+    }
+    return {
+      'senderPubkey': author,
+      if (invoice != null && invoice.isNotEmpty) 'providerInvoice': invoice,
+    };
   }
 
   /// v133: Publica invoice refresh para ordem liquidada (provider side)

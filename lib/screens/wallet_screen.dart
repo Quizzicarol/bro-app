@@ -3151,8 +3151,10 @@ class _WalletScreenState extends State<WalletScreen> {
     // ainda marcar como pagamento Bro (heurística da v1.0.107 que sempre funcionou)
     if (!isBroOrderPayment && correlatedOrderId == null && isReceived &&
         !description.contains('Garantia')) {
-      if (description.contains('Bro Payment') || 
-          description.contains('Bro - Ordem') || 
+      // v711: 'Bro Payment' sozinho é o AUTO-DEPÓSITO do usuário (invoice da
+      // própria carteira pra iniciar ordem) — NÃO é ganho como Bro (caso
+      // real 05/11: depósito de 55.692 sats da Carol caiu como "Ganho").
+      if (description.contains('Bro - Ordem') || 
           description.contains('Bro Ordem') ||
           (description.startsWith('Bro ') && description.length >= 12)) {
         isBroOrderPayment = true;

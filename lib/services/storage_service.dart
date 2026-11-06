@@ -760,6 +760,19 @@ class StorageService {
     return _prefs?.getBool('biometric_lock_offered') ?? false;
   }
 
+  // v711: timestamp do último desbloqueio — a trava só repede o prompt se
+  // passaram 12h+ (antes trancava em TODO background — um saco no dia a dia).
+  Future<void> saveBiometricLastUnlock(DateTime when) async {
+    if (_prefs == null) await init();
+    await _prefs?.setInt('biometric_last_unlock', when.millisecondsSinceEpoch);
+  }
+
+  Future<DateTime?> getBiometricLastUnlock() async {
+    if (_prefs == null) await init();
+    final ms = _prefs?.getInt('biometric_last_unlock');
+    return ms == null ? null : DateTime.fromMillisecondsSinceEpoch(ms);
+  }
+
   // ===== GENERIC DATA STORAGE =====
   
   Future<void> saveData(String key, String value) async {

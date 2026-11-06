@@ -3930,10 +3930,17 @@ class OrderProvider with ChangeNotifier {
         // v678: já reembolsada mas SEM a taxa paga ainda é candidata (a taxa
         // será enviada no loop abaixo — antes disputas nunca pagavam os 2%)
         if (meta['disputeProviderPaid'] == true && PlatformFeeService.isFeePaid(order.id)) return false;
-        final wasDisputed = order.status == 'disputed'
-            || meta['wasDisputed'] == true
-            || meta['disputePaymentPending'] == true;
-        return wasDisputed;
+        // v720: NÃO depender da marca local de disputa — o app do comprador
+        // pode nunca ter ficado sabendo dela (caso REAL 4f486f3d: disputa
+        // publicada via kind1, app antigo não sincronizou o canal novo, a
+        // resolução resolved_provider ficou SEM EFEITO e o provedor que pagou
+        // o Pix de R$10 nunca recebeu — descoberto 06/11 via email dele).
+        // Qualquer ordem minha, não-terminal, recente e com provedor pode ter
+        // resolução publicada — fetchDisputeResolution responde rápido se não.
+        const terminal = ['completed', 'liquidated', 'cancelled'];
+        if (terminal.contains(order.status)) return false;
+        if (DateTime.now().difference(order.createdAt).inDays > 30) return false;
+        return true;
       }).toList();
 
       if (candidates.isEmpty) return;

@@ -3622,7 +3622,7 @@ class OrderProvider with ChangeNotifier {
               || (meta['proofImage_nip44'] != null && meta['proofImage_nip44'].toString().isNotEmpty)
               || (meta['paymentProof'] != null && meta['paymentProof'].toString().isNotEmpty);
           final hasInvoiceCandidate = (meta['providerInvoice'] != null && meta['providerInvoice'].toString().isNotEmpty);
-          if (!hasProof && !hasInvoiceCandidate) return false;
+          if (!hasProof) return false; // v727: SÓ comprovante autoriza pagamento (invoice sozinha NÃO — caso 43b789c7: canônico pago sem ninguém ter pago o Pix)
         }
         // v622: REMOVIDO o corte de 48h que abandonava o provedor.
         // Antes: ordens > 48h eram marcadas 'reconciled/stale' e nunca mais

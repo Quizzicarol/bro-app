@@ -4720,8 +4720,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       // Fonte da verdade = aceites ordenados por acceptedAt (imutável).
       try {
         var trackedProvider = order?.providerId ?? orderDetails?['provider_id']?.toString() ?? '';
+        var accepts = <String>[];
         try {
-          final accepts = await NostrOrderService().fetchAllAcceptsForOrder(widget.orderId)
+          accepts = await NostrOrderService().fetchAllAcceptsForOrder(widget.orderId)
               .timeout(const Duration(seconds: 8), onTimeout: () => <String>[]);
           if (accepts.isNotEmpty) {
             trackedProvider = accepts.first; // canônico = acceptedAt mais antigo
@@ -4732,21 +4733,38 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               .timeout(const Duration(seconds: 10), onTimeout: () => null);
           final completerId = completeEvt?['providerId']?.toString() ?? '';
           if (completerId.isNotEmpty && completerId != trackedProvider) {
-            broLog('🚨 [ConfirmPayment] comprovante de ${completerId.substring(0, 8)} mas o rastreado é ${trackedProvider.substring(0, 8)} — BLOQUEANDO pagamento');
-            if (mounted) {
-              ScaffoldMessenger.of(context).hideCurrentSnackBar();
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(l.t('order_completer_mismatch')),
-                  backgroundColor: Colors.red,
-                  duration: const Duration(seconds: 8),
-                ),
-              );
-              setState(() {
-                _isConfirming = false;
-              });
+            // v713 REGRA DA PROVA DE POSSE (decisão da Carol, caso 58ebf198):
+            // quem ENVIOU o comprovante provou ter o código (é impossível
+            // pagar o boleto sem ele). Se o comprovante veio de outro
+            // PARTICIPANTE da corrida, os sats vão pra ELE — o canônico ganhou
+            // a corrida mas não fez o trabalho. Só bloqueia se o autor do
+            // comprovante NEM participou da corrida (fraude de verdade).
+            if (accepts.contains(completerId)) {
+              broLog('🏁 [ConfirmPayment] comprovante de ${completerId.substring(0, 8)} (participante não-canônico) — pagando QUEM PROVOU o pagamento (v713)');
+              trackedProvider = completerId;
+              // v713: a invoice paga TEM que ser a de quem comprovou — o cache
+              // local pode estar com a invoice do canônico (invoice_refresh).
+              final completerInvoice = completeEvt?['providerInvoice']?.toString();
+              if (completerInvoice != null && completerInvoice.isNotEmpty) {
+                providerInvoice = completerInvoice;
+              }
+            } else {
+              broLog('🚨 [ConfirmPayment] comprovante de ${completerId.substring(0, 8)} que NÃO participou da corrida — BLOQUEANDO pagamento');
+              if (mounted) {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(l.t('order_completer_mismatch')),
+                    backgroundColor: Colors.red,
+                    duration: const Duration(seconds: 8),
+                  ),
+                );
+                setState(() {
+                  _isConfirming = false;
+                });
+              }
+              return;
             }
-            return;
           }
         }
       } catch (e) {
@@ -4758,7 +4776,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       try {
         final breezForDecode = context.read<BreezProvider>();
         if (breezForDecode.isInitialized) {
-          final decoded = await breezForDecode.decodeInvoice(providerInvoice);
+          final decoded = await breezForDecode.decodeInvoice(providerInvoice!);
           if (decoded != null && decoded['success'] == true) {
             providerInvoicePaymentHash = decoded['invoice']?['paymentHash']?.toString();
             final invoiceAmountSats = int.tryParse(
@@ -4868,7 +4886,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       await ProviderPaymentGuard.recordAttempt(widget.orderId, providerInvoicePaymentHash);
 
       // PAGAR O PROVEDOR
-      broLog('⚡ Pagando invoice do provedor: ${providerInvoice.substring(0, 30)}...');
+      broLog('⚡ Pagando invoice do provedor: ${providerInvoice!.substring(0, 30)}...');
       bool paymentSuccess = false;
       String paymentError = '';
       
@@ -4907,7 +4925,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           paymentError = l.t('order_wallet_not_initialized');
         } else {
           // v516: Mutable local holding the latest invoice (may be refreshed between retries)
-          String currentInvoice = providerInvoice;
+          String currentInvoice = providerInvoice!;
           // Retry: tentar até 3 vezes com intervalo de 2s
           for (int attempt = 1; attempt <= 3; attempt++) {
             // v516: Before retry 2 and 3, refetch the latest invoice from Nostr.

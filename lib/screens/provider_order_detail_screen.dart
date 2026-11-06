@@ -87,6 +87,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   // canônico. Sem este aviso o perdedor acha que a ordem é dele e abre disputa
   // (caso real 33ed1ced — e aí o comprador colou o código no chat da disputa!).
   bool? _lostRace;
+  int _acceptsCount = 0; // v713: quantos Bros aceitaram (msg de apuração)
 
   Future<void> _checkLostRace() async {
     try {
@@ -95,12 +96,34 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       final accepts = await NostrOrderService().fetchAllAcceptsForOrder(widget.orderId)
           .timeout(const Duration(seconds: 10), onTimeout: () => <String>[]);
       if (!mounted || accepts.isEmpty) return; // fail-open: sem dados, não marca
+      if (accepts.length != _acceptsCount) setState(() => _acceptsCount = accepts.length);
       // v712: STICKY — uma vez perdedor, NUNCA desmarca. Um fetch parcial (só
       // meu aceite visível) fazia a ordem "voltar" e a tela piscar entre
       // perdedor/provedor (péssima experiência da Carol como perdedora, 06/11).
       if (accepts.first != myPk && _lostRace != true) {
         setState(() => _lostRace = true);
         broLog('🏁 v691: corrida perdida em ${widget.orderId.substring(0, 8)} — canônico=${accepts.first.substring(0, 8)}');
+        // v713: POPUP pro perdedor — ele ficava perdido sem saber o que
+        // aconteceu (Carol viveu isso no iPhone: aceitou, código não veio,
+        // nenhuma explicação). Um toque de gentileza no meio da corrida.
+        if (mounted) {
+          final l = AppLocalizations.of(context)!;
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              backgroundColor: const Color(0xFF1A1A1A),
+              title: Text(l.t('prov_race_lost_title'), style: const TextStyle(color: Colors.white)),
+              content: Text(l.t('prov_race_lost_body'),
+                  style: const TextStyle(color: Colors.white70, height: 1.4)),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text(l.t('understood')),
+                ),
+              ],
+            ),
+          );
+        }
       }
     } catch (_) {}
   }
@@ -1216,6 +1239,20 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                         fontSize: 12,
                       ),
                     ),
+                    // v713: corrida em apuração — o provedor não fica no limbo
+                    // sem saber por que o código demora (pedido da Carol).
+                    if (_acceptsCount > 1 && _lostRace != true) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        AppLocalizations.of(context)!.t('prov_det_race_checking'),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.amber,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                     // v614: após 20 min sem billcode, oferecer abrir disputa
                     // (caminho que devolve colaterais e notifica o comprador).
                     if (_shouldShowStuckReport()) ...[

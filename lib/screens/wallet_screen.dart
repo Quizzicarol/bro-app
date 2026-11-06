@@ -164,6 +164,11 @@ class _WalletScreenState extends State<WalletScreen> {
                            p['direction'] == 'incoming' ||
                            p['type'] == 'Receive';
         
+        // v719: esconder consolidações/conversões INTERNAS da Spark — não são
+        // transações do usuário e não mexem no saldo. Apareciam como
+        // "Recebido +197.950.000 sats" fantasma (email de usuário 06/11).
+        if (p['internalConversion'] == true) return false;
+        
         // v704: a taxa da plataforma NÃO vira item separado na lista (feedback
         // da Carol: polui o histórico, um item de taxa por ordem). Ela fica
         // CONSOLIDADA no total e no detalhamento da transação da ordem —

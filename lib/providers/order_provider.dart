@@ -5538,8 +5538,9 @@ class OrderProvider with ChangeNotifier {
     }
     // CORRE��O v349: disputed pode transicionar para completed/cancelled (resolu��o)
     if (currentStatus == 'disputed') {
-      // v708: disputed NUNCA vira cancelled — so completed (resolucao do mediador)
-      return newStatus == 'completed';
+      // v719: disputed → cancelled VOLTA a valer — é o fluxo resolved_user da
+      // mediação (33ed1ced). O cancel MANUAL segue bloqueado nas pontas (v708).
+      return newStatus == 'completed' || newStatus == 'cancelled';
     }
     // Status finais N�O regridem  completed/liquidated � definitivo
     const finalStatuses = ['completed', 'liquidated'];

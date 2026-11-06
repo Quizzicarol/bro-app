@@ -1387,6 +1387,7 @@ class BreezProvider with ChangeNotifier {
         }
         
         // Extrair detalhes específicos por tipo
+        bool internalConversion = false;
         if (payment.details is spark.PaymentDetails_Lightning) {
           final details = payment.details as spark.PaymentDetails_Lightning;
           paymentHash = details.htlcDetails.paymentHash;
@@ -1396,6 +1397,10 @@ class BreezProvider with ChangeNotifier {
           description = details.invoiceDetails?.description;
           // Spark payments don't have htlcDetails on all SDK versions
           paymentHash = payment.id;
+          // v719: conversão interna da Spark (consolidação/stable balance) —
+          // NÃO é transação do usuário e não mexe no saldo. Aparecia como
+          // "Recebido +197.950.000 sats" fantasma (email de usuário 06/11).
+          internalConversion = details.conversionInfo != null;
         }
         
         // Determinar direção (recebido ou enviado)
@@ -1426,6 +1431,7 @@ class BreezProvider with ChangeNotifier {
           'fees': feeSats,
           'paymentHash': paymentHash,
           'description': description ?? '',  // NOVO: Incluir descrição
+          'internalConversion': internalConversion, // v719: filtro de consolidação Spark
           'timestamp': timestamp,
           'createdAt': timestamp,
         };

@@ -50,9 +50,21 @@ class BiometricLockService {
   }
 
   /// Deve mostrar a tela de trava agora?
+  /// v711: janela de 12h — destravou uma vez, fica livre por 12h (persiste
+  /// entre restarts). Antes trancava em TODA ida ao background.
+  static const _relockAfter = Duration(hours: 12);
+
   Future<bool> shouldLock() async {
     if (_unlockedThisSession) return false;
-    return isEnabled();
+    final en = await isEnabled();
+    if (!en) return false;
+    final last = await _storage.getBiometricLastUnlock();
+    if (last != null && DateTime.now().difference(last) < _relockAfter) {
+      _unlockedThisSession = true; // dentro da janela — não tranca
+      return false;
+    }
+    broLog('🔐 BiometricLock.shouldLock: enabled=$en foraDaJanela12h=true'); // DIAG
+    return true;
   }
 
   /// Marcar como bloqueado (chamado quando o app vai para background).
@@ -63,6 +75,7 @@ class BiometricLockService {
   /// Pedir biometria/PIN do sistema. Retorna true se desbloqueou.
   Future<bool> unlock() async {
     try {
+      broLog('🔐 BiometricLock.unlock: chamando authenticate()...'); // DIAG
       final ok = await _auth.authenticate(
         localizedReason: 'Desbloquear o Bro',
         options: const AuthenticationOptions(
@@ -73,7 +86,10 @@ class BiometricLockService {
           useErrorDialogs: true,
         ),
       );
-      if (ok) _unlockedThisSession = true;
+      if (ok) {
+        _unlockedThisSession = true;
+        _storage.saveBiometricLastUnlock(DateTime.now()); // v711: janela de 12h
+      }
       lastUnlockError = null;
       return ok;
     } catch (e) {

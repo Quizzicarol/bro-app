@@ -69,9 +69,45 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _checkForAppUpdate();
       _checkBatteryOptimization(); // v390: Prompt battery exempt for bg notifications
       _checkBiometricOffer(); // v703: oferecer trava biométrica UMA vez
+      _checkMediationDebt(); // v709: aviso de cobrança de mediação pendente
       // Start BRIX invoice relay service (global, any screen)
       BrixRelayService().start(context);
     });
+  }
+
+  /// v709: se há cobrança de mediação NÃO paga (auto-pay falhou por saldo),
+  /// avisa 1x por sessão. Antes falhava em silêncio pra sempre.
+  bool _mediationDebtWarned = false;
+  Future<void> _checkMediationDebt() async {
+    // o sync em background marca a flag — espera alguns ciclos
+    for (var i = 0; i < 8; i++) {
+      await Future.delayed(const Duration(seconds: 5));
+      if (!mounted || _mediationDebtWarned) return;
+      final op = context.read<OrderProvider>();
+      if (op.hasUnpaidMediationCharge) {
+        _mediationDebtWarned = true;
+        final l = AppLocalizations.of(context);
+        await showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: const Color(0xFF1A1A1A),
+            title: Text(l.t('mediation_debt_title'),
+                style: const TextStyle(color: Colors.orange, fontSize: 17)),
+            content: Text(
+              l.tp('mediation_debt_content', {'amount': op.unpaidMediationSats.toString()}),
+              style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.4),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(l.t('understood')),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+    }
   }
 
   /// v703: oferta one-time de ativação da trava biométrica. Quem nunca abriu

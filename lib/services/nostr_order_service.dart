@@ -4261,6 +4261,50 @@ class NostrOrderService {
     }
   }
 
+  /// v709: o DEVEDOR publica recibo do pagamento da cobrança de mediação —
+  /// torna o pagamento auditável nos relays (antes invisível: Lightning não
+  /// passa pelo Nostr e a admin só sabia olhando a própria carteira).
+  Future<bool> publishMediationChargePaid({
+    required String privateKey,
+    required String orderId,
+    required String adminPubkey,
+    required int amountSats,
+  }) async {
+    try {
+      final keychain = Keychain(privateKey);
+      final content = jsonEncode({
+        'type': 'bro_admin_reimbursement_paid',
+        'orderId': orderId,
+        'amountSats': amountSats,
+        'paidBy': keychain.public,
+        'paidAt': DateTime.now().toIso8601String(),
+      });
+      final tags = [
+        ['d', '${orderId}_admin_reimbursement_paid'],
+        ['t', broTag],
+        ['t', 'bro-admin-reimbursement-paid'],
+        ['r', orderId],
+        ['orderId', orderId],
+        ['p', adminPubkey],
+      ];
+      final event = Event.from(
+        kind: kindBroPaymentProof,
+        tags: tags,
+        content: content,
+        privkey: keychain.private,
+      );
+      final results = await Future.wait(
+        _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
+      );
+      final successCount = results.where((r) => r).length;
+      broLog('📤 publishMediationChargePaid: publicado em $successCount/${_relays.length} relays');
+      return successCount > 0;
+    } catch (e) {
+      broLog('❌ publishMediationChargePaid EXCEPTION: $e');
+      return false;
+    }
+  }
+
   /// Busca invoice de reembolso do admin para uma ordem
   /// Retorna o adminInvoice se o admin já pagou o provedor
   Future<String?> fetchAdminReimbursementInvoice(String orderId) async {

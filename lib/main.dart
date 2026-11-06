@@ -325,7 +325,22 @@ void main() async {
   // Verificar se ja esta logado
   final storage = StorageService();
   await storage.init();
-  final isLoggedIn = await storage.isLoggedIn();
+  var isLoggedIn = await storage.isLoggedIn();
+
+  // v721: AUTO-RECUPERAR sessão quando a flag some mas a chave existe.
+  // iOS apaga NSUserDefaults ao deletar/reinstalar o app mas PRESERVA o
+  // Keychain — sem isso, atualizar/reinstalar deslogava e pedia as seeds de
+  // novo (caso real: iPhone da Carol, 06/11 — "até então isso não tinha
+  // acontecido"). O logout intencional apaga as chaves, então não há risco
+  // de ressuscitar sessão encerrada de propósito.
+  if (!isLoggedIn) {
+    final existingKey = await storage.getNostrPrivateKey();
+    if (existingKey != null && existingKey.isNotEmpty) {
+      await storage.markLoggedIn();
+      isLoggedIn = true;
+      broLog('🔑 v721: sessão auto-recuperada (flag ausente, chave presente no secure storage)');
+    }
+  }
   
   // Obter pubkey para o OrderProvider (antes de restaurar chaves)
   String? userPubkey;

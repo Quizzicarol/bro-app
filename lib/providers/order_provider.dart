@@ -2127,12 +2127,14 @@ class OrderProvider with ChangeNotifier {
           }
           continue; // entrega no próximo ciclo, já com providerId curado
         }
-        // v712 (b): canônico estável em dois ciclos com >= 60s de distância
+        // v712 (b) / v713: canônico estável em dois ciclos com >= 30s (antes
+        // 60s — Carol: provedor quer pagar logo; 30s ainda impede o fetch
+        // parcial de decidir sozinho).
         final meta712 = Map<String, dynamic>.from(order.metadata ?? {});
         final pendingCanonical = meta712['billCode_pending_canonical'] as String?;
         final pendingSince = (meta712['billCode_pending_since'] as num?)?.toInt() ?? 0;
         final nowMs712 = DateTime.now().millisecondsSinceEpoch;
-        if (pendingCanonical != canonical || (nowMs712 - pendingSince) < 60000) {
+        if (pendingCanonical != canonical || (nowMs712 - pendingSince) < 30000) {
           meta712['billCode_pending_canonical'] = canonical;
           meta712['billCode_pending_since'] = nowMs712;
           final idx712 = _orders.indexWhere((o) => o.id == order.id);

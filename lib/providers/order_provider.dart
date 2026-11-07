@@ -2019,6 +2019,41 @@ class OrderProvider with ChangeNotifier {
   /// v388: One-time migration � republish active orders with plain text billCode.
   /// Old orders had encrypted billCode in Nostr. Now we publish plain text.
   /// Buyer has plain text locally, so republish pushes it to relays.
+  /// v750: FAST-LANE do billCode. NÃO mexe em nenhuma regra de segurança —
+  /// chama a MESMA _sendEncryptedBillCodeForAcceptedOrders (janela de
+  /// propagação 90s + quórum 2 ciclos ≥30s + cobertura ≥2 relays intactos).
+  /// O que mudou é só o GATILHO: antes a entrega só rodava no tick global do
+  /// sync (~60s), então o piso real era 2-4min (caso 8dcf5ebf, 07/11: 2min41s).
+  /// Com ordem aceita esperando o código, rodamos a cada 10s por até 2min —
+  /// o piso vira ~90-120s (a janela de propagação, que é a proteção real
+  /// contra entregar pro perdedor da corrida — essa NÃO se toca).
+  Timer? _billCodeFastLaneTimer;
+  void _scheduleBillCodeFastLane() {
+    if (_billCodeFastLaneTimer != null) return; // já rodando
+    bool hasWaiting() => _orders.any((o) =>
+        o.userPubkey == _currentUserPubkey &&
+        o.billCode.isNotEmpty && o.billCode != '[encrypted]' &&
+        o.providerId != null && o.providerId!.isNotEmpty &&
+        o.providerId != _currentUserPubkey &&
+        o.status == 'accepted' &&
+        o.metadata?['billCode_nip44_sent'] != true);
+    if (!hasWaiting()) return;
+    var ticks = 0;
+    broLog('⚡ v750: fast-lane do billCode ligada (10s × até 12)');
+    _billCodeFastLaneTimer = Timer.periodic(const Duration(seconds: 10), (t) async {
+      ticks++;
+      if (!hasWaiting() || ticks >= 12) {
+        t.cancel();
+        _billCodeFastLaneTimer = null;
+        return;
+      }
+      try {
+        await _sendEncryptedBillCodeForAcceptedOrders()
+            .timeout(const Duration(seconds: 30), onTimeout: () {});
+      } catch (_) {}
+    });
+  }
+
   /// v438: Send NIP-44 encrypted billCode to provider after order is accepted.
   /// Buyer-side: for each accepted order with a known providerId that hasn't
   /// had its encrypted billCode sent yet, publish a kind 30080 event with
@@ -5127,6 +5162,9 @@ class OrderProvider with ChangeNotifier {
       } catch (e) {
         broLog('⚠️ _sendEncryptedBillCodeForAcceptedOrders exception: $e');
       }
+
+      // v750: fast-lane — ordem recém-aceita não espera o próximo tick global
+      _scheduleBillCodeFastLane();
       
       // AUTO-LIQUIDA��O v234: Tamb�m verificar no sync do usu�rio
       await _checkAutoLiquidation();

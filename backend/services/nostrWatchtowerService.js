@@ -56,7 +56,9 @@ const BILLCODE_WAKEUP_FILE = process.env.NODE_ENV === 'production'
 // v664: inclui o Apex cord (nosso relay) — antes o watchtower só vigiava
 // damus/nos.lol/primal, então aceites/ordens que caíam SÓ no nosso relay não
 // geravam push de wakeup (ordens travadas em "bro aceitou" sem billCode).
-const RELAYS = (process.env.RELAYS || 'wss://apexcord.duckdns.org,wss://relay.damus.io,wss://nos.lol,wss://relay.primal.net')
+// v732: bro-relay2.fly.dev = segundo relay próprio (Fly.io) — criado depois do
+// incidente 06-07/11 (apexcord ~24h fora, eventos perdidos). Redundância real.
+const RELAYS = (process.env.RELAYS || 'wss://apexcord.duckdns.org,wss://bro-relay2.fly.dev,wss://relay.damus.io,wss://nos.lol,wss://relay.primal.net')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);

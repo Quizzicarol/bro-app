@@ -192,6 +192,28 @@ class BrixService {
     }
   }
 
+  /// v738: ADMIN — resolve QUALQUER pubkey pro endereço BRIX (rota admin).
+  /// Usado pela mediadora pra pagar um provedor sem ele abrir o app:
+  /// o recebimento offline do BRIX segura os sats e ele resgata sozinho.
+  Future<BrixAddressResult> adminAddressOf(String pubkey) async {
+    try {
+      await initCredentials();
+      final path = '/brix/admin/address-of/$pubkey';
+      final response = await _dio.get(path, options: _signedOptions(path, 'GET'));
+      final data = response.data;
+      if (data['found'] == true) {
+        return BrixAddressResult(
+          hasAddress: true,
+          address: data['brix_address'] as String?,
+          username: data['username'] as String?,
+        );
+      }
+      return BrixAddressResult(hasAddress: false);
+    } catch (_) {
+      return BrixAddressResult(hasAddress: false);
+    }
+  }
+
   /// Find BRIX by email (fallback for web-created BRIX)
   Future<BrixAddressResult> findByEmail(String email) async {
     try {

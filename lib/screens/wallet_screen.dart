@@ -3202,9 +3202,18 @@ class _WalletScreenState extends State<WalletScreen> {
         icon = Icons.flash_on;
       }
     } else if (isBroEarning || isBroOrderPayment) {
-      // v724: ganho COM nº da ordem — ordens de valores iguais confundiam
-      label = correlatedOrderId != null
-          ? AppLocalizations.of(context).tp('wallet_bro_earning_order', {'orderId': correlatedOrderId!.substring(0, 8)})
+      // v730: o nº da ordem vem da DESCRIÇÃO direto — à prova de cache local
+      // vazio (o iPhone da Carol não tinha as ordens baixadas e o nº sumia
+      // mesmo com a v724: correlatedOrderId dependia da ordem estar no cache).
+      String? orderIdFromDesc;
+      if (description.contains('Bro - Ordem ')) {
+        orderIdFromDesc = description.split('Bro - Ordem ').last.trim();
+      } else if (description.startsWith('Bro ') && description.length >= 12) {
+        orderIdFromDesc = description.substring(4).trim();
+      }
+      final oid = correlatedOrderId ?? orderIdFromDesc;
+      label = oid != null && oid.length >= 8
+          ? AppLocalizations.of(context).tp('wallet_bro_earning_order', {'orderId': oid.substring(0, 8)})
           : AppLocalizations.of(context).t('wallet_bro_earning');
       iconColor = Colors.green;
       icon = Icons.volunteer_activism;

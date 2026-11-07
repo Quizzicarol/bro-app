@@ -87,6 +87,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   // canônico. Sem este aviso o perdedor acha que a ordem é dele e abre disputa
   // (caso real 33ed1ced — e aí o comprador colou o código no chat da disputa!).
   bool? _lostRace;
+  bool? _wonRace; // v742: EU sou o canônico — mostrar "você venceu" no aguardo
   int _acceptsCount = 0; // v713: quantos Bros aceitaram (msg de apuração)
 
   Future<void> _checkLostRace() async {
@@ -97,6 +98,11 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           .timeout(const Duration(seconds: 10), onTimeout: () => <String>[]);
       if (!mounted || accepts.isEmpty) return; // fail-open: sem dados, não marca
       if (accepts.length != _acceptsCount) setState(() => _acceptsCount = accepts.length);
+      // v742: VENCEU — eu sou o canônico (acceptedAt mais antigo é o meu).
+      // Sticky igual ao _lostRace: fetch parcial não pode piscar a tela.
+      if (accepts.first == myPk && _wonRace != true) {
+        setState(() => _wonRace = true);
+      }
       // v712: STICKY — uma vez perdedor, NUNCA desmarca. Um fetch parcial (só
       // meu aceite visível) fazia a ordem "voltar" e a tela piscar entre
       // perdedor/provedor (péssima experiência da Carol como perdedora, 06/11).
@@ -1239,9 +1245,24 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                         fontSize: 12,
                       ),
                     ),
+                    // v742: VENCEU a corrida — confirmação explícita enquanto
+                    // o código não chega (pedido da Carol 07/11: em vez de
+                    // rodinha genérica, dizer o que está acontecendo).
+                    if (_wonRace == true) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        AppLocalizations.of(context)!.t('prov_det_race_won'),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.greenAccent,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ]
                     // v713: corrida em apuração — o provedor não fica no limbo
                     // sem saber por que o código demora (pedido da Carol).
-                    if (_acceptsCount > 1 && _lostRace != true) ...[
+                    else if (_acceptsCount > 1 && _lostRace != true) ...[
                       const SizedBox(height: 10),
                       Text(
                         AppLocalizations.of(context)!.t('prov_det_race_checking'),
@@ -2317,24 +2338,38 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       );
     }
     
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: _isAccepting ? null : _acceptOrder,
-        icon: _isAccepting
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-              )
-            : const Icon(Icons.check_circle),
-        label: Text(_isAccepting ? AppLocalizations.of(context)!.t('prov_det_accepting') : AppLocalizations.of(context)!.t('prov_det_accept_order')),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.orange,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    return Column(
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _isAccepting ? null : _acceptOrder,
+            icon: _isAccepting
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Icon(Icons.check_circle),
+            label: Text(_isAccepting ? AppLocalizations.of(context)!.t('prov_det_accepting') : AppLocalizations.of(context)!.t('prov_det_accept_order')),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
         ),
-      ),
+        // v742: enquanto o aceite processa, dizer o que está rolando
+        // (pedido da Carol 07/11: "iniciando corrida com outros provedores").
+        if (_isAccepting) ...[
+          const SizedBox(height: 10),
+          Text(
+            AppLocalizations.of(context)!.t('prov_det_race_starting'),
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+        ],
+      ],
     );
   }
 

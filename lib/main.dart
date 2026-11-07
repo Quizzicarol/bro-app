@@ -723,6 +723,13 @@ class BroApp extends StatelessWidget {
             if (expected != null) {
               orderProvider.markSyncing(orderId, expected);
             }
+            // v742: billcode_ready — o código NIP-44 já está nos relays;
+            // sincroniza na hora (baixa+decifra) em vez de esperar o próximo
+            // ciclo de sync (o iPhone levava ~11min pra ver o código).
+            if (subtype == 'billcode_ready') {
+              broLog('[RT] billcode_ready push — sync imediato');
+              orderProvider.syncOrdersFromNostr(force: true);
+            }
           };
           
           // Callback para pagamentos RECEBIDOS (menos comum no fluxo atual)

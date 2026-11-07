@@ -866,6 +866,26 @@ class NostrWatchtowerService {
           // pendentes para evitar push visível desnecessário.
           this._cancelBillcodeRelayRetries(orderId, 'observed bro_billcode_encrypted');
 
+          // v742: avisa o PROVEDOR (#p) que o código chegou. Antes ele só
+          // descobria no próximo sync do app dele — caso real 71944633
+          // (07/11): código nos relays em ~2min, iPhone só viu 11min depois.
+          try {
+            const pTagReady = (event.tags || []).find(t => Array.isArray(t) && t[0] === 'p');
+            const providerPk = pTagReady && typeof pTagReady[1] === 'string' ? pTagReady[1] : null;
+            if (providerPk && /^[0-9a-f]{64}$/.test(providerPk)) {
+              await this._sendPush(providerPk, {
+                type: 'order_update',
+                subtype: 'billcode_ready',
+                order_id: orderId,
+              }, {
+                title: '⚡ Bro: código da conta chegou!',
+                body: `Ordem ${orderId.substring(0, 8)}: abra o app para ver o código e pagar.`,
+              });
+            }
+          } catch (e) {
+            console.error(`⚠️ [Watchtower] push billcode_ready falhou: ${e.message}`);
+          }
+
           // v702 TRIPWIRE: o #p do evento é o destinatário do código. Se não
           // for o aceite CANÔNICO (menor acceptedAt), é o bug de corrida — o
           // perdedor vai receber o código e pode pagar com dinheiro real

@@ -373,108 +373,71 @@ class StorageService {
       }
     }
     
-    // IMPORTANTE: Se foi especificado um pubkey específico (forPubkey), 
-    // AINDA ASSIM buscar no MASTER_SEED como fallback!
-    // Isso é necessário para usuários que já tinham saldo antes da migração.
+    // v748 (auditoria A3): FIM DA HERANÇA SILENCIOSA DE SEED.
+    // Antes: sem seed per-user, o app caía no MASTER_SEED_BACKUP / legado e
+    // ATRIBUÍA a seed de outra conta sem perguntar — no mesmo aparelho, a
+    // conta B herdava a carteira da conta A (fundos na carteira errada).
+    // Agora: seeds globais/legadas só são lidas pelo fluxo de migração
+    // EXPLÍCITA (getLegacyMasterSeed + diálogo "esta carteira é sua?").
     if (forPubkey != null) {
-      broLog('📭 Nenhuma seed específica encontrada, buscando no MASTER_SEED...');
-      
-      // Tentar MASTER SEED BACKUP
-      mnemonic = await _secureStorage.read(key: _masterSeedKey);
-      if (mnemonic != null && mnemonic.split(' ').length == 12) {
-        broLog('✅ FALLBACK: Seed encontrada no MASTER_SEED_BACKUP!');
-        // Salvar para o usuário atual
-        await _secureStorage.write(key: _getSeedKeyForUser(forPubkey), value: mnemonic);
-        return mnemonic;
-      }
-      
-      // Tentar breez_mnemonic legado
-      mnemonic = await _secureStorage.read(key: 'breez_mnemonic');
-      if (mnemonic != null && mnemonic.split(' ').length == 12) {
-        broLog('✅ FALLBACK: Seed encontrada em breez_mnemonic legado!');
-        await _secureStorage.write(key: _getSeedKeyForUser(forPubkey), value: mnemonic);
-        return mnemonic;
-      }
-      
-      broLog('❌ Nenhuma seed encontrada nem no fallback.');
+      broLog('📭 Nenhuma seed per-user para ${forPubkey.substring(0, 8)} — SEM fallback master (A3). Migração só explícita.');
       broLog('═══════════════════════════════════════════════════════════');
       return null;
     }
-    
-    // A partir daqui, buscar em fontes GLOBAIS (apenas quando não há pubkey específico)
-    
-    // FONTE 3: MASTER SEED BACKUP (nunca é apagado)
-    mnemonic = await _secureStorage.read(key: _masterSeedKey);
-    if (mnemonic != null && mnemonic.split(' ').length == 12) {
-      broLog('✅ Seed encontrada (Fonte 3 - master backup)');
-      // Salvar para o usuário atual
-      if (pubkey != null) {
-        await _secureStorage.write(key: _getSeedKeyForUser(pubkey), value: mnemonic);
-      }
-      return mnemonic;
-    }
-    
-    // FONTE 4: SharedPrefs MASTER (migrar e apagar)
-    final masterPrefs = _prefs?.getString('MASTER_SEED_PREFS');
-    if (masterPrefs != null && masterPrefs.isNotEmpty) {
-      mnemonic = _deobfuscateSeed(masterPrefs);
-      if (mnemonic.isNotEmpty && mnemonic.split(' ').length == 12) {
-        broLog('✅ FONTE 4: Seed migrada do MASTER PREFS para SecureStorage');
-        if (pubkey != null) {
-          await _secureStorage.write(key: _getSeedKeyForUser(pubkey), value: mnemonic);
-        }
-        await _prefs?.remove('MASTER_SEED_PREFS');
-        return mnemonic;
-      }
-    }
-    
-    // FONTE 4.5: Emergency backup (migrar e apagar)
-    final emergencyBackup = _prefs?.getString('SEED_BACKUP_EMERGENCY');
-    broLog('   [4.5] SEED_BACKUP_EMERGENCY: ${emergencyBackup != null ? "EXISTE" : "NULL"}');
-    if (emergencyBackup != null && emergencyBackup.isNotEmpty) {
-      mnemonic = _deobfuscateSeed(emergencyBackup);
-      if (mnemonic.isNotEmpty && mnemonic.split(' ').length == 12) {
-        broLog('✅ FONTE 4.5: Seed migrada do EMERGENCY BACKUP para SecureStorage');
-        if (pubkey != null) {
-          await _secureStorage.write(key: _getSeedKeyForUser(pubkey), value: mnemonic);
-        }
-        await _prefs?.remove('SEED_BACKUP_EMERGENCY');
-        return mnemonic;
-      }
-    }
-    
-    // FONTE 5: Seed legada global
-    mnemonic = await _secureStorage.read(key: 'breez_mnemonic');
-    broLog('   [5] breez_mnemonic (legado): ${mnemonic != null ? "presente (${mnemonic.split(' ').length} palavras)" : "NULL"}');
-    if (mnemonic != null && mnemonic.split(' ').length == 12) {
-      broLog('✅ FONTE 5: Seed encontrada no formato legado!');
-      return mnemonic;
-    }
-    
-    // FONTE 6: Qualquer backup bm_backup_* (migrar e apagar)
-    final allKeys = _prefs?.getKeys() ?? {};
-    broLog('   [6] Buscando em ${allKeys.length} chaves do SharedPrefs...');
-    for (final key in allKeys) {
-      if (key.startsWith('bm_backup_')) {
-        final obfuscated = _prefs?.getString(key);
-        if (obfuscated != null) {
-          mnemonic = _deobfuscateSeed(obfuscated);
-          if (mnemonic.isNotEmpty && mnemonic.split(' ').length == 12) {
-            broLog('✅ FONTE 6: Seed migrada de $key para SecureStorage');
-            if (pubkey != null) {
-              await _secureStorage.write(key: _getSeedKeyForUser(pubkey), value: mnemonic);
-            }
-            await _prefs?.remove(key);
-            return mnemonic;
-          }
-        }
-      }
-    }
-    
-    broLog('❌ NENHUMA SEED encontrada em NENHUM local!');
+
+    broLog('❌ Nenhuma seed per-user do usuário atual (fontes globais agora são só p/ migração explícita — A3)');
     broLog('═══════════════════════════════════════════════════════════');
     broLog('');
     return null;
+  }
+
+  /// v748 (A3): lê a seed LEGADA/global do aparelho SEM atribuir a ninguém.
+  /// Read-only, não migra nem apaga nada. Usada pelo diálogo de migração.
+  Future<String?> getLegacyMasterSeed() async {
+    if (_prefs == null) await init();
+    final candidates = <String?>[
+      await _secureStorage.read(key: _masterSeedKey),
+      await _secureStorage.read(key: 'breez_mnemonic'),
+    ];
+    // Legados em SharedPrefs (XOR) — lê sem apagar (a limpeza acontece só se
+    // o usuário ADOTAR a seed, em promoteLegacySeedToUser).
+    final legacyPrefs = _prefs?.getString('MASTER_SEED_PREFS');
+    if (legacyPrefs != null && legacyPrefs.isNotEmpty) {
+      candidates.add(_deobfuscateSeed(legacyPrefs));
+    }
+    final emergency = _prefs?.getString('SEED_BACKUP_EMERGENCY');
+    if (emergency != null && emergency.isNotEmpty) {
+      candidates.add(_deobfuscateSeed(emergency));
+    }
+    for (final c in candidates) {
+      if (c != null && c.split(' ').length == 12) return c;
+    }
+    return null;
+  }
+
+  /// v748 (A3): promoção EXPLÍCITA — o usuário confirmou "é minha" no diálogo.
+  /// Copia a seed legada pra chave per-user, grava o dono e limpa os legados
+  /// inseguros. NUNCA chamada automaticamente.
+  Future<void> promoteLegacySeedToUser(String pubkey) async {
+    final m = await getLegacyMasterSeed();
+    if (m == null) return;
+    await _secureStorage.write(key: _getSeedKeyForUser(pubkey), value: m);
+    await _secureStorage.write(key: 'MASTER_SEED_OWNER', value: pubkey);
+    await _prefs?.remove('MASTER_SEED_PREFS');
+    await _prefs?.remove('SEED_BACKUP_EMERGENCY');
+    broLog('🔐 A3: seed legada promovida EXPLICITAMENTE para ${pubkey.substring(0, 8)}');
+  }
+
+  /// v748 (A3): o diálogo de migração já foi exibido pra esta conta?
+  static const String _seedMigrationAskedPrefix = 'seed_migration_asked_';
+  Future<bool> wasSeedMigrationAsked(String pubkey) async {
+    if (_prefs == null) await init();
+    return _prefs?.getBool('$_seedMigrationAskedPrefix$pubkey') ?? false;
+  }
+
+  Future<void> markSeedMigrationAsked(String pubkey) async {
+    if (_prefs == null) await init();
+    await _prefs?.setBool('$_seedMigrationAskedPrefix$pubkey', true);
   }
   
   /// Migra seed antiga (formato global) para o novo formato por usuário
@@ -616,19 +579,13 @@ class StorageService {
       broLog('   ⚠️ Erro ao limpar dados por usuário: $e');
     }
     
-    // PRIMEIRO: Garantir que a seed atual está salva no SecureStorage
-    final currentSeed = await getBreezMnemonic();
-    if (currentSeed != null && currentSeed.split(' ').length == 12) {
-      broLog('   🔐 Fazendo backup da seed em SecureStorage antes do logout...');
-      
-      // Salvar APENAS em SecureStorage (seguro)
-      await _secureStorage.write(key: _masterSeedKey, value: currentSeed);
-      await _secureStorage.write(key: 'breez_mnemonic', value: currentSeed);
-      
-      // Remover backups inseguros (XOR) se existirem
-      await _prefs?.remove('MASTER_SEED_PREFS');
-      await _prefs?.remove('SEED_BACKUP_EMERGENCY');
-    }
+    // v748 (A3): o logout NÃO copia mais a seed pro MASTER_SEED_BACKUP nem
+    // pro breez_mnemonic legado — essa cópia era a FÁBRICA de herança entre
+    // contas (quem logasse depois herdava a carteira). A seed per-user já
+    // vive no SecureStorage sob a chave da conta e sobrevive sozinha.
+    // Só removemos os backups inseguros (XOR) se existirem.
+    await _prefs?.remove('MASTER_SEED_PREFS');
+    await _prefs?.remove('SEED_BACKUP_EMERGENCY');
     
     // Preservar TODAS as seeds e backups antes de limpar
     final allKeys = _prefs?.getKeys() ?? <String>{};

@@ -72,11 +72,61 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _checkForAppUpdate();
       _checkBatteryOptimization(); // v390: Prompt battery exempt for bg notifications
       _checkBiometricOffer(); // v703: oferecer trava biométrica UMA vez
+      _checkSeedMigration(); // v748: seed legada no aparelho? perguntar UMA vez (A3)
       _checkMediationDebt(); // v709: aviso de cobrança de mediação pendente
       _checkAdminPaymentRequest(); // v728: mediação quer te pagar → gerar invoice
       // Start BRIX invoice relay service (global, any screen)
       BrixRelayService().start(context);
     });
+  }
+
+  /// v748 (auditoria A3): se há uma seed LEGADA no aparelho (de uma conta
+  /// antiga) e a conta atual não tem seed própria, o BreezProvider ADIA a init
+  /// e a gente pergunta UMA vez se a carteira é do usuário. Antes disso o app
+  /// herdava a carteira de outra conta em SILÊNCIO (fundos na conta errada).
+  Future<void> _checkSeedMigration() async {
+    try {
+      final breez = context.read<BreezProvider>();
+      // A init da carteira roda em paralelo à home — esperar ela sinalizar
+      // (até ~10s) antes de decidir se há diálogo a mostrar.
+      for (var i = 0; i < 10; i++) {
+        if (breez.legacySeedPending || breez.isInitialized) break;
+        await Future.delayed(const Duration(seconds: 1));
+        if (!mounted) return;
+      }
+      if (!breez.legacySeedPending || breez.isInitialized) return;
+      if (!mounted) return;
+      final adopt = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A2E),
+          title: const Text('🔐 Carteira antiga encontrada',
+              style: TextStyle(color: Colors.white)),
+          content: const Text(
+            'Encontramos uma carteira Bitcoin antiga neste aparelho, de uma conta anterior.\n\n'
+            'Se ela é SUA, escolha "É minha" para recuperar o saldo nesta conta.\n\n'
+            'Se você não reconhece, escolha "Não é minha" para criar uma carteira nova e vazia.',
+            style: TextStyle(color: Colors.white70, height: 1.4),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Não é minha', style: TextStyle(color: Colors.white54)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              child: const Text('É minha — recuperar', style: TextStyle(color: Colors.black)),
+            ),
+          ],
+        ),
+      );
+      if (adopt == null) return; // não decidiu — pergunta de novo no próximo boot
+      await breez.resolveLegacySeed(adopt: adopt);
+    } catch (e) {
+      broLog('⚠️ _checkSeedMigration: $e');
+    }
   }
 
   /// v728: se a mediação pediu um invoice (push admin_payment_request),

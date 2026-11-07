@@ -17,6 +17,26 @@ class BreezProvider with ChangeNotifier {
   static bool _rustLibInitialized = false;
   spark.BreezSdk? _sdk;
   bool _isInitialized = false;
+
+  /// v748 (A3): existe uma seed legada no aparelho esperando decisão do
+  /// usuário (diálogo na home). Enquanto true, a carteira NÃO inicializou.
+  bool _legacySeedPending = false;
+  bool get legacySeedPending => _legacySeedPending;
+
+  /// v748 (A3): decisão do usuário no diálogo da seed legada.
+  /// adopt=true → promove a seed legada pra conta atual e inicializa com ela.
+  /// adopt=false → marca como perguntado e inicializa do zero (seed nova).
+  Future<void> resolveLegacySeed({required bool adopt}) async {
+    final pubkey = await StorageService().getNostrPublicKey();
+    if (pubkey != null) {
+      await StorageService().markSeedMigrationAsked(pubkey);
+      if (adopt) {
+        await StorageService().promoteLegacySeedToUser(pubkey);
+      }
+    }
+    _legacySeedPending = false;
+    await initialize();
+  }
   bool _isLoading = false;
   bool _isInitializing = false;
   String? _error;
@@ -173,6 +193,20 @@ class BreezProvider with ChangeNotifier {
           broLog('✅ Seed EXISTENTE encontrada!');
           broLog('   Seed carregada (${savedMnemonic.split(' ').length} palavras)');
         } else {
+          // v748 (auditoria A3): se existe seed LEGADA no aparelho e ainda
+          // não perguntamos ao usuário, NÃO gerar seed nova agora — a seed
+          // nova ocuparia o slot per-user e esconderia a carteira legada pra
+          // sempre. Adiar a init; a home mostra o diálogo "é sua?".
+          if (pubkey != null) {
+            final asked = await StorageService().wasSeedMigrationAsked(pubkey);
+            final legacy = asked ? null : await StorageService().getLegacyMasterSeed();
+            if (legacy != null) {
+              broLog('⏸️ A3: seed legada presente e migração não decidida — adiando init da carteira (diálogo na home)');
+              _legacySeedPending = true;
+              notifyListeners();
+              return false; // não inicializou — aguardando decisão do usuário
+            }
+          }
           // ÚLTIMA TENTATIVA: O getBreezMnemonic agora busca em 6 fontes diferentes
           // Se chegou aqui, realmente não existe seed
           broLog('');
@@ -212,6 +246,7 @@ class BreezProvider with ChangeNotifier {
       );
 
       broLog('⚡ Conectando ao Breez SDK ($network)...');
+      _legacySeedPending = false;
       
       // Connect to SDK
       _sdk = await spark.connect(

@@ -10,7 +10,11 @@ class BreezProvider with ChangeNotifier {
   String? get mnemonic => null;
   dynamic get sdk => null;
   bool get seedRecoveryNeeded => false;  // Para mostrar alerta de erro
-  
+
+  // v748 (A3): stub — seed legada nunca pende fora das plataformas Breez
+  bool get legacySeedPending => false;
+  Future<void> resolveLegacySeed({required bool adopt}) async {}
+
   // Callback para notificar pagamentos recebidos
   Function(String paymentId, int amountSats, String? paymentHash)? onPaymentReceived;
   // Callback para notificar pagamentos enviados

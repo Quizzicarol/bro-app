@@ -68,6 +68,7 @@ class NostrProfileService {
   // Lista de relays (o do Bro primeiro — é onde publicamos)
   static const List<String> defaultRelays = [
     'wss://apexcord.duckdns.org',
+    'wss://bro-relay2.fly.dev', // v732: relay próprio na Fly
     'wss://relay.primal.net',
     'wss://relay.damus.io',
     'wss://relay.nostr.band',

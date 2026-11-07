@@ -152,6 +152,11 @@ class NostrOrderService {
     // 503ava e nos.lol morre direto: eles na frente = toda busca pagava 5s de
     // timeout à toa (lista de Disponíveis lenta — reclamação da Carol 04/11).
     'wss://apexcord.duckdns.org',
+    // v732: segundo relay PRÓPRIO, na Fly (não depende da Oracle). Criado depois
+    // do incidente 06-07/11 em que o apexcord ficou ~24h fora e PERDEU eventos
+    // (relays não sincronizam entre si — quem publicou na janela ficou só nos
+    // relays públicos). Dois relays próprios = um segura o tráfego do outro.
+    'wss://bro-relay2.fly.dev',
     'wss://relay.primal.net',
     'wss://relay.damus.io',
     'wss://nos.lol',

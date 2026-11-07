@@ -1,0 +1,31 @@
+# Relay Nostr secundário (nostr-rs-relay) — Fly.io
+# Deploy: na VM Oracle (~/relay2): env -u FLY_API_TOKEN flyctl deploy -a bro-relay2 --remote-only
+app = "bro-relay2"
+primary_region = "gru"
+
+[build]
+  image = "scsibug/nostr-rs-relay:latest"
+
+[env]
+  APP_DATA = "/usr/src/app/db"
+
+[mounts]
+  source = "relay_data"
+  destination = "/usr/src/app/db"
+
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+  force_https = true
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

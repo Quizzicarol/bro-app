@@ -9,6 +9,8 @@ import '../services/dispute_service.dart';
 import '../services/nostr_order_service.dart';
 import '../services/storage_service.dart';
 import '../services/api_service.dart';
+import '../services/brix_service.dart';
+import '../services/lnaddress_service.dart';
 import '../providers/order_provider.dart';
 import '../providers/breez_provider.dart';
 import '../config.dart';
@@ -1436,8 +1438,33 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
         setD(() => status = 'Preencha ordem, provedor e valor.');
         return;
       }
-      setD(() { requestingInvoice = true; status = 'Push enviado. Aguardando ele gerar o invoice (até ~90s)...'; });
+      setD(() { requestingInvoice = true; status = 'Verificando se ele tem BRIX (pagamento offline)...'; });
       try {
+        // v738: se o provedor tem endereço BRIX, paga DIRETO — o servidor
+        // segura os sats offline e ele resgata sozinho ao abrir o app
+        // (caso 58ebf198: o 95a800b7 tinha BRIX e a Carol ficou esperando
+        // um invoice que dependia dele abrir o app).
+        final brixAddr = await BrixService().adminAddressOf(selected!);
+        if (brixAddr.hasAddress && (brixAddr.address?.isNotEmpty ?? false)) {
+          setD(() => status = '⚡ Ele tem BRIX (${brixAddr.address}). Gerando invoice sem precisar dele online...');
+          final inv = await LnAddressService().getInvoice(
+            lnAddress: brixAddr.address!,
+            amountSats: amount,
+            comment: 'Bro mediação ordem #${orderId.substring(0, 8)}',
+          );
+          final bolt11 = inv['invoice']?.toString() ?? '';
+          if (inv['success'] == true && bolt11.isNotEmpty) {
+            setD(() {
+              requestingInvoice = false;
+              offeredInvoice = bolt11;
+              status = '✅ Invoice gerado via BRIX dele (offline). Revise e toque em "Pagar agora".';
+            });
+            return;
+          }
+          setD(() => status = '⚠️ BRIX dele não gerou invoice (${inv['error']}). Tentando push...');
+        } else {
+          setD(() => status = 'Ele não tem BRIX. Enviando push...');
+        }
         final resp = await ApiService().post('/push/admin-payment-request', {
           'target_pubkey': selected,
           'order_id': orderId,

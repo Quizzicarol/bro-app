@@ -446,6 +446,25 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
           }
         }
 
+        // v733: análise de disputa JÁ RESOLVIDA não pode ficar "aguardando
+        // revisão" pra sempre (Carol resolveu a af95b3ab na mão e o card do
+        // agente continuou aparecendo — 07/11). Filtra pelo orderId das
+        // resolvidas, cobrindo tanto as análises do backend quanto as
+        // heurísticas locais.
+        if (resolvedNostr.isNotEmpty && agentAnalyses.isNotEmpty) {
+          final resolvedIds = resolvedNostr
+              .map((r) => r['orderId']?.toString() ?? '')
+              .where((s) => s.isNotEmpty)
+              .toSet();
+          final before = agentAnalyses.length;
+          agentAnalyses = agentAnalyses
+              .where((a) => !resolvedIds.contains(a['orderId']?.toString() ?? ''))
+              .toList();
+          if (agentAnalyses.length != before) {
+            broLog('🤖 ${before - agentAnalyses.length} análise(s) do agente descartada(s) — disputa já resolvida');
+          }
+        }
+
         // v665: enriquecer disputas SEM valor — o evento bro_dispute nem sempre
         // carrega amount_brl (ex.: disputa aberta pelo provedor). Buscar o
         // valor no evento da ORDEM (kind 30078) para o card mostrar o R$.

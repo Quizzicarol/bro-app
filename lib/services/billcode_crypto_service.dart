@@ -43,9 +43,14 @@ class BillCodeCryptoService {
   }
 
   /// Encripta um billCode. Retorna string com prefixo "BRO1:".
-  /// Se o serviço não estiver habilitado, retorna o plaintext.
+  /// v744 (auditoria A1): FAIL-CLOSED — nunca devolve plaintext. Sem chave
+  /// configurada ou em qualquer erro de cifra, lança exceção e o caller
+  /// decide (retry/abort) em vez de vazar o código PIX/boleto nos relays.
   String encrypt(String billCode) {
-    if (!isEnabled || billCode.isEmpty) return billCode;
+    if (!isEnabled) {
+      throw StateError('BillCodeCrypto: BILLCODE_KEY ausente — recusando plaintext');
+    }
+    if (billCode.isEmpty) return billCode;
 
     try {
     final nonce = _secureRandom(12);
@@ -74,7 +79,7 @@ class BillCodeCryptoService {
 
     return '$encryptedPrefix${base64.encode(payload)}';
     } catch (_) {
-      return billCode; // fallback to plaintext on any crypto failure
+      rethrow; // v744 (A1): fail-closed — nunca fallback pra plaintext
     }
   }
 

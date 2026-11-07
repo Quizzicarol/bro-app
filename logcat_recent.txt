@@ -1,8 +1,0 @@
-﻿adb.exe : - waiting for device -
-No linha:1 caractere:1
-+ & "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" logcat -d -s ...
-+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (- waiting for device -:String) [] 
-   , RemoteException
-    + FullyQualifiedErrorId : NativeCommandError
- 

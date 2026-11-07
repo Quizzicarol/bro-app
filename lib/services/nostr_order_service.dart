@@ -1456,9 +1456,16 @@ class NostrOrderService {
         } catch (_) {}
       }
       
-      // Se encontrou eventos mas nenhum com orderId match, usar o mais recente
+      // v744 (auditoria B5): fallback "usar o mais recente" REMOVIDO — se
+      // nenhum evento bate o orderId pedido, a ordem NÃO está neste relay.
+      // Aceitar evento de OUTRA ordem podia levar provedor a pagar conta
+      // errada. Se o relay respondeu lixo, retornamos null (leitura degrada
+      // graciosamente — outros relays ainda são consultados pelo caller).
       if (allEvents.isNotEmpty) {
-        final event = allEvents.first; // Já está ordenado — mais recente primeiro
+        broLog('⚠️ _fetchOrderFromRelay: relay retornou ${allEvents.length} evento(s) sem match de orderId — ignorando (B5)');
+      }
+      if (false) {
+        final event = allEvents.first; // unreachable — mantido p/ diff mínimo
         final content = event['parsedContent'] ?? jsonDecode(event['content']);
         // v565 SECURITY: signer (event.pubkey) é autoritativo. Rejeitar spoofing.
         final eventPubkey = event['pubkey'] as String?;

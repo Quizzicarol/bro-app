@@ -169,9 +169,11 @@ router.get('/available', (req, res) => {
     console.log(`📋 Listando ${availableOrders.length} ordens disponíveis para provedor ${providerId || 'any'}`);
 
     // v398: Filtrar campos sensíveis — provedores não precisam ver accountNumber
+    // v744 (auditoria B2): userId (pubkey do comprador) NÃO vai mais na lista
+    // pública — impedia correlação de gastos/engenharia social. O fluxo real
+    // de aceite é via Nostr; nenhum client usa esse campo aqui.
     const sanitizedOrders = availableOrders.map(order => ({
       id: order.id,
-      userId: order.userId,
       paymentType: order.paymentType,
       billValue: order.billValue,
       btcAmount: order.btcAmount,

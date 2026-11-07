@@ -7,6 +7,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'package:bro_app/services/log_utils.dart';
+import 'package:bro_app/services/nip98_signer.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../config.dart';
 import '../models/order.dart';
@@ -578,12 +579,20 @@ class NostrOrderService {
         connectTimeout: const Duration(seconds: 8),
         receiveTimeout: const Duration(seconds: 8),
       ));
-      final resp = await dio.post('/billcode-fallback', data: {
+      // v747 (auditoria B3): assina NIP-98 — o backend passa a exigir quando
+      // BILLCODE_FALLBACK_AUTH=required (2 fases, padrão v566/v615).
+      final body = {
         'orderId': orderId,
         'providerPubkey': providerPubkey,
         'senderPubkey': senderPubkey,
         'blob': blob,
-      });
+      };
+      final headers = await nip98Headers(
+        url: '${AppConfig.defaultBackendUrl}/billcode-fallback',
+        method: 'POST',
+        body: body,
+      );
+      final resp = await dio.post('/billcode-fallback', data: body, options: Options(headers: headers));
       broLog('📦 billcode fallback POST: ${resp.statusCode} pushed=${resp.data?['pushed']}');
     } catch (e) {
       broLog('⚠️ billcode fallback POST falhou (não-fatal): $e');
@@ -599,7 +608,11 @@ class NostrOrderService {
         connectTimeout: const Duration(seconds: 8),
         receiveTimeout: const Duration(seconds: 8),
       ));
-      final resp = await dio.get('/billcode-fallback/$orderId');
+      final headers = await nip98Headers(
+        url: '${AppConfig.defaultBackendUrl}/billcode-fallback/$orderId',
+        method: 'GET',
+      );
+      final resp = await dio.get('/billcode-fallback/$orderId', options: Options(headers: headers));
       if (resp.statusCode == 200 && resp.data?['ok'] == true) {
         return {
           'blob': resp.data['blob'] as String,

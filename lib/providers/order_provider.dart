@@ -4097,8 +4097,36 @@ class OrderProvider with ChangeNotifier {
             broLog('[FeeReconcile] Ordem $shortId: hash salvo, confirmado=$confirmed — pulando (não paga)');
             continue;
           }
-          // Sem hash salvo = ordem antiga. Conservador: não paga.
-          broLog('[FeeReconcile] Ordem $shortId: sem feePaymentHash (ordem antiga) — NÃO paga (conservador)');
+          // v747: sem hash NÃO é mais beco sem saída. Ordem completada na
+          // era-hash (>= 15/out, quando o app passou a gravar o hash ao pagar)
+          // e SEM hash = a taxa FALHOU na conclusão e ficaria órfã pra sempre
+          // (caso real 07/11: eb547393 e c705cc55 no iPhone — ~768/~393 sats
+          // nunca enviados, e este reconciliador nunca pagava NADA).
+          // Anti re-pagamento mantido: a CARTEIRA precisa provar que nenhum
+          // envio daquele valor exato aconteceu na janela da conclusão.
+          // (reference não existe no loop — só no filtro síncrono; recalcula)
+          final refStrLoop = order.metadata?['completedAt']?.toString()
+              ?? order.metadata?['autoPaymentAt']?.toString()
+              ?? order.metadata?['updatedAt']?.toString();
+          final refLoop = refStrLoop != null ? DateTime.tryParse(refStrLoop) : null;
+          final reference = refLoop ?? order.createdAt;
+          if (reference.isBefore(DateTime(2026, 10, 15))) {
+            broLog('[FeeReconcile] Ordem $shortId: pré-era-hash — NÃO paga (conservador)');
+            continue;
+          }
+          final baseSats = (order.btcAmount * 100000000).round();
+          if (baseSats <= 0) continue;
+          final feeSatsRaw = (baseSats * AppConfig.platformFeePercent).round();
+          final feeSats = feeSatsRaw < 1 ? 1 : feeSatsRaw;
+          final found = await PlatformFeeService.feeFoundInWallet(feeSats: feeSats, reference: reference);
+          if (found) {
+            broLog('[FeeReconcile] Ordem $shortId: taxa de $feeSats sats consta na carteira — marcando paga');
+            await PlatformFeeService.markFeePaidLocal(order.id);
+            continue;
+          }
+          broLog('[FeeReconcile] Ordem $shortId: taxa de $feeSats sats NUNCA saiu — pagando agora');
+          final ok = await PlatformFeeService.sendPlatformFee(orderId: order.id, totalSats: baseSats);
+          if (ok) paidCount++;
           continue;
         } catch (e) {
           broLog('[FeeReconcile] Erro na ordem ${order.id.substring(0, 8)}: $e');

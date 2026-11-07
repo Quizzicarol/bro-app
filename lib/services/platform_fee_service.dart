@@ -73,6 +73,49 @@ class PlatformFeeService {
     }
   }
 
+  /// v747: marca a ordem como taxa-paga LOCALMENTE (quando a carteira provou
+  /// que o valor saiu mas a ordem não tinha hash gravado).
+  static Future<void> markFeePaidLocal(String orderId) async {
+    _paidOrderIds.add(orderId);
+    await _savePaidOrderIds();
+  }
+
+  /// v747: procura no histórico REAL da carteira um ENVIO do valor exato da
+  /// taxa dentro da janela [referência − 2h, + 48h]. Usado pelo FeeReconcile
+  /// para ordens da era-hash que ficaram sem feePaymentHash (a taxa FALHOU na
+  /// conclusão — caso real 07/11: eb547393/c705cc55, ~768/~393 sats órfãos).
+  /// A descrição LNURL não chega ao histórico, então a prova é valor exato +
+  /// janela. Dúvida (sem timestamp, fetch falhou) → false → NÃO paga.
+  static Future<bool> feeFoundInWallet({required int feeSats, required DateTime reference}) async {
+    if (_walletHistoryFetcher == null || feeSats <= 0) return false;
+    try {
+      final payments = await _walletHistoryFetcher!();
+      final refMs = reference.millisecondsSinceEpoch;
+      for (final p in payments) {
+        if (p is! Map) continue;
+        final dir = (p['direction'] ?? p['type'] ?? '').toString().toUpperCase();
+        final isSent = dir.contains('ENVIADO') || dir.contains('SEND') || dir.contains('OUTGOING');
+        if (!isSent) continue;
+        final rawAmt = p['amount'] ?? p['amountSats'];
+        final amt = rawAmt is num ? rawAmt.toInt() : int.tryParse('$rawAmt') ?? 0;
+        if (amt != feeSats) continue;
+        final rawTs = p['timestamp'];
+        var ts = rawTs is num ? rawTs.toInt() : int.tryParse('$rawTs') ?? 0;
+        if (ts <= 0) continue;
+        if (ts > 9999999999) ts = ts ~/ 1000; // ms → s
+        final payMs = ts * 1000;
+        if (payMs >= refMs - 2 * 3600 * 1000 && payMs <= refMs + 48 * 3600 * 1000) {
+          broLog('💼 feeFoundInWallet: envio de $feeSats sats encontrado na janela da ordem');
+          return true;
+        }
+      }
+      return false;
+    } catch (e) {
+      broLog('⚠️ feeFoundInWallet: $e');
+      return false;
+    }
+  }
+
   /// Chamado pelo OrderProvider: verifica se a taxa da ordem já foi paga,
   /// usando o paymentHash salvo na ordem (se houver) confirmado na carteira.
   static Future<bool> isFeePaidVerified(String orderId, String? orderFeeHash) async {

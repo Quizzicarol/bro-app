@@ -244,6 +244,13 @@ function verifyNip98Event(event, req) {
       return { valid: false, reason: 'NIP-98 payload hash mismatch' };
     }
   } else if (methodHasBody && req.rawBody && req.rawBody.length > 0) {
+    // v747 (auditoria B1): flag pra EXIGIR a tag payload quando o app novo já
+    // domina o campo (o app assina payload desde v566). Sem a tag, o corpo do
+    // request não está vinculado à assinatura (janela de MITM/replay).
+    // Ligar com NIP98_PAYLOAD_REQUIRED=1 ~30 dias após a v747 estabilizar.
+    if (process.env.NIP98_PAYLOAD_REQUIRED === '1') {
+      return { valid: false, reason: 'NIP-98: tag "payload" obrigatória com body' };
+    }
     // Transitional: log only. Older clients still accepted.
     if (process.env.LOG_NIP98_PAYLOAD_WARN === '1') {
       console.log(`[NIP98] WARN ${req.method} ${req.originalUrl}: missing payload tag (transitional)`);

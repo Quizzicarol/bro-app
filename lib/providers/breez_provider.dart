@@ -760,6 +760,9 @@ class BreezProvider with ChangeNotifier {
           'type': p.paymentType.toString(),
           'direction': direction,
           'paymentHash': paymentHash ?? 'N/A',
+          // v747: timestamp pra prova de pagamento por valor+janela
+          // (FeeReconcile de taxas órfãs)
+          'timestamp': int.tryParse(p.timestamp.toString()) ?? 0,
         });
       }
       

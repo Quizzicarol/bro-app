@@ -31,6 +31,13 @@ const MAX_BLOB = 100 * 1024;
 
 const HEX64 = /^[0-9a-f]{64}$/;
 
+// v747 (auditoria B3): auth NIP-98 em 2 fases (mesmo padrão v566/v615).
+//   off      → (default) comportamento antigo
+//   optional → aceita sem auth; se vier ASSINADO errado → 403 (assinante confere)
+//   required → POST exige assinante = senderPubkey; GET exige = providerPubkey
+// Ligar 'optional' quando o app v747+ estiver em campo; 'required' ~30 dias depois.
+const AUTH_MODE = (process.env.BILLCODE_FALLBACK_AUTH || 'off').toLowerCase();
+
 function loadStore() {
   try {
     if (!fs.existsSync(FALLBACK_FILE)) return {};
@@ -81,6 +88,18 @@ module.exports = function createBillcodeFallbackRouter(watchtower) {
         return res.status(400).json({ ok: false, error: 'blob inválido' });
       }
 
+      // v747 (B3): auth em 2 fases
+      if (AUTH_MODE !== 'off') {
+        const signer = req.verifiedPubkey || null;
+        if (signer && signer !== senderPubkey) {
+          console.log(`🚨 [BillcodeFallback] POST ${orderId.substring(0, 8)}: assinante ≠ senderPubkey — rejeitado`);
+          return res.status(403).json({ ok: false, error: 'assinante não confere' });
+        }
+        if (!signer && AUTH_MODE === 'required') {
+          return res.status(401).json({ ok: false, error: 'auth NIP-98 obrigatória' });
+        }
+      }
+
       // Pareamento: se o watchtower conhece a ordem, o provedor tem que bater
       const knownProvider = watchtower && typeof watchtower.getProviderForOrder === 'function'
         ? watchtower.getProviderForOrder(orderId)
@@ -112,6 +131,17 @@ module.exports = function createBillcodeFallbackRouter(watchtower) {
     const entry = store[req.params.orderId];
     if (!entry || Date.now() - entry.ts > TTL_MS) {
       return res.status(404).json({ ok: false, error: 'não encontrado' });
+    }
+    // v747 (B3): em optional/required, assinante tem que ser o destinatário.
+    // 404 (não 403) pra não vazar a existência da ordem.
+    if (AUTH_MODE !== 'off') {
+      const signer = req.verifiedPubkey || null;
+      if (signer && signer !== entry.providerPubkey) {
+        return res.status(404).json({ ok: false, error: 'não encontrado' });
+      }
+      if (!signer && AUTH_MODE === 'required') {
+        return res.status(401).json({ ok: false, error: 'auth NIP-98 obrigatória' });
+      }
     }
     return res.json({
       ok: true,

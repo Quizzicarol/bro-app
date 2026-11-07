@@ -28,6 +28,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../config.dart';
 import 'log_utils.dart';
+import 'nip98_signer.dart';
 import 'nostr_order_service.dart';
 import 'orders_storage.dart';
 import 'storage_service.dart';
@@ -54,7 +55,12 @@ Future<bool> handleBillcodeFallbackInBackground(Map<String, dynamic> data) async
       connectTimeout: const Duration(seconds: 8),
       receiveTimeout: const Duration(seconds: 8),
     ));
-    final resp = await dio.get('/billcode-fallback/$orderId');
+    // v747 (B3): assina NIP-98 também no background isolate
+    final headers = await nip98Headers(
+      url: '${AppConfig.defaultBackendUrl}/billcode-fallback/$orderId',
+      method: 'GET',
+    );
+    final resp = await dio.get('/billcode-fallback/$orderId', options: Options(headers: headers));
     if (resp.statusCode != 200 || resp.data?['ok'] != true) return false;
     // Só processa se o blob é destinado a MIM
     final forProvider = (resp.data['providerPubkey'] as String? ?? '').toLowerCase();

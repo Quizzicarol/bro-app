@@ -442,9 +442,17 @@ class BrixRelayService {
         final offlineDesc = payment.senderNote != null && payment.senderNote!.isNotEmpty
             ? 'BRIX: ${payment.senderNote}'
             : 'BRIX Payment';
+        // v749 (CRIT-03 fase 2): vincular a invoice a este pagamento —
+        // pede o nonce ao servidor e embute na descrição. Se falhar (rede),
+        // segue sem nonce (servidor aceita até CLAIM_NONCE_REQUIRED=1).
+        String claimDesc = offlineDesc;
+        final nonce = await _brixService.getClaimNonce(payment.id, _pubkey!);
+        if (nonce != null && nonce.isNotEmpty) {
+          claimDesc = '$offlineDesc #$nonce';
+        }
         final invoiceResult = await breezProvider.createInvoice(
           amountSats: payment.amountSats,
-          description: offlineDesc,
+          description: claimDesc,
         );
 
         if (invoiceResult != null && invoiceResult['success'] == true) {

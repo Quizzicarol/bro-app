@@ -97,13 +97,16 @@ class BrixService {
     String? nostrPubkey,
   }) async {
     try {
-      final response = await _dio.post('/brix/register', data: {
+      // v749 (auditoria ALTO-02): register assinado NIP-98 — prova de posse da
+      // chave (sem isso, qualquer um registrava username com pubkey alheia).
+      // O servidor passa a EXIGIR quando REGISTER_PROOF_REQUIRED=1.
+      await initCredentials();
+      final body = {
         'username': username,
         if (phone != null && phone.isNotEmpty) 'phone': phone,
         if (email != null && email.isNotEmpty) 'email': email,
-      }, options: Options(headers: {
-        if (nostrPubkey != null) 'x-nostr-pubkey': nostrPubkey,
-      }));
+      };
+      final response = await _dio.post('/brix/register', data: body, options: _signedOptions('/brix/register', 'POST', pubkey: nostrPubkey, body: body));
       final data = response.data;
       return BrixRegisterResult(
         success: data['success'] == true,
@@ -166,6 +169,19 @@ class BrixService {
     } catch (e) {
       return BrixRegisterResult(success: false, error: 'Erro ao conectar ao servidor BRIX');
     }
+  }
+
+  /// v749 (auditoria CRIT-03 fase 2): nonce que vincula a invoice do claim
+  /// a ESTE pagamento e ESTE dono. O servidor rejeita invoice sem o nonce
+  /// quando CLAIM_NONCE_REQUIRED=1.
+  Future<String?> getClaimNonce(String paymentId, String pubkey) async {
+    try {
+      await initCredentials();
+      final path = '/brix/claim-nonce/$paymentId';
+      final response = await _dio.get(path, options: _signedOptions(path, 'GET', pubkey: pubkey));
+      if (response.data?['ok'] == true) return response.data['nonce'] as String?;
+    } catch (_) {}
+    return null;
   }
 
   /// Get the BRIX address for a given Nostr pubkey

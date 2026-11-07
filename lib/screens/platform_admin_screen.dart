@@ -1367,13 +1367,20 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
         if (userPk.isNotEmpty && seen.add(userPk)) {
           parties.add({'pubkey': userPk, 'label': 'Usuário (comprador) — ${userPk.substring(0, 8)}'});
         }
+        // v736: rótulos PRECISOS de papel — o caso 58ebf198 (07/11) mostrou a
+        // divergência: quem CONCLUIU (autor do comprovante) ≠ quem RECEBEU os
+        // sats (autopay velho pagou o canônico). O rótulo antigo dizia
+        // "canônico (recebeu os sats)" e induziu a mediadora ao errado.
         final completer = completed?['providerId']?.toString() ?? order['providerId']?.toString() ?? '';
         if (completer.isNotEmpty && seen.add(completer)) {
-          parties.add({'pubkey': completer, 'label': 'Provedor canônico (recebeu os sats) — ${completer.substring(0, 8)}'});
+          parties.add({'pubkey': completer, 'label': 'Provedor que CONCLUIU (autor do comprovante — provável credor) — ${completer.substring(0, 8)}'});
         }
-        for (final pk in accepts) {
+        for (var i = 0; i < accepts.length; i++) {
+          final pk = accepts[i];
           if (pk.isNotEmpty && seen.add(pk)) {
-            parties.add({'pubkey': pk, 'label': 'Provedor (corrida) — ${pk.substring(0, 8)}'});
+            parties.add({'pubkey': pk, 'label': i == 0
+                ? 'Provedor canônico (aceitou 1º — NÃO significa que recebeu) — ${pk.substring(0, 8)}'
+                : 'Provedor (corrida) — ${pk.substring(0, 8)}'});
           }
         }
         final btc = (order['btcAmount'] as num?)?.toDouble() ?? 0;

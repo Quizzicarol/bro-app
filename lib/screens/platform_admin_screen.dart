@@ -1447,10 +1447,16 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
         final brixAddr = await BrixService().adminAddressOf(selected!);
         if (brixAddr.hasAddress && (brixAddr.address?.isNotEmpty ?? false)) {
           setD(() => status = '⚡ Ele tem BRIX (${brixAddr.address}). Gerando invoice sem precisar dele online...');
+          // v740: o MOTIVO digitado vai no comentário — o servidor BRIX grava
+          // como sender_note e ele vê de onde vieram os sats no histórico
+          // (Carol pagou os 64 sats do 58ebf198 e o motivo não chegou, 07/11).
+          final reason = reasonCtrl.text.trim();
+          final comment = 'Bro mediação #${orderId.substring(0, 8)}'
+              '${reason.isNotEmpty ? ' — $reason' : ''}';
           final inv = await LnAddressService().getInvoice(
             lnAddress: brixAddr.address!,
             amountSats: amount,
-            comment: 'Bro mediação ordem #${orderId.substring(0, 8)}',
+            comment: comment,
           );
           final bolt11 = inv['invoice']?.toString() ?? '';
           if (inv['success'] == true && bolt11.isNotEmpty) {

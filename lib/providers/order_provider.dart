@@ -2169,7 +2169,8 @@ class OrderProvider with ChangeNotifier {
         final pendingCanonical = meta712['billCode_pending_canonical'] as String?;
         final pendingSince = (meta712['billCode_pending_since'] as num?)?.toInt() ?? 0;
         final nowMs712 = DateTime.now().millisecondsSinceEpoch;
-        if (pendingCanonical != canonical || (nowMs712 - pendingSince) < 30000) {
+        if (pendingCanonical != canonical) {
+          // Canônico MUDOU entre ciclos (fetch parcial!) — recomeça a janela.
           meta712['billCode_pending_canonical'] = canonical;
           meta712['billCode_pending_since'] = nowMs712;
           final idx712 = _orders.indexWhere((o) => o.id == order.id);
@@ -2177,7 +2178,16 @@ class OrderProvider with ChangeNotifier {
             _orders[idx712] = _orders[idx712].copyWith(metadata: meta712);
             await _saveOnlyUserOrders();
           }
-          broLog('⏳ v712: ${order.id.substring(0, 8)} — canônico ${canonical.substring(0, 8)} anotado; confirmando no próximo ciclo (>=60s) antes de revelar.');
+          broLog('⏳ v712: ${order.id.substring(0, 8)} — canônico ${canonical.substring(0, 8)} anotado; confirmando estabilidade por 30s antes de revelar.');
+          continue;
+        }
+        if ((nowMs712 - pendingSince) < 30000) {
+          // v756: MESMO canônico dentro da janela — NÃO reseta o relógio!
+          // (antes o pending_since era regravado a cada passada, e a fast-lane
+          // de 10s da v750 faminta a janela de 30s pra sempre — a entrega só
+          // saía quando ela expirava. Caso 8e718484: 7min em vez de ~2min.)
+          final resta = ((30000 - (nowMs712 - pendingSince)) / 1000).round();
+          broLog('⏳ v712: ${order.id.substring(0, 8)} — canônico estável, faltam ${resta}s de janela.');
           continue;
         }
         if (allAccepts.length > 1) {

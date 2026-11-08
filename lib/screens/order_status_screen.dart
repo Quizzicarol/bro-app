@@ -23,7 +23,6 @@ import '../config.dart';
 import '../l10n/app_localizations.dart';
 import '../services/notification_service.dart';
 import '../services/api_service.dart';
-import '../services/billcode_crypto_service.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter/services.dart';
@@ -2045,7 +2044,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     
     // Calcular fees e valores
     final rawBillCode = fullOrder?.billCode ?? _orderDetails?['billCode'] ?? '';
-    final billCode = BillCodeCryptoService().decrypt(rawBillCode);
+    final billCode = rawBillCode; // v760: BRO1 morto (zero legado nos relays)
 
     // v560: Usar fórmula canônica (baseSats × 3%) — mesma usada pelo Bro ao
     // gerar o invoice e pelo AutoPay (main.dart) ao validar. Antes usávamos

@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 import '../providers/order_provider.dart';
 import '../services/provider_service.dart';
 import '../services/storage_service.dart';
-import '../services/billcode_crypto_service.dart';
 import '../widgets/gradient_button.dart';
 
 class ProviderDashboardScreen extends StatefulWidget {
@@ -638,7 +637,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                       (order['metadata']?['pixCode']) ?? 
                       (order['metadata']?['code']) ?? 
                       '';
-    String billCode = BillCodeCryptoService().decrypt(rawBillCode);
+    String billCode = rawBillCode; // v760: BRO1 morto (zero legado nos relays)
     
     final status = order['status'] ?? '';
     

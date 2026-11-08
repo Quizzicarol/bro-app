@@ -11,7 +11,6 @@ import 'package:bro_app/services/nip98_signer.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../config.dart';
 import '../models/order.dart';
-import 'billcode_crypto_service.dart';
 import 'nip04_service.dart';
 import 'nip44_service.dart';
 
@@ -231,12 +230,13 @@ class NostrOrderService {
   static const String broTag = 'bro-order';
   static const String broAppTag = 'bro-app';
 
-  final BillCodeCryptoService _billCodeCrypto = BillCodeCryptoService();
-
-  /// Retorna billCode de um evento Nostr, decriptando BRO1 se necessário
+  /// Retorna billCode de um evento Nostr. v760: o decrypt BRO1 MORREU —
+  /// varredura nos relays (08/11): 56 ordens na semana, ZERO BRO1:, zero
+  /// plaintext, todas billCode="" com entrega NIP-44. Se um dia aparecer um
+  /// "BRO1:" fantasma, vai estourar visível (ciphertext na tela) em vez de
+  /// falhar em silêncio — rastreável é melhor que morto.
   String _getBillCode(Map<String, dynamic> content) {
-    final raw = content['billCode']?.toString() ?? '';
-    return _billCodeCrypto.decrypt(raw);
+    return content['billCode']?.toString() ?? '';
   }
 
   /// Publica uma ordem nos relays (raw)

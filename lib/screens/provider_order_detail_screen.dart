@@ -1202,8 +1202,13 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             const SizedBox(height: 16),
             _buildStatusCard(),
             const SizedBox(height: 16),
-            // Mostrar código de pagamento APENAS quando Bro precisa pagar
-            if (paymentData != null && paymentData.isNotEmpty) ...[
+            // Mostrar código de pagamento APENAS quando Bro precisa pagar.
+            // v762: corrida CONHECIDA e ainda não vencida → esconder o código
+            // e mostrar "apurando" (o else abaixo já tem o texto). Na janela
+            // entre a entrega do billCode e a detecção da perda, o perdedor
+            // conseguia copiar o código e pagar (caso Roberto, 72154135).
+            if (paymentData != null && paymentData.isNotEmpty &&
+                !(_acceptsCount > 1 && _wonRace != true)) ...[
               _buildPaymentDataCard(billType, paymentData),
               const SizedBox(height: 16),
             ] else ...[
@@ -2091,6 +2096,20 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   }
 
   Map<String, dynamic> _getStatusInfo(String status) {
+    // v762: corrida PERDIDA — nunca dizer "Ordem Aceita / Pague a conta".
+    // Incidente 72154135 (08/11, Roberto): o perdedor clicou "Entendi" no
+    // diálogo de corrida e a tela continuou mandando pagar — ele pagou
+    // R$120 de verdade e os sats foram para o canônico. O card de status
+    // agora reforça a perda em QUALQUER status não-terminal.
+    if (_lostRace == true &&
+        const {'pending', 'payment_received', 'accepted', 'payment_submitted', 'awaiting_confirmation'}.contains(status)) {
+      return {
+        'title': AppLocalizations.of(context)!.t('prov_race_lost_title'),
+        'description': AppLocalizations.of(context)!.t('prov_det_race_lost_paywarn'),
+        'icon': Icons.flag_outlined,
+        'color': Colors.orange,
+      };
+    }
     switch (status) {
       case 'pending':
         return {

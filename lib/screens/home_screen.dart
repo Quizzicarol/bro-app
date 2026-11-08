@@ -729,7 +729,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await Future.wait([
         breezProvider.refresh(),
         // PERFORMANCE: Na inicialização, não forçar sync — o initialize() já faz
-        // Forçar apenas em pull-to-refresh (force=true)
+        // v763: pull-to-refresh agora força o sync NOSTR de verdade. Antes o
+        // force=true caía só no fetchOrders() (reload local/API) e o sync com
+        // os relays NUNCA rodava no gesto — usuário puxava 4x, via "dados
+        // atualizados" e nada mudava (o sync real só vinha no timer de 45s).
+        if (force) orderProvider.syncOrdersFromNostr(force: true),
         if (force) orderProvider.fetchOrders(),
         if (!force) orderProvider.syncOrdersFromNostr(), // usa throttle interno
       ]);

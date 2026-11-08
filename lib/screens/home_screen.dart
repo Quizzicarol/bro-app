@@ -598,7 +598,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             (String invoice) => breezProvider.payInvoice(invoice),
             'Spark',
           );
-          broLog('💼 PlatformFeeService callback configurado com BreezProvider');
+          // v751: o wallet-history fetcher era registrado só num método do
+          // LightningProvider que NINGUÉM chama — sem ele, hasWalletHistoryFetcher
+          // falso pra sempre e o FeeReconcile adiava eternamente (taxas órfãs
+          // eb547393/c705cc55 nunca quitavam, em qualquer versão).
+          PlatformFeeService.setWalletHistoryFetcher(() => breezProvider.getAllPayments());
+          broLog('💼 PlatformFeeService callback + history fetcher configurados');
         }
 
         if (!success && mounted) {

@@ -969,6 +969,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 (String invoice) => breezProvider.payInvoice(invoice),
                 'Spark',
               );
+              // v751: history fetcher junto (senão FeeReconcile adia pra sempre)
+              PlatformFeeService.setWalletHistoryFetcher(() => breezProvider.getAllPayments());
               broLog('💼 PlatformFeeService callback configurado');
             }
           } else {
@@ -987,6 +989,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 (String invoice) => breezProvider.payInvoice(invoice),
                 'Spark',
               );
+              // v751: history fetcher junto (senão FeeReconcile adia pra sempre)
+              PlatformFeeService.setWalletHistoryFetcher(() => breezProvider.getAllPayments());
               broLog('💼 PlatformFeeService callback configurado');
             }
             

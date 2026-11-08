@@ -17,6 +17,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@breeztech/breez-sdk-spark": "0.28.0",
     "argon2": "^0.45.2",
     "axios": "1.13.6",
     "body-parser": "1.20.4",

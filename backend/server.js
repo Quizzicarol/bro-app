@@ -139,6 +139,15 @@ app.use('/collateral', requireAuth, collateralRoutes);
 app.use('/escrow', requireAuth, escrowRoutes);
 app.use('/agent', requireAuth, agentRoutes);
 app.use('/push', requireAuth, pushRoutes);
+// Cofre HODL (garantia real do provedor). Sem VAULT_WALLET_MNEMONIC o serviço
+// responde 503 e o resto funciona normal. O watchtower é a fonte de pendências
+// pra liberação automática.
+// v756: ESTAS LINHAS NUNCA PODEM FICAR FORA DA MAIN — o deploy do v753 as
+// deixou só na branch e o cofre saiu do ar em produção por ~1h (fundos
+// travados seguem seguros na HTLC, mas a automação parou).
+require('./services/hodlVaultService').attachWatchtower(watchtower);
+require('./services/hodlVaultService').warmup();
+app.use('/hodl', requireAuth, require('./routes/hodl_vault'));
 // v753: verificação de senha admin no servidor (argon2id). SEM requireAuth —
 // a senha É a credencial. Rate limit + argon2 dentro da rota. Transição:
 // convive com o hash local dos builds velhos até o app novo dominar.

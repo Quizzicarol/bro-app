@@ -7,10 +7,16 @@
 #
 # Requires gitleaks: https://github.com/gitleaks/gitleaks#installing
 
-# Check if gitleaks is installed
-if command -v gitleaks >/dev/null 2>&1; then
+# Check if gitleaks is installed (PATH ou tools/ local — v753)
+GITLEAKS="gitleaks"
+if ! command -v gitleaks >/dev/null 2>&1; then
+    if [ -f "./tools/gitleaks.exe" ]; then
+        GITLEAKS="./tools/gitleaks.exe"
+    fi
+fi
+if command -v "$GITLEAKS" >/dev/null 2>&1 || [ -x "$GITLEAKS" ] || [ -f "$GITLEAKS" ]; then
     echo "🔍 Running gitleaks scan..."
-    gitleaks protect --staged --config .gitleaks.toml --verbose
+    "$GITLEAKS" protect --staged --config .gitleaks.toml --verbose
     if [ $? -ne 0 ]; then
         echo ""
         echo "❌ SECRETS DETECTED! Commit blocked."

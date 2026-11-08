@@ -2190,6 +2190,31 @@ class OrderProvider with ChangeNotifier {
           broLog('⏳ v712: ${order.id.substring(0, 8)} — canônico estável, faltam ${resta}s de janela.');
           continue;
         }
+        // v758: AUTORIDADE FINAL = watchtower. Ele ouve TODOS os relays o
+        // tempo todo e acumula aceites por minutos; o nosso fetch é um
+        // instantâneo que pode ser parcial (caso 55e37a9e, 07/11: entregamos
+        // pro perdedor porque o aceite do canônico não estava no nosso fetch
+        // — ele pagou R$ de verdade). Se o servidor discorda → NÃO entrega,
+        // cura a referência e entrega certo no próximo ciclo. Servidor fora
+        // ou não conhece a ordem → segue o quórum de relays (nunca pior).
+        try {
+          final wt = await ApiService().get('/canonical/${order.id}')
+              .timeout(const Duration(seconds: 6), onTimeout: () => null);
+          if (wt != null && wt['known'] == true) {
+            final wtCanonical = wt['canonical']?.toString() ?? '';
+            if (wtCanonical.isNotEmpty && wtCanonical != canonical) {
+              broLog('🚨 v758: watchtower DISCORDA — relays dizem ${canonical.substring(0, 8)} mas o servidor (visão acumulada) diz ${wtCanonical.substring(0, 8)}. NÃO revelando agora; curando referência.');
+              final idxW = _orders.indexWhere((o) => o.id == order.id);
+              if (idxW != -1) {
+                _orders[idxW] = _orders[idxW].copyWith(providerId: wtCanonical);
+                await _saveOnlyUserOrders();
+                _immediateNotify();
+              }
+              continue;
+            }
+          }
+        } catch (_) { /* servidor fora → quórum de relays decide (hoje) */ }
+
         if (allAccepts.length > 1) {
           broLog('🏁 v541: ordem ${order.id.substring(0, 8)} tem ${allAccepts.length} accepts. Winner=${canonical.substring(0, 8)} (eu já aponto pra ele ✓)');
         }

@@ -1485,6 +1485,26 @@ class NostrWatchtowerService {
    * Uses #p tags from the event to identify targeted providers if available,
    * otherwise broadcasts to all registered users (limited by rate limiter).
    */
+  /**
+   * v758: canônico segundo o WATCHTOWER — ele ouve TODOS os relays o tempo
+   * todo e acumula aceites ao longo de minutos. A visão do app do comprador
+   * é um fetch de momento que pode ser parcial (caso 55e37a9e, 07/11: o
+   * comprador não viu o aceite do canônico no fetch e entregou o código pro
+   * perdedor, que pagou R$ de verdade). O app consulta ANTES de revelar.
+   */
+  getCanonicalInfo(orderId) {
+    const list = this._orderAccepts.get(orderId);
+    if (!list || list.length === 0) return { known: false };
+    const sorted = [...list].sort((a, b) => a.acceptedAt - b.acceptedAt);
+    return {
+      known: true,
+      canonical: sorted[0].pubkey,
+      accepts: sorted.length,
+      oldestAcceptedAt: sorted[0].acceptedAt,
+      newestAcceptedAt: sorted[sorted.length - 1].acceptedAt,
+    };
+  }
+
   async _notifyNewOrder(creatorPubkey, orderId, content, event) {
     // v588: ANTI-PHANTOM — republished bro_order events must NOT re-broadcast.
     // The order owner re-publishes the same kind 30078 event (same #d tag) on

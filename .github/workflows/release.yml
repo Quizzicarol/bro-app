@@ -31,12 +31,11 @@ jobs:
 
       - name: Generate env.json
         run: |
-          printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","ADMIN_PASSWORD_HASH":"%s","BILLCODE_KEY":"%s"}' \
+          printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s","BILLCODE_KEY":"%s"}' \
             "${{ secrets.BREEZ_API_KEY }}" \
             "${{ secrets.PLATFORM_LIGHTNING_ADDRESS }}" \
             "${{ secrets.BACKEND_URL }}" \
             "${{ secrets.ADMIN_PUBKEY }}" \
-            "${{ secrets.ADMIN_PASSWORD_HASH }}" \
             "${{ secrets.BILLCODE_KEY }}" \
             > env.json
 

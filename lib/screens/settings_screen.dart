@@ -6,7 +6,8 @@ import 'package:provider/provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:bro_app/services/log_utils.dart';
-import 'package:crypto/crypto.dart';
+import 'package:http/http.dart' as http;
+import '../config.dart';
 import '../services/storage_service.dart';
 import '../services/version_check_service.dart';
 import '../providers/breez_provider.dart';
@@ -27,9 +28,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isLoading = true;
   int _adminTapCount = 0;
   String _appVersion = '1.0.0';
-  
-  // Admin password hash loaded from env (not in source code)
-  static const String _adminPasswordHash = String.fromEnvironment('ADMIN_PASSWORD_HASH', defaultValue: '');
+  bool _verifying = false; // v754: trava o botão enquanto o servidor verifica
+
+  // v754: o hash local compilado MORREU (quem extrai o APK quebrava o SHA-256
+  // offline). A senha agora é verificada no servidor: /admin/verify com
+  // argon2id + rate limit (auditoria item 2, patch do agente externo).
 
   @override
   void initState() {
@@ -277,7 +280,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   fillColor: Colors.black26,
                 ),
                 onSubmitted: (_) {
-                  _validateAdminPassword(passwordController.text);
+                  if (!_verifying) _validateAdminPassword(passwordController.text);
                 },
               ),
             ],
@@ -289,7 +292,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             ElevatedButton(
               onPressed: () {
-                _validateAdminPassword(passwordController.text);
+                if (!_verifying) _validateAdminPassword(passwordController.text);
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
               child: Text(AppLocalizations.of(context).t('enter'), style: const TextStyle(color: Colors.black)),
@@ -300,31 +303,63 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
   
-  void _validateAdminPassword(String password) {
-    if (_adminPasswordHash.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(AppLocalizations.of(context).t('settings_admin_not_configured')),
-          backgroundColor: Colors.orange,
-          duration: const Duration(seconds: 3),
-        ),
-      );
-      return;
-    }
-    
-    final inputHash = sha256.convert(utf8.encode(password)).toString();
-    
-    if (inputHash == _adminPasswordHash) {
-      Navigator.pop(context); // Fechar dialog
-      Navigator.pushNamed(context, '/admin-bro-2024');
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(AppLocalizations.of(context).t('settings_wrong_password')),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 2),
-        ),
-      );
+  // v754: verificação no servidor (fail-closed: sem rede ou resposta !=
+  // ok:true → NÃO destrava). Rate limit no backend (5/min/IP) mata força
+  // bruta — antes dava pra tentar infinito offline contra o hash local.
+  Future<void> _validateAdminPassword(String password) async {
+    if (_verifying) return;
+    setState(() => _verifying = true);
+    try {
+      final backendUrl = AppConfig.defaultBackendUrl;
+      if (backendUrl.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(AppLocalizations.of(context).t('settings_admin_not_configured')),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+
+      final resp = await http
+          .post(
+            Uri.parse('$backendUrl/admin/verify'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'password': password}),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      final ok = resp.statusCode == 200 && (jsonDecode(resp.body)['ok'] == true);
+
+      if (!mounted) return;
+      if (ok) {
+        Navigator.pop(context); // Fechar dialog
+        Navigator.pushNamed(context, '/admin-bro-2024');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(AppLocalizations.of(context).t('settings_wrong_password')),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (_) {
+      // timeout/rede = SEM acesso (fail-closed, nunca destravar)
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(AppLocalizations.of(context).t('settings_wrong_password')),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _verifying = false);
     }
   }
 

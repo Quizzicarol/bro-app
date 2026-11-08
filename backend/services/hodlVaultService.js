@@ -357,6 +357,33 @@ class HodlVaultService {
   }
 
   /**
+   * Admin: paga uma invoice bolt11 qualquer com a carteira do cofre
+   * (devoluções de trial etc). Usa o SDK JÁ VIVO do serviço — a tool
+   * externa _vault_pay.js morria ao subir um segundo SDK (e usava
+   * paymentRequest type 'input', que quebrava o sendPayment).
+   */
+  async adminPayout(invoice) {
+    if (typeof invoice !== 'string' || !invoice.toLowerCase().startsWith('lnbc')) {
+      throw new Error('invoice inválida (só mainnet)');
+    }
+    const sdk = await this._getSdk();
+    const prepare = await sdk.prepareSendPayment({
+      paymentRequest: { type: 'bolt11Invoice', invoice },
+    });
+    const resp = await sdk.sendPayment({
+      prepareResponse: prepare,
+      options: { type: 'bolt11Invoice', preferSpark: true, completionTimeoutSecs: 60 },
+    });
+    console.log(`💸 [Vault] Payout: ${resp.payment.amount?.toString()} sats, status=${resp.payment.status}, id=${resp.payment.id}`);
+    return {
+      paymentId: resp.payment.id,
+      status: String(resp.payment.status),
+      amountSats: resp.payment.amount?.toString(),
+      feeSats: resp.payment.fees?.toString(),
+    };
+  }
+
+  /**
    * Renovação: se a garantia está travada e perto do vencimento (e NÃO foi
    * liberada), cria o próximo invoice HODL encadeado. O app paga e o ciclo
    * continua. Se foi liberada, devolve null — os sats voltam no expiry.

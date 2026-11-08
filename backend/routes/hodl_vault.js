@@ -93,6 +93,18 @@ router.post('/admin/release', requireAdmin, async (req, res) => {
 });
 
 // POST /hodl/admin/slash — admin avisa OU recolhe { paymentHash, reason, collect }
+// POST /hodl/admin/payout — admin paga uma invoice bolt11 com a carteira do
+// cofre (devolução de trial etc). Usa o SDK vivo do serviço.
+router.post('/admin/payout', requireAdmin, async (req, res) => {
+  try {
+    const invoice = req.body?.invoice;
+    const out = await vault.adminPayout(invoice);
+    res.json({ success: true, ...out });
+  } catch (e) {
+    res.status(400).json({ success: false, error: e.message });
+  }
+});
+
 router.post('/admin/slash', requireAdmin, async (req, res) => {
   try {
     const paymentHash = String(req.body?.paymentHash || '');

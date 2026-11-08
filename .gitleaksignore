@@ -1,0 +1,10 @@
+# gitleaks — achados revisados 08/nov/2026 (auditoria, verificado à mão):
+# 1. FALSO POSITIVO: casou o RÓTULO de tradução 'nip06_private_key'
+#    (nome de chave no app_strings.dart), não uma chave real.
+3275d6deead07972ffae790fbcaf3426d7d5aa26:lib/l10n/app_strings.dart:generic-api-key:1951
+# 2. Hash SHA-256 da senha admin ANTIGA (hardcoded em fev/2026). Senha já
+#    rotacionada (08/nov) e a verificação migrou pro servidor (argon2id,
+#    /admin/verify). O hash não abre mais nada: o backend exige a assinatura
+#    Nostr da chave admin (NIP-98), não a senha. Mantido visível aqui de
+#    propósito — se a senha antiga foi reusada em outro lugar, trocar lá.
+0a5518ae3dec71c98c6ff359ea258e8ec09294b1:lib/screens/settings_screen.dart:admin-hash:26

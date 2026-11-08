@@ -149,7 +149,10 @@ class NostrWatchtowerService {
     this._backfillSubs = new Set(); // subIds awaiting EOSE so we can CLOSE
     this._backfillTimer = null;
     this._BACKFILL_INTERVAL_MS = 60_000;
-    this._BACKFILL_WINDOW_SEC = 180;
+    // v761: 180s → 600s. Quedas de socket de vários minutos (incidente
+    // e9274b13, 08/11: ~9min cego) deixavam furos permanentes; com o
+    // knowledge pass abaixo, eventos de catch-up só REGISTRAM (não pusham).
+    this._BACKFILL_WINDOW_SEC = 600;
     // v584: Tracking de pagamentos pendentes. Quando o provedor publica
     // bro_complete com providerInvoice, registramos aqui. Se em > 6h o
     // cliente não publicar status='completed'/'liquidated', re-pusha pra
@@ -294,9 +297,12 @@ class NostrWatchtowerService {
         const subId = `bro-wt-${Date.now().toString(36)}`;
         this._subscriptions.set(relayUrl, subId);
 
-        // Subscribe to ALL bro-order tagged events from the last 10 minutes
-        // Short window to minimize stale events; real-time events arrive after EOSE
-        const since = Math.floor(Date.now() / 1000) - 600;
+        // Subscribe to ALL bro-order tagged events from the last 30 minutes.
+        // v761: era 600s — uma queda de >10min criava furo PERMANENTE de
+        // conhecimento (aceites nunca registrados → /canonical known:false).
+        // O knowledge pass registra catch-up sem disparar push, então a
+        // janela maior não causa push fantasma (gates de push intactos).
+        const since = Math.floor(Date.now() / 1000) - 1800;
 
         const req = JSON.stringify(['REQ', subId,
           {
@@ -484,6 +490,72 @@ class NostrWatchtowerService {
     }
   }
 
+  /**
+   * v761: KNOWLEDGE PASS. Os gates de idade/EOSE/boot de _handleEvent existem
+   * pra impedir PUSH fantasma — mas também impediam o REGISTRO de eventos de
+   * catch-up. Incidente e9274b13 (08/11/26): socket caiu 19:13→19:22; no
+   * reconnect os 3 aceites chegaram históricos (pré-EOSE + age>300s) e foram
+   * descartados → _orderAccepts vazio → /canonical respondeu known:false →
+   * veto v758 do app falhou aberto → billCode entregue ao PERDEDOR da corrida
+   * (dinheiro real em risco; dessa vez o perdedor não pagou o Pix).
+   *
+   * Aqui NÃO se envia push — só registro idempotente (mesma lógica do switch
+   * principal, que continua sendo o único lugar onde push acontece, após os
+   * gates). Assinatura já foi verificada por verifyEvent antes da chamada.
+   */
+  _recordKnowledge(event) {
+    let content;
+    try { content = JSON.parse(event.content); } catch (_) { return; }
+    if (!content || typeof content !== 'object') return;
+    const orderId = content.orderId;
+    if (typeof orderId !== 'string' || orderId.length > 64 || !/^[a-zA-Z0-9_-]+$/.test(orderId)) return;
+    const sender = event.pubkey;
+    if (!isHexPubkey(sender)) return;
+    const eventType = content.type;
+
+    if (eventType === 'bro_order') {
+      // Mesma regra v577 do fluxo principal: confia no ASSINANTE (verificado),
+      // first-wins contra hijack tardio de routing.
+      if (!this._orderUsers.has(orderId)) {
+        this._orderUsers.set(orderId, sender);
+      }
+      this._cacheOrderMeta(orderId, content);
+      return;
+    }
+
+    if (eventType === 'bro_accept') {
+      const userPk = this._orderUsers.get(orderId)
+        || (isHexPubkey(content.userPubkey) ? content.userPubkey : null);
+      if (userPk !== sender) {
+        this._orderProviders.set(orderId, sender);
+        if (this._orderProviders.size > 4000) {
+          const pEntries = Array.from(this._orderProviders.entries());
+          this._orderProviders = new Map(pEntries.slice(-2000));
+        }
+      }
+      // acceptedAt é imutável no content assinado; re-publish do mesmo
+      // provedor mantém o acceptedAt original (first-wins por pubkey).
+      let list = this._orderAccepts.get(orderId);
+      if (!list) { list = []; this._orderAccepts.set(orderId, list); }
+      if (!list.some(a => a.pubkey === sender)) {
+        let ts = typeof event.created_at === 'number' ? event.created_at : Math.floor(Date.now() / 1000);
+        if (typeof content.acceptedAt === 'string') {
+          const parsed = Date.parse(content.acceptedAt);
+          if (!isNaN(parsed)) ts = Math.floor(parsed / 1000);
+        }
+        list.push({ pubkey: sender, acceptedAt: ts });
+        if (this._orderAccepts.size > 4000) {
+          const aEntries = Array.from(this._orderAccepts.entries());
+          this._orderAccepts = new Map(aEntries.slice(-2000));
+        }
+        const age = Math.floor(Date.now() / 1000) - (event.created_at || 0);
+        console.log(`🤝 [Watchtower] Accept ${orderId.substring(0, 8)} por ${sender.substring(0, 8)} (${list.length}º) age=${age}s`);
+        this._scheduleStateSave();
+      }
+      return;
+    }
+  }
+
   async _handleEvent(relayUrl, event) {
     if (!event || !event.id) return;
 
@@ -513,6 +585,10 @@ class NostrWatchtowerService {
     // gates de idade/EOSE abaixo — esses gates só evitam PUSH duplicado; ainda
     // queremos um arquivo local COMPLETO (incluindo eventos de catch-up).
     this._mirrorEvent(relayUrl, event);
+
+    // v761: KNOWLEDGE PASS — registra conhecimento (aceites → autoridade do
+    // canônico, usuários, provedores, meta) ANTES dos gates de idade/EOSE/boot.
+    this._recordKnowledge(event);
 
     // Skip events older than 5 minutes (catch-up from subscription, already delivered)
     const eventAge = Math.floor(Date.now() / 1000) - (event.created_at || 0);

@@ -647,6 +647,10 @@ class NostrWatchtowerService {
                 const aEntries = Array.from(this._orderAccepts.entries());
                 this._orderAccepts = new Map(aEntries.slice(-2000));
               }
+              // v758: persistir — a autoridade do canônico não pode ficar
+              // cega a cada deploy (deploy do v758 zerou a memória e a rota
+              // /canonical respondeu known:false pra uma ordem de ontem).
+              this._scheduleStateSave();
             }
           }
           if (isValidPubkey(userPubkeyA) && userPubkeyA !== senderPubkey) {
@@ -1821,7 +1825,14 @@ class NostrWatchtowerService {
         this._terminalOrders.set(orderId, ts);
         terms++;
       }
-      console.log(`🗼 [Watchtower] Estado carregado: ${pushes} dedups, ${metas} metas, ${openers} disputas, ${terms} terminais`);
+      // v758: aceites (autoridade do canônico) — descarta aceites com mais de 7 dias
+      let accepts = 0;
+      for (const [orderId, list] of Object.entries(data.orderAccepts || {})) {
+        if (!Array.isArray(list)) continue;
+        const valid = list.filter(a => a && typeof a.pubkey === 'string' && typeof a.acceptedAt === 'number' && now - a.acceptedAt * 1000 <= 7 * 24 * 60 * 60 * 1000);
+        if (valid.length > 0) { this._orderAccepts.set(orderId, valid); accepts += valid.length; }
+      }
+      console.log(`🗼 [Watchtower] Estado carregado: ${pushes} dedups, ${metas} metas, ${openers} disputas, ${terms} terminais, ${accepts} aceites`);
     } catch (e) {
       console.log(`[Watchtower] Could not load state: ${e.message}`);
     }
@@ -1854,11 +1865,15 @@ class NostrWatchtowerService {
         for (const [k, v] of this._disputeOpeners) disputeOpeners[k] = v;
         const terminalOrders = { ...(merged.terminalOrders || {}) };
         for (const [k, v] of this._terminalOrders) terminalOrders[k] = v;
+        // v758: aceites por ordem (autoridade do canônico)
+        const orderAccepts = { ...(merged.orderAccepts || {}) };
+        for (const [k, v] of this._orderAccepts) orderAccepts[k] = v;
         const out = {
           seenPushes: prunedPushes,
           orderMeta: Object.fromEntries(Object.entries(orderMeta).slice(-4000)),
           disputeOpeners: Object.fromEntries(Object.entries(disputeOpeners).slice(-4000)),
           terminalOrders: Object.fromEntries(Object.entries(terminalOrders).slice(-4000)),
+          orderAccepts: Object.fromEntries(Object.entries(orderAccepts).slice(-2000)),
         };
         fs.writeFileSync(WATCHTOWER_STATE_FILE, JSON.stringify(out), { encoding: 'utf8', mode: 0o600 });
       } catch (e) {

@@ -50,7 +50,12 @@ class NostrOrderService {
   // Provider publica bro_republish_request → customer detecta no sync
   final List<String> _pendingRepublishRequests = [];
   List<String> get pendingRepublishRequests => List.unmodifiable(_pendingRepublishRequests);
-  void clearRepublishRequests() => _pendingRepublishRequests.clear();
+  // v774 (auditoria M2): autor de cada request — sem ele, QUALQUER pubkey
+  // podia disparar re-envio de billcode (spam + vazamento de timing). O
+  // handler só re-envia se o autor for o provedor da ordem.
+  final Map<String, String> _pendingRepublishRequestAuthors = {};
+  Map<String, String> get pendingRepublishRequestAuthors => Map.unmodifiable(_pendingRepublishRequestAuthors);
+  void clearRepublishRequests() { _pendingRepublishRequests.clear(); _pendingRepublishRequestAuthors.clear(); }
 
   // BLOCKLIST LOCAL: IDs de ordens em estado terminal (completed, cancelled, etc)
   // Persistida em SharedPreferences para sobreviver a reinicializações
@@ -703,16 +708,37 @@ class NostrOrderService {
       
       if (missingIds.isNotEmpty) {
         // Buscar em lotes de 5 (reduced from 10)
+        final acceptsCache = <String, List<String>>{}; // v774: 1 fetch por ordem por sync
         for (int i = 0; i < missingIds.length; i += 5) {
           final batch = missingIds.skip(i).take(5).toList();
           final batchResults = await Future.wait(
             batch.map((orderId) => fetchOrderFromNostr(orderId).catchError((_) => null)),
           );
-          
+
           for (int j = 0; j < batchResults.length; j++) {
             final orderData = batchResults[j];
             if (orderData != null) {
               seenIds.add(batch[j]);
+              // v774 (auditoria A1): ter meu bro_accept no relay NÃO prova
+              // posse — prova só PARTICIPAÇÃO. Se eu perdi a corrida e o
+              // pós-check v656/v699 não rodou (fail-open/limite de lote), a
+              // ordem voltava como "minha" e eu podia gerar invoice de ganho
+              // SEM ter pago o Pix (mesma classe do 7b7542f8, via corrida).
+              // Fail-closed: sem dados de aceites → pula (re-tenta no próximo
+              // sync); canônico ≠ eu → pula (sou perdedor).
+              final oid = batch[j];
+              final accepts = acceptsCache.putIfAbsent(oid, () => <String>[]).isNotEmpty
+                  ? acceptsCache[oid]!
+                  : (acceptsCache[oid] = await fetchAllAcceptsForOrder(oid)
+                      .timeout(const Duration(seconds: 10), onTimeout: () => <String>[]));
+              if (accepts.isEmpty) {
+                broLog('🛡️ v774: $oid sem aceites verificáveis — NÃO recuperando como minha (retry no próximo sync)');
+                continue;
+              }
+              if (accepts.first != providerPubkey) {
+                broLog('🏁 v774: $oid — canônico é ${accepts.first.substring(0, 8)}, não eu. Corrida perdida, ordem não é minha.');
+                continue;
+              }
               orderData['providerId'] = providerPubkey;
               orders.add(orderData);
             }
@@ -3434,6 +3460,8 @@ class NostrOrderService {
             if (contentType == 'bro_republish_request') {
               if (orderId != null) {
                 _pendingRepublishRequests.add(orderId);
+                final reqAuthor = event['pubkey']?.toString();
+                if (reqAuthor != null) _pendingRepublishRequestAuthors[orderId] = reqAuthor; // v774
                 broLog('📩 fetchOrderUpdatesForUser: bro_republish_request recebido para ${orderId.substring(0, 8)}');
               }
               continue;

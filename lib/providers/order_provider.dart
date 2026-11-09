@@ -5571,6 +5571,17 @@ class OrderProvider with ChangeNotifier {
       // Só re-publicar se somos o criador da ordem
       if (order.userPubkey != _currentUserPubkey) continue;
 
+      // v774 (auditoria M2): o request tem que ter sido assinado pelo
+      // PROVEDOR da ordem. Antes, qualquer pubkey publicava
+      // bro_republish_request e disparava re-envio do billcode (spam +
+      // vazamento de timing de quem é o comprador). Autor desconhecido ou
+      // ≠ providerId → ignora.
+      final reqAuthor = _nostrOrderService.pendingRepublishRequestAuthors[orderId];
+      if (reqAuthor == null || reqAuthor != order.providerId) {
+        broLog('🛡️ v774: republish request de ${reqAuthor?.substring(0, 8) ?? "desconhecido"} ignorado — não é o provedor da ordem ${orderId.substring(0, 8)}');
+        continue;
+      }
+
       // v582: Se a ordem está accepted SEM billCode entregue, re-enviar
       // o billCode encriptado direto (provider está preso em "Obtendo dados").
       if (order.status == 'accepted' &&

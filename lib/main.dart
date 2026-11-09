@@ -770,7 +770,11 @@ class BroApp extends StatelessWidget {
             if (providerInvoice == null || providerInvoice.isEmpty) {
               try {
                 final nostrService = NostrOrderService();
-                final completeData = await nostrService.fetchOrderCompleteEvent(orderId);
+                // v773 (auditoria A2): excluir refresh AUTO-ASSINADO pelo
+                // comprador — um invoice_refresh self (providerId corrompido)
+                // entrava como candidato e o autopay podia pagar a própria
+                // carteira (mesma classe do v768 na tela de confirmação).
+                final completeData = await nostrService.fetchOrderCompleteEvent(orderId, excludeAuthorPubkey: order.userPubkey);
                 if (completeData != null) {
                   providerInvoice = completeData['providerInvoice'] as String?;
                 }
@@ -822,7 +826,13 @@ class BroApp extends StatelessWidget {
                 return false;
               }
             } catch (e) {
-              broLog('⚠️ [AutoPay-Main] guarda de corrida falhou (seguindo): $e');
+              // v773 (auditoria A2): FAIL-CLOSED. Antes o catch seguia em
+              // frente e pagava a invoice de FALLBACK (metadata antiga /
+              // possivelmente poluída por refresh self-assinado). Exceção no
+              // guarda (relay instável no meio do fetch, parse quebrado) NÃO
+              // autoriza pagar — próximo sync tenta de novo com dados frescos.
+              broLog('🚨 [AutoPay-Main] guarda de corrida EXCEÇÃO — NÃO pagando neste ciclo (fail-closed): $e');
+              return false;
             }
 
             // v449: Validar invoice amount antes de pagar (segurança contra invoice inflado)

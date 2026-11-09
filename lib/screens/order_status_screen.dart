@@ -4750,21 +4750,50 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 providerInvoice = completerInvoice;
               }
             } else {
-              broLog('🚨 [ConfirmPayment] comprovante de ${completerId.substring(0, 8)} que NÃO participou da corrida — BLOQUEANDO pagamento');
-              if (mounted) {
-                ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(l.t('order_completer_mismatch')),
-                    backgroundColor: Colors.red,
-                    duration: const Duration(seconds: 8),
-                  ),
-                );
-                setState(() {
-                  _isConfirming = false;
-                });
+              // v767: DESEMPATE PELA AUTORIDADE DO SERVIDOR antes de bloquear.
+              // O bloqueio depende de dados locais: providerId pode estar
+              // corrompido (republish do perdedor re-suja o campo — app velho
+              // do e1e326ba republicou 'accepted' nas ordens 7b7542f8/0ebdebc7
+              // em 09/11) e o fetch de aceites pode estourar timeout vazio.
+              // O watchtower acumula aceites o dia todo e conhece o canônico.
+              // Se o completer É o canônico do servidor → pagar ELE (a invoice
+              // é dele, o trabalho é dele). Servidor fora/não conhece/
+              // completer ≠ canônico → mantém o bloqueio (fail-safe).
+              bool serverVouched = false;
+              try {
+                final wt = await ApiService().get('/canonical/${widget.orderId}')
+                    .timeout(const Duration(seconds: 6), onTimeout: () => null);
+                if (wt != null && wt['known'] == true) {
+                  final serverCanon = wt['canonical']?.toString() ?? '';
+                  if (serverCanon.isNotEmpty && completerId == serverCanon) {
+                    serverVouched = true;
+                  }
+                }
+              } catch (_) {}
+              if (serverVouched) {
+                broLog('✅ v767: watchtower confirma completer ${completerId.substring(0, 8)} como canônico — pagando ele (dado local estava corrompido/fetch vazio)');
+                trackedProvider = completerId;
+                final completerInvoice = completeEvt?['providerInvoice']?.toString();
+                if (completerInvoice != null && completerInvoice.isNotEmpty) {
+                  providerInvoice = completerInvoice;
+                }
+              } else {
+                broLog('🚨 [ConfirmPayment] comprovante de ${completerId.substring(0, 8)} que NÃO participou da corrida — BLOQUEANDO pagamento');
+                if (mounted) {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(l.t('order_completer_mismatch')),
+                      backgroundColor: Colors.red,
+                      duration: const Duration(seconds: 8),
+                    ),
+                  );
+                  setState(() {
+                    _isConfirming = false;
+                  });
+                }
+                return;
               }
-              return;
             }
           }
         }

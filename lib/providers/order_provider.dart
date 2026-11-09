@@ -2818,7 +2818,14 @@ class OrderProvider with ChangeNotifier {
           _availableOrdersForProvider.removeWhere((o) => o.id == orderId);
           // v656: deletar meu accept fantasma dos relays (NIP-09) para não
           // virar ordem fantasma na MINHA lista no próximo sync.
-          _nostrOrderService.deleteAcceptEvent(privateKey: privateKey, orderId: orderId);
+          // v775b: NUNCA deletar se a ordem está em DISPUTA — os aceites são
+          // a evidência da corrida pra mediação (5cd0b7f7, 09/11: os 3
+          // aceites sumiram dos relays no meio da disputa ativa).
+          if (order.status != 'disputed') {
+            _nostrOrderService.deleteAcceptEvent(privateKey: privateKey, orderId: orderId);
+          } else {
+            broLog('🛡️ v775b: ordem em disputa — accept preservado como evidência');
+          }
           _isLoading = false;
           _immediateNotify();
           return false;
@@ -2873,7 +2880,12 @@ class OrderProvider with ChangeNotifier {
             _orders.removeWhere((o) => o.id == orderId);
             await _saveOnlyUserOrders();
             _availableOrdersForProvider.removeWhere((o) => o.id == orderId);
-            _nostrOrderService.deleteAcceptEvent(privateKey: privateKey, orderId: orderId);
+            // v775b: mesma regra — em disputa, o accept fica (evidência).
+            if (order.status != 'disputed') {
+              _nostrOrderService.deleteAcceptEvent(privateKey: privateKey, orderId: orderId);
+            } else {
+              broLog('🛡️ v775b: ordem em disputa — accept preservado como evidência');
+            }
             _isLoading = false;
             _immediateNotify();
             return false;

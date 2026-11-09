@@ -849,7 +849,17 @@ class NostrOrderService {
           final acceptedAtStr = content['acceptedAt'] as String?;
           if (acceptedAtStr != null) {
             final parsed = DateTime.tryParse(acceptedAtStr);
-            if (parsed != null) sortKey = (parsed.millisecondsSinceEpoch / 1000).round();
+            if (parsed != null) {
+              final aaTs = (parsed.millisecondsSinceEpoch / 1000).round();
+              // v775: acceptedAt é horário LOCAL do aparelho SEM fuso. Um
+              // device com relógio/fuso errado finge ter aceitado antes e
+              // vira "canônico" pra metade do app (caso 5cd0b7f7, 09/11:
+              // aceite às 23:11 com acceptedAt 19:11 → canônico dividido;
+              // billcode foi pro vencedor real, disputa endereçada ao errado).
+              // Se o auto-declarado diverge do created_at do evento > 5min,
+              // desconfia e usa o created_at (relays rejeitam futuro distante).
+              sortKey = ((aaTs - createdAt).abs() > 300) ? createdAt : aaTs;
+            }
           }
           accepts.add({'pubkey': pubkey, 'created_at': sortKey});
         } catch (_) {}
@@ -889,7 +899,11 @@ class NostrOrderService {
           final aa = content['acceptedAt'] as String?;
           if (aa != null) {
             final parsed = DateTime.tryParse(aa);
-            if (parsed != null) ts = (parsed.millisecondsSinceEpoch / 1000).round();
+            if (parsed != null) {
+              final aaTs = (parsed.millisecondsSinceEpoch / 1000).round();
+              // v775: mesmo clamp anti-relógio-errado de fetchAllAcceptsForOrder
+              ts = ((aaTs - ts).abs() > 300) ? ts : aaTs;
+            }
           }
           out.add({'pubkey': pk, 'acceptedAt': ts});
         } catch (_) {}

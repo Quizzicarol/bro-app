@@ -541,7 +541,13 @@ class NostrWatchtowerService {
         let ts = typeof event.created_at === 'number' ? event.created_at : Math.floor(Date.now() / 1000);
         if (typeof content.acceptedAt === 'string') {
           const parsed = Date.parse(content.acceptedAt);
-          if (!isNaN(parsed)) ts = Math.floor(parsed / 1000);
+          if (!isNaN(parsed)) {
+            const aaTs = Math.floor(parsed / 1000);
+            // v775: acceptedAt é horário LOCAL do aparelho, sem fuso — um
+            // relógio errado finge aceite antigo e vira canônico (5cd0b7f7).
+            // Divergência > 5min do created_at do evento → usa o created_at.
+            ts = Math.abs(aaTs - ts) > 300 ? ts : aaTs;
+          }
         }
         list.push({ pubkey: sender, acceptedAt: ts });
         if (this._orderAccepts.size > 4000) {
@@ -716,7 +722,11 @@ class NostrWatchtowerService {
               let ts = typeof event.created_at === 'number' ? event.created_at : Math.floor(Date.now() / 1000);
               if (typeof content.acceptedAt === 'string') {
                 const parsed = Date.parse(content.acceptedAt);
-                if (!isNaN(parsed)) ts = Math.floor(parsed / 1000);
+                if (!isNaN(parsed)) {
+                  const aaTs = Math.floor(parsed / 1000);
+                  // v775: clamp anti-relógio-errado (mesmo do knowledge pass)
+                  ts = Math.abs(aaTs - ts) > 300 ? ts : aaTs;
+                }
               }
               list.push({ pubkey: senderPubkey, acceptedAt: ts });
               if (this._orderAccepts.size > 4000) {

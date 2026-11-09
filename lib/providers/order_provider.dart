@@ -655,8 +655,18 @@ class OrderProvider with ChangeNotifier {
       // "ganho como Bro" da 7b7542f8 (09/11) era o depósito escrow da
       // compradora voltando pelo cano de ganho do provedor, rotulado errado.
       // Cura automática pela autoridade do watchtower (aceites acumulados).
+      //
+      // v772: estender pra providerId VAZIO em ordem já aceita/concluída —
+      // mesmo zumbi apagava o campo, e o FeeReconcile PULA ordem sem
+      // providerId → a taxa da plataforma ficava órfã pra sempre (09/11:
+      // 7b7542f8 e 0ebdebc7 completaram sem pagar os ~15/~77 sats de taxa).
+      // O check known:true do servidor garante que só ordens COM aceite
+      // real são curadas (pending legítima não tem canônico → intocada).
       final selfCorrupted = _orders
-          .where((o) => o.userPubkey == userPubkey && o.providerId == userPubkey)
+          .where((o) => o.userPubkey == userPubkey &&
+              (o.providerId == userPubkey ||
+               ((o.providerId == null || o.providerId!.isEmpty) &&
+                o.status != 'pending' && o.status != 'draft')))
           .toList();
       for (final o in selfCorrupted) {
         try {

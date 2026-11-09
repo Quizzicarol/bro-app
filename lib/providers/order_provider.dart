@@ -649,6 +649,31 @@ class OrderProvider with ChangeNotifier {
   /// Safe: if the Nostr fetch fails or returns empty, keep the cache as-is.
   Future<void> _removeGhostsAgainstNostr(String userPubkey) async {
     try {
+      // v769: providerId == EU numa ordem que EU CRIEI é SEMPRE corrupção
+      // (self-provider — nasceu do zumbi v764 que resetava o campo). Com ela,
+      // TODOS os fluxos de provedor rodam para o próprio comprador: o
+      // "ganho como Bro" da 7b7542f8 (09/11) era o depósito escrow da
+      // compradora voltando pelo cano de ganho do provedor, rotulado errado.
+      // Cura automática pela autoridade do watchtower (aceites acumulados).
+      final selfCorrupted = _orders
+          .where((o) => o.userPubkey == userPubkey && o.providerId == userPubkey)
+          .toList();
+      for (final o in selfCorrupted) {
+        try {
+          final wt = await ApiService().get('/canonical/${o.id}')
+              .timeout(const Duration(seconds: 6), onTimeout: () => null);
+          final canon = wt != null && wt['known'] == true ? wt['canonical']?.toString() ?? '' : '';
+          if (canon.isNotEmpty && canon != userPubkey) {
+            final idx = _orders.indexWhere((x) => x.id == o.id);
+            if (idx != -1) {
+              _orders[idx] = _orders[idx].copyWith(providerId: canon);
+              broLog('🩹 v769: providerId self curado → canônico ${canon.substring(0, 8)} em ${o.id.substring(0, 8)}');
+            }
+          }
+        } catch (_) {}
+      }
+      if (selfCorrupted.isNotEmpty) await _saveOnlyUserOrders();
+
       final providerOrdersInCache = _orders
           .where((o) => o.providerId == userPubkey && o.userPubkey != userPubkey)
           .toList();

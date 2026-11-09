@@ -1603,6 +1603,17 @@ class NostrWatchtowerService {
       return;
     }
 
+    // v765: ordem em estado TERMINAL nunca re-broadcasta, mesmo se o app a
+    // republicar como 'pending' fresca (createdAt novo, sem updatedAt — o
+    // gate acima não pega). Caso real 09/11: função legada do app reverteu
+    // payment_received→pending e republicou 7b7542f8/0ebdebc7 (ambas já
+    // completas) como ordens novinhas. O dedup de 7d segurou, mas o
+    // cinto-e-suspensório é barato: terminal conhecido → silêncio.
+    if (this._terminalOrders.has(orderId)) {
+      console.log(`🛑 [Watchtower] Skipping broadcast for ${orderId.substring(0, 8)} — ordem TERMINAL republicada como pending (zumbi)`);
+      return;
+    }
+
     // v618: Reject only ANCIENT orders by `createdAt`. The event's `created_at`
     // (Nostr timestamp) is set fresh on every publish, but the JSON `createdAt`
     // field reflects the actual order birth time.

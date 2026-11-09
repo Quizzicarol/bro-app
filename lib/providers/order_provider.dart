@@ -412,6 +412,10 @@ class OrderProvider with ChangeNotifier {
     // �?© prov�?¡vel que a reconcilia�?§�?£o autom�?¡tica tenha marcado incorretamente.
     // A ordem 4c805ae7 foi marcada incorretamente - ela foi criada DEPOIS da primeira ordem
     // e nunca recebeu pagamento real.
+    // v764: _fixIncorrectlyPaidOrders NUNCA MAIS chamar — revertia
+    // payment_received legítimo → pending e republicava as ordens como NOVAS
+    // no Nostr (zumbis reais 09/11: 7b7542f8 e 0ebdebc7, ambas já completas,
+    // voltaram aceitáveis pros provedores). Função mantida como no-op.
     await _fixIncorrectlyPaidOrders();
     
     // ANTI RE-PAGAMENTO: registra o callback que persiste o paymentHash da taxa
@@ -911,7 +915,13 @@ class OrderProvider with ChangeNotifier {
   /// 
   /// Ordens COM paymentHash foram verificadas pelo SDK Breez e s�?£o v�?¡lidas.
   Future<void> _fixIncorrectlyPaidOrders() async {
+    // v764: DESATIVADA — ver nota no call-site (init). Reverter
+    // payment_received→pending sem prova destrói ordens reais e o
+    // re-publish-all criava ordens zumbis nos relays.
+    broLog('🪦 v764: _fixIncorrectlyPaidOrders desativada (no-op)');
+    return;
     // Buscar ordens com payment_received
+    // ignore: dead_code
     final paidOrders = _orders.where((o) => o.status == 'payment_received').toList();
     
     if (paidOrders.isEmpty) {

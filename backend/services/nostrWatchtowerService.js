@@ -234,6 +234,22 @@ class NostrWatchtowerService {
     // v582: start backfill loop after initial connections settle
     this._backfillTimer = setInterval(() => this._backfillRecent(), this._BACKFILL_INTERVAL_MS);
 
+    // v775c: HEARTBEAT de observabilidade. O incidente 5cd0b7f7 (09/11)
+    // mostrou o problema: o watchtower ficou cego pros aceites e NINGUÉM
+    // sabia — os logs não provavam quais relays estavam conectados. A cada
+    // 5min: quantos/qua relays conectados + aceites conhecidos. "Cego" vira
+    // detectável em 1 leitura de log em vez de investigação de 1h.
+    this._heartbeatTimer = setInterval(() => {
+      try {
+        const connected = [...this._connections.keys()];
+        const missing = RELAYS.filter(r => !connected.includes(r));
+        console.log(`💓 [Watchtower] heartbeat: ${connected.length}/${RELAYS.length} relays conectados` +
+          (missing.length ? ` | FALTANDO: ${missing.join(', ')}` : '') +
+          ` | ordens com aceites: ${this._orderAccepts.size} | eventos: ${this._stats.eventsProcessed} | pushes: ${this._stats.pushesSent}`);
+      } catch (_) {}
+    }, 5 * 60 * 1000);
+    this._heartbeatTimer.unref?.();
+
     // v584: retry job pra pagamentos pendentes (bro_complete sem confirm do cliente)
     this._invoiceRetryTimer = setInterval(() => this._retryPendingInvoicePushes(), this._INVOICE_RETRY_INTERVAL_MS);
 

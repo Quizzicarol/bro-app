@@ -4876,6 +4876,39 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return;
       }
       
+      // 🛡️ v766: JÁ PAGO? Antes de qualquer pagamento, olha o histórico da
+      // carteira: se já existe um ENVIO concluído com o paymentHash desta
+      // invoice (ou a descrição desta ordem), os sats JÁ foram pro provedor
+      // (ex.: autopay) e só o STATUS não virou. Confirmar aqui pagaria EM
+      // DOBRO. Caso real 09/11 (0ebdebc7): autopay pagou 3.866 sats, a ordem
+      // ficou em "Confirme Pagamento" e o botão quase cobrou a 2ª vez.
+      try {
+        final breezHist = context.read<BreezProvider>();
+        if (breezHist.isInitialized) {
+          final shortId = widget.orderId.length > 8 ? widget.orderId.substring(0, 8) : widget.orderId;
+          final history = await breezHist.listPayments()
+              .timeout(const Duration(seconds: 15), onTimeout: () => <Map<String, dynamic>>[]);
+          final alreadyPaid = history.any((p) {
+            if (p['type'] != 'sent') return false;
+            final st = p['status']?.toString().toLowerCase() ?? '';
+            if (!st.contains('complete')) return false;
+            if (providerInvoicePaymentHash != null &&
+                providerInvoicePaymentHash!.isNotEmpty &&
+                p['paymentHash'] == providerInvoicePaymentHash) return true;
+            final desc = p['description']?.toString() ?? '';
+            return desc.contains(shortId);
+          });
+          if (alreadyPaid) {
+            broLog('🛡️ v766: ordem $shortId JÁ PAGA (achado no histórico da carteira) — finalizando SEM pagar de novo');
+            await ProviderPaymentGuard.recordAttempt(widget.orderId, providerInvoicePaymentHash);
+            await _forceCompletedNoPayment();
+            return;
+          }
+        }
+      } catch (e) {
+        broLog('⚠️ v766: checagem de já-pago falhou (seguindo com guardas normais): $e');
+      }
+
       // 🛡️ v634: lock síncrono (antes de qualquer await de pagamento) + registro
       // do paymentHash tentado. tryAcquire retorna false se a ordem já foi paga ou
       // se outro fluxo já está pagando agora — nesses casos NÃO pagamos de novo.

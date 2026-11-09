@@ -1570,7 +1570,14 @@ class NostrOrderService {
 
   /// Busca o evento COMPLETE de uma ordem para obter o providerInvoice
   /// Retorna um Map com os dados do evento COMPLETE incluindo providerInvoice
-  Future<Map<String, dynamic>?> fetchOrderCompleteEvent(String orderId) async {
+  Future<Map<String, dynamic>?> fetchOrderCompleteEvent(String orderId, {String? excludeAuthorPubkey}) async {
+    // v768: excludeAuthorPubkey — ignora eventos assinados por ESTA pubkey.
+    // Caso real 09/11 (7b7542f8): o app do COMPRADOR republicou um
+    // invoice_refresh assinado por ELE MESMO (providerId=self corrompido),
+    // e como era o mais novo, virou o "completer" → a guarda de corrida
+    // bloqueou o pagamento LEGÍTIMO. Um complete/refresh assinado pelo
+    // comprador NUNCA é prova do provedor — o autor é quem assina, não o
+    // campo providerId (auto-declarado e corruptível).
     
     // v584: ANTES buscava só em `_relays.take(3)`. Isso causou o bug do
     // leandrogehlen (order 92a2fdeb): o complete só foi aceito por 1 relay
@@ -1597,6 +1604,8 @@ class NostrOrderService {
           
           for (final event in allEvents) {
             try {
+              // v768: pular evento auto-assinado (republish do comprador)
+              if (excludeAuthorPubkey != null && event['pubkey'] == excludeAuthorPubkey) continue;
               final content = event['parsedContent'] ?? jsonDecode(event['content']);
               final eventOrderId = content['orderId'] as String?;
               

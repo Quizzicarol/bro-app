@@ -4730,7 +4730,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           }
         } catch (_) {}
         if (trackedProvider.isNotEmpty) {
-          final completeEvt = await NostrOrderService().fetchOrderCompleteEvent(widget.orderId)
+          // v768: excluir eventos assinados pelo PRÓPRIO comprador — um
+          // invoice_refresh self-assinado (providerId corrompido p/ self)
+          // envenenava o completer e bloqueava pagamento legítimo (7b7542f8).
+          final orderOwnerPk = order?.userPubkey ?? orderDetails?['userPubkey']?.toString();
+          final completeEvt = await NostrOrderService().fetchOrderCompleteEvent(widget.orderId, excludeAuthorPubkey: orderOwnerPk)
               .timeout(const Duration(seconds: 10), onTimeout: () => null);
           final completerId = completeEvt?['providerId']?.toString() ?? '';
           if (completerId.isNotEmpty && completerId != trackedProvider) {

@@ -3422,6 +3422,16 @@ class OrderProvider with ChangeNotifier {
         broLog('[republishInvoice] ordem $orderId n�?£o encontrada');
         return false;
       }
+      // v768: SÓ O PROVEDOR republica invoice. O content leva providerId =
+      // pubkey do ASSINANTE — se o COMPRADOR chama (ex.: auto-heal de ordem
+      // travada), publica providerId=comprador e envenena o
+      // fetchOrderCompleteEvent (o refresh vira o "completer" mais novo e a
+      // guarda de corrida bloqueia pagamento legítimo — 7b7542f8, 09/11).
+      final myPk = _nostrService.publicKey;
+      if (myPk == null || order.providerId != myPk) {
+        broLog('[republishInvoice] RECUSADO: signatário não é o provedor da ordem (provider-only)');
+        return false;
+      }
       final userPubkey = order.userPubkey;
       if (userPubkey == null || userPubkey.isEmpty) {
         broLog('[republishInvoice] ordem sem userPubkey');

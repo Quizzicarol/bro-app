@@ -2702,6 +2702,19 @@ class OrderProvider with ChangeNotifier {
       final providerPubkey = _nostrService.publicKey;
       broLog('ðŸ�?�µ [acceptOrderAsProvider] Publicando aceita�?§�?£o no Nostr (providerPubkey=${providerPubkey?.substring(0, 8)}...)');
 
+      // v770: JAMAIS aceitar a PRÓPRIA ordem. Com o providerId corrompido
+      // (zumbi v764), o app da COMPRADORA via a ordem dela como disponível e
+      // "aceitava" — gerava invoice de ganho na própria carteira e o
+      // pagamento virava AUTO-PAGAMENTO: o provedor real ficava sem receber
+      // (caso 7b7542f8, 09/11: 6f3cecb1 pagou R$3 de Pix e recebeu ZERO).
+      if (providerPubkey != null && order.userPubkey == providerPubkey) {
+        broLog('🚫 v770: RECUSADO — aceite da própria ordem (userPubkey == eu)');
+        _error = 'Você não pode aceitar a sua própria ordem';
+        _isLoading = false;
+        _immediateNotify();
+        return false;
+      }
+
       // v531: RACE CHECK — antes de publicar, verificar se outro provedor já aceitou.
       // Sem isso, 2 provedores podem aceitar simultaneamente, ambos pagarem,
       // e só um ser reconhecido (o evento 30079 mais recente "vence" nos relays).

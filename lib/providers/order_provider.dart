@@ -3053,6 +3053,22 @@ class OrderProvider with ChangeNotifier {
       // 28/out (e32e493e): o canônico publicou complete SEM ter recebido o
       // billCode (que foi pro perdedor da corrida) e recebeu os sats sem
       // pagar o boleto.
+      // v771: quem CRIOU a ordem (comprador) NUNCA conclui como provedor.
+      // Com providerId corrompido (zumbi v764: providerId=self), o aparelho do
+      // comprador rodava o fluxo de provedor: gerava a invoice de ganho na
+      // PRÓPRIA carteira e publicava complete — o pagamento virava
+      // auto-pagamento e o provedor real ficava a ver navios (7b7542f8,
+      // 09/11: 6f3cecb1 pagou R$3 de Pix e recebeu ZERO; a compradora viu
+      // "+756 Depósito" dela mesma). Mesmo espírito da v770 (aceite).
+      final myPkComplete = _nostrService.publicKey;
+      if (myPkComplete != null && order.userPubkey == myPkComplete) {
+        broLog('🚫 v771: complete RECUSADO — eu sou o COMPRADOR desta ordem (userPubkey == eu). Corrupção de providerId, não trabalho meu.');
+        _error = 'Esta ordem é sua como cliente — não pode concluir como Bro';
+        _isLoading = false;
+        _immediateNotify();
+        return false;
+      }
+
       final hasPlainBill = order.billCode.isNotEmpty && order.billCode != '[encrypted]';
       final metaBill = order.metadata?['billCode_nip44'] as String?;
       final hasEncryptedBill = metaBill != null && metaBill.isNotEmpty;

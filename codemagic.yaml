@@ -58,6 +58,12 @@ workflows:
         # v692: o cache de pub revive clones git MORTOS (breez-sdk-liquid-flutter saiu do ar -> pub get quebrava no CI 03/11). Remover antes de resolver.
         script: rm -rf "$HOME/.pub-cache/git/breez-sdk-liquid-flutter"* 2>/dev/null; flutter pub get
         
+      - name: Race test suite - GATE de release (24 testes)
+        # v778: nenhum release sai sem a bateria de corrida verde (regra da casa:
+        # teste so conta quando roda no CI). Falha aqui ABORTA o build antes de
+        # assinar/publicar qualquer coisa (APK, TestFlight, Zapstore).
+        script: flutter test test/race test/integration --reporter expanded
+
       - name: Neutralize breez spark passkey (unused; breaks CocoaPods)
         script: |
           set -e
@@ -318,6 +324,12 @@ workflows:
         # v692: o cache de pub revive clones git MORTOS (breez-sdk-liquid-flutter saiu do ar -> pub get quebrava no CI 03/11). Remover antes de resolver.
         script: rm -rf "$HOME/.pub-cache/git/breez-sdk-liquid-flutter"* 2>/dev/null; flutter pub get
 
+      - name: Race test suite - GATE de release (24 testes)
+        # v778: nenhum release sai sem a bateria de corrida verde (regra da casa:
+        # teste so conta quando roda no CI). Falha aqui ABORTA o build antes de
+        # assinar/publicar qualquer coisa (APK, TestFlight, Zapstore).
+        script: flutter test test/race test/integration --reporter expanded
+
       - name: Neutralize breez spark passkey (unused; breaks CocoaPods)
         script: |
           set -e
@@ -414,6 +426,12 @@ workflows:
       - name: Get Flutter packages
         # v692: o cache de pub revive clones git MORTOS (breez-sdk-liquid-flutter saiu do ar -> pub get quebrava no CI 03/11). Remover antes de resolver.
         script: rm -rf "$HOME/.pub-cache/git/breez-sdk-liquid-flutter"* 2>/dev/null; flutter pub get
+
+      - name: Race test suite - GATE de release (24 testes)
+        # v778: nenhum release sai sem a bateria de corrida verde (regra da casa:
+        # teste so conta quando roda no CI). Falha aqui ABORTA o build antes de
+        # assinar/publicar qualquer coisa (APK, TestFlight, Zapstore).
+        script: flutter test test/race test/integration --reporter expanded
 
       - name: Build APK Release (Android)
         script: flutter build apk --release --dart-define-from-file=env.json
@@ -788,3 +806,39 @@ workflows:
           fi
           echo "✅ Token válido — iniciando deploy"
           flyctl deploy -a bro-api --config backend/fly.toml --dockerfile backend/Dockerfile --remote-only --access-token "$FLY_API_TOKEN"
+
+  # ============================================
+  # RACE TEST SUITE (rapido, sem build nativo)
+  # v778: feedback em TODO push (main, develop, feature/*, release/*).
+  # Nao substitui o gate dentro dos workflows de release - roda de novo la.
+  # Usa mocks (test/fixtures/) - nao precisa de segredos nem env.json.
+  # ============================================
+  race-tests:
+    name: Race Test Suite (24 testes)
+    max_build_duration: 30
+    instance_type: mac_mini_m2
+
+    environment:
+      flutter: stable
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: 'main'
+          include: true
+        - pattern: 'master'
+          include: true
+        - pattern: 'develop'
+          include: true
+        - pattern: 'feature/*'
+          include: true
+        - pattern: 'release/*'
+          include: true
+
+    scripts:
+      - name: Get Flutter packages
+        script: rm -rf "$HOME/.pub-cache/git/breez-sdk-liquid-flutter"* 2>/dev/null; flutter pub get
+
+      - name: Run race + integration suite
+        script: flutter test test/race test/integration --reporter expanded

@@ -3688,6 +3688,16 @@ class OrderProvider with ChangeNotifier {
         return;
       }
       // Já existe ordem local com esse pagamento? (foi criada antes de sair)
+      // v779 (M3): intent de OUTRA conta e descartado. Sem esse check, um
+      // intent salvo pela conta A sobrevive a logout/troca de seed e a
+      // recuperacao cria a ordem na conta errada (dinheiro do B vira ordem do A).
+      final intentCreator = intent['creatorPubkey']?.toString() ?? '';
+      final me = _currentUserPubkey ?? _nostrService.publicKey ?? '';
+      if (intentCreator.isNotEmpty && me.isNotEmpty && intentCreator != me) {
+        await prefs.remove(_pendingOrderIntentKey);
+        broLog('[Recover] v779-M3: intent de outra conta (${intentCreator.substring(0, 8)}) - descartado');
+        return;
+      }
       if (_orders.any((o) => o.paymentHash == hash)) {
         await prefs.remove(_pendingOrderIntentKey);
         return;
@@ -5723,7 +5733,28 @@ class OrderProvider with ChangeNotifier {
     broLog('🔄 _republishUnconfirmedCompletions: ${candidates.length} ordens completed para re-publicar');
     
     for (final order in candidates) {
-      try {
+                try {
+        // v779 (M1): validar PROVA antes de republicar completion. Sem prova,
+        // a republicacao e amplificador: um 'completed' sem comprovante
+        // espalhado pros relays na frente do counterparty. Fail-closed: sem
+        // prova local E sem prova no relay, NAO republica (fica local;
+        // re-publica quando a prova chegar via sync/watchtower).
+        final hasLocalProof =
+            (order.metadata?['paymentProof'] as String?)?.isNotEmpty == true ||
+            (order.metadata?['proofImage'] as String?)?.isNotEmpty == true ||
+            order.metadata?['proofReceivedAt'] != null;
+        Map<String, dynamic>? relayProof;
+        if (!hasLocalProof) {
+          try {
+            relayProof = await _nostrOrderService.fetchProofFromRelay(order.id)
+                .timeout(const Duration(seconds: 6), onTimeout: () => null);
+          } catch (_) {}
+        }
+        final proofAuthor = relayProof?['senderPubkey']?.toString() ?? '';
+        if (!hasLocalProof && proofAuthor.isEmpty) {
+          broLog('v779-M1: ${order.id.substring(0, 8)} SEM prova (local+relay) - completion NAO republicada');
+          continue;
+        }
         await _nostrOrderService.updateOrderStatus(
           privateKey: privateKey,
           orderId: order.id,

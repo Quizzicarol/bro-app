@@ -217,6 +217,14 @@ class _LightningPaymentScreenState extends State<LightningPaymentScreen> {
           .catchError((e) => broLog('updateOrderStatus erro: $e')));
     } else if (orderId.isNotEmpty) {
       // Ordem já existe (fluxo antigo) — publicar e atualizar em background
+            // v779 (Ressalva 2): registrar o paymentHash tambem no fluxo legado -
+      // sem isso a reconciliacao por hash (verifyAndFixOrderPayment, v766)
+      // nao reconhece a ordem.
+      if (widget.paymentHash.isNotEmpty) {
+        unawaited(orderProvider
+            .setOrderPaymentHash(orderId, widget.paymentHash, widget.invoice)
+            .catchError((e) => broLog('setOrderPaymentHash erro: $e')));
+      }
       unawaited(orderProvider
           .publishOrderAfterPayment(orderId)
           .catchError((e) => broLog('publishOrderAfterPayment erro: $e')));

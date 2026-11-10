@@ -1299,7 +1299,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
         // carteira, a tela morreu, e a ordem nunca nasceu — dinheiro
         // "invisível" pro usuário).
         unawaited(OrderProvider.savePendingOrderIntent({
-          'paymentHash': paymentHash,
+                  // v779 (M3): carimba o dono do intent - a recuperacao no proximo
+                  // start so roda se for a MESMA conta (logout/troca de seed descarta).
+                  'creatorPubkey': context.read<OrderProvider>().currentUserPubkey,
+                  'paymentHash': paymentHash,
           'invoice': inv,
           'billType': _billData!['billType'] as String,
           'billCode': _codeController.text.trim(),

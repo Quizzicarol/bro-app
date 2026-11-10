@@ -1,8 +1,6 @@
-﻿/// Harness de testes de corrida — setup de cenários (ordens, contas).
-/// Criado na revisão pós-entrega (09/11): o teste double_accept referenciava
-/// este arquivo e ele não existia (teste não compilava).
-library;
+﻿library;
 
+/// Harness de testes de corrida — setup de cenários
 class TestHarness {
   final Map<String, Map<String, dynamic>> orders = {};
 
@@ -18,6 +16,18 @@ class TestHarness {
       'amountSats': amountSats,
       'status': status,
       'createdAt': DateTime.now().toIso8601String(),
+    };
+  }
+
+  /// Marca ordem como terminal (v765)
+  void setupTerminalOrder(String orderId) {
+    orders[orderId] = {
+      'id': orderId,
+      'userPubkey': 'system',
+      'amountSats': 0,
+      'status': 'completed',
+      'createdAt': DateTime.now().toIso8601String(),
+      'terminal': true,
     };
   }
 

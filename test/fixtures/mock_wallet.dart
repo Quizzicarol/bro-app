@@ -1,6 +1,5 @@
 ﻿/// Mock do BreezProvider para testes
-///
-/// NOTA: Implementação simples (sem mockito) para evitar complexity.
+/// NOTA: Implementação simples
 
 class MockTransaction {
   final String paymentHash;
@@ -29,10 +28,6 @@ class MockBreezProvider {
 
   void setBalance(int sats) { _balanceSats = sats; }
   void setError(String? error) { _error = error; }
-  // v-fix (09/11): semear histórico direto — o teste autopay_manual_race
-  // precisa disso e o método não existia. Uma transação semeada AFETA o saldo
-  // (é o modelo mental do teste: gastou 100000 → saldo cai).
-  // (getCurrentBalance já existia mais abaixo — não duplicar.)
   void addTransaction(MockTransaction tx) {
     _transactions[tx.paymentHash] = tx;
     _balanceSats += tx.isIncoming ? tx.amountSats : -tx.amountSats;
@@ -66,15 +61,29 @@ class MockBreezProvider {
 
   Future<Map<String, dynamic>?> payInvoice(String bolt11) async {
     if (!_isInitialized) return {'success': false, 'error': 'Wallet não inicializada'};
-    final regex = RegExp(r'mock_hash_([a-zA-Z0-9_]+)');
-    final match = regex.firstMatch(bolt11);
-    if (match == null) return {'success': false, 'error': 'Invoice inválida'};
-    final paymentHash = match.group(1)!;
-    final tx = _transactions[paymentHash];
-    if (tx == null) return {'success': false, 'error': 'Invoice não encontrada'};
-    if (_balanceSats < tx.amountSats) return {'success': false, 'error': 'Saldo insuficiente'};
-    _balanceSats -= tx.amountSats;
-    return {'success': true, 'paymentHash': paymentHash, 'amountSats': tx.amountSats, 'error': null};
+    
+    // Mock: extrair valor da invoice
+    final amountMatch = RegExp(r'lnbc_mock_(\d+)').firstMatch(bolt11);
+    final amountSats = amountMatch != null ? int.tryParse(amountMatch.group(1)!) ?? 0 : 0;
+    
+    if (amountSats <= 0) {
+      return {'success': false, 'error': 'Invoice inválida'};
+    }
+    if (_balanceSats < amountSats) {
+      return {'success': false, 'error': 'Saldo insuficiente'};
+    }
+    
+    final paymentHash = 'mock_hash_\${DateTime.now().millisecondsSinceEpoch}';
+    _transactions[paymentHash] = MockTransaction(
+      paymentHash: paymentHash,
+      amountSats: amountSats,
+      description: 'Saque mock',
+      isIncoming: false,
+      invoice: bolt11,
+    );
+    _balanceSats -= amountSats;
+    
+    return {'success': true, 'paymentHash': paymentHash, 'amountSats': amountSats, 'error': null};
   }
 
   Future<List<Map<String, dynamic>>> getAllPayments() async {

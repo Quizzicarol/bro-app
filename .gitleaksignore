@@ -8,3 +8,7 @@
 #    Nostr da chave admin (NIP-98), nÃ£o a senha. Mantido visÃ­vel aqui de
 #    propÃ³sito â€” se a senha antiga foi reusada em outro lugar, trocar lÃ¡.
 0a5518ae3dec71c98c6ff359ea258e8ec09294b1:lib/screens/settings_screen.dart:admin-hash:26
+
+# 3. FALSO POSITIVO: vetor de teste BIP39 PUBLICO ('abandon'×11 + 'about') —
+#    mnemonic de teste conhecido mundialmente, zero valor, só em teste de unidade.
+test/race/seed_inheritance_test.dart:mnemonic-seed:16

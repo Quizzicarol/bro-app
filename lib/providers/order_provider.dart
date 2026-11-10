@@ -2818,13 +2818,16 @@ class OrderProvider with ChangeNotifier {
           _availableOrdersForProvider.removeWhere((o) => o.id == orderId);
           // v656: deletar meu accept fantasma dos relays (NIP-09) para não
           // virar ordem fantasma na MINHA lista no próximo sync.
-          // v775b: NUNCA deletar se a ordem está em DISPUTA — os aceites são
-          // a evidência da corrida pra mediação (5cd0b7f7, 09/11: os 3
-          // aceites sumiram dos relays no meio da disputa ativa).
-          if (order.status != 'disputed') {
+          // v775c (decisão da Carol): a limpeza NIP-09 só roda em estado
+          // TERMINAL — nunca durante a ordem ativa nem em disputa (os
+          // aceites são a evidência da corrida pra mediação; 5cd0b7f7: os 3
+          // sumiram no meio da disputa). E desde a v774 a ordem fantasma nem
+          // aparece mais na lista do perdedor, então o delete urgente perdeu
+          // a função — virou higiene de fim de ciclo.
+          if (const {'completed', 'cancelled', 'liquidated'}.contains(order.status)) {
             _nostrOrderService.deleteAcceptEvent(privateKey: privateKey, orderId: orderId);
           } else {
-            broLog('🛡️ v775b: ordem em disputa — accept preservado como evidência');
+            broLog('🛡️ v775c: ordem não-terminal (${order.status}) — accept preservado como evidência');
           }
           _isLoading = false;
           _immediateNotify();
@@ -2880,11 +2883,12 @@ class OrderProvider with ChangeNotifier {
             _orders.removeWhere((o) => o.id == orderId);
             await _saveOnlyUserOrders();
             _availableOrdersForProvider.removeWhere((o) => o.id == orderId);
-            // v775b: mesma regra — em disputa, o accept fica (evidência).
-            if (order.status != 'disputed') {
+            // v775c: mesma regra — delete só em terminal; em disputa ou
+            // ativa, o accept fica como evidência (decisão da Carol).
+            if (const {'completed', 'cancelled', 'liquidated'}.contains(order.status)) {
               _nostrOrderService.deleteAcceptEvent(privateKey: privateKey, orderId: orderId);
             } else {
-              broLog('🛡️ v775b: ordem em disputa — accept preservado como evidência');
+              broLog('🛡️ v775c: ordem não-terminal (${order.status}) — accept preservado como evidência');
             }
             _isLoading = false;
             _immediateNotify();

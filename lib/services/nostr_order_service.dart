@@ -578,29 +578,38 @@ class NostrOrderService {
 
   /// v688: POST do blob NIP-44 pro canal redundante do backend. Nunca lança.
   Future<void> _postBillcodeFallback(String orderId, String providerPubkey, String senderPubkey, String blob) async {
-    try {
-      final dio = Dio(BaseOptions(
-        baseUrl: AppConfig.defaultBackendUrl,
-        connectTimeout: const Duration(seconds: 8),
-        receiveTimeout: const Duration(seconds: 8),
-      ));
-      // v747 (auditoria B3): assina NIP-98 — o backend passa a exigir quando
-      // BILLCODE_FALLBACK_AUTH=required (2 fases, padrão v566/v615).
-      final body = {
-        'orderId': orderId,
-        'providerPubkey': providerPubkey,
-        'senderPubkey': senderPubkey,
-        'blob': blob,
-      };
-      final headers = await nip98Headers(
-        url: '${AppConfig.defaultBackendUrl}/billcode-fallback',
-        method: 'POST',
-        body: body,
-      );
-      final resp = await dio.post('/billcode-fallback', data: body, options: Options(headers: headers));
-      broLog('📦 billcode fallback POST: ${resp.statusCode} pushed=${resp.data?['pushed']}');
-    } catch (e) {
-      broLog('⚠️ billcode fallback POST falhou (não-fatal): $e');
+    final body = {
+      'orderId': orderId,
+      'providerPubkey': providerPubkey,
+      'senderPubkey': senderPubkey,
+      'blob': blob,
+    };
+    // v776: RETRY — antes era 1 tentativa unawaited. Se a rede do comprador
+    // engasgava justo naquele momento, o fallback nunca existia e um provedor
+    // com relay furado ficava sem o código PRA SEMPRE (caso 5cd0b7f7, 09/11:
+    // Nostr entregou mas o app dele não viu, fallback ausente → disputa com
+    // os dois lados falando a verdade). 3 tentativas com backoff curto.
+    for (int attempt = 1; attempt <= 3; attempt++) {
+      try {
+        final dio = Dio(BaseOptions(
+          baseUrl: AppConfig.defaultBackendUrl,
+          connectTimeout: const Duration(seconds: 8),
+          receiveTimeout: const Duration(seconds: 8),
+        ));
+        // v747 (auditoria B3): assina NIP-98 — o backend passa a exigir quando
+        // BILLCODE_FALLBACK_AUTH=required (2 fases, padrão v566/v615).
+        final headers = await nip98Headers(
+          url: '${AppConfig.defaultBackendUrl}/billcode-fallback',
+          method: 'POST',
+          body: body,
+        );
+        final resp = await dio.post('/billcode-fallback', data: body, options: Options(headers: headers));
+        broLog('📦 billcode fallback POST: ${resp.statusCode} pushed=${resp.data?['pushed']}');
+        if (resp.statusCode == 200) return;
+      } catch (e) {
+        broLog('⚠️ billcode fallback POST tentativa $attempt/3 falhou: $e');
+        if (attempt < 3) await Future.delayed(Duration(seconds: 2 * attempt));
+      }
     }
   }
 

@@ -798,11 +798,13 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
 
   Future<void> _pickReceipt() async {
     try {
+      // v783: não esmagar na origem — o comprovante do provedor precisa ser
+      // legível na mediação (a escada do image_compress encaixa no NIP-44).
       final XFile? image = await _picker.pickImage(
         source: ImageSource.gallery,
-        maxWidth: 800,
-        maxHeight: 600,
-        imageQuality: 60,
+        maxWidth: 1920,
+        maxHeight: 1920,
+        imageQuality: 90,
       );
 
       if (image != null) {
@@ -817,11 +819,12 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
 
   Future<void> _takePhoto() async {
     try {
+      // v783: idem na câmera
       final XFile? image = await _picker.pickImage(
         source: ImageSource.camera,
-        maxWidth: 800,
-        maxHeight: 600,
-        imageQuality: 60,
+        maxWidth: 1920,
+        maxHeight: 1920,
+        imageQuality: 90,
       );
 
       if (image != null) {

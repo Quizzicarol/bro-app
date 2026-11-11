@@ -3213,11 +3213,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         child: OutlinedButton.icon(
                           onPressed: () async {
                             final picker = ImagePicker();
+                            // v783: NÃO esmagar na origem. 600px/q50 tornava a
+                            // evidência ilegível ANTES da compressão NIP-44
+                            // (disputa aberta por comprovante ilegível, 11/11).
+                            // Captura boa → a escada do image_compress encaixa.
                             final picked = await picker.pickImage(
                               source: ImageSource.gallery,
-                              maxWidth: 600,
-                              maxHeight: 600,
-                              imageQuality: 50,
+                              maxWidth: 1920,
+                              maxHeight: 1920,
+                              imageQuality: 90,
                             );
                             if (picked != null) {
                               final file = File(picked.path);
@@ -3241,11 +3245,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         child: OutlinedButton.icon(
                           onPressed: () async {
                             final picker = ImagePicker();
+                            // v783: idem — câmera também captura em alta fidelidade
                             final picked = await picker.pickImage(
                               source: ImageSource.camera,
-                              maxWidth: 600,
-                              maxHeight: 600,
-                              imageQuality: 50,
+                              maxWidth: 1920,
+                              maxHeight: 1920,
+                              imageQuality: 90,
                             );
                             if (picked != null) {
                               final file = File(picked.path);

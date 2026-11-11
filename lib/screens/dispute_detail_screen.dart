@@ -1726,10 +1726,14 @@ class _DisputeDetailScreenState extends State<DisputeDetailScreen> {
     try {
       final picker = ImagePicker();
       final picked = await picker.pickImage(
-        source: source, 
-        maxWidth: 600, // v247: Reduzida para caber nos relays Nostr
-        maxHeight: 600, 
-        imageQuality: 40,
+        source: source,
+        // v783: v247 esmagava na origem (600px/q40) pra caber nos relays —
+        // mas a escada do image_compress JÁ encaixa no teto NIP-44 com muito
+        // mais qualidade. Evidência de mediação precisa ser legível (disputa
+        // aberta por comprovante ilegível, 11/11).
+        maxWidth: 1920,
+        maxHeight: 1920,
+        imageQuality: 90,
       );
       if (picked == null) return;
       

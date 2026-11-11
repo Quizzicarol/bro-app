@@ -4,6 +4,7 @@ import 'package:nostr/nostr.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:bro_app/services/log_utils.dart';
+import 'package:bro_app/config.dart';
 
 /// Representa um "cartão de visita" (anúncio kind 30082) de um coordinator.
 class CoordinatorCard {
@@ -112,10 +113,20 @@ class CoordinatorService {
 
   /// Retorna o cartão do coordinator escolhido (null se Automático).
   /// Usado pela Etapa 2 (roteamento da taxa).
-  CoordinatorCard? selectedCard(List<CoordinatorCard> cards) {
+    CoordinatorCard? selectedCard(List<CoordinatorCard> cards) {
     if (isAutomatic) return null;
     for (final c in cards) {
-      if (c.pubkey == _selectedPubkey) return c;
+      if (c.pubkey == _selectedPubkey) {
+        // v781 (H3): assinatura valida NAO e identidade. So coordinator
+        // homologado (AppConfig.approvedCoordinatorPubkeys) pode rotear taxa
+        // ou entrar em nova ordem. Fora da lista = tratar como nao escolhido
+        // (caller cai no endereco fixo da plataforma / Bro original).
+        if (!AppConfig.approvedCoordinatorPubkeys.contains(c.pubkey)) {
+          broLog('v781-H3: coordinator ${c.pubkey.substring(0, 8)} NAO homologado - ignorando escolha (fallback p/ endereco da plataforma)');
+          return null;
+        }
+        return c;
+      }
     }
     return null;
   }

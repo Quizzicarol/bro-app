@@ -806,8 +806,18 @@ class BroApp extends StatelessWidget {
               final proof = await NostrOrderService().fetchProofWithInvoice(orderId)
                   .timeout(const Duration(seconds: 12), onTimeout: () => null);
               if (proof != null) {
-                final proofSender = proof['senderPubkey']!;
-                final accepts = await NostrOrderService().fetchAllAcceptsForOrder(orderId)
+                              // v781 (H1): 2+ participantes provaram pagamento pra mesma
+                              // ordem (provas conflitantes). Pagamento AUTOMATICO fica
+                              // proibido - paga-se so apos decisao humana na mediacao.
+                              // Sem esse gate, o autopay escolhe a mais nova e o provedor
+                              // da prova anterior perde o dinheiro silenciosamente.
+                              final conflict = proof['conflict'] as String?;
+                              if (conflict != null && conflict.isNotEmpty) {
+                                broLog('v781-H1 [AutoPay-Main]: PROVAS CONFLITANTES ($conflict) - NAO pagando automaticamente. Encaminhar para mediacao (decisao da dona).');
+                                return false;
+                              }
+                              final proofSender = proof['senderPubkey']!;
+                              final accepts = await NostrOrderService().fetchAllAcceptsForOrder(orderId)
                     .timeout(const Duration(seconds: 8), onTimeout: () => <String>[]);
                 if (accepts.isEmpty) {
                   broLog('🛡️ [AutoPay-Main] aceites não verificáveis — NÃO pagando (fail-closed)');

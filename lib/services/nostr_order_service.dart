@@ -1737,18 +1737,26 @@ class NostrOrderService {
         }
       }),
     );
-    for (final ev in results) {
-      if (ev == null) continue;
-      final content = ev['parsedContent'] ?? jsonDecode(ev['content']);
-      return {
-        'proofImage_nip44': content['proofImage_nip44'] as String,
-        'senderPubkey': ev['pubkey'] as String,
-        if (content['providerInvoice'] != null)
-          'providerInvoice': content['providerInvoice'] as String,
-      };
-    }
-    return null;
-  }
+    // v781 (H1): detectar provas CONFLITANTES - 2+ participantes distintos
+        // da corrida provaram pagamento pra mesma ordem. Devolve a mais nova
+        // (compatibilidade) + flag 'conflict' pro caller decidir pausar.
+        final distinctSenders = <String>{
+          for (final ev in results)
+            if (ev != null) ev['pubkey'] as String,
+        };
+        for (final ev in results) {
+          if (ev == null) continue;
+          final content = ev['parsedContent'] ?? jsonDecode(ev['content']);
+          return {
+            'proofImage_nip44': content['proofImage_nip44'] as String,
+            'senderPubkey': ev['pubkey'] as String,
+            if (distinctSenders.length > 1) 'conflict': distinctSenders.join(','),
+            if (content['providerInvoice'] != null)
+              'providerInvoice': content['providerInvoice'] as String,
+          };
+        }
+        return null;
+      }
 
   /// v723: prova + invoice de QUEM PROVOU. Se o evento da prova não tem
   /// invoice, busca o invoice_refresh MAIS RECENTE assinado pelo MESMO autor

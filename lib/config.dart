@@ -100,9 +100,23 @@ class AppConfig {
   
   /// Endereço Lightning da plataforma para receber taxas (2%)
   /// Definido via env.json (PLATFORM_LIGHTNING_ADDRESS)
-  static const String platformLightningAddress = String.fromEnvironment(
+    static const String platformLightningAddress = String.fromEnvironment(
     'PLATFORM_LIGHTNING_ADDRESS',
   );
+
+  /// v781 (H3): allowlist de pubkeys de coordinators HOMOLOGADOS. O anuncio
+  /// kind 30082 tem assinatura verificada, mas ASSINATURA NAO E IDENTIDADE:
+  /// qualquer key pode anunciar 'bro-coordinator' com LN address propria e
+  /// receber as taxas da plataforma. So pubkey desta lista pode rotear taxa;
+  /// fora da lista, o roteamento cai no endereco fixo da plataforma
+  /// (platformLightningAddress). Homologar = adicionar aqui (commit auditado).
+    static const Set<String> approvedCoordinatorPubkeys = {
+    // Apex Cord - UNICO coordinator Bro da operacao. Em 18/12/2025 havia
+    // exatamente 1 anuncio bro-coordinator valido nos relays permanentes
+    // (verificado pelo agente revisor); este era ele. Se um coordinator
+    // novo entrar (ex.: 'PC antigo'), adicionar aqui com commit auditado.
+    '1cbaf4c76fcb2906d989635ced23da7c0c25f0ad7e07d66b8510234f364560fe',
+  };
 
   /// vSEC: validação de formato do Lightning Address (LUD-16 user@dominio).
   /// Antes só checávamos isNotEmpty — um valor malformado no env.json fazia

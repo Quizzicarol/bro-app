@@ -3954,8 +3954,20 @@ class OrderProvider with ChangeNotifier {
       if (sender == null || sender.isEmpty) continue;
       checked++;
       if (o.providerId == sender) continue;
-      _orders[i] = o.copyWith(providerId: sender);
-      healedOrders.add(_orders[i]);
+            // v781 (H2): a republicacao da cura serializa o objeto LOCAL inteiro.
+            // Se a metadata carrega o proofImage_senderPubkey POLUIDO (causa raiz
+            // do caso 58ebf198), o publish sobrescreve o campo bom do relay com o
+            // ruim e a cura se desfaz no proximo sync. O relay e autoridade: o
+            // autor da prova fresco que curou o providerId tambem curah a metadata.
+            final healedMeta = Map<String, dynamic>.from(o.metadata ?? {});
+            if (healedMeta['proofImage_senderPubkey'] != null &&
+                healedMeta['proofImage_senderPubkey'] != sender) {
+              healedMeta['proofImage_senderPubkey'] = sender;
+              healedMeta['proofSenderHealedAt'] = DateTime.now().toIso8601String();
+              broLog('v781-H2: proofImage_senderPubkey de ${o.id.substring(0, 8)} realinhado ao autor do relay (${sender.substring(0, 8)})');
+            }
+            _orders[i] = o.copyWith(providerId: sender, metadata: healedMeta);
+            healedOrders.add(_orders[i]);
       changed = true;
       broLog('🩹 v716: providerId de ${o.id.substring(0, 8)} curado pro autor do comprovante (${sender.substring(0, 8)})');
     }

@@ -714,6 +714,15 @@ class BroApp extends StatelessWidget {
           OrderRealtimeService().onOrderEvent = () {
             broLog('[RT] Triggering immediate sync from real-time event');
             orderProvider.syncOrdersFromNostr(force: true);
+            // v780: push de NOVA ORDEM pra quem tá em Modo Bro — atualizar
+            // TAMBÉM a lista de disponíveis na hora. Antes o push disparava
+            // só o sync do COMPRADOR; o provedor via a ordem nova só no
+            // timer de 45s (Carol, 10/11: push chegou instantâneo mas a
+            // ordem "demorou muitooo" pra aparecer em Disponíveis).
+            if (orderProvider.isProviderMode) {
+              broLog('[RT] Modo Bro ativo — refresh da lista de disponíveis');
+              orderProvider.fetchOrders(forProvider: true).catchError((_) {});
+            }
           };
 
           // v552: Connect FCM order_update push -> mark order as syncing

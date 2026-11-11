@@ -9,6 +9,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:nostr/nostr.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:bro_app/services/log_utils.dart';
@@ -567,8 +568,19 @@ Future<void> _refreshFcmToken() async {
       return;
     }
 
-    // 4. Criar NIP-98 auth header (kind 27235) com payload tag (v566)
-    final brixBody = jsonEncode({'fcm_token': fcmToken});
+        // 4. Criar NIP-98 auth header (kind 27235) com payload tag (v566)
+    // v782 (smlbnr case): enviar o app_build no register pro gate de claim.
+    // O backend do BRIX so emite push de claim se o handler existir no app
+    // (>= v587). Build antiga = push fala aberto, claim nunca dispara.
+    int? appBuild;
+    try {
+      final info = await PackageInfo.fromPlatform();
+      appBuild = int.tryParse(info.buildNumber);
+    } catch (_) {}
+    final brixBody = jsonEncode({
+      'fcm_token': fcmToken,
+      if (appBuild != null) 'app_build': appBuild,
+    });
     final brixPayloadHash = crypto.sha256.convert(utf8.encode(brixBody)).toString();
     final nip98Event = Event.from(
       kind: 27235,

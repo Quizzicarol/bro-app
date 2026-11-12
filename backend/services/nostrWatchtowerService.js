@@ -116,6 +116,10 @@ class NostrWatchtowerService {
     // vSEC: orderId → providerPubkey cache (from bro_accept events). Used to
     // authorize /push/notify: only the two order parties may notify each other.
     this._orderProviders = new Map();
+    // vR5: snapshot de ordens disponíveis/aceitas (id only + valor + timestamps).
+    // Persistido em watchtower_state.json. Usado pelo GET /watchtower/available-orders
+    // para o app carregar a lista em <500ms sem WebSocket fan-out.
+    this._orderSnapshots = new Map(); // orderId → { createdAt, acceptedBy, firstAcceptedAt, lastStatus, amountBrl, amountSats }
     // v702: orderId → [{pubkey, acceptedAt}] — TODOS os aceites vistos, pra
     // detectar billCode revelado ao PERDEDOR da corrida (incidente b4a2c42d:
     // código foi pro provedor errado, que pagou R$ de verdade). Tripwire:
@@ -536,6 +540,8 @@ class NostrWatchtowerService {
         this._orderUsers.set(orderId, sender);
       }
       this._cacheOrderMeta(orderId, content);
+      // vR5: registra snapshot para o endpoint de listagem.
+      this._recordOrderSnapshot(orderId, content, event.created_at);
       return;
     }
 
@@ -548,6 +554,8 @@ class NostrWatchtowerService {
           const pEntries = Array.from(this._orderProviders.entries());
           this._orderProviders = new Map(pEntries.slice(-2000));
         }
+        // vR5: snapshot accepted (chamada aqui, DEPOIS do if inteiro).
+        this._recordOrderSnapshot(orderId, null, event.created_at, sender);
       }
       // acceptedAt é imutável no content assinado; re-publish do mesmo
       // provedor mantém o acceptedAt original (first-wins por pubkey).
@@ -911,6 +919,8 @@ class NostrWatchtowerService {
               const tEntries = Array.from(this._terminalOrders.entries());
               this._terminalOrders = new Map(tEntries.slice(-2500));
             }
+            // vR5: marca snapshot como terminal.
+            this._recordOrderSnapshot(orderId, null, null, null, status);
             this._scheduleStateSave();
           }
 
@@ -1931,6 +1941,17 @@ class NostrWatchtowerService {
         this._disputeOpeners.set(orderId, opener);
         openers++;
       }
+      // vR5: snapshot de ordens (validação: objeto, timestamp numérico)
+      let snaps = 0;
+      for (const [orderId, s] of Object.entries(data.orderSnapshots || {})) {
+        if (!s || typeof s !== 'object') continue;
+        if (typeof s.createdAt !== 'number') continue;
+        // Purge old snapshots on load.
+        if (now - s.createdAt * 1000 > 30 * 24 * 60 * 60 * 1000) continue;
+        this._orderSnapshots.set(orderId, s);
+        snaps++;
+      }
+      console.log(`\u{1F5FC} [Watchtower] Snapshot: ${snaps} ordens restauradas`);
       // v688: ordens terminais (TTL 30d — suficiente pra qualquer republish útil)
       let terms = 0;
       for (const [orderId, ts] of Object.entries(data.terminalOrders || {})) {
@@ -1945,7 +1966,16 @@ class NostrWatchtowerService {
         const valid = list.filter(a => a && typeof a.pubkey === 'string' && typeof a.acceptedAt === 'number' && now - a.acceptedAt * 1000 <= 7 * 24 * 60 * 60 * 1000);
         if (valid.length > 0) { this._orderAccepts.set(orderId, valid); accepts += valid.length; }
       }
-      console.log(`🗼 [Watchtower] Estado carregado: ${pushes} dedups, ${metas} metas, ${openers} disputas, ${terms} terminais, ${accepts} aceites`);
+      // vR5: snapshot de ordens (validação)
+      // (dedup removed)
+      for (const [orderId, s] of Object.entries(data.orderSnapshots || {})) {
+        if (!s || typeof s !== 'object') continue;
+        if (typeof s.createdAt !== 'number') continue;
+        if (now - s.createdAt * 1000 > 30 * 24 * 60 * 60 * 1000) continue;
+        this._orderSnapshots.set(orderId, s);
+        snaps++;
+      }
+      console.log(`🗼 [Watchtower] Estado carregado: ${pushes} dedups, ${metas} metas, ${openers} disputas, ${terms} terminais, ${accepts} aceites, ${snaps} snapshots`);
     } catch (e) {
       console.log(`[Watchtower] Could not load state: ${e.message}`);
     }
@@ -1987,6 +2017,7 @@ class NostrWatchtowerService {
           disputeOpeners: Object.fromEntries(Object.entries(disputeOpeners).slice(-4000)),
           terminalOrders: Object.fromEntries(Object.entries(terminalOrders).slice(-4000)),
           orderAccepts: Object.fromEntries(Object.entries(orderAccepts).slice(-2000)),
+          orderSnapshots: Object.fromEntries(Object.entries(orderSnapshots).slice(-3000)),
         };
         fs.writeFileSync(WATCHTOWER_STATE_FILE, JSON.stringify(out), { encoding: 'utf8', mode: 0o600 });
       } catch (e) {
@@ -2044,6 +2075,119 @@ class NostrWatchtowerService {
         console.error(`[Watchtower] Could not persist broadcast dedup: ${e.message}`);
       }
     }, 5000);
+  }
+  /**
+   * vR5: snapshot para o app. orderId → { createdAt, acceptedBy, firstAcceptedAt, lastStatus, amountBrl, amountSats }
+   * createdAt: unix timestamp (segundos) da publicação original (bro_order).
+   * acceptedBy: pubkey do primeiro aceite (canonical provider) ou null.
+   * firstAcceptedAt: unix timestamp (segundos) do primeiro aceite ou null.
+   * lastStatus: 'pending', 'accepted', 'completed', 'liquidated', 'cancelled', 'disputed' etc.
+   * amountBrl: valor em R$ (bro_order/updates) ou null.
+   * amountSats: valor em sats ou null.
+   * Persistido: carregado em _loadWatchtowerState, salvo em _scheduleStateSave.
+   */
+  _recordOrderSnapshot(orderId, content = null, eventCreatedAt = null, accepterPubkey = null, terminalStatus = null) {
+    try {
+      if (!orderId || typeof orderId !== 'string' || orderId.length > 64) return;
+      const now = Math.floor(Date.now() / 1000);
+      let snap = this._orderSnapshots.get(orderId);
+      if (!snap) {
+        snap = {
+          createdAt: eventCreatedAt || now,
+          acceptedBy: null,
+          firstAcceptedAt: null,
+          lastStatus: 'pending',
+          amountBrl: null,
+          amountSats: null,
+        };
+      }
+
+      // Update values from content if available (bro_order).
+      if (content) {
+        if (content.amount != null && snap.amountBrl == null) {
+          const n = Number(content.amount);
+          if (Number.isFinite(n)) snap.amountBrl = n;
+        }
+        if (content.btcAmount != null && snap.amountSats == null) {
+          const n = Number(content.btcAmount);
+          if (Number.isFinite(n)) snap.amountSats = Math.round(n * 1e8);
+        }
+        // bro_order pode vir com createdAt para backfill.
+        if (typeof content.createdAt === 'string') {
+          const t = Math.floor(Date.parse(content.createdAt) / 1000);
+          if (Number.isFinite(t) && t < snap.createdAt) snap.createdAt = t;
+        }
+      }
+
+      // Accept event: record first accepter (canonical).
+      if (accepterPubkey && !snap.acceptedBy) {
+        snap.acceptedBy = accepterPubkey;
+        snap.firstAcceptedAt = eventCreatedAt || now;
+        if (snap.lastStatus === 'pending') snap.lastStatus = 'accepted';
+      }
+
+      // Terminal status.
+      if (terminalStatus) {
+        snap.lastStatus = terminalStatus;
+      }
+
+      this._orderSnapshots.set(orderId, snap);
+
+      // Cap memory: keep 5000 entries, prune oldest 2500 by createdAt.
+      if (this._orderSnapshots.size > 5000) {
+        const entries = Array.from(this._orderSnapshots.entries());
+        entries.sort((a, b) => a[1].createdAt - b[1].createdAt);
+        this._orderSnapshots = new Map(entries.slice(-2500));
+      }
+      this._scheduleStateSave();
+    } catch (_) { /* snapshot failures must not break the pipeline */ }
+  }
+
+  /**
+   * vR5: retorna a lista de ordens disponíveis (pending) ou aceitas por um
+   * provedor específico. NÃO inclui billCode, comprovante ou dados de pagamento.
+   * O app usa isso pra renderizar a lista rápido; os detalhes (billCode etc)
+   * são buscados via Nostr direto nos relays (fluxo de dinheiro não muda).
+   */
+  getAvailableOrdersSnapshot(providerPubkey = null) {
+    const now = Math.floor(Date.now() / 1000);
+    const TEN_DAYS = 10 * 24 * 60 * 60;
+    const results = [];
+    for (const [orderId, snap] of this._orderSnapshots) {
+      // Expiração: ordem muito velha some da lista ativa.
+      if (now - snap.createdAt > TEN_DAYS) continue;
+
+      if (providerPubkey) {
+        // Provedor: só ordens aceitas POR ELE e não terminais.
+        if (snap.acceptedBy !== providerPubkey) continue;
+      } else {
+        // Público: só ordens pending e não terminais.
+        if (snap.acceptedBy) continue;
+      }
+      const terminal = new Set(['completed', 'liquidated', 'cancelled']);
+      if (terminal.has(snap.lastStatus)) continue;
+
+      results.push({
+        id: orderId,
+        amountBrl: snap.amountBrl,
+        amountSats: snap.amountSats,
+        createdAt: snap.createdAt,
+        status: snap.lastStatus,
+        acceptedAt: snap.firstAcceptedAt,
+      });
+    }
+    results.sort((a, b) => b.createdAt - a.createdAt);
+    return results.slice(0, 200); // hard cap: 200 ordens ativas
+  }
+
+  /**
+   * vR5: dados brutos para debug/admin (sem auth). Conta apenas sizes.
+   */
+  getSnapshotStats() {
+    return {
+      totalSnapshots: this._orderSnapshots.size,
+      availableNow: this.getAvailableOrdersSnapshot().length,
+    };
   }
 }
 

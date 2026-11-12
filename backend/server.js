@@ -160,6 +160,19 @@ app.use('/admin', require('./routes/admin_verify'));
 app.get('/canonical/:orderId', (req, res) => {
   res.json(watchtower.getCanonicalInfo(req.params.orderId));
 });
+
+// vR5: snapshot de ordens. O app usa isso pra listar rápido.
+// pending sem provider ＝ lista pública; providerPubkey ＝ Minhas Ordens do provedor.
+// Sem billCode, comprovante ou dados de pagamento — só id+valor+timestamp.
+// Auth NIP-98: quem consulta as “minhas” deve assinar como provedor.
+app.get('/watchtower/available-orders', requireAuth, (req, res) => {
+  const provider = req.query.provider ? String(req.query.provider) : null;
+  // Se provider tiver formato inválido (não hex 64), tratamos como público.
+  const isHex64 = provider && /^[0-9a-f]{64}$/.test(provider);
+  if (provider && !isHex64) return res.status(400).json({ error: 'provider invalid' });
+  const list = watchtower.getAvailableOrdersSnapshot(isHex64 ? provider : null);
+  res.json({ orders: list, ts: Math.floor(Date.now() / 1000) });
+});
 // v688: canal redundante do billCode (blob NIP-44 via backend+FCM quando os
 // relays falham no aparelho do comprador — caso 72d248d8). O blob é ciphertext
 // inútil pra terceiros e o pareamento é validado no watchtower.

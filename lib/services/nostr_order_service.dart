@@ -10,6 +10,7 @@ import 'package:bro_app/services/log_utils.dart';
 import 'package:bro_app/services/nip98_signer.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../config.dart';
+import 'api_service.dart';
 import '../models/order.dart';
 import 'nip04_service.dart';
 import 'nip44_service.dart';
@@ -958,7 +959,57 @@ class NostrOrderService {
     }
   }
 
-  /// Busca ordens aceitas por um provedor e retorna como List<Order>
+    /// R5 (12/11): snapshot HTTP do watchtower (lista <500ms, relays em background).
+  Future<List<Map<String, dynamic>>> _fetchProviderOrdersFromApi(String providerPubkey) async {
+    try {
+      final resp = await ApiService().get('/watchtower/available-orders?provider=' + providerPubkey);
+      if (resp != null && resp['orders'] is List) {
+        final raw = (resp['orders'] as List).cast<Map<dynamic, dynamic>>();
+        return raw.map((r) => {
+          'id': r['id'],
+          'amount': r['amountBrl'],
+          'amount_brl': r['amountBrl'],
+          'btcAmount': (r['amountSats'] is int) ? (r['amountSats'] as int) / 1e8 : null,
+          'amount_sats': r['amountSats'],
+          'status': r['status'],
+          'createdAt': DateTime.fromMillisecondsSinceEpoch((r['createdAt'] as int) * 1000).toIso8601String(),
+          'created_at': r['createdAt'],
+          'acceptedAt': r['acceptedAt'],
+          'providerId': providerPubkey,
+          'userPubkey': '',
+          'billCode': '',
+          'type': 'watchtower_snapshot',
+        }).toList();
+      }
+    } catch (_) {}
+    return const [];
+  }
+
+  /// R5: snapshot publico.
+  Future<List<Map<String, dynamic>>> _fetchAvailableOrdersFromApi() async {
+    try {
+      final resp = await ApiService().get('/watchtower/available-orders');
+      if (resp != null && resp['orders'] is List) {
+        final raw = (resp['orders'] as List).cast<Map<dynamic, dynamic>>();
+        return raw.map((r) => {
+          'id': r['id'],
+          'amount': r['amountBrl'],
+          'amount_brl': r['amountBrl'],
+          'btcAmount': (r['amountSats'] is int) ? (r['amountSats'] as int) / 1e8 : null,
+          'amount_sats': r['amountSats'],
+          'status': 'pending',
+          'createdAt': DateTime.fromMillisecondsSinceEpoch((r['createdAt'] as int) * 1000).toIso8601String(),
+          'created_at': r['createdAt'],
+          'userPubkey': '',
+          'billCode': '',
+          'type': 'watchtower_snapshot',
+        }).toList();
+      }
+    } catch (_) {}
+    return const [];
+  }
+
+/// Busca ordens aceitas por um provedor e retorna como List<Order>
   /// CORREÇÃO: Agora também busca eventos de UPDATE para obter status correto
   ///
   /// vSEC-fix (cache inteligente): [skipOrderIds] = ordens TERMINAIS que já
@@ -968,7 +1019,15 @@ class NostrOrderService {
   /// perder o histórico quando o relay já podou o evento. Ordens NOVAS/ativas
   /// continuam sendo buscadas normalmente (nada se perde).
   Future<List<Order>> fetchProviderOrders(String providerPubkey, {Set<String>? skipOrderIds}) async {
-    final rawOrders = await _fetchProviderOrdersRaw(providerPubkey, skipOrderIds: skipOrderIds);
+    // R5: snapshot HTTP do watchtower primeiro (lista em <500ms, relays em background).
+    final snapshot = await _fetchProviderOrdersFromApi(providerPubkey);
+    final rawOrders = List<Map<String, dynamic>>.from(snapshot);
+    // Relay fan-out em background (mesma query antiga) reconcilia detalhes.
+    final relayOrders = await _fetchProviderOrdersRaw(providerPubkey, skipOrderIds: skipOrderIds);
+    final seenRelays = rawOrders.map((r) => r['id']?.toString()).toSet();
+    for (final o in relayOrders) {
+      if (!seenRelays.contains(o['id']?.toString())) rawOrders.add(o);
+    }
     
     // CORREÇÃO CRÍTICA: Buscar eventos de UPDATE para obter status correto
     // Sem isso, ordens completed apareciam como "pending" ou "accepted"

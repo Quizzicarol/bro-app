@@ -7,6 +7,21 @@ Prazo: tudo entregue e aprovado até **30/nov**.
 
 ---
 
+## R5 — Lista de ordens do provedor via watchtower (PERF, produção) 🚨
+**Prioridade ZERO** — usuários reportam "notifica mas nunca carrega": provedores sem conseguir pagar NENHUMA ordem = liquidez parada (emails de usuários, 12/11).
+
+**Diagnóstico:** o push FCM chega rápido (o watchtower já viu a ordem), mas o app monta a lista consultando 5 relays com WebSocket efêmero (~500ms de handshake cada, 8s de timeout por relay — Damus 503 e nos.lol mortos) e ainda refaz fetch em batches sequenciais de 15 ordens pra checar status. Cada passo pode travar ~18s.
+
+**O que fazer (ideia da Carol, validada):**
+1. **Backend (bro-api):** novo endpoint `GET /watchtower/available-orders` alimentado pelo estado do `nostrWatchtowerService` (ele JÁ conhece toda ordem nova, aceites e terminais — é a fonte do push). Resposta = ordens pending com dados mínimos (id, valor, moeda, createdAt). O `/orders/available` atual é fóssil pré-Nostr (mapa em memória vazio) — NÃO reaproveitar, criar rota nova.
+2. **App (modo provedor):** buscar a lista HTTP PRIMEIRO (~200ms) e renderizar na hora. O fetch dos relays continua em BACKGROUND, só reconciliando (e confirmando que nenhuma já foi aceita).
+3. **Detalhe da ordem + billcode:** seguem via relay/NIP-44 (criptografados ponto a ponto — não passam pelo servidor).
+4. A filtragem de segurança é mantida: o watchtower conhece aceites/terminais → a lista HTTP já vem pré-filtrada; relay reconcilia em seguida.
+
+**Critério de aceite:** lista abre em < 2s com todos os relays derrubados no teste (mock relay offline); ordem recém-publicada aparece via watchtower; aceite/comprovante/billcode continuam 100% via relay (nada muda no fluxo de dinheiro). Teste novo em `test/integration/`.
+
+---
+
 ## R1 — Comprovante com tela preta (BUG, produção) 🥇
 **Prioridade 1** — afeta disputa/mediação HOJE.
 
@@ -68,13 +83,14 @@ Prazo: tudo entregue e aprovado até **30/nov**.
 
 ---
 
-## Sequência (19 dias)
+## Sequência (reorganizada 12/11 — dor de produção primeiro)
 
 | Semana | Entregas |
 |---|---|
-| 11–15/nov | **R1** (bug, sai logo) + HODL T1a/T1b |
-| 16–20/nov | **R2** (tabela de garantia) + HODL T2/T3 (consome a tabela do R2) |
+| 12–14/nov | **R5** 🚨 (lista do provedor via watchtower — usuário não consegue pagar ordem HOJE) |
+| 14–16/nov | **R1** (tela preta do comprovante) |
+| 16–20/nov | **R2** (tabela de garantia; HODL T2 consome essa tabela — série T do HODL já está pronta na branch local, merge após R5+R1 estabilizarem no main) |
 | 21–26/nov | **R3** (timeout 2h) |
-| 27–30/nov | **R4** (admin) + rodada de regressão (24 testes + novos) + build candidato |
+| 27–30/nov | **R4** (admin) + merge HODL (se Carol aprovar) + regressão completa + build candidato |
 
 **Régua de liberação:** cada item só vai pros testadores quando (1) agente implementou + testou, (2) Copilot revisou + rodou testes independentes, (3) Carol retestou no aparelho e aprovou. 💜

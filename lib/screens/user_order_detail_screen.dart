@@ -559,6 +559,33 @@ class _UserOrderDetailScreenState extends State<UserOrderDetailScreen> {
                   child: Image.memory(
                     bytes,
                     fit: BoxFit.contain,
+                    // v786 (R1): sem errorBuilder, bytes inválidos (NIP-44
+                    // truncado, HEIC) renderizavam TELA PRETA. Estado de erro
+                    // defensivo — nunca tela preta.
+                    errorBuilder: (context, error, stackTrace) {
+                      broLog('❌ [R1] Comprovante ilegível (fullscreen): $error');
+                      return Container(
+                        padding: const EdgeInsets.all(24),
+                        color: Colors.red.withOpacity(0.15),
+                        child: const Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.error_outline, color: Colors.red, size: 48),
+                            SizedBox(height: 12),
+                            Text(
+                              'Comprovante ilegível',
+                              style: TextStyle(color: Colors.red, fontSize: 16, fontWeight: FontWeight.bold),
+                            ),
+                            SizedBox(height: 6),
+                            Text(
+                              'Não foi possível exibir esta imagem.\nPeça o reenvio do comprovante.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.white70, fontSize: 13),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
                 ),
               ),

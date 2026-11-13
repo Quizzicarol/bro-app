@@ -3408,12 +3408,15 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                         child: OutlinedButton.icon(
                           onPressed: () async {
                             final picker = ImagePicker();
-                            // v247: Reduzida resolução para caber nos relays Nostr (limite ~64KB)
-                            final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 600, maxHeight: 600, imageQuality: 40);
+                            // v786 (R1): v247 esmagava na origem (600px/q40) e o
+                            // comprovante ficava ilegível (motivo de disputas reais).
+                            // Captura em alta + escada do image_compress encaixa no
+                            // teto NIP-44 mantendo a imagem nítida.
+                            final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 1920, maxHeight: 1920, imageQuality: 90);
                             if (picked != null) {
                               final file = File(picked.path);
                               final bytes = await file.readAsBytes();
-                              setModalState(() { evidencePhoto = file; evidenceBase64 = base64Encode(bytes); });
+                              setModalState(() { evidencePhoto = file; evidenceBase64 = compressImageToBase64ForNip44(bytes); });
                             }
                           },
                           icon: const Icon(Icons.photo_library, size: 18),
@@ -3426,12 +3429,15 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
                         child: OutlinedButton.icon(
                           onPressed: () async {
                             final picker = ImagePicker();
-                            // v247: Reduzida resolução para caber nos relays Nostr (limite ~64KB)
-                            final picked = await picker.pickImage(source: ImageSource.camera, maxWidth: 600, maxHeight: 600, imageQuality: 40);
+                            // v786 (R1): v247 esmagava na origem (600px/q40) e o
+                            // comprovante ficava ilegível (motivo de disputas reais).
+                            // Captura em alta + escada do image_compress encaixa no
+                            // teto NIP-44 mantendo a imagem nítida.
+                            final picked = await picker.pickImage(source: ImageSource.camera, maxWidth: 1920, maxHeight: 1920, imageQuality: 90);
                             if (picked != null) {
                               final file = File(picked.path);
                               final bytes = await file.readAsBytes();
-                              setModalState(() { evidencePhoto = file; evidenceBase64 = base64Encode(bytes); });
+                              setModalState(() { evidencePhoto = file; evidenceBase64 = compressImageToBase64ForNip44(bytes); });
                             }
                           },
                           icon: const Icon(Icons.camera_alt, size: 18),

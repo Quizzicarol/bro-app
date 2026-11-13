@@ -14,6 +14,7 @@ import 'api_service.dart';
 import '../models/order.dart';
 import 'nip04_service.dart';
 import 'nip44_service.dart';
+import '../utils/image_compress.dart';
 
 /// Serviço para publicar e buscar ordens via Nostr Relays
 /// 
@@ -5399,11 +5400,26 @@ class NostrOrderService {
       if (finalImage != null && finalImage.isNotEmpty) {
         final imageBytes = finalImage.length;
         broLog('📏 Evidência imagem: ${(imageBytes / 1024).toStringAsFixed(1)}KB base64');
-        if (imageBytes > 45000) {
-          // Imagem muito grande, truncar para evitar rejeição dos relays
-          // (45KB base64 + metadados JSON + NIP-44 overhead ~ 64KB)
-          broLog('⚠️ Imagem muito grande ($imageBytes bytes), será comprimida');
-          // Tentar enviar mesmo assim, mas avisar
+        // v786 (R1): defesa em profundidade — clientes antigos (v247) enviavam
+        // base64 cru que podia estourar o plaintext NIP-44 (65535 bytes) e virar
+        // tela preta no receptor. A escada do helper encaixa no teto mantendo a
+        // imagem nítida; se já está dentro do teto, volta como está (sem
+        // recompressão — regra da Carol: nunca degradar o que já é legível).
+        if (imageBytes > kNip44MaxImageBase64) {
+          try {
+            final decoded = base64Decode(finalImage.split(',').last);
+            final compressed = compressImageToBase64ForNip44(decoded);
+            if (compressed.isNotEmpty && compressed.length <= kNip44MaxImageBase64) {
+              finalImage = compressed;
+              broLog('🖼️ [R1] Evidência recomprimida no gate: ${(finalImage.length / 1024).toStringAsFixed(1)}KB base64');
+            } else {
+              broLog('⚠️ [R1] Evidência acima do teto NIP-44 mesmo após compress — abortando envio da imagem');
+              finalImage = null;
+            }
+          } catch (e) {
+            broLog('⚠️ [R1] Falha ao recomprimir evidência: $e — abortando envio da imagem');
+            finalImage = null;
+          }
         }
       }
       
@@ -5417,8 +5433,8 @@ class NostrOrderService {
       if (description != null && description.isNotEmpty) {
         contentMap['description'] = description;
       }
-      if (imageBase64 != null && imageBase64.isNotEmpty) {
-        contentMap['image'] = imageBase64;
+      if (finalImage != null && finalImage.isNotEmpty) {
+        contentMap['image'] = finalImage;
       }
       
       final plainContent = jsonEncode(contentMap);

@@ -265,9 +265,6 @@ workflows:
     publishing:
       app_store_connect:
         auth: integration
-        # v787: Apple ID explicito — o publish quebrou 13/11 com "Cannot determine
-        # Apple ID from Bundle ID" (contrato pendente na conta travava o lookup).
-        apple_id: '6757866841'
         submit_to_testflight: true
         submit_to_app_store: false # Desabilitado at adicionar screenshots
         # Enviar automaticamente para testadores externos (link pblico)
@@ -379,7 +376,6 @@ workflows:
     publishing:
       app_store_connect:
         auth: integration
-        apple_id: '6757866841'
         submit_to_testflight: true
         submit_to_app_store: false
       email:
@@ -707,7 +703,6 @@ workflows:
     publishing:
       app_store_connect:
         auth: integration
-        apple_id: '6757866841'
         submit_to_testflight: true
         submit_to_app_store: true
 

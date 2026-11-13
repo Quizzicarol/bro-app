@@ -1,5 +1,5 @@
 ﻿import 'dart:async';
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:bro_app/services/log_utils.dart';
@@ -369,6 +369,90 @@ class OrderProvider with ChangeNotifier {
   // Cache de ordens salvas localmente â�?��?� usado para proteger contra regress�?£o de status
   // quando o relay n�?£o retorna o evento de conclus�?£o mais recente
   final Map<String, Order> _savedOrdersCache = {};
+
+  // R5c: reconcile em background chegou durante um sync — re-aplicar no fim.
+  bool _pendingR5cReconcile = false;
+
+  /// R5c: merge ADITIVO do resultado do reconcile de relay
+  /// (NostrOrderService.lastRelayReconcileResult) nas listas visíveis.
+  /// Regras (mesmas travas do syncProvider):
+  /// - Ordem minha (userPubkey == eu) ou que aceitei (providerId == eu) →
+  ///   entra/atualiza em _orders (status só avança; finais protegidos).
+  /// - Ordem de outro, ainda pending → entra nas Disponíveis (dedup por id).
+  /// - NUNCA remove ordem existente (aditivo puro).
+  void _applyR5cReconcileMerge() {
+    final relayResult = _nostrOrderService.lastRelayReconcileResult;
+    if (relayResult == null || relayResult.isEmpty) return;
+    int merged = 0;
+    for (final relayOrder in relayResult) {
+      if (relayOrder.amount <= 0) continue;
+      final existingIndex = _orders.indexWhere((o) => o.id == relayOrder.id);
+      if (existingIndex == -1) {
+        final isMyOrder = relayOrder.userPubkey == _currentUserPubkey;
+        final isMyProviderOrder = relayOrder.providerId == _currentUserPubkey;
+        if (!isMyOrder && !isMyProviderOrder) {
+          // Ordem de outro: só nas Disponíveis, se ainda pendente.
+          if (relayOrder.status == 'pending' &&
+              !_availableOrdersForProvider.any((o) => o.id == relayOrder.id)) {
+            _availableOrdersForProvider = [
+              ..._availableOrdersForProvider,
+              relayOrder,
+            ];
+            merged++;
+          }
+          continue;
+        }
+        // Minha/aceita: proteger contra regressão com o cache local.
+        final savedOrder = _savedOrdersCache[relayOrder.id];
+        var toAdd = relayOrder;
+        if (savedOrder != null &&
+            relayOrder.status != 'cancelled' &&
+            _isStatusMoreRecent(savedOrder.status, relayOrder.status)) {
+          toAdd = relayOrder.copyWith(
+            status: savedOrder.status,
+            completedAt: savedOrder.completedAt,
+          );
+        }
+        _orders.add(toAdd);
+        merged++;
+      } else {
+        final existing = _orders[existingIndex];
+        // SEGURANÇA: só atualizar se a ordem é minha ou que aceitei.
+        final isOwnerExisting = existing.userPubkey == _currentUserPubkey;
+        final isProviderExisting = existing.providerId == _currentUserPubkey;
+        if (!isOwnerExisting && !isProviderExisting) continue;
+        // Status finais não regridem (mesma trava do syncProvider).
+        const protectedStatuses = ['cancelled', 'completed', 'liquidated'];
+        if (protectedStatuses.contains(existing.status)) continue;
+        if (_isStatusMoreRecent(relayOrder.status, existing.status)) {
+          _orders[existingIndex] = existing.copyWith(
+            providerId: existing.providerId ?? relayOrder.providerId,
+            status: relayOrder.status,
+            completedAt: relayOrder.status == 'completed' ? DateTime.now() : existing.completedAt,
+          );
+          merged++;
+        }
+      }
+    }
+    if (merged > 0) {
+      broLog('⏱️ R5c: reconcile em background aplicou $merged ordem(ns) na lista visível');
+    }
+  }
+
+  // R5c: hooks de teste (@visibleForTesting) — mesmo padrão dos hooks do
+  // NostrOrderService (R5b). Não alteram nenhum caminho de produção.
+  @visibleForTesting
+  void debugSetCurrentUserPubkeyForR5c(String pubkey) {
+    _currentUserPubkey = pubkey;
+  }
+
+  @visibleForTesting
+  void debugSeedOrdersForR5c(List<Order> seed) {
+    _orders.addAll(seed);
+  }
+
+  @visibleForTesting
+  void debugApplyR5cReconcileMerge() => _applyR5cReconcileMerge();
   
   /// PERFORMANCE: Debounced save â�?��?� coalesce rapid writes into one 500ms later
   void _debouncedSave() {
@@ -1567,14 +1651,19 @@ class OrderProvider with ChangeNotifier {
           .map((o) => o.id)
           .toSet();
 
-      // R5b: callback de reconcile em background — o serviço já fez o merge
-      // aditivo (ordens só do relay em lastRelayReconcileResult); aqui só
-      // notificamos a UI e re-sincronizamos com guarda contra reentrância.
+      // R5c: callback de reconcile em background — o serviço já fez o merge
+      // aditivo (ordens só do relay em lastRelayReconcileResult); aqui
+      // aplicamos o merge ADITIVO na lista visível (ordem que só o relay viu
+      // entra na tela na hora, não no próximo poll) e notificamos a UI.
       void onR5bBackgroundReconcile() {
         if (_isSyncingProvider) {
-          broLog('⏱️ R5b: reconcile em background ignorado (sync em andamento)');
+          // R5c: sync em andamento — marcar para re-aplicar o merge no fim do
+          // sync (o próprio sync vai reconciliar, mas garantimos aditividade).
+          _pendingR5cReconcile = true;
+          broLog('⏱️ R5b: reconcile em background adiado (sync em andamento)');
           return;
         }
+        _applyR5cReconcileMerge();
         broLog('⏱️ R5b: reconcile em background concluído — notificando UI');
         notifyListeners();
       }
@@ -1997,7 +2086,13 @@ class OrderProvider with ChangeNotifier {
       _debouncedSave();
       _lastProviderSyncTime = DateTime.now();
       _immediateNotify(); // v269: provider sync sempre notifica imediatamente
-      
+      // R5c: reconcile em background pode ter chegado durante o sync —
+      // re-aplicar o merge agora que o guard liberou (o callback cedo saiu).
+      if (_pendingR5cReconcile) {
+        _pendingR5cReconcile = false;
+        _applyR5cReconcileMerge();
+        _immediateNotify(); // R5c: merge pós-sync precisa notificar também
+      }
     } catch (e) {
     } finally {
       _isSyncingProvider = false;

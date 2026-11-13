@@ -1941,17 +1941,6 @@ class NostrWatchtowerService {
         this._disputeOpeners.set(orderId, opener);
         openers++;
       }
-      // vR5: snapshot de ordens (validação: objeto, timestamp numérico)
-      let snaps = 0;
-      for (const [orderId, s] of Object.entries(data.orderSnapshots || {})) {
-        if (!s || typeof s !== 'object') continue;
-        if (typeof s.createdAt !== 'number') continue;
-        // Purge old snapshots on load.
-        if (now - s.createdAt * 1000 > 30 * 24 * 60 * 60 * 1000) continue;
-        this._orderSnapshots.set(orderId, s);
-        snaps++;
-      }
-      console.log(`\u{1F5FC} [Watchtower] Snapshot: ${snaps} ordens restauradas`);
       // v688: ordens terminais (TTL 30d — suficiente pra qualquer republish útil)
       let terms = 0;
       for (const [orderId, ts] of Object.entries(data.terminalOrders || {})) {
@@ -1966,8 +1955,7 @@ class NostrWatchtowerService {
         const valid = list.filter(a => a && typeof a.pubkey === 'string' && typeof a.acceptedAt === 'number' && now - a.acceptedAt * 1000 <= 7 * 24 * 60 * 60 * 1000);
         if (valid.length > 0) { this._orderAccepts.set(orderId, valid); accepts += valid.length; }
       }
-      // vR5: snapshot de ordens (validação)
-      // (dedup removed)
+      // vR5: snapshot de ordens (validação: objeto, timestamp numérico, TTL 30d)
       for (const [orderId, s] of Object.entries(data.orderSnapshots || {})) {
         if (!s || typeof s !== 'object') continue;
         if (typeof s.createdAt !== 'number') continue;
@@ -2011,6 +1999,10 @@ class NostrWatchtowerService {
         // v758: aceites por ordem (autoridade do canônico)
         const orderAccepts = { ...(merged.orderAccepts || {}) };
         for (const [k, v] of this._orderAccepts) orderAccepts[k] = v;
+        // v784: R5 esqueceu de construir essa local — ReferenceError pegava no
+        // catch e NADA mais persistia (dedup, canônico, terminais). Breaker.
+        const orderSnapshots = { ...(merged.orderSnapshots || {}) };
+        for (const [k, v] of this._orderSnapshots) orderSnapshots[k] = v;
         const out = {
           seenPushes: prunedPushes,
           orderMeta: Object.fromEntries(Object.entries(orderMeta).slice(-4000)),

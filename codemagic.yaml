@@ -32,7 +32,7 @@ workflows:
         distribution_type: app_store
         bundle_identifier: app.brostr
       flutter: 3.35.7
-      xcode: latest
+      xcode: 26.5
       cocoapods: default
       java: 17
       
@@ -303,7 +303,7 @@ workflows:
         distribution_type: app_store
         bundle_identifier: app.brostr
       flutter: 3.35.7
-      xcode: latest
+      xcode: 26.5
       cocoapods: default
 
     triggering:
@@ -663,7 +663,7 @@ workflows:
         distribution_type: app_store
         bundle_identifier: app.brostr
       flutter: 3.35.7
-      xcode: latest
+      xcode: 26.5
       cocoapods: default
           
     scripts:
@@ -718,7 +718,7 @@ workflows:
       groups:
         - bro_secrets
       flutter: 3.35.7
-      xcode: latest
+      xcode: 26.5
       java: 17
       
     triggering:

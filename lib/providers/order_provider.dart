@@ -1567,8 +1567,20 @@ class OrderProvider with ChangeNotifier {
           .map((o) => o.id)
           .toSet();
 
+      // R5b: callback de reconcile em background — o serviço já fez o merge
+      // aditivo (ordens só do relay em lastRelayReconcileResult); aqui só
+      // notificamos a UI e re-sincronizamos com guarda contra reentrância.
+      void onR5bBackgroundReconcile() {
+        if (_isSyncingProvider) {
+          broLog('⏱️ R5b: reconcile em background ignorado (sync em andamento)');
+          return;
+        }
+        broLog('⏱️ R5b: reconcile em background concluído — notificando UI');
+        notifyListeners();
+      }
+
       final results = await Future.wait([
-        safeFetch(() => _nostrOrderService.fetchPendingOrders(), 'fetchPendingOrders'),
+        safeFetch(() => _nostrOrderService.fetchPendingOrders(onBackgroundReconcile: onR5bBackgroundReconcile), 'fetchPendingOrders'),
         if (hasActiveUserOrders)
           safeFetch(() => _currentUserPubkey != null 
               ? _nostrOrderService.fetchUserOrders(_currentUserPubkey!)
@@ -1576,7 +1588,7 @@ class OrderProvider with ChangeNotifier {
         else
           Future.value(<Order>[]),
         safeFetch(() => _currentUserPubkey != null
-            ? _nostrOrderService.fetchProviderOrders(_currentUserPubkey!, skipOrderIds: terminalCachedIds)
+            ? _nostrOrderService.fetchProviderOrders(_currentUserPubkey!, skipOrderIds: terminalCachedIds, onBackgroundReconcile: onR5bBackgroundReconcile)
             : Future.value(<Order>[]), 'fetchProviderOrders'),
       ]);
       

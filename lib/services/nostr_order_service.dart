@@ -27,6 +27,27 @@ class NostrOrderService {
   factory NostrOrderService() => _instance;
   NostrOrderService._internal();
 
+  /// R5b: hook de teste — quando não-nulo, substitui o GET HTTP da watchtower
+  /// (usado pelos testes de fluxo; produção nunca seta).
+  @visibleForTesting
+  static Future<Map<String, dynamic>?> Function(String path)? apiGetOverride;
+
+  /// R5b: hook de teste — quando não-nulo, substitui a lista de relays usada
+  /// pelo pipeline de busca (permite relays mortos herméticos nos testes).
+  @visibleForTesting
+  static List<String>? relaysOverride;
+
+  /// R5b: aplica o override de relays (teste) ou restaura a lista de produção.
+  @visibleForTesting
+  static void applyRelaysOverride() {
+    final svc = NostrOrderService();
+    if (relaysOverride != null) {
+      svc._relays
+        ..clear()
+        ..addAll(relaysOverride!);
+    }
+  }
+
   // Serviço de criptografia NIP-44
   final _nip44 = Nip44Service();
 
@@ -63,6 +84,12 @@ class NostrOrderService {
   // Resolve: relay não retorna evento de status → ordem aparece como disponível
   static const String _blockedOrdersKey = 'blocked_order_ids';
   Set<String> _blockedOrderIds = {};
+
+  /// R5b: resultado do último reconcile em background (ordens só do relay).
+  /// O provider lê isso no callback para merge aditivo sem refetch.
+  List<Order>? lastRelayReconcileResult;
+  List<Order>? get _lastRelayReconcileResult => lastRelayReconcileResult;
+  set _lastRelayReconcileResult(List<Order>? v) => lastRelayReconcileResult = v;
   bool _blockedOrdersLoaded = false;
 
   /// Carrega blocklist do SharedPreferences (chamado 1x na inicialização)
@@ -962,10 +989,12 @@ class NostrOrderService {
     /// R5 (12/11): snapshot HTTP do watchtower (lista <500ms, relays em background).
   Future<List<Map<String, dynamic>>> _fetchProviderOrdersFromApi(String providerPubkey) async {
     try {
-      final resp = await ApiService().get('/watchtower/available-orders?provider=' + providerPubkey);
+      final resp = apiGetOverride != null
+          ? await apiGetOverride!('/watchtower/available-orders?provider=' + providerPubkey)
+          : await ApiService().get('/watchtower/available-orders?provider=' + providerPubkey);
       if (resp != null && resp['orders'] is List) {
         final raw = (resp['orders'] as List).cast<Map<dynamic, dynamic>>();
-        return raw.map((r) => {
+        return raw.map<Map<String, dynamic>>((r) => {
           'id': r['id'],
           'amount': r['amountBrl'],
           'amount_brl': r['amountBrl'],
@@ -988,10 +1017,12 @@ class NostrOrderService {
   /// R5: snapshot publico.
   Future<List<Map<String, dynamic>>> _fetchAvailableOrdersFromApi() async {
     try {
-      final resp = await ApiService().get('/watchtower/available-orders');
+      final resp = apiGetOverride != null
+          ? await apiGetOverride!('/watchtower/available-orders')
+          : await ApiService().get('/watchtower/available-orders');
       if (resp != null && resp['orders'] is List) {
         final raw = (resp['orders'] as List).cast<Map<dynamic, dynamic>>();
-        return raw.map((r) => {
+        return raw.map<Map<String, dynamic>>((r) => {
           'id': r['id'],
           'amount': r['amountBrl'],
           'amount_brl': r['amountBrl'],
@@ -1018,25 +1049,34 @@ class NostrOrderService {
   /// fique lento (dezenas de fetchOrderFromNostr p/ ordens antigas) E evita
   /// perder o histórico quando o relay já podou o evento. Ordens NOVAS/ativas
   /// continuam sendo buscadas normalmente (nada se perde).
-  Future<List<Order>> fetchProviderOrders(String providerPubkey, {Set<String>? skipOrderIds}) async {
-    // R5: snapshot HTTP do watchtower primeiro (lista em <500ms, relays em background).
+  Future<List<Order>> fetchProviderOrders(String providerPubkey, {Set<String>? skipOrderIds, void Function()? onBackgroundReconcile}) async {
+    // R5b: snapshot HTTP do watchtower primeiro (lista em <500ms, relays em background).
+    final sw = Stopwatch()..start();
     final snapshot = await _fetchProviderOrdersFromApi(providerPubkey);
-    final rawOrders = List<Map<String, dynamic>>.from(snapshot);
-    // Relay fan-out em background (mesma query antiga) reconcilia detalhes.
-    final relayOrders = await _fetchProviderOrdersRaw(providerPubkey, skipOrderIds: skipOrderIds);
-    final seenRelays = rawOrders.map((r) => r['id']?.toString()).toSet();
-    for (final o in relayOrders) {
-      if (!seenRelays.contains(o['id']?.toString())) rawOrders.add(o);
+    if (snapshot.isNotEmpty) {
+      // Caminho feliz: monta a lista SÓ do snapshot e retorna imediato.
+      final orders = _buildProviderOrdersFromRaw(snapshot, providerPubkey, const {});
+      broLog('⏱️ R5b: provider orders renderizadas via API em ${sw.elapsedMilliseconds}ms (${orders.length} ordens)');
+      // Relay fan-out em background reconcilia (aditivo) e avisa o provider.
+      unawaited(_reconcileProviderOrdersInBackground(providerPubkey, skipOrderIds: skipOrderIds, onBackgroundReconcile: onBackgroundReconcile));
+      return orders;
     }
-    
+    // Fallback: API vazia/falhou → fluxo relay antigo (bloqueante), intacto.
+    final rawOrders = List<Map<String, dynamic>>.from(await _fetchProviderOrdersRaw(providerPubkey, skipOrderIds: skipOrderIds));
     // CORREÇÃO CRÍTICA: Buscar eventos de UPDATE para obter status correto
     // Sem isso, ordens completed apareciam como "pending" ou "accepted"
     final statusUpdates = await _fetchAllOrderStatusUpdates();
-    
+    final orders = _buildProviderOrdersFromRaw(rawOrders, providerPubkey, statusUpdates);
+    broLog('⏱️ R5b: provider orders via relay fallback em ${sw.elapsedMilliseconds}ms (${orders.length} ordens)');
+    return orders;
+  }
+
+  /// R5b: monta List<Order> a partir de raw maps (snapshot e/ou relay).
+  List<Order> _buildProviderOrdersFromRaw(List<Map<String, dynamic>> rawOrders, String providerPubkey, Map<String, Map<String, dynamic>> statusUpdates) {
     final orders = <Order>[];
     for (final raw in rawOrders) {
       final rawId = raw['id']?.toString() ?? '';
-      
+
       // Verificar se já é um Map com campos diretos (vindo de fetchOrderFromNostr)
       // ou se é um evento Nostr que precisa ser parseado
       Order? order;
@@ -1059,8 +1099,8 @@ class NostrOrderService {
             providerId: raw['providerId']?.toString() ?? providerPubkey,
             // CORREÇÃO v1.0.129: Usar timestamp Nostr como fallback em vez de DateTime.now()
             // DateTime.now() fazia TODAS as ordens sem createdAt ficarem com a mesma data (do sync)
-            createdAt: DateTime.tryParse(raw['createdAt']?.toString() ?? '') ?? 
-                       (raw['created_at'] != null 
+            createdAt: DateTime.tryParse(raw['createdAt']?.toString() ?? '') ??
+                       (raw['created_at'] != null
                          ? DateTime.fromMillisecondsSinceEpoch((raw['created_at'] as int) * 1000)
                          : DateTime.now()),
           );
@@ -1073,7 +1113,7 @@ class NostrOrderService {
         } else {
         }
       }
-      
+
       if (order != null) {
         // CORREÇÃO CRÍTICA: Excluir ordens onde o usuário é o próprio dono
         // Quando user == provider (mesmo device), os status updates do usuário
@@ -1081,21 +1121,35 @@ class NostrOrderService {
         if (order.userPubkey == providerPubkey) {
           continue; // Pular ordens próprias — não sou meu próprio Bro!
         }
-        
+
         // CORREÇÃO CRÍTICA: Garantir que providerId seja setado para ordens do provedor
         if (order.providerId == null || order.providerId!.isEmpty) {
           order = order.copyWith(providerId: providerPubkey);
         }
-        
+
         // CORREÇÃO CRÍTICA: Aplicar status atualizado dos eventos de UPDATE
         // Isso garante que ordens completed/awaiting_confirmation apareçam com status correto
         order = _applyStatusUpdate(order, statusUpdates, userPrivateKey: _decryptionKey);
-        
+
         orders.add(order);
       }
     }
-    
     return orders;
+  }
+
+  /// R5b: reconcile em background — relay fan-out + status updates, merge
+  /// ADITIVO (relay pode adicionar ordem que o servidor escondeu; nunca remove),
+  /// depois avisa o provider via callback.
+  Future<void> _reconcileProviderOrdersInBackground(String providerPubkey, {Set<String>? skipOrderIds, void Function()? onBackgroundReconcile}) async {
+    try {
+      final relayOrders = await _fetchProviderOrdersRaw(providerPubkey, skipOrderIds: skipOrderIds);
+      final statusUpdates = await _fetchAllOrderStatusUpdates();
+      final relayBuilt = _buildProviderOrdersFromRaw(relayOrders, providerPubkey, statusUpdates);
+      _lastRelayReconcileResult = relayBuilt;
+      onBackgroundReconcile?.call();
+    } catch (e) {
+      broLog('⚠️ R5b: reconcile provider em background falhou (não bloqueia): $e');
+    }
   }
 
   /// Publica evento em relay (wrapper público para uso externo)
@@ -2287,11 +2341,81 @@ class NostrOrderService {
   /// NOTA: _fetchAllOrderStatusUpdates retorna 0 na maioria dos relays porque
   /// tags #t e queries sem authors não são suportadas para events kind 30000+
   /// Por isso usamos _fetchTargetedStatusUpdates (que usa #d tag) como PRIMARY
-  Future<List<Order>> fetchPendingOrders() async {
-    
+  ///
+  /// R5b: API-first — snapshot HTTP renderiza imediato; relay reconcilia em
+  /// background (aditivo). API vazia/falha → fallback relay síncrono intacto.
+  Future<List<Order>> fetchPendingOrders({void Function()? onBackgroundReconcile}) async {
+
     // PASSO 0: Garantir que blocklist local está carregada
     await _loadBlockedOrders();
-    
+
+    // R5b: snapshot HTTP primeiro — se vier não-vazio, renderiza imediato e
+    // reconcilia via relay em background (aditivo). API vazia/falha → fallback.
+    final sw = Stopwatch()..start();
+    final snapshot = await _fetchAvailableOrdersFromApi();
+    if (snapshot.isNotEmpty) {
+      final snapshotOrders = _buildPendingOrdersFromSnapshot(snapshot);
+      broLog('⏱️ R5b: pending orders renderizadas via API em ${sw.elapsedMilliseconds}ms (${snapshotOrders.length} ordens)');
+      unawaited(_reconcilePendingOrdersInBackground(onBackgroundReconcile: onBackgroundReconcile));
+      return snapshotOrders;
+    }
+    broLog('⏱️ R5b: API vazia/falhou → fallback relay (${sw.elapsedMilliseconds}ms)');
+
+    final relayOrders = await _fetchPendingOrdersViaRelayPipeline();
+    return relayOrders;
+  }
+
+  /// R5b: monta List<Order> do snapshot HTTP (render imediato). Aplica
+  /// blocklist e filtro de expiração 7 dias; status vem do próprio snapshot.
+  List<Order> _buildPendingOrdersFromSnapshot(List<Map<String, dynamic>> snapshot) {
+    final now = DateTime.now();
+    final orders = <Order>[];
+    for (final raw in snapshot) {
+      final id = raw['id']?.toString() ?? '';
+      if (id.isEmpty || _blockedOrderIds.contains(id)) continue;
+      final createdAt = DateTime.tryParse(raw['createdAt']?.toString() ?? '') ??
+          (raw['created_at'] != null
+              ? DateTime.fromMillisecondsSinceEpoch((raw['created_at'] as int) * 1000)
+              : now);
+      // Mesmo filtro de expiração do pipeline de relay (7 dias).
+      if (now.difference(createdAt) > const Duration(days: 7)) continue;
+      final amountBrl = (raw['amount'] as num?)?.toDouble() ?? (raw['amount_brl'] as num?)?.toDouble() ?? 0;
+      final amountSats = (raw['amount_sats'] as num?)?.toInt() ?? ((raw['btcAmount'] as num?)?.toDouble() ?? 0 * 1e8).round();
+      orders.add(Order(
+        id: id,
+        billType: 'pix',
+        billCode: raw['billCode']?.toString() ?? '',
+        amount: amountBrl,
+        btcAmount: amountSats / 1e8,
+        btcPrice: amountBrl > 0 && amountSats > 0 ? amountBrl / (amountSats / 1e8) : 0,
+        providerFee: 0,
+        platformFee: 0,
+        total: amountBrl,
+        status: raw['status']?.toString() ?? 'pending',
+        createdAt: createdAt,
+        providerId: raw['providerId']?.toString(),
+        userPubkey: raw['userPubkey']?.toString() ?? '',
+      ));
+    }
+    return orders;
+  }
+
+  /// R5b: reconcile em background — roda o pipeline de relay completo
+  /// (mesmo do fallback), faz merge ADITIVO (ordem que só existe no relay
+  /// entra; snapshot nunca censura) e avisa o provider via callback.
+  Future<void> _reconcilePendingOrdersInBackground({void Function()? onBackgroundReconcile}) async {
+    try {
+      final relayOrders = await _fetchPendingOrdersViaRelayPipeline();
+      _lastRelayReconcileResult = relayOrders;
+      onBackgroundReconcile?.call();
+    } catch (e) {
+      broLog('⚠️ R5b: reconcile pending em background falhou (não bloqueia): $e');
+    }
+  }
+
+  /// R5b: pipeline de relay de pending orders extraído do fallback — usado
+  /// tanto pelo fallback síncrono quanto pelo reconcile em background.
+  Future<List<Order>> _fetchPendingOrdersViaRelayPipeline() async {
     final rawOrders = await _fetchPendingOrdersRaw();
     broLog('📋 fetchPendingOrders: ${rawOrders.length} raw events do relay');
     

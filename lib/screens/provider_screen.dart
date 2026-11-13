@@ -220,7 +220,13 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
     // Validar se pode aceitar esta ordem baseado no tier
     if (!AppConfig.providerTestMode) {
       final collateralProvider = context.read<CollateralProvider>();
-      if (!collateralProvider.canAcceptOrder(orderAmount)) {
+      // R2: contar ordens ativas minhas como provedor para o limite de 1
+      // ordem por vez do tier-1 sem garantia ("Meus Primeiros Sats").
+      final orderProvider = context.read<OrderProvider>();
+      final myActiveOrders = orderProvider.myAcceptedOrders
+          .where((o) => o.isActive && o.id != orderId)
+          .length;
+      if (!collateralProvider.canAcceptOrder(orderAmount, activeOrdersCount: myActiveOrders)) {
         final reason = collateralProvider.getCannotAcceptReason(orderAmount);
         await showDialog(
           context: context,

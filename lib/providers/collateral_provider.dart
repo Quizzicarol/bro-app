@@ -274,11 +274,14 @@ class CollateralProvider with ChangeNotifier {
   }
 
   /// Verificar se pode aceitar uma ordem (sistema local)
-  bool canAcceptOrder(double orderValueBrl) {
+  ///
+  /// [activeOrdersCount]: R2 — ordens ativas do provedor (não terminais),
+  /// contadas pelo chamador. Aplica o limite de 1 ordem do tier-1 sem garantia.
+  bool canAcceptOrder(double orderValueBrl, {int? activeOrdersCount}) {
     // Se tem garantia local, usar sistema local
     if (_localCollateral != null) {
       // IMPORTANTE: Usar effectiveBalanceSats (carteira - sats comprometidos com ordens cliente)
-      final canAccept = _localCollateralService.canAcceptOrder(_localCollateral!, orderValueBrl, effectiveBalanceSats);
+      final canAccept = _localCollateralService.canAcceptOrderWithReason(_localCollateral!, orderValueBrl, effectiveBalanceSats, activeOrdersCount: activeOrdersCount).$1;
       broLog('📊 canAcceptOrder (local): R\$ $orderValueBrl -> ${canAccept ? "✅" : "❌"}');
       broLog('   Saldo efetivo: $effectiveBalanceSats sats (total: $_walletBalanceSats, comprometido: $_committedSats)');
       broLog('   Tier ${_localCollateral!.tierName} requer: ${_localCollateral!.lockedSats} sats');
@@ -291,12 +294,13 @@ class CollateralProvider with ChangeNotifier {
   }
 
   /// Verificar se pode aceitar uma ordem e retornar razão se não puder
-  (bool, String?) canAcceptOrderWithReason(double orderValueBrl) {
+  (bool, String?) canAcceptOrderWithReason(double orderValueBrl, {int? activeOrdersCount}) {
     if (_localCollateral != null) {
       return _localCollateralService.canAcceptOrderWithReason(
         _localCollateral!,
         orderValueBrl,
         effectiveBalanceSats,
+        activeOrdersCount: activeOrdersCount,
       );
     }
     return (false, 'Sem tier ativo. Configure um tier para aceitar ordens.');

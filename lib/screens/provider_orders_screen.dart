@@ -897,7 +897,13 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       // CRÍTICO: Usar APENAS collateralProvider.canAcceptOrderWithReason()
       // NÃO usar _tierAtRisk aqui porque pode estar desatualizado!
       // O collateralProvider sempre usa dados frescos do estado atual
-      final (canAcceptResult, reason) = collateralProvider.canAcceptOrderWithReason(amount);
+      // R2: contar ordens ativas minhas como provedor para o limite de 1
+      // ordem por vez do tier-1 sem garantia ("Meus Primeiros Sats").
+      final orderProvider = context.read<OrderProvider>();
+      final myActiveOrders = orderProvider.myAcceptedOrders
+          .where((o) => o.isActive && o.id != orderId)
+          .length;
+      final (canAcceptResult, reason) = collateralProvider.canAcceptOrderWithReason(amount, activeOrdersCount: myActiveOrders);
       canAccept = canAcceptResult;
       rejectReason = reason;
       

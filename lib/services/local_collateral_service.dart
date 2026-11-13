@@ -252,7 +252,22 @@ class LocalCollateralService {
 
   /// Verificar se pode aceitar uma ordem de determinado valor
   /// Retorna (canAccept, reason) - reason explica porque não pode aceitar
-  (bool, String?) canAcceptOrderWithReason(LocalCollateral collateral, double orderValueBrl, int walletBalanceSats) {
+  ///
+  /// [activeOrdersCount]: R2 — número de ordens ativas do provedor (não
+  /// terminais), contado pelo chamador a partir do estado real das ordens.
+  /// Se fornecido e o tier for o tier-1 sem garantia ('trial'), limita a
+  /// 1 ordem ativa por vez (roadmap R2: proteção contra provedor sumido é
+  /// o R3; enquanto isso, 1 ordem por vez limita a exposição).
+  (bool, String?) canAcceptOrderWithReason(LocalCollateral collateral, double orderValueBrl, int walletBalanceSats, {int? activeOrdersCount}) {
+    // R2: tier-1 sem garantia — máximo de 1 ordem ativa por vez.
+    if (collateral.tierId == 'trial' &&
+        collateral.requiredSats == 0 &&
+        activeOrdersCount != null &&
+        activeOrdersCount >= 1) {
+      broLog('❌ canAcceptOrder: tier-1 sem garantia já tem $activeOrdersCount ordem(ns) ativa(s) — limite de 1');
+      return (false, 'No tier Meus Primeiros Sats você pode ter apenas 1 ordem ativa por vez. Finalize a ordem atual para aceitar outra.');
+    }
+
     // Primeiro verificar se valor da ordem está dentro do limite do tier
     if (orderValueBrl > collateral.maxOrderBrl) {
       broLog('❌ canAcceptOrder: Ordem R\$ $orderValueBrl > limite R\$ ${collateral.maxOrderBrl}');

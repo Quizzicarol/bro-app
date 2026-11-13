@@ -661,9 +661,16 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     // Em modo teste, pular verificação de garantia
     if (!AppConfig.providerTestMode) {
       final collateralProvider = context.read<CollateralProvider>();
-      
+
+      // R2: contar ordens ativas minhas como provedor (não terminais) para o
+      // limite de 1 ordem por vez do tier-1 sem garantia ("Meus Primeiros Sats").
+      final orderProvider = context.read<OrderProvider>();
+      final myActiveOrders = orderProvider.myAcceptedOrders
+          .where((o) => o.isActive && o.id != widget.orderId)
+          .length;
+
       // Verificar se pode aceitar
-      if (!collateralProvider.canAcceptOrder(orderAmount)) {
+      if (!collateralProvider.canAcceptOrder(orderAmount, activeOrdersCount: myActiveOrders)) {
         _showError(AppLocalizations.of(context)!.t('prov_det_insufficient_collateral'));
         return;
       }
@@ -730,8 +737,12 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     if (!AppConfig.providerTestMode) {
       final collateralProvider = context.read<CollateralProvider>();
       final currentTier = collateralProvider.getCurrentTier();
-      
-      if (currentTier != null) {
+
+      // R2: tier-1 sem garantia ("Meus Primeiros Sats") não trava nada —
+      // não há collateral para bloquear no escrow.
+      final tierHasNoCollateral = currentTier != null && currentTier.requiredCollateralSats == 0;
+
+      if (currentTier != null && !tierHasNoCollateral) {
         broLog('🔵 [ACCEPT] Bloqueando garantia (tier=${currentTier.id})...');
         await _escrowService.lockCollateral(
           providerId: widget.providerId,
@@ -739,6 +750,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           lockedSats: (orderAmount * 1000).round(),
         );
         broLog('🔵 [ACCEPT] Garantia bloqueada OK');
+      } else if (tierHasNoCollateral) {
+        broLog('🌱 [ACCEPT] Tier-1 sem garantia (${currentTier!.id}) — pulando lockCollateral');
       } else {
         broLog('⚠️ [ACCEPT] Sem tier ativo — pulando lockCollateral');
       }

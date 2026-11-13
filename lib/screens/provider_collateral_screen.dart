@@ -168,7 +168,11 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
       child: Column(
       children: [
         // Aviso se saldo zerou e tier estava ativo
-        if (_walletBalance == 0 && _currentCollateral != null) ...[
+        // R2: tier-1 sem garantia ("Meus Primeiros Sats") fica ATIVO mesmo
+        // com saldo 0 — não há garantia a manter, então o aviso não se aplica.
+        if (_walletBalance == 0 &&
+            _currentCollateral != null &&
+            !(_currentCollateral!.tierId == 'trial' && _currentCollateral!.requiredSats == 0)) ...[
           Container(
             margin: const EdgeInsets.all(16),
             padding: const EdgeInsets.all(12),
@@ -377,9 +381,11 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
               // Usar o valor ATUALIZADO do tier, não o valor salvo
               final requiredSatsNow = currentTierDef?.requiredCollateralSats ?? _currentCollateral!.lockedSats;
               final minRequired = (requiredSatsNow * 0.90).round(); // 10% tolerância
-              final isTierActive = _walletBalance > 0 && _walletBalance >= minRequired;
-              final isTierAtRisk = _walletBalance > 0 && _walletBalance < minRequired;
-              final isTierInactive = _walletBalance == 0;
+              // R2: tier-1 sem garantia fica ATIVO mesmo com saldo 0.
+              final isTier1NoCollateral = _currentCollateral!.tierId == 'trial' && requiredSatsNow == 0;
+              final isTierActive = (isTier1NoCollateral || _walletBalance > 0) && _walletBalance >= minRequired;
+              final isTierAtRisk = !isTier1NoCollateral && _walletBalance > 0 && _walletBalance < minRequired;
+              final isTierInactive = !isTier1NoCollateral && _walletBalance == 0;
               
               return Container(
                 margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -575,17 +581,20 @@ class _ProviderCollateralScreenState extends State<ProviderCollateralScreen> {
                   children: [
                     Text(l.t('prov_coll_guarantee'), style: const TextStyle(color: Colors.white38, fontSize: 11)),
                     Text(
-                      '${tier.requiredCollateralSats} sats',
+                      tier.requiredCollateralSats == 0
+                          ? l.t('prov_coll_no_guarantee')
+                          : '${tier.requiredCollateralSats} sats',
                       style: TextStyle(
                         color: hasEnoughBalance ? Colors.green : Colors.orange,
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    Text(
-                      '≈ R\$ ${tier.requiredCollateralBrl.toStringAsFixed(2)}',
-                      style: const TextStyle(color: Colors.white54, fontSize: 11),
-                    ),
+                    if (tier.requiredCollateralSats > 0)
+                      Text(
+                        '≈ R\$ ${tier.requiredCollateralBrl.toStringAsFixed(2)}',
+                        style: const TextStyle(color: Colors.white54, fontSize: 11),
+                      ),
                   ],
                 ),
                 Column(

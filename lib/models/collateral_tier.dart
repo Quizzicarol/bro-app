@@ -50,19 +50,23 @@ class CollateralTier {
     final satsPerBrl = 100000000 / btcPriceBrl; // 1 BTC = 100M sats
 
     final allTiers = [
-      // 🧪 Tier Trial - para testar o app
+      // 🌱 Tier 1 — "Meus Primeiros Sats" (R2): SEM garantia. Qualquer pessoa
+      // vira provedor usando a liquidez fiat; garantia só é exigida nos tiers
+      // acima. Mantém id 'trial' (compat de storage) e limite de R$ 10/ordem.
+      // Limite de 1 ordem ativa por vez é aplicado no aceite (ver
+      // CollateralProvider.canAcceptOrderWithReason).
       CollateralTier(
         id: 'trial',
-        name: '🧪 Trial',
+        name: '🌱 Meus Primeiros Sats',
         maxOrderValueBrl: 10,
-        requiredCollateralBrl: 10,
-        requiredCollateralSats: (10 * satsPerBrl).round(),
-        description: 'Tier de teste - contas até R\$ 10',
+        requiredCollateralBrl: 0,
+        requiredCollateralSats: 0,
+        description: 'Comece SEM garantia - contas até R\$ 10',
         benefits: [
+          'Sem garantia: comece com R\$ 0',
           'Contas até R\$ 10',
-          'Garantia: R\$ 10',
-          'Taxa: 5% por transação',
-          'Perfeito para testar o app',
+          '1 ordem ativa por vez',
+          'Acumule sats e suba de tier',
         ],
       ),
       // 🥉 Tier Iniciante

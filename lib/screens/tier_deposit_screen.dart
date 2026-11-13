@@ -84,6 +84,23 @@ class _TierDepositScreenState extends State<TierDepositScreen> {
       _currentBalance = totalBalance;
       broLog('💰 Saldo INICIAL salvo: $_initialBalance sats');
       
+      // R2: tier-1 "Meus Primeiros Sats" — SEM garantia. Ativa direto,
+      // independente de saldo (0 sats exigidos), sem gerar invoice nem
+      // esperar monitoramento de pagamento.
+      if (widget.tier.requiredCollateralSats == 0) {
+        broLog('🌱 Tier sem garantia (${widget.tier.name}) — ativação direta sem depósito');
+        await _activateTier(0);
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ProviderOrdersScreen(providerId: widget.providerId),
+            ),
+          );
+        }
+        return;
+      }
+
       if (availableForCollateral >= widget.tier.requiredCollateralSats) {
         // ✅ IMPORTANTE: Ativar o tier antes de marcar como completo!
         broLog('✅ Saldo suficiente detectado, ativando tier automaticamente...');

@@ -950,6 +950,10 @@ class NostrWatchtowerService {
             console.log(`⚠️ [Watchtower] Order ${shortId} completed but no userPubkey found (content: ${content.userPubkey || 'empty'}, recipient: ${content.recipientPubkey || 'empty'}, cache: ${this._orderUsers.has(orderId) ? 'hit' : 'miss'})`);
           }
 
+          // R5c: primeiro complete também fecha a corrida (ordem sem billcode
+          // roteado — ex. fluxo alternativo). Perdedores ficam sabendo.
+          await this._notifyRaceLosers(orderId, senderPubkey);
+
           // v584: rastreia ordem pra eventual retry caso cliente nunca confirme.
           // Só se o provedor incluiu providerInvoice (sem invoice não há nada a pagar).
           const hasInvoice = typeof content.providerInvoice === 'string' && content.providerInvoice.length > 50;
@@ -997,6 +1001,9 @@ class NostrWatchtowerService {
                 title: '⚡ Bro: código da conta chegou!',
                 body: `Ordem ${orderId.substring(0, 8)}: abra o app para ver o código e pagar.`,
               });
+              // R5c: primeiro billcode entregue fecha a corrida — perdedores
+              // ficam sabendo na hora (não quando o Pix do vencedor cai).
+              await this._notifyRaceLosers(orderId, providerPk);
             }
           } catch (e) {
             console.error(`⚠️ [Watchtower] push billcode_ready falhou: ${e.message}`);
@@ -1127,6 +1134,40 @@ class NostrWatchtowerService {
       order_id: orderId,
       source: 'watchtower',
     }, { title: notif.title, body: `${notif.body} — ${suffix}` });
+  }
+
+  /**
+   * R5c: corrida encerrada — avisa cada aceitador NÃO-canônico que ele
+   * perdeu (caso f9ea1899: perdedor só descobriu quando o Pix do vencedor
+   * caiu no banco dele). Chamado quando o canônico fecha a corrida:
+   * primeiro billcode entregue OU primeiro complete, o que vier primeiro.
+   * Dedup automático: _sendPush usa chave pubkey+orderId+subtype('race_lost')
+   * com TTL 24h persistido — UM push por corrida, nunca repete.
+   */
+  async _notifyRaceLosers(orderId, closerPubkey) {
+    try {
+      const accepts = this._orderAccepts.get(orderId) || [];
+      if (accepts.length < 2) return; // sem corrida, nada a avisar
+      const canonical = [...accepts].sort((a, b) => a.acceptedAt - b.acceptedAt)[0].pubkey.toLowerCase();
+      const shortId = orderId.substring(0, 8);
+      for (const a of accepts) {
+        const pk = (a.pubkey || '').toLowerCase();
+        if (!/^[0-9a-f]{64}$/.test(pk)) continue;
+        if (pk === canonical) continue; // vencedor não recebe race_lost
+        const ok = await this._sendPush(pk, {
+          type: 'order_update',
+          subtype: 'race_lost',
+          order_id: orderId,
+          source: 'watchtower',
+        }, {
+          title: '🏁 Corrida encerrada',
+          body: `Ordem ${shortId}: outro Bro foi mais rápido dessa vez — fica ligado na próxima!`,
+        });
+        if (ok) console.log(`🏁 [Watchtower] race_lost push → ${pk.substring(0, 8)} (ordem ${shortId})`);
+      }
+    } catch (e) {
+      console.error(`⚠️ [Watchtower] _notifyRaceLosers falhou (${orderId.substring(0, 8)}): ${e.message}`);
+    }
   }
 
   /**
@@ -2150,8 +2191,13 @@ class NostrWatchtowerService {
       if (now - snap.createdAt > TEN_DAYS) continue;
 
       if (providerPubkey) {
-        // Provedor: só ordens aceitas POR ELE e não terminais.
-        if (snap.acceptedBy !== providerPubkey) continue;
+        // R5c: o CANÔNICO vê suas ordens aceitas; o PERDEDOR da corrida
+        // também vê (com raceWon=false) — antes ele sumia da lista e só
+        // descobria a perda quando o Pix do vencedor caía (caso f9ea1899).
+        // _orderAccepts (v702) guarda TODOS os aceites da ordem.
+        const myAccepts = this._orderAccepts.get(orderId) || [];
+        const iAccepted = myAccepts.some(a => a && a.pubkey === providerPubkey);
+        if (snap.acceptedBy !== providerPubkey && !iAccepted) continue;
       } else {
         // Público: só ordens pending e não terminais.
         if (snap.acceptedBy) continue;
@@ -2159,14 +2205,23 @@ class NostrWatchtowerService {
       const terminal = new Set(['completed', 'liquidated', 'cancelled']);
       if (terminal.has(snap.lastStatus)) continue;
 
-      results.push({
+      // R5c: resultado da corrida — quem aceitou precisa saber se ganhou
+      // ou perdeu (o perdedor antes ficava no escuro).
+      const accepts = this._orderAccepts.get(orderId) || [];
+      const raceWon = snap.acceptedBy === providerPubkey;
+      const row = {
         id: orderId,
         amountBrl: snap.amountBrl,
         amountSats: snap.amountSats,
         createdAt: snap.createdAt,
         status: snap.lastStatus,
         acceptedAt: snap.firstAcceptedAt,
-      });
+      };
+      if (providerPubkey) {
+        row.raceWon = raceWon;
+        row.acceptsCount = accepts.length;
+      }
+      results.push(row);
     }
     results.sort((a, b) => b.createdAt - a.createdAt);
     return results.slice(0, 200); // hard cap: 200 ordens ativas

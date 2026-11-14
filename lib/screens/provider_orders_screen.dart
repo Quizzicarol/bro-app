@@ -237,6 +237,8 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
             orderMap['payment_type'] = o.billType;
             orderMap['created_at'] = o.createdAt.toIso8601String();
             orderMap['user_name'] = '${o.userPubkey?.substring(0, 6) ?? "anon"}';
+            // R5c: corrida perdida entra na lista com card informativo
+            // (antes era filtrada fora e o perdedor ficava no escuro).
             return orderMap;
           })
           .toList();
@@ -366,7 +368,9 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       
       // Processar ordens que EU ACEITEI como provedor
       for (final order in myOrdersFromProvider) {
-        if (order.metadata?['lostRace'] == true) continue; // v699: corrida perdida
+        // R5c: corrida perdida NÃO some mais — entra na lista com o card
+        // "Outro Bro levou essa" (antes o perdedor ficava no escuro,
+        // caso f9ea1899). A trava v712 (sem billcode/fallback) continua.
         final orderMap = order.toJson();
         orderMap['amount'] = order.amount;
         orderMap['payment_type'] = order.billType;
@@ -1222,6 +1226,33 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
                   statusInfo['description'],
                   style: const TextStyle(color: Colors.white70, fontSize: 12),
                 ),
+                // R5c: corrida perdida — card informativo (sem botão, regra
+                // da Carol). O perdedor vê o resultado na lista, não só no
+                // detalhe (caso f9ea1899: ordem sumia e ele ficava no escuro).
+                if (order['metadata']?['lostRace'] == true) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.red.withOpacity(0.4)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.flag, color: Colors.red, size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            l.t('prov_race_lost_card'),
+                            style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

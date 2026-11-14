@@ -94,6 +94,22 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     try {
       final myPk = NostrService().publicKey;
       if (myPk == null || myPk.isEmpty) return;
+      // R5c: seed instantâneo do resultado da corrida a partir do snapshot
+      // HTTP (metadata raceWon/lostRace) — a bandeira aparece na hora, sem
+      // esperar o fetch de aceites no relay (que pode demorar ou falhar).
+      final order = context.read<OrderProvider>().getOrderById(widget.orderId);
+      final meta = order?.metadata;
+      if (meta?['lostRace'] == true && _lostRace != true) {
+        if (mounted) setState(() => _lostRace = true);
+        if (meta?['acceptsCount'] is int && meta!['acceptsCount'] != _acceptsCount) {
+          if (mounted) setState(() => _acceptsCount = meta['acceptsCount'] as int);
+        }
+      } else if (meta?['raceWon'] == true && _wonRace != true) {
+        if (mounted) setState(() => _wonRace = true);
+        if (meta?['acceptsCount'] is int && meta!['acceptsCount'] != _acceptsCount) {
+          if (mounted) setState(() => _acceptsCount = meta['acceptsCount'] as int);
+        }
+      }
       final accepts = await NostrOrderService().fetchAllAcceptsForOrder(widget.orderId)
           .timeout(const Duration(seconds: 10), onTimeout: () => <String>[]);
       if (!mounted || accepts.isEmpty) return; // fail-open: sem dados, não marca

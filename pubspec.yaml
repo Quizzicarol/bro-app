@@ -1,7 +1,7 @@
 name: bro_app
 description: "Bro - Plataforma P2P para pagamento de contas com Bitcoin via Lightning Network"
 publish_to: 'none'
-version: 1.0.134+788
+version: 1.0.134+789
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -65,7 +65,7 @@ dependencies:
   google_fonts: ^6.1.0
   flutter_local_notifications: ^19.5.0
   
-  # Background tasks (notificações com app fechado)
+  # Background tasks (notificaÃ§Ãµes com app fechado)
   workmanager: ^0.9.0
   
   # Firebase (push notifications for offline BRIX receiving)
@@ -82,7 +82,7 @@ dev_dependencies:
   flutter_lints: ^3.0.0
   flutter_launcher_icons: ^0.14.2
 
-# Configuração do ícone do app
+# ConfiguraÃ§Ã£o do Ã­cone do app
 flutter_launcher_icons:
   android: true
   ios: true

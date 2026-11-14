@@ -1009,6 +1009,9 @@ class NostrOrderService {
           'userPubkey': '',
           'billCode': '',
           'type': 'watchtower_snapshot',
+          // R5c: resultado da corrida (perdedor agora aparece na lista).
+          if (r['raceWon'] is bool) 'raceWon': r['raceWon'],
+          if (r['acceptsCount'] is int) 'acceptsCount': r['acceptsCount'],
         }).toList();
       }
     } catch (_) {}
@@ -1104,6 +1107,15 @@ class NostrOrderService {
                        (raw['created_at'] != null
                          ? DateTime.fromMillisecondsSinceEpoch((raw['created_at'] as int) * 1000)
                          : DateTime.now()),
+            // R5c: resultado da corrida vindo do snapshot do watchtower.
+            // lostRace alinhado com a chave v699 já usada pelo app.
+            metadata: (raw['raceWon'] is bool)
+                ? <String, dynamic>{
+                    'raceWon': raw['raceWon'],
+                    if (raw['acceptsCount'] is int) 'acceptsCount': raw['acceptsCount'],
+                    if (raw['raceWon'] == false) 'lostRace': true,
+                  }
+                : null,
           );
         } catch (e) {
         }

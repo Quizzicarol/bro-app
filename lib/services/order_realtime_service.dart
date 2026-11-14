@@ -14,10 +14,14 @@ class OrderRealtimeService {
   factory OrderRealtimeService() => _instance;
   OrderRealtimeService._internal();
 
+  // v793: espelha NostrOrderService._relays (ordens operam em apexcord/fly —
+  // damus 521 e nos.lol instáveis deixaram o RT cego pros eventos nossos).
   static const List<String> _relays = [
+    'wss://apexcord.duckdns.org',
+    'wss://bro-relay2.fly.dev',
+    'wss://relay.primal.net',
     'wss://relay.damus.io',
     'wss://nos.lol',
-    'wss://relay.primal.net',
   ];
 
   final Map<String, WebSocketChannel> _connections = {};

@@ -125,6 +125,13 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       if (accepts.first != myPk && _lostRace != true) {
         setState(() => _lostRace = true);
         broLog('🏁 v691: corrida perdida em ${widget.orderId.substring(0, 8)} — canônico=${accepts.first.substring(0, 8)}');
+        // v793: ROLLBACK — a detecção da tela não limpava nada; o rollback
+        // (v579/v656) vive dentro do acceptOrderAsProvider, que nunca chega
+        // lá quando o publish pendura (caso 671943ac: ordem zumbi em
+        // Disponíveis com eventId=NULL). Remove a ordem + blocklist aqui.
+        try {
+          context.read<OrderProvider>().markOrderTakenByOther(widget.orderId);
+        } catch (_) {}
         // v713: POPUP pro perdedor — ele ficava perdido sem saber o que
         // aconteceu (Carol viveu isso no iPhone: aceitou, código não veio,
         // nenhuma explicação). Um toque de gentileza no meio da corrida.
@@ -738,6 +745,9 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         final op = context.read<OrderProvider>();
         if (op.lastAcceptWasRaceLost && mounted) {
           broLog('🏁 [ACCEPT] Timeout mas corrida perdida detectada — mostrando pop-up de corrida');
+          // v793: mesmo rollback da _checkLostRace — timeout com corrida
+          // perdida também tem que tirar a ordem de Disponíveis.
+          try { op.markOrderTakenByOther(widget.orderId); } catch (_) {}
           await _showRaceLostDialog();
         } else {
           // v792: mensagem consciente de relay — "tempo esgotado" não dizia

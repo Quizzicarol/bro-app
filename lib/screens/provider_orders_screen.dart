@@ -236,7 +236,11 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
             orderMap['amount'] = o.amount;
             orderMap['payment_type'] = o.billType;
             orderMap['created_at'] = o.createdAt.toIso8601String();
-            orderMap['user_name'] = '${o.userPubkey?.substring(0, 6) ?? "anon"}';
+            // v790: snapshot R5b vem com userPubkey='' (privacidade) —
+            // ''.substring(0,6) lança RangeError e derruba a lista inteira.
+            orderMap['user_name'] = (o.userPubkey != null && o.userPubkey!.length >= 6)
+                ? o.userPubkey!.substring(0, 6)
+                : 'anon';
             // R5c: corrida perdida entra na lista com card informativo
             // (antes era filtrada fora e o perdedor ficava no escuro).
             return orderMap;
@@ -375,7 +379,10 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
         orderMap['amount'] = order.amount;
         orderMap['payment_type'] = order.billType;
         orderMap['created_at'] = order.createdAt.toIso8601String();
-        orderMap['user_name'] = '${order.userPubkey?.substring(0, 6) ?? "anon"}';
+        // v790: mesmo guard do L239 — userPubkey vazio (snapshot) não pode crashar.
+        orderMap['user_name'] = (order.userPubkey != null && order.userPubkey!.length >= 6)
+            ? order.userPubkey!.substring(0, 6)
+            : 'anon';
         myOrders.add(orderMap);
       }
       

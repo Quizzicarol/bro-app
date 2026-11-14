@@ -739,6 +739,13 @@ class BroApp extends StatelessWidget {
               broLog('[RT] billcode_ready push — sync imediato');
               orderProvider.syncOrdersFromNostr(force: true);
             }
+            // v790: race_lost — o watchtower avisou que perdemos a corrida.
+            // Sync imediato pra lista atualizar e o card "Outro Bro levou
+            // essa" (v699/_markLostRaces) aparecer sem esperar o próximo ciclo.
+            if (subtype == 'race_lost') {
+              broLog('[RT] race_lost push — sync imediato (corrida perdida)');
+              orderProvider.syncOrdersFromNostr(force: true);
+            }
           };
           
           // Callback para pagamentos RECEBIDOS (menos comum no fluxo atual)

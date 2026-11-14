@@ -159,4 +159,43 @@ void main() {
       expect(provider.orders.map((o) => o.id), contains('r5cl-merge-1'));
     });
   });
+
+  // v790: regressão do incidente 73de8b9a — snapshot R5b vem com
+  // userPubkey='' e ''.substring(0,6) lançava RangeError (end), derrubando
+  // Minhas Ordens inteira (banner "Only valid value is 0: 6").
+  group('v790 - snapshot com userPubkey vazio não crasha', () {
+    test('(e) merge com userPubkey="" não crasha (regressão 73de8b9a)', () {
+      final provider = OrderProvider();
+      provider.debugSetCurrentUserPubkeyForR5c('pk-me');
+      NostrOrderService().lastRelayReconcileResult = [
+        _order('v790-snap-1', userPubkey: '', providerId: 'pk-me',
+            metadata: {'lostRace': true, 'raceWon': false, 'acceptsCount': 2}),
+        _order('v790-snap-2', userPubkey: 'pk-buyer', providerId: 'pk-me',
+            metadata: {'lostRace': true, 'raceWon': false}),
+      ];
+
+      // Antes do v790, qualquer substring em userPubkey vazio lançava
+      // RangeError (end) e derrubava Minhas Ordens inteira.
+      provider.debugApplyR5cReconcileMerge();
+
+      // Ordem com pubkey real entra normal no getter (REGRA 1 de segurança
+      // filtra userPubkey vazio do getter — a tela do provedor usa o
+      // caminho próprio fetchProviderOrders, que agora tem guard próprio).
+      expect(provider.orders.map((o) => o.id), contains('v790-snap-2'));
+      expect(provider.orders.firstWhere((o) => o.id == 'v790-snap-2').metadata?['lostRace'], true);
+    });
+
+    test('(f) _republishUnpublishedPendingOrders não crasha com userPubkey=""', () async {
+      final provider = OrderProvider();
+      provider.debugSetCurrentUserPubkeyForR5c('pk-me');
+      provider.debugSeedOrdersForR5c([
+        _order('v790-snap-2', userPubkey: '', providerId: 'pk-me',
+            metadata: {'lostRace': true}),
+      ]);
+
+      // Antes do v790, o log de diagnóstico (substring 0,8) lançava
+      // RangeError a cada ciclo de sync. Não deve lançar nada agora.
+      await provider.debugRepublishUnpublishedPendingOrdersForV790();
+    });
+  });
 }

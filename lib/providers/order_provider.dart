@@ -453,6 +453,11 @@ class OrderProvider with ChangeNotifier {
 
   @visibleForTesting
   void debugApplyR5cReconcileMerge() => _applyR5cReconcileMerge();
+
+  // v790: hook de teste para a regressão do userPubkey vazio (73de8b9a).
+  @visibleForTesting
+  Future<void> debugRepublishUnpublishedPendingOrdersForV790() =>
+      _republishUnpublishedPendingOrders();
   
   /// PERFORMANCE: Debounced save â�?��?� coalesce rapid writes into one 500ms later
   void _debouncedSave() {
@@ -5585,6 +5590,9 @@ class OrderProvider with ChangeNotifier {
     final stuck = _orders.where((o) {
       if (o.status != 'awaiting_confirmation') return false;
       if (o.providerId != _currentUserPubkey) return false;
+      // v790: userPubkey vazio (snapshot) não pode passar — crasharia no
+      // publishRepublishRequest e no log de sucesso abaixo.
+      if (o.userPubkey == null || o.userPubkey!.isEmpty) return false;
       if (o.userPubkey == _currentUserPubkey) return false; // Não nudge a si mesmo
       if (o.createdAt.isBefore(cutoff)) return false;
       if (o.createdAt.isAfter(stuckThreshold)) return false; // Muito recente
@@ -5791,7 +5799,8 @@ class OrderProvider with ChangeNotifier {
     final nonTerminal = _orders.where((o) => !['completed', 'cancelled', 'liquidated'].contains(o.status)).toList();
     broLog('🔍 _republishUnpublished: ${nonTerminal.length} ordens não-terminais de ${_orders.length} total');
     for (final o in nonTerminal) {
-      broLog('🔍  order ${o.id.substring(0, 8)}: status=${o.status}, eventId=${o.eventId != null && o.eventId!.isNotEmpty ? "SET" : "NULL"}, userPubkey=${o.userPubkey?.substring(0, 8) ?? "null"}, currentUser=${_currentUserPubkey?.substring(0, 8) ?? "null"}, providerId=${o.providerId ?? "null"}');
+      // v790: userPubkey vazio (snapshot R5b) crashava aqui a cada sync.
+      broLog('🔍  order ${o.id.substring(0, 8)}: status=${o.status}, eventId=${o.eventId != null && o.eventId!.isNotEmpty ? "SET" : "NULL"}, userPubkey=${(o.userPubkey != null && o.userPubkey!.length >= 8) ? o.userPubkey!.substring(0, 8) : (o.userPubkey == null ? "null" : "empty")}, currentUser=${_currentUserPubkey?.substring(0, 8) ?? "null"}, providerId=${o.providerId ?? "null"}');
     }
 
     // v437: Re-publicar ordens ativas sem eventId (publish falhou na criação)

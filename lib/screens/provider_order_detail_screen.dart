@@ -731,7 +731,19 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         );
         await _loadOrderDetails();
       } else {
-        _showError('Erro ao aceitar ordem: tempo esgotado. Tente novamente.');
+        // v792: o timeout pode ter engolido a detecção de corrida perdida
+        // (v691 detecta dentro do acceptOrderAsProvider, mas o caminho do
+        // timeout não checava). Caso dbc192b0: perdeu a corrida e viu
+        // "tempo esgotado" genérico. Checa a flag antes do erro genérico.
+        final op = context.read<OrderProvider>();
+        if (op.lastAcceptWasRaceLost && mounted) {
+          broLog('🏁 [ACCEPT] Timeout mas corrida perdida detectada — mostrando pop-up de corrida');
+          await _showRaceLostDialog();
+        } else {
+          // v792: mensagem consciente de relay — "tempo esgotado" não dizia
+          // nada ao provedor sobre relays não respondendo.
+          _showError('Relays não responderam a tempo — verifique sua internet e tente de novo.');
+        }
       }
     } catch (e) {
       broLog('❌ [ACCEPT] ERRO: $e');

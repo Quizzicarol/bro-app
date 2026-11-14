@@ -584,6 +584,26 @@ class NostrWatchtowerService {
       }
       return;
     }
+
+    // v792: status terminal no KNOWLEDGE PASS — evento de catch-up (atrasado,
+    // pré-EOSE) que checa os gates de push não gravava _terminalOrders, e o
+    // wakeup de billcode seguia disparando pra ordem já paga (caso dbc192b0).
+    if (eventType === 'bro_order_update' && typeof content.status === 'string') {
+      const st = content.status;
+      if (st === 'completed' || st === 'liquidated' || st === 'cancelled' ||
+          st === 'payment_submitted' || st === 'awaiting_confirmation' || st === 'disputed') {
+        if (st !== 'disputed') {
+          this._terminalOrders.set(orderId, Date.now());
+          if (this._terminalOrders.size > 5000) {
+            const tEntries = Array.from(this._terminalOrders.entries());
+            this._terminalOrders = new Map(tEntries.slice(-2500));
+          }
+        }
+        this._recordOrderSnapshot(orderId, null, null, null, st);
+        this._scheduleStateSave();
+      }
+      return;
+    }
   }
 
   async _handleEvent(relayUrl, event) {
@@ -1146,6 +1166,9 @@ class NostrWatchtowerService {
    */
   async _notifyRaceLosers(orderId, closerPubkey) {
     try {
+      // v792: corrida encerrada implica billcode entregue ou complete — cancela
+      // o wakeup de billcode do criador (se sobrou, viraria push fantasma).
+      this._cancelBillcodeRelayRetries(orderId, 'race closed');
       const accepts = this._orderAccepts.get(orderId) || [];
       if (accepts.length < 2) return; // sem corrida, nada a avisar
       const canonical = [...accepts].sort((a, b) => a.acceptedAt - b.acceptedAt)[0].pubkey.toLowerCase();
@@ -1459,6 +1482,23 @@ class NostrWatchtowerService {
       const age = now - info.acceptedAt;
       if (age > this._BILLCODE_WAKEUP_MAX_AGE_MS) { toDelete.push(orderId); continue; }
       if (info.attempts >= this._BILLCODE_WAKEUP_OFFSETS_MS.length) { toDelete.push(orderId); continue; }
+      // v792: se a ordem já terminou (ou o billcode já foi entregue), o wakeup
+      // é fantasma — caso dbc192b0: gap de relay fez o watchtower perder o
+      // evento terminal e o lembrete seguiu disparando por 48h após o Pix.
+      // Checa _terminalOrders E o snapshot (lastStatus cobre payment_submitted/
+      // awaiting_confirmation/disputed, que não entram em _terminalOrders).
+      if (this._terminalOrders.has(orderId)) {
+        toDelete.push(orderId);
+        console.log(`🧹 [Watchtower] billCode wakeup fantasma removido ${orderId.substring(0, 8)} (ordem terminal)`);
+        continue;
+      }
+      const snap = this._orderSnapshots.get(orderId);
+      if (snap && snap.lastStatus && ['payment_submitted', 'awaiting_confirmation',
+        'completed', 'liquidated', 'cancelled', 'disputed'].includes(snap.lastStatus)) {
+        toDelete.push(orderId);
+        console.log(`🧹 [Watchtower] billCode wakeup fantasma removido ${orderId.substring(0, 8)} (lastStatus=${snap.lastStatus})`);
+        continue;
+      }
       const dueOffset = this._BILLCODE_WAKEUP_OFFSETS_MS[info.attempts];
       if (age < dueOffset) continue; // ainda não venceu este lembrete
       try {

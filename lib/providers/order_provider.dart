@@ -2955,6 +2955,9 @@ class OrderProvider with ChangeNotifier {
           _orders.removeWhere((o) => o.id == orderId);
           await _saveOnlyUserOrders();
           _availableOrdersForProvider.removeWhere((o) => o.id == orderId);
+          // v792: blocklist também — sem isso a cópia local degradada voltava
+          // a aparecer em Disponíveis no próximo reconcile (caso dbc192b0).
+          _nostrOrderService.addToBlocklistPublic({orderId});
           // v656: deletar meu accept fantasma dos relays (NIP-09) para não
           // virar ordem fantasma na MINHA lista no próximo sync.
           // v775c (decisão da Carol): a limpeza NIP-09 só roda em estado
@@ -3022,6 +3025,8 @@ class OrderProvider with ChangeNotifier {
             _orders.removeWhere((o) => o.id == orderId);
             await _saveOnlyUserOrders();
             _availableOrdersForProvider.removeWhere((o) => o.id == orderId);
+            // v792: blocklist também — cópia degradada não volta em Disponíveis.
+            _nostrOrderService.addToBlocklistPublic({orderId});
             // v775c: mesma regra — delete só em terminal; em disputa ou
             // ativa, o accept fica como evidência (decisão da Carol).
             if (const {'completed', 'cancelled', 'liquidated'}.contains(order.status)) {

@@ -386,6 +386,130 @@ workflows:
           failure: true
 
   # ============================================
+  # BUILD DE TESTE INTERNO (Android APK + iOS TestFlight)
+  # v790: dispara em push para test/* (ex: test/v790).
+  # NAO publica no GitHub Release, NAO toca no Zapstore — usuários
+  # externos NUNCA veem esse build (incidente 13/11: v789 quebrado
+  # foi parar no release público antes de ser testado).
+  # - Android: APK assinado fica só como ARTIFACT no painel do
+  #   Codemagic — baixa e instala via USB nos celulares de teste.
+  # - iOS: vai pro TestFlight (testadores INTERNOS apenas — o grupo
+  #   externo "Beta Público" NÃO está configurado aqui).
+  # Fluxo da casa: commit → push test/vXXX → testa nos 3 celulares →
+  # só depois push no main (que dispara o full-release público).
+  # ============================================
+  internal-test:
+    name: Teste Interno (APK artifact + TestFlight)
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+
+    cache:
+      cache_paths:
+        - $HOME/.pub-cache
+        - $HOME/.gradle/caches
+        - $CM_BUILD_DIR/ios/Pods
+
+    integrations:
+      app_store_connect: Bro App
+
+    environment:
+      groups:
+        - bro_secrets
+      android_signing:
+        - bro_keystore_v2
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: app.brostr
+      flutter: 3.35.7
+      xcode: 26.5
+      cocoapods: default
+      java: 17
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: 'test/*'
+          include: true
+
+    scripts:
+      - name: Generate env.json from CI variables
+        script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" > "$CM_BUILD_DIR/env.json"
+
+      - name: Decode google-services.json
+        script: echo "$GOOGLE_SERVICES_JSON" | base64 --decode > "$CM_BUILD_DIR/android/app/google-services.json"
+
+      - name: Get Flutter packages
+        # v692: o cache de pub revive clones git MORTOS (breez-sdk-liquid-flutter saiu do ar -> pub get quebrava no CI 03/11). Remover antes de resolver.
+        script: rm -rf "$HOME/.pub-cache/git/breez-sdk-liquid-flutter"* 2>/dev/null; flutter pub get
+
+      - name: Race test suite - GATE (v778)
+        # Mesmo gate do release: build de teste também não sai com suíte vermelha.
+        script: flutter test test/race test/integration --reporter expanded
+
+      - name: Neutralize breez spark passkey (unused; breaks CocoaPods)
+        script: |
+          set -e
+          # Bro uses mnemonic (BIP-39) seeds, not passkeys. The breez_sdk_spark_flutter
+          # 0.19.2 passkey plugin only compiles under SwiftPM; under CocoaPods it fails
+          # (missing PasskeyPRFHelperObjC module + optional-unwrap errors). Replace the
+          # passkey Swift files with a build-time stub that keeps plugin registration
+          # (pluginClass BreezSdkSparkPasskeyPlugin) valid. Runs after each pub-cache clone.
+          STUB="$CM_BUILD_DIR/ios/patches/BreezSdkSparkPasskeyPlugin.swift"
+          count=0
+          for d in "$HOME/.pub-cache/git/breez-sdk-spark-flutter-"*/ios/Classes; do
+            [ -d "$d" ] || continue
+            if [ -f "$d/BreezSdkSparkPasskeyPlugin.swift" ]; then
+              echo "Stubbing passkey in $d"
+              cp "$STUB" "$d/BreezSdkSparkPasskeyPlugin.swift"
+              printf '// Build-time stub (unused passkey core).\nimport Foundation\n' > "$d/PasskeyAssertionCore.swift"
+              count=$((count+1))
+            fi
+          done
+          echo "passkey stub complete (dirs=$count)"
+
+      - name: Build APK Release (artifact interno — sem publicação)
+        script: flutter build apk --release --dart-define-from-file=env.json
+
+      - name: Decode GoogleService-Info.plist
+        script: echo "$GOOGLE_SERVICE_INFO_PLIST" | base64 --decode > "$CM_BUILD_DIR/ios/Runner/GoogleService-Info.plist"
+
+      - name: Install CocoaPods
+        script: |
+          cd ios
+          pod install
+
+      - name: Set up iOS code signing
+        script: xcode-project use-profiles --project ios/Runner.xcodeproj
+
+      - name: Build iOS
+        script: |
+          git fetch --unshallow --quiet 2>/dev/null || git fetch --deepen=500 --quiet 2>/dev/null || true
+          COMMITS_TODAY=$(git rev-list --count HEAD --since="2026-09-28 00:00:00")
+          BUILD_NUMBER=$(( 2000000000 + COMMITS_TODAY ))
+          echo "iOS build number FINAL: $BUILD_NUMBER (commits hoje: $COMMITS_TODAY)"
+          cd ios
+          agvtool new-version -all "$BUILD_NUMBER"
+          cd ..
+          flutter build ipa --release --dart-define-from-file=env.json --export-options-plist=/Users/builder/export_options.plist
+
+    artifacts:
+      - build/**/outputs/**/*.apk
+      - build/ios/ipa/*.ipa
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        submit_to_app_store: false
+      email:
+        recipients:
+          - your-email@example.com  # TODO: configure
+        notify:
+          success: true
+          failure: true
+
+  # ============================================
   # ANDROID APK -> GitHub Release publico (latest)
   # Dispara em push para apk/*  (ex: apk/v628)
   # NAO builda iOS / nao toca no TestFlight. Publica universal + arm64

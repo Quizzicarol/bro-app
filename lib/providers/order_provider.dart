@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatf
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:bro_app/services/log_utils.dart';
+import 'package:bro_app/services/relay_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../services/api_service.dart';
@@ -2843,6 +2844,32 @@ class OrderProvider with ChangeNotifier {
       // Kind 30079 é replaceable por #d=${orderId}_accept, então o último
       // provedor a publicar sobrescreve o primeiro, fazendo a ordem "sumir"
       // do dashboard do primeiro após sync.
+      //
+      // v791: FAIL-CLOSED quando NENHUM relay responde (decisão da Carol).
+      // No incidente 73de8b9a (v789) o DNS do aparelho morreu, os relays
+      // ficaram inalcançáveis, o race check falhou em silêncio (fail-open)
+      // e a provedora perdedora foi parar na tela de billcode sem saber.
+      // Agora: 0 relays vivos = bloqueia o aceite com mensagem clara e
+      // botão de tentar de novo. Com ≥1 relay vivo, o fluxo antigo segue.
+      try {
+        final relayProbe = await RelayService().probeOrderRelays();
+        final relaysAlive = relayProbe.values.where((s) => s).length;
+        if (relaysAlive == 0) {
+          _error = '⚠️ Sem conexão com os relays Nostr — não dá pra garantir que você não perca a corrida. Verifique sua internet e tente de novo.';
+          broLog('🚫 [acceptOrderAsProvider] v791 fail-closed: 0/${RelayService.orderRelays.length} relays responderam — aceite bloqueado');
+          _isLoading = false;
+          _immediateNotify();
+          return false;
+        }
+        broLog('🔌 [acceptOrderAsProvider] v791: $relaysAlive/${RelayService.orderRelays.length} relays vivos — seguindo');
+      } catch (e) {
+        // Probe falhou por exceção (improvável) — fail-closed também.
+        _error = '⚠️ Sem conexão com os relays Nostr — não dá pra garantir que você não perca a corrida. Verifique sua internet e tente de novo.';
+        broLog('🚫 [acceptOrderAsProvider] v791 fail-closed: probe exception — aceite bloqueado: $e');
+        _isLoading = false;
+        _immediateNotify();
+        return false;
+      }
       try {
         final existingProvider = await _nostrOrderService
             .fetchOrderProviderPubkey(orderId)

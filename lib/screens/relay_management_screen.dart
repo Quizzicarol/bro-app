@@ -19,6 +19,8 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
   void initState() {
     super.initState();
     _loadRelays();
+    // v791: medir conectividade REAL dos relays de ordens (probe WebSocket).
+    _relayService.probeOrderRelays();
   }
 
   @override
@@ -157,7 +159,12 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
                   // Info card
                   _buildInfoCard(),
                   const SizedBox(height: 24),
-                  
+
+                  // v791: relays REAIS das ordens (apexcord/fly/primal/...)
+                  // com status de conectividade medido de verdade.
+                  _buildOrderRelaysSection(),
+                  const SizedBox(height: 24),
+
                   // Adicionar novo relay
                   _buildAddRelaySection(),
                   const SizedBox(height: 24),
@@ -171,6 +178,114 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
                 ],
               ),
             ),
+    );
+  }
+
+  // v791: seção dos relays que o app USA DE VERDADE para ordens
+  // (NostrOrderService._relays). Status medido com probe real (WebSocket).
+  Widget _buildOrderRelaysSection() {
+    final status = _relayService.orderRelayStatus;
+    final alive = status.values.where((s) => s).length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              AppLocalizations.of(context).t('relay_title'),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: alive > 0 ? const Color(0x1AFF6B35) : const Color(0x33FF0000),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '$alive/${RelayService.orderRelays.length}',
+                style: TextStyle(
+                  color: alive > 0 ? const Color(0xFFFF6B6B) : Colors.red,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        ...RelayService.orderRelays.map((url) {
+          final isConnected = status[url] ?? false;
+          final probed = status.containsKey(url);
+          return Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0x0DFFFFFF),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: !probed
+                    ? const Color(0x33FFFFFF)
+                    : isConnected
+                        ? const Color(0x3300FF00)
+                        : const Color(0x33FF0000),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: !probed
+                        ? Colors.grey
+                        : isConnected
+                            ? Colors.green
+                            : Colors.red,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        url.replaceAll('wss://', ''),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        !probed
+                            ? AppLocalizations.of(context).t('relay_disconnected')
+                            : isConnected
+                                ? AppLocalizations.of(context).t('relay_connected')
+                                : AppLocalizations.of(context).t('relay_disconnected'),
+                        style: TextStyle(
+                          color: !probed
+                              ? Colors.grey
+                              : isConnected
+                                  ? Colors.green.withOpacity(0.8)
+                                  : Colors.red.withOpacity(0.8),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+      ],
     );
   }
 

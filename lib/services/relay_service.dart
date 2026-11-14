@@ -31,6 +31,49 @@ class RelayService extends ChangeNotifier {
     'wss://eden.nostr.land',
   ];
 
+  // v791: relays REAIS das ordens (NostrOrderService._relays). A tela de
+  // gestão mostrava só a lista legada (que nenhuma ordem usa) — a Carol
+  // via damus/nos.lol "conectados" enquanto o app operava em apexcord/fly.
+  // Espelhado de nostr_order_service.dart L184 (manter em sincronia).
+  static const List<String> orderRelays = [
+    'wss://apexcord.duckdns.org',
+    'wss://bro-relay2.fly.dev',
+    'wss://relay.primal.net',
+    'wss://relay.damus.io',
+    'wss://nos.lol',
+  ];
+
+  // v791: status de conectividade dos relays de ordens (probe real).
+  final Map<String, bool> _orderRelayStatus = {};
+  Map<String, bool> get orderRelayStatus => Map.unmodifiable(_orderRelayStatus);
+
+  /// v791: quantos relays de ordens responderam no último probe.
+  int get orderRelaysAlive => _orderRelayStatus.values.where((s) => s).length;
+
+  /// v791: testa conectividade REAL (TCP+WebSocket) com os relays de ordens.
+  /// Não publica nada — só abre conexão e fecha. Usado pela tela de gestão
+  /// e pelo fail-closed do aceite (order_provider).
+  Future<Map<String, bool>> probeOrderRelays({Duration timeout = const Duration(seconds: 5)}) async {
+    _orderRelayStatus.clear();
+    await Future.wait(orderRelays.map((url) async {
+      try {
+        final channel = WebSocketChannel.connect(Uri.parse(url));
+        // Espera o handshake completar (primeiro frame ou erro) antes de
+        // considerar o relay vivo — connect() sozinho não valida rede.
+        final ok = await channel.stream.first
+            .timeout(timeout, onTimeout: () => throw TimeoutException('probe $url'))
+            .then((_) => true)
+            .catchError((_) => false);
+        try { await channel.sink.close(); } catch (_) {}
+        _orderRelayStatus[url] = ok;
+      } catch (_) {
+        _orderRelayStatus[url] = false;
+      }
+    }));
+    notifyListeners();
+    return Map.unmodifiable(_orderRelayStatus);
+  }
+
   List<String> _activeRelays = [];
 
   List<String> get activeRelays => _activeRelays;

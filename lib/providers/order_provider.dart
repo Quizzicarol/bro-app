@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
@@ -1615,7 +1615,14 @@ class OrderProvider with ChangeNotifier {
     _syncProviderStartedAt = DateTime.now(); // v259: track start time
     
     try {
-      
+      // v803: DNS intermitente (errno=7) derruba TODAS as buscas por ate 2min
+      // (o app so re-tenta no proximo ciclo de ~20s). Retry rapido com backoff
+      // encurta a janela cega: 1a falha -> espera 2s -> 2a tentativa.
+      bool isDnsFailure(Object e) {
+        final s = e.toString();
+        return s.contains('Failed host lookup') || s.contains('errno = 7');
+      }
+
       // CORRE�?�?��?�?O v1.0.129: Pre-fetch status updates para que estejam em cache
       // ANTES das 3 buscas paralelas. Sem isso, as 3 fun�?§�?µes chamam
       // _fetchAllOrderStatusUpdates simultaneamente, criando 18+ conex�?µes WebSocket
@@ -1634,6 +1641,16 @@ class OrderProvider with ChangeNotifier {
             return <Order>[];
           });
         } catch (e) {
+          if (isDnsFailure(e)) {
+            broLog('⚠️ safeFetch $name: DNS falhou — retry em 2s (v803)');
+            await Future.delayed(const Duration(seconds: 2));
+            try {
+              return await fetcher().timeout(const Duration(seconds: 30), onTimeout: () => <Order>[]);
+            } catch (e2) {
+              broLog('⚠️ safeFetch retry $name falhou: $e2');
+              return <Order>[];
+            }
+          }
           broLog('â�? safeFetch error $name: $e');
           return <Order>[];
         }

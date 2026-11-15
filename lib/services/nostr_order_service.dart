@@ -660,8 +660,9 @@ class NostrOrderService {
     try {
       final dio = Dio(BaseOptions(
         baseUrl: AppConfig.defaultBackendUrl,
-        connectTimeout: const Duration(seconds: 8),
-        receiveTimeout: const Duration(seconds: 8),
+        // v803: 6s — DNS intermitente não pode segurar o polling da tela.
+        connectTimeout: const Duration(seconds: 6),
+        receiveTimeout: const Duration(seconds: 6),
       ));
       final headers = await nip98Headers(
         url: '${AppConfig.defaultBackendUrl}/billcode-fallback/$orderId',
@@ -1002,9 +1003,14 @@ class NostrOrderService {
     /// R5 (12/11): snapshot HTTP do watchtower (lista <500ms, relays em background).
   Future<List<Map<String, dynamic>>> _fetchProviderOrdersFromApi(String providerPubkey) async {
     try {
+      // v803: timeout curto (6s) SÓ nesta chamada — DNS intermitente não pode
+      // segurar o render da lista pelo timeout global de 20s do Dio.
       final resp = apiGetOverride != null
           ? await apiGetOverride!('/watchtower/available-orders?provider=' + providerPubkey)
-          : await ApiService().get('/watchtower/available-orders?provider=' + providerPubkey);
+          : await ApiService().get(
+              '/watchtower/available-orders?provider=' + providerPubkey,
+              options: Options(sendTimeout: const Duration(seconds: 6), receiveTimeout: const Duration(seconds: 6)),
+            );
       if (resp != null && resp['orders'] is List) {
         final raw = (resp['orders'] as List).cast<Map<dynamic, dynamic>>();
         return raw.map<Map<String, dynamic>>((r) => {
@@ -1033,9 +1039,14 @@ class NostrOrderService {
   /// R5: snapshot publico.
   Future<List<Map<String, dynamic>>> _fetchAvailableOrdersFromApi() async {
     try {
+      // v803: timeout curto (6s) SÓ nesta chamada — DNS intermitente não pode
+      // segurar o render da lista pelo timeout global de 20s do Dio.
       final resp = apiGetOverride != null
           ? await apiGetOverride!('/watchtower/available-orders')
-          : await ApiService().get('/watchtower/available-orders');
+          : await ApiService().get(
+              '/watchtower/available-orders',
+              options: Options(sendTimeout: const Duration(seconds: 6), receiveTimeout: const Duration(seconds: 6)),
+            );
       if (resp != null && resp['orders'] is List) {
         final raw = (resp['orders'] as List).cast<Map<dynamic, dynamic>>();
         return raw.map<Map<String, dynamic>>((r) => {

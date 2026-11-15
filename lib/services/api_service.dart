@@ -682,14 +682,14 @@ class ApiService {
   // ===== GENERIC HTTP METHODS =====
   
   /// Generic GET request
-  Future<Map<String, dynamic>?> get(String path) async {
+  Future<Map<String, dynamic>?> get(String path, {Options? options}) async {
     // Test mode: retornar dados mockados
     if (AppConfig.testMode) {
       return await _getMockResponse(path);
     }
 
     try {
-      final response = await _dio.get(path);
+      final response = await _dio.get(path, options: options);
       return response.data as Map<String, dynamic>?;
     } catch (e) {
       broLog('âŒ Erro no GET $path: $e');

@@ -532,6 +532,7 @@ const Map<String, String> ptBR = {
   'relay_no_relay_connected': 'Nenhum relay conectado',
   'relay_connected': 'Conectado',
   'relay_disconnected': 'Desconectado',
+  'relay_testing': 'Testando...',
   'relay_reconnect': 'Reconectar',
 
   // ==================== privacy_settings_screen ====================
@@ -2161,6 +2162,7 @@ const Map<String, String> enUS = {
   'relay_no_relay_connected': 'No relay connected',
   'relay_connected': 'Connected',
   'relay_disconnected': 'Disconnected',
+  'relay_testing': 'Testing...',
   'relay_reconnect': 'Reconnect',
 
   // ==================== privacy_settings_screen ====================
@@ -3790,6 +3792,7 @@ const Map<String, String> esES = {
   'relay_no_relay_connected': 'Ningún relay conectado',
   'relay_connected': 'Conectado',
   'relay_disconnected': 'Desconectado',
+  'relay_testing': 'Probando...',
   'relay_reconnect': 'Reconectar',
 
   // ==================== privacy_settings_screen ====================

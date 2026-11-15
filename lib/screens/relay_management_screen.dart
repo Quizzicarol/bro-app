@@ -20,11 +20,21 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
     super.initState();
     _loadRelays();
     // v791: medir conectividade REAL dos relays de ordens (probe WebSocket).
+    // v803: o probe termina ~3s depois do build inicial — sem listener, o
+    // notifyListeners() do RelayService não re-renderiza e a tela ficava
+    // presa em "Desconectado" (cinza) pra tudo, mesmo com relays vivos.
+    _relayService.addListener(_onRelayServiceChanged);
     _relayService.probeOrderRelays();
+  }
+
+  // v803: rebuild quando o probe (ou qualquer status) muda no RelayService.
+  void _onRelayServiceChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    _relayService.removeListener(_onRelayServiceChanged);
     _newRelayController.dispose();
     super.dispose();
   }
@@ -183,9 +193,12 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
 
   // v791: seção dos relays que o app USA DE VERDADE para ordens
   // (NostrOrderService._relays). Status medido com probe real (WebSocket).
+  // v803: botão de re-probe — DNS intermitente (errno=7) deixa a tela cega
+  // por até 2min; o usuário precisa poder re-testar sem sair e voltar.
   Widget _buildOrderRelaysSection() {
     final status = _relayService.orderRelayStatus;
     final alive = status.values.where((s) => s).length;
+    final probing = status.isEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -200,20 +213,33 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                color: alive > 0 ? const Color(0x1AFF6B35) : const Color(0x33FF0000),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                '$alive/${RelayService.orderRelays.length}',
-                style: TextStyle(
-                  color: alive > 0 ? const Color(0xFFFF6B6B) : Colors.red,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: alive > 0 ? const Color(0x1AFF6B35) : const Color(0x33FF0000),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    probing
+                        ? '...'
+                        : '$alive/${RelayService.orderRelays.length}',
+                    style: TextStyle(
+                      color: alive > 0 ? const Color(0xFFFF6B6B) : Colors.red,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.refresh, color: Color(0xFFFF6B6B), size: 20),
+                  tooltip: AppLocalizations.of(context).t('relay_title'),
+                  onPressed: probing ? null : () => _relayService.probeOrderRelays(),
+                ),
+              ],
             ),
           ],
         ),
@@ -265,7 +291,7 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
                       const SizedBox(height: 4),
                       Text(
                         !probed
-                            ? AppLocalizations.of(context).t('relay_disconnected')
+                            ? AppLocalizations.of(context).t('relay_testing')
                             : isConnected
                                 ? AppLocalizations.of(context).t('relay_connected')
                                 : AppLocalizations.of(context).t('relay_disconnected'),

@@ -157,6 +157,16 @@ class NostrWatchtowerService {
     // e9274b13, 08/11: ~9min cego) deixavam furos permanentes; com o
     // knowledge pass abaixo, eventos de catch-up só REGISTRAM (não pusham).
     this._BACKFILL_WINDOW_SEC = 600;
+    // v796: CATCH-UP DE BOOT. O REQ de conexão pede só 30min e o backfill 10min
+    // — qualquer aceite mais velho que isso NUNCA chega ao watchtower após um
+    // restart (incidentes 671943ac/dbc192b0/e6da82ef, 14/11: watchtower
+    // reiniciou depois dos aceites → /canonical known:false → ordem zumbi na
+    // lista de disponíveis + veto v758 falha aberto → billCode pôde ir pro
+    // perdedor da corrida). No boot, REQ transitório de 7 dias (mesma TTL dos
+    // aceites persistidos) por relay; subs fecham no EOSE. O knowledge pass
+    // v761 registra tudo SEM push — gates de push intactos.
+    this._BOOT_CATCHUP_SEC = 7 * 24 * 60 * 60;
+    this._bootCatchupSubs = new Set();
     // v584: Tracking de pagamentos pendentes. Quando o provedor publica
     // bro_complete com providerInvoice, registramos aqui. Se em > 6h o
     // cliente não publicar status='completed'/'liquidated', re-pusha pra
@@ -237,6 +247,11 @@ class NostrWatchtowerService {
 
     // v582: start backfill loop after initial connections settle
     this._backfillTimer = setInterval(() => this._backfillRecent(), this._BACKFILL_INTERVAL_MS);
+
+    // v796: catch-up de boot — recupera aceites/ordens/terminais dos últimos
+    // 7 dias que o REQ de 30min da conexão não trouxe (zumbis + known:false).
+    // Atraso de 5s pra conexões iniciais assentarem; subs fecham no EOSE.
+    setTimeout(() => this._bootCatchup(), 5000);
 
     // v775c: HEARTBEAT de observabilidade. O incidente 5cd0b7f7 (09/11)
     // mostrou o problema: o watchtower ficou cego pros aceites e NINGUÉM
@@ -373,6 +388,43 @@ class NostrWatchtowerService {
   }
 
   /**
+   * v796: catch-up de boot — REQ transitório de 7 dias por relay conectado.
+   * Registra conhecimento (aceites/terminais/snapshots) via knowledge pass;
+   * NÃO dispara push (gates de _handleEvent intactos). Subs fecham no EOSE.
+   */
+  _bootCatchup() {
+    if (!this._running) return;
+    const since = Math.floor(Date.now() / 1000) - this._BOOT_CATCHUP_SEC;
+    for (const [relayUrl, ws] of this._connections) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) continue;
+      const subId = `bro-wt-bc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+      this._bootCatchupSubs.add(subId);
+      try {
+        ws.send(JSON.stringify(['REQ', subId,
+          {
+            kinds: [KIND_ORDER, KIND_ACCEPT, KIND_PAYMENT_PROOF, KIND_COMPLETE],
+            '#t': ['bro-order'],
+            since,
+          },
+          {
+            kinds: [KIND_ACCEPT, KIND_PAYMENT_PROOF, KIND_COMPLETE],
+            '#t': ['bro-update'],
+            since,
+          },
+        ]));
+      } catch (e) {
+        this._bootCatchupSubs.delete(subId);
+      }
+    }
+    console.log(`🗼 [Watchtower] v796 boot catch-up enviado (7d) para ${this._connections.size} relays`);
+    // Memory cap (relay sem EOSE nunca encerra a sub)
+    if (this._bootCatchupSubs.size > 20) {
+      const arr = Array.from(this._bootCatchupSubs);
+      this._bootCatchupSubs = new Set(arr.slice(-10));
+    }
+  }
+
+  /**
    * v582: Periodic backfill. Sends a transient REQ for accept/update events
    * in the recent past to catch anything the live subscription dropped.
    * Dedup (_seenEvents + _seenPushes) means already-handled events are no-ops.
@@ -478,6 +530,14 @@ class NostrWatchtowerService {
       // v582: backfill subscriptions are transient — CLOSE on EOSE
       if (this._backfillSubs.has(subId)) {
         this._backfillSubs.delete(subId);
+        const ws = this._connections.get(relayUrl);
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          try { ws.send(JSON.stringify(['CLOSE', subId])); } catch (_) { /* ignore */ }
+        }
+      }
+      // v796: boot catch-up subscriptions are transient — CLOSE on EOSE
+      if (this._bootCatchupSubs.has(subId)) {
+        this._bootCatchupSubs.delete(subId);
         const ws = this._connections.get(relayUrl);
         if (ws && ws.readyState === WebSocket.OPEN) {
           try { ws.send(JSON.stringify(['CLOSE', subId])); } catch (_) { /* ignore */ }
@@ -2006,7 +2066,7 @@ class NostrWatchtowerService {
       const data = JSON.parse(fs.readFileSync(WATCHTOWER_STATE_FILE, 'utf8'));
       if (!data || typeof data !== 'object') return;
       const now = Date.now();
-      let pushes = 0, metas = 0, openers = 0;
+    let pushes = 0, metas = 0, openers = 0, snaps = 0;
       for (const [key, ts] of Object.entries(data.seenPushes || {})) {
         if (typeof ts !== 'number' || now - ts > STATE_SEEN_PUSH_TTL_MS) continue;
         this._seenPushes.add(key);

@@ -39,8 +39,8 @@ class RelayService extends ChangeNotifier {
     'wss://apexcord.duckdns.org',
     'wss://bro-relay2.fly.dev',
     'wss://relay.primal.net',
-    'wss://relay.damus.io',
-    'wss://nos.lol',
+    // v797: damus (HTTP 521) e nos.lol (REQ timeout — zumbi) removidos em
+    // sincronia com NostrOrderService._relays. Probe honesto: 3/3 vivos.
   ];
 
   // v791: status de conectividade dos relays de ordens (probe real).

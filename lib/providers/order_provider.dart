@@ -2250,6 +2250,9 @@ class OrderProvider with ChangeNotifier {
       if (o.billCode.isEmpty || o.billCode == '[encrypted]') return false;
       if (o.providerId == null || o.providerId!.isEmpty) return false;
       if (o.providerId == _currentUserPubkey) return false; // not self-orders
+      // v798: trava de ouro — complete/prova do canônico já chegou; nunca
+      // mais re-enviar o billCode (nem no retry de 6h da v607).
+      if (o.metadata?['billcode_locked'] == true) return false;
       const statusList = ['accepted', 'payment_received', 'processing', 'awaiting_confirmation', 'completed'];
       if (!statusList.contains(o.status)) return false;
       final sent = o.metadata?['billCode_nip44_sent'] == true;
@@ -4114,6 +4117,12 @@ class OrderProvider with ChangeNotifier {
       if (sender == null || sender.isEmpty) continue;
       checked++;
       if (o.providerId == sender) continue;
+      // v798: trava de ouro — providerId já congelado no canônico; a cura v716
+      // não pode sobrescrever (o lock foi gravado com prova do canônico).
+      if (o.metadata?['billcode_locked'] == true) {
+        broLog('🔒 v798: cura v716 de ${o.id.substring(0, 8)} BLOQUEADA — trava de ouro ativa (canônico=${(o.metadata?['billcode_locked_to']?.toString() ?? "?").substring(0, 8)}).');
+        continue;
+      }
             // v781 (H2): a republicacao da cura serializa o objeto LOCAL inteiro.
             // Se a metadata carrega o proofImage_senderPubkey POLUIDO (causa raiz
             // do caso 58ebf198), o publish sobrescreve o campo bom do relay com o
@@ -4591,7 +4600,7 @@ class OrderProvider with ChangeNotifier {
                 orderId: order.id,
               ).then((ok) {
                 broLog('[InvoiceRefresh] Cutução p/ comprador ${buyerPubkey.substring(0, 8)}: ${ok ? "enviado" : "falhou"}');
-              }).catchError((_) => false);
+              }).catchError((_) => null);
             }
           }
         } catch (e) {
@@ -5271,19 +5280,33 @@ class OrderProvider with ChangeNotifier {
           // Isso evita que 'completed' volte para 'awaiting_confirmation'
           const protectedStatuses = ['completed', 'cancelled', 'liquidated'];
           if (protectedStatuses.contains(existing.status) && !_isStatusMoreRecent(newStatus, existing.status)) {
-            // Apenas atualizar providerId se necess�?¡rio, sem mudar status
-            if (newProviderId != null && newProviderId != existing.providerId) {
+            // Apenas atualizar providerId se necessário, sem mudar status
+            // v798: trava de ouro — com prova do canônico recebida, providerId
+            // está congelado; update do Nostr não pode re-corromper.
+            final locked = existing.metadata?['billcode_locked'] == true;
+            if (newProviderId != null &&
+                newProviderId != existing.providerId &&
+                !locked) {
               _orders[existingIndex] = existing.copyWith(
                 providerId: newProviderId,
               );
+            } else if (newProviderId != null &&
+                newProviderId != existing.providerId &&
+                locked) {
+              broLog('🔒 v798: providerId de ${existing.id.substring(0, 8)} BLOQUEADO pela trava de ouro (update do Nostr ignorado).');
             }
             continue;
           }
           
           // SEMPRE atualizar providerId se vier do Nostr e for diferente
+          // v798: exceto com trava de ouro ativa — providerId congelado.
           bool needsUpdate = false;
           if (newProviderId != null && newProviderId != existing.providerId) {
-            needsUpdate = true;
+            if (existing.metadata?['billcode_locked'] == true) {
+              broLog('🔒 v798: troca de providerId de ${existing.id.substring(0, 8)} BLOQUEADA pela trava de ouro (${(newProviderId).substring(0, 8)} ignorado).');
+            } else {
+              needsUpdate = true;
+            }
           }
           
           String statusToUse = newStatus;
@@ -5384,6 +5407,21 @@ class OrderProvider with ChangeNotifier {
                 'proofReceivedAt': proofTimeIso,
                 'receipt_submitted_at': existing.metadata?['receipt_submitted_at'] ?? proofTimeIso,
               };
+              // v798: TRAVA DE OURO — chegou comprovante (prova de pagamento)
+              // de uma ordem accepted/awaiting_confirmation. A partir daqui o
+              // billCode já foi revelado e o provedor pagou de verdade: NUNCA
+              // mais re-entregar billcode nem trocar providerId (caso Roberto:
+              // republish do perdedor 74min depois do complete re-corrompeu
+              // tudo). O lock grava QUEM é o canônico; todos os pontos de
+              // entrega/troca checam esta flag.
+              final lockAuthor = update['eventAuthorPubkey'] as String? ?? newProviderId ?? '';
+              if (lockAuthor.isNotEmpty &&
+                  (existing.status == 'accepted' || existing.status == 'awaiting_confirmation')) {
+                updatedMetadata['billcode_locked'] = true;
+                updatedMetadata['billcode_locked_to'] = lockAuthor;
+                updatedMetadata['billcode_locked_at'] = DateTime.now().toIso8601String();
+                broLog('🔒 v798: TRAVA DE OURO em ${existing.id.substring(0, 8)} — comprovante do provedor ${lockAuthor.substring(0, 8)} recebido; billCode/providerId congelados.');
+              }
               // vSEC: alimentar a referência de tempo da rede (anti clock-skew
               // na auto-liquidação) com o created_at deste evento.
               _noteNetworkTime(proofCreatedAtSec);
@@ -5393,7 +5431,11 @@ class OrderProvider with ChangeNotifier {
             
             _orders[existingIndex] = existing.copyWith(
               status: isStatusAdvancing ? statusToUse : existing.status,
-              providerId: newProviderId ?? existing.providerId,
+              // v798: trava de ouro — providerId congelado quando o lock existe
+              // (o lock é gravado com o autor da prova, que é o canônico).
+              providerId: (existing.metadata?['billcode_locked'] == true)
+                  ? existing.providerId
+                  : (newProviderId ?? existing.providerId),
               metadata: updatedMetadata,
             );
             // v406: Cache proof após Phase 2 update
@@ -5785,24 +5827,66 @@ class OrderProvider with ChangeNotifier {
 
       // v582: Se a ordem está accepted SEM billCode entregue, re-enviar
       // o billCode encriptado direto (provider está preso em "Obtendo dados").
+      // v798 (caso Roberto): este ramo era a PORTA DO VAZAMENTO — entregava
+      // pro providerId LOCAL sem verificar o canônico. Com o providerId local
+      // corrompido pro perdedor, o perdedor nudgava (v774 passava, pois
+      // reqAuthor == providerId local) e recebia o billcode DEPOIS de o
+      // canônico já ter pago e completado. Agora:
+      // (a) trava de ouro (billcode_locked) bloqueia qualquer re-envio;
+      // (b) verificação canônica fail-closed antes de qualquer entrega.
       if (order.status == 'accepted' &&
           order.providerId != null &&
           order.providerId!.isNotEmpty &&
           order.billCode.isNotEmpty) {
+        // v798 (a): trava de ouro — complete/prova do canônico já chegou.
+        if (order.metadata?['billcode_locked'] == true) {
+          final lockedTo = order.metadata?['billcode_locked_to']?.toString() ?? '';
+          broLog('🔒 v798: re-envio de billCode de ${orderId.substring(0, 8)} BLOQUEADO — trava de ouro ativa (canônico=${lockedTo.isNotEmpty ? lockedTo.substring(0, 8) : "?"}).');
+          continue;
+        }
         try {
+          // v798 (b): verificação canônica — mesmo padrão fail-closed da v438.
+          final allAccepts = await _nostrOrderService
+              .fetchAllAcceptsForOrder(order.id)
+              .timeout(const Duration(seconds: 10), onTimeout: () => <String>[]);
+          if (allAccepts.isEmpty) {
+            broLog('🛡️ v798: ${orderId.substring(0, 8)} — aceites vazios/timeout no re-envio v582. NÃO entregando (fail-closed).');
+            continue;
+          }
+          final canonical = allAccepts.first;
+          final coverage = _nostrOrderService.lastAcceptsRelayCoverage;
+          if (coverage < 2) {
+            broLog('🛡️ v798: ${orderId.substring(0, 8)} — só $coverage relay(s) responderam no re-envio. Adiando (fail-closed).');
+            continue;
+          }
+          if (canonical != order.providerId) {
+            // providerId local ≠ canônico: curar a referência e NÃO entregar
+            // neste ciclo — o pipeline v438 entrega com as proteções completas
+            // (janela de propagação, quórum 30s, watchtower).
+            broLog('🚨 v798: ${orderId.substring(0, 8)} — providerId local (${order.providerId!.substring(0, 8)}) ≠ canônico (${canonical.substring(0, 8)}) no re-envio. Curando referência; entrega fica pro pipeline v438.');
+            final idxH = _orders.indexWhere((o) => o.id == order.id);
+            if (idxH != -1) {
+              _orders[idxH] = _orders[idxH].copyWith(providerId: canonical);
+              await _saveOnlyUserOrders();
+              _immediateNotify();
+            }
+            continue;
+          }
           final ok = await _nostrOrderService.publishEncryptedBillCode(
             privateKey: privateKey,
             orderId: order.id,
             billCode: order.billCode,
-            providerPubkey: order.providerId!,
+            providerPubkey: canonical, // v798: SEMPRE o canônico
             orderUserPubkey: _currentUserPubkey!,
           );
-          broLog('${ok ? "✅" : "⚠️"} v582 re-send billCode nip44 para ${orderId.substring(0, 8)} (ok=$ok)');
+          broLog('${ok ? "✅" : "⚠️"} v582 re-send billCode nip44 para ${orderId.substring(0, 8)} (ok=$ok, canônico)');
           // Marca como sent independente de ok — próximo sync tenta de novo.
           final idx = _orders.indexWhere((o) => o.id == order.id);
           if (idx != -1) {
             final meta = Map<String, dynamic>.from(_orders[idx].metadata ?? {});
             meta['billCode_nip44_sent'] = true;
+            meta['billCode_nip44_sent_to'] = canonical; // v798: auditoria
+            meta['billCode_nip44_sent_at'] = DateTime.now().millisecondsSinceEpoch;
             _orders[idx] = _orders[idx].copyWith(metadata: meta);
           }
         } catch (e) {

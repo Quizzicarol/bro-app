@@ -224,7 +224,8 @@ class _ProviderScreenState extends State<ProviderScreen> with SingleTickerProvid
       // ordem por vez do tier-1 sem garantia ("Meus Primeiros Sats").
       final orderProvider = context.read<OrderProvider>();
       final myActiveOrders = orderProvider.myAcceptedOrders
-          .where((o) => o.isActive && o.id != orderId)
+          // v805: ordem perdida na corrida NÃO conta como ativa.
+          .where((o) => o.isActive && o.id != orderId && o.metadata?['lostRace'] != true)
           .length;
       if (!collateralProvider.canAcceptOrder(orderAmount, activeOrdersCount: myActiveOrders)) {
         final reason = collateralProvider.getCannotAcceptReason(orderAmount);

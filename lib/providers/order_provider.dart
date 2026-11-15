@@ -2316,6 +2316,46 @@ class OrderProvider with ChangeNotifier {
           broLog('🛡️ v679: ${order.id.substring(0, 8)} — providerId local NÃO consta nos aceites da rede. NÃO revelando (fail-closed).');
           continue;
         }
+        final canonical = allAccepts.first;
+        // v805: WATCHTOWER-ATALHO — o watchtower ouve TODOS os relays o tempo
+        // todo e acumula aceites por minutos. Se ele CONHECE a ordem e o
+        // canônico dele bate com o providerId local, as janelas de TEMPO de
+        // relay (v702 90s de propagação + v712 30s de estabilidade) podem ser
+        // puladas: a visão acumulada do servidor é mais forte que o
+        // instantâneo parcial dos relays. O quórum de ≥2 relays (v712a) NÃO é
+        // pulado — relays continuam sendo a fonte da verdade; o watchtower só
+        // acelera o relógio. Se o watchtower estiver fora ou discordar,
+        // caímos no caminho lento antigo (nunca pior).
+        bool watchtowerShortcut = false;
+        try {
+          final wt = await ApiService().get('/canonical/${order.id}')
+              .timeout(const Duration(seconds: 6), onTimeout: () => null);
+          if (wt != null && wt['known'] == true) {
+            final wtCanonical = wt['canonical']?.toString() ?? '';
+            if (wtCanonical.isNotEmpty && wtCanonical == order.providerId) {
+              watchtowerShortcut = true;
+              broLog('⚡ v805: ${order.id.substring(0, 8)} — watchtower confirma canônico (${wtCanonical.substring(0, 8)}); pulando janelas de tempo (90s/30s), quórum de relays mantido.');
+            } else if (wtCanonical.isNotEmpty && wtCanonical != canonical) {
+              broLog('🚨 v758: watchtower DISCORDA — relays dizem ${canonical.substring(0, 8)} mas o servidor (visão acumulada) diz ${wtCanonical.substring(0, 8)}. NÃO revelando agora; curando referência.');
+              final idxW = _orders.indexWhere((o) => o.id == order.id);
+              if (idxW != -1) {
+                _orders[idxW] = _orders[idxW].copyWith(providerId: wtCanonical);
+                await _saveOnlyUserOrders();
+                _immediateNotify();
+              }
+              continue;
+            }
+          }
+        } catch (_) { /* servidor fora → caminho lento de relays */ }
+        // v805 (meio-termo): o quórum de ≥2 relays vale SEMPRE — o watchtower
+        // só pula as janelas de TEMPO (90s/30s), nunca substitui a prova dos
+        // relays. Filosofia intacta: relays são a verdade, servidor é cache.
+        final coverage = _nostrOrderService.lastAcceptsRelayCoverage;
+        if (coverage < 2) {
+          broLog('🛡️ v712: ${order.id.substring(0, 8)} — só $coverage relay(s) responderam. Adiando (fail-closed).');
+          continue;
+        }
+        if (!watchtowerShortcut) {
         // v702: O canônico SEMPRE manda — mesmo com UM aceite visível. O bug:
         // a checagem de vencedor só rodava quando allAccepts.length > 1, então
         // se o aceite do vencedor ainda não tinha propagado pros relays que o
@@ -2335,30 +2375,26 @@ class OrderProvider with ChangeNotifier {
             continue;
           }
         }
-        final canonical = allAccepts.first;
+        final canonicalSlow = allAccepts.first;
         // v712: QUÓRUM ANTI-PARCIAL — um fetch pode ficar incompleto por
         // MINUTOS sob divergência de relays (caso 58ebf198, 06/11: cada ciclo
         // via um subconjunto DIFERENTE, o "canônico" mudava entre ciclos e o
         // código foi pra dois provedores — perdedor pagou R$ de verdade).
         // Regra: (a) >= 2 relays responderam; (b) o MESMO canônico em dois
         // ciclos com >= 60s entre eles. Qualquer dúvida → adia.
-        final coverage = _nostrOrderService.lastAcceptsRelayCoverage;
-        if (coverage < 2) {
-          broLog('🛡️ v712: ${order.id.substring(0, 8)} — só $coverage relay(s) responderam. Adiando (fail-closed).');
-          continue;
-        }
-        if (canonical != order.providerId) {
-          broLog('🏁 v702: ${order.id.substring(0, 8)} — providerId local (${order.providerId!.substring(0, 8)}) ≠ canônico (${canonical.substring(0, 8)}). Corrigindo referência.');
+        // (v805: o quórum (a) subiu pro caminho comum — vale nos dois caminhos.)
+        if (canonicalSlow != order.providerId) {
+          broLog('🏁 v702: ${order.id.substring(0, 8)} — providerId local (${order.providerId!.substring(0, 8)}) ≠ canônico (${canonicalSlow.substring(0, 8)}). Corrigindo referência.');
           final idx = _orders.indexWhere((o) => o.id == order.id);
           if (idx != -1) {
-            _orders[idx] = _orders[idx].copyWith(providerId: canonical);
+            _orders[idx] = _orders[idx].copyWith(providerId: canonicalSlow);
             await _saveOnlyUserOrders();
             _immediateNotify();
           }
           // Se já revelamos pra OUTRO antes desta correção, é incidente real:
           final sentTo = order.metadata?['billCode_nip44_sent_to'] as String?;
-          if (sentTo != null && sentTo.isNotEmpty && sentTo != canonical) {
-            broLog('🚨🚨 v702 INCIDENTE: billCode de ${order.id.substring(0, 8)} foi para $sentTo mas o canônico é $canonical — MEDIAÇÃO NECESSÁRIA');
+          if (sentTo != null && sentTo.isNotEmpty && sentTo != canonicalSlow) {
+            broLog('🚨🚨 v702 INCIDENTE: billCode de ${order.id.substring(0, 8)} foi para $sentTo mas o canônico é $canonicalSlow — MEDIAÇÃO NECESSÁRIA');
           }
           continue; // entrega no próximo ciclo, já com providerId curado
         }
@@ -2369,16 +2405,16 @@ class OrderProvider with ChangeNotifier {
         final pendingCanonical = meta712['billCode_pending_canonical'] as String?;
         final pendingSince = (meta712['billCode_pending_since'] as num?)?.toInt() ?? 0;
         final nowMs712 = DateTime.now().millisecondsSinceEpoch;
-        if (pendingCanonical != canonical) {
+        if (pendingCanonical != canonicalSlow) {
           // Canônico MUDOU entre ciclos (fetch parcial!) — recomeça a janela.
-          meta712['billCode_pending_canonical'] = canonical;
+          meta712['billCode_pending_canonical'] = canonicalSlow;
           meta712['billCode_pending_since'] = nowMs712;
           final idx712 = _orders.indexWhere((o) => o.id == order.id);
           if (idx712 != -1) {
             _orders[idx712] = _orders[idx712].copyWith(metadata: meta712);
             await _saveOnlyUserOrders();
           }
-          broLog('⏳ v712: ${order.id.substring(0, 8)} — canônico ${canonical.substring(0, 8)} anotado; confirmando estabilidade por 30s antes de revelar.');
+          broLog('⏳ v712: ${order.id.substring(0, 8)} — canônico ${canonicalSlow.substring(0, 8)} anotado; confirmando estabilidade por 30s antes de revelar.');
           continue;
         }
         if ((nowMs712 - pendingSince) < 30000) {
@@ -2390,30 +2426,7 @@ class OrderProvider with ChangeNotifier {
           broLog('⏳ v712: ${order.id.substring(0, 8)} — canônico estável, faltam ${resta}s de janela.');
           continue;
         }
-        // v758: AUTORIDADE FINAL = watchtower. Ele ouve TODOS os relays o
-        // tempo todo e acumula aceites por minutos; o nosso fetch é um
-        // instantâneo que pode ser parcial (caso 55e37a9e, 07/11: entregamos
-        // pro perdedor porque o aceite do canônico não estava no nosso fetch
-        // — ele pagou R$ de verdade). Se o servidor discorda → NÃO entrega,
-        // cura a referência e entrega certo no próximo ciclo. Servidor fora
-        // ou não conhece a ordem → segue o quórum de relays (nunca pior).
-        try {
-          final wt = await ApiService().get('/canonical/${order.id}')
-              .timeout(const Duration(seconds: 6), onTimeout: () => null);
-          if (wt != null && wt['known'] == true) {
-            final wtCanonical = wt['canonical']?.toString() ?? '';
-            if (wtCanonical.isNotEmpty && wtCanonical != canonical) {
-              broLog('🚨 v758: watchtower DISCORDA — relays dizem ${canonical.substring(0, 8)} mas o servidor (visão acumulada) diz ${wtCanonical.substring(0, 8)}. NÃO revelando agora; curando referência.');
-              final idxW = _orders.indexWhere((o) => o.id == order.id);
-              if (idxW != -1) {
-                _orders[idxW] = _orders[idxW].copyWith(providerId: wtCanonical);
-                await _saveOnlyUserOrders();
-                _immediateNotify();
-              }
-              continue;
-            }
-          }
-        } catch (_) { /* servidor fora → quórum de relays decide (hoje) */ }
+        } // v805: fim do caminho lento (sem watchtower-atalho)
 
         if (allAccepts.length > 1) {
           broLog('🏁 v541: ordem ${order.id.substring(0, 8)} tem ${allAccepts.length} accepts. Winner=${canonical.substring(0, 8)} (eu já aponto pra ele ✓)');
@@ -3196,6 +3209,22 @@ class OrderProvider with ChangeNotifier {
     final before = _availableOrdersForProvider.length;
     _availableOrdersForProvider.removeWhere((o) => o.id == orderId);
     _nostrOrderService.addToBlocklistPublic({orderId});
+    // v805: persistir lostRace na metadata NA HORA — antes só o sync
+    // (_markLostRaces) gravava, e o perdedor ficava com a ordem "aceita"
+    // contando como ativa no limite do tier-1 até o próximo sync.
+    final idx = _orders.indexWhere((o) => o.id == orderId);
+    if (idx != -1 &&
+        _orders[idx].providerId != null &&
+        _orders[idx].providerId != _currentUserPubkey &&
+        _orders[idx].metadata?['lostRace'] != true) {
+      _orders[idx] = _orders[idx].copyWith(metadata: {
+        ...?_orders[idx].metadata,
+        'lostRace': true,
+      });
+      broLog('🏁 v805: lostRace persistido imediatamente em ${orderId.substring(0, 8)} (gate da corrida)');
+      _debouncedSave();
+      notifyListeners();
+    }
     if (_availableOrdersForProvider.length != before) {
       broLog('🚫 [markOrderTakenByOther] Ordem ${orderId.substring(0, 8)} removida da lista disponível (já aceita por outro Bro)');
       notifyListeners();

@@ -737,7 +737,9 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       // limite de 1 ordem por vez do tier-1 sem garantia ("Meus Primeiros Sats").
       final orderProvider = context.read<OrderProvider>();
       final myActiveOrders = orderProvider.myAcceptedOrders
-          .where((o) => o.isActive && o.id != widget.orderId)
+          // v805: ordem perdida na corrida NÃO conta como ativa (destrava o
+          // limite do tier-1 — incidente d7a9b848: perdedor ficou bloqueado).
+          .where((o) => o.isActive && o.id != widget.orderId && o.metadata?['lostRace'] != true)
           .length;
 
       // Verificar se pode aceitar

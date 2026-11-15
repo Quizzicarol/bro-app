@@ -912,7 +912,8 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
       // ordem por vez do tier-1 sem garantia ("Meus Primeiros Sats").
       final orderProvider = context.read<OrderProvider>();
       final myActiveOrders = orderProvider.myAcceptedOrders
-          .where((o) => o.isActive && o.id != orderId)
+          // v805: ordem perdida na corrida NÃO conta como ativa.
+          .where((o) => o.isActive && o.id != orderId && o.metadata?['lostRace'] != true)
           .length;
       final (canAcceptResult, reason) = collateralProvider.canAcceptOrderWithReason(amount, activeOrdersCount: myActiveOrders);
       canAccept = canAcceptResult;
@@ -1131,8 +1132,17 @@ class _ProviderOrdersScreenState extends State<ProviderOrdersScreen> with Single
     final status = order['status'] as String? ?? 'unknown';
     final createdAtStr = order['created_at'] ?? order['createdAt'];
     final createdAt = createdAtStr != null ? DateTime.tryParse(createdAtStr.toString()) ?? DateTime.now() : DateTime.now();
-    
-    final statusInfo = _getStatusInfo(status);
+
+    // v805: corrida perdida — badge "Perdida" em vez de "aceita"
+    final lostRace = order['metadata']?['lostRace'] == true;
+    final statusInfo = lostRace
+        ? <String, dynamic>{
+            'label': 'Perdida',
+            'icon': Icons.emoji_events_outlined,
+            'color': Colors.red,
+            'description': 'Outro Bro levou essa ordem',
+          }
+        : _getStatusInfo(status);
     final earning = amount * EscrowService.providerFeePercent / 100;
     final myCur = (order['currency'] as String?)?.toUpperCase() ?? 'BRL';
     final myCurPrefix = myCur == 'BRL' ? r'R$' : myCur;

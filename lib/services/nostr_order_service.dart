@@ -197,12 +197,15 @@ class NostrOrderService {
     // relays públicos). Dois relays próprios = um segura o tráfego do outro.
     'wss://bro-relay2.fly.dev',
     'wss://relay.primal.net',
-    // v797: damus (HTTP 521 constante) e nos.lol (TCP conecta mas REQ nunca
-    // responde — zumbi silencioso) REMOVIDOS. Eles retornavam 0 eventos e
-    // envenenavam o aceite: fetchOrderProviderPubkey espera o relay mais
-    // lento (8s/estratégia, até 16s no nos.lol) e o timeout global de 45s
-    // do aceite estourava em todos os iPhones ("Relays não responderam a
-    // tempo"). Sync é aditivo — os dados estão nos 3 relays acima + fallback.
+    // v799: damus e nos.lol DE VOLTA como redundância. O v797 removeu baseado
+    // em probe do PC do revisor — mas alcance de relay é POR REDE: no celular
+    // da Carol só o damus respondia e a remoção zerou o quórum do fail-closed
+    // v791 (aceite bloqueado 0/3, 15/11). Morto pra uns ≠ morto pra todos:
+    // eles ficam por último — tentativa aditiva, não custam nada pra quem tem
+    // os 3 saudáveis, e salvam quem não tem. O remédio certo pra lentidão é
+    // probe por dispositivo (v791 relay health), não tesoura na lista.
+    'wss://relay.damus.io',
+    'wss://nos.lol',
   ];
 
   // v701: versão REAL do app nos eventos — suporte/forense sem suposição

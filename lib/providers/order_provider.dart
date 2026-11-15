@@ -826,7 +826,7 @@ class OrderProvider with ChangeNotifier {
       // v656: PASSO ASYNC separado — limpar ordens TERMINAIS que são FANTASMAS
       // de double-accept: EU sou o providerId mas NÃO sou o aceite canônico
       // (perdi a corrida; outro provedor completou). Ex.: ordem 0b8eb0f3
-      // aparecia concluída p/ Roberto sem ele ter pago. O .where() acima não
+      // aparecia concluída p/ o perdedor sem ele ter pago. O .where() acima não
       // pode fazer await, então verificamos o canônico aqui, uma a uma.
       // Fail-safe: consulta falhou => manter (não remover histórico por dúvida).
       final terminalGhosts = _orders.where((o) =>
@@ -3025,7 +3025,7 @@ class OrderProvider with ChangeNotifier {
       // (fetchOrderProviderPubkey) usado pelo buyer na hora de revelar o
       // billCode e pagar.
 
-      // v656: PÓS-CHECK CANÔNICO (caso do Roberto). Quando success==true o relay
+      // v656: PÓS-CHECK CANÔNICO (incidente 0b8eb0f3, 04/11). Quando success==true o relay
       // ACEITOU meu evento — mas outro provedor pode ter aceito ANTES (double-accept).
       // O publish com sucesso NÃO garante que eu venci a corrida. Verificar se meu
       // pubkey é o accept CANÔNICO (menor created_at). Se não for, perdi a corrida:
@@ -5410,10 +5410,10 @@ class OrderProvider with ChangeNotifier {
               // v798: TRAVA DE OURO — chegou comprovante (prova de pagamento)
               // de uma ordem accepted/awaiting_confirmation. A partir daqui o
               // billCode já foi revelado e o provedor pagou de verdade: NUNCA
-              // mais re-entregar billcode nem trocar providerId (caso Roberto:
-              // republish do perdedor 74min depois do complete re-corrompeu
-              // tudo). O lock grava QUEM é o canônico; todos os pontos de
-              // entrega/troca checam esta flag.
+              // mais re-entregar billcode nem trocar providerId (incidente
+              // 5095634d, 14/11: republish pro perdedor 74min depois do
+              // complete re-corrompeu tudo). O lock grava QUEM é o canônico;
+              // todos os pontos de entrega/troca checam esta flag.
               final lockAuthor = update['eventAuthorPubkey'] as String? ?? newProviderId ?? '';
               if (lockAuthor.isNotEmpty &&
                   (existing.status == 'accepted' || existing.status == 'awaiting_confirmation')) {
@@ -5827,11 +5827,11 @@ class OrderProvider with ChangeNotifier {
 
       // v582: Se a ordem está accepted SEM billCode entregue, re-enviar
       // o billCode encriptado direto (provider está preso em "Obtendo dados").
-      // v798 (caso Roberto): este ramo era a PORTA DO VAZAMENTO — entregava
-      // pro providerId LOCAL sem verificar o canônico. Com o providerId local
-      // corrompido pro perdedor, o perdedor nudgava (v774 passava, pois
-      // reqAuthor == providerId local) e recebia o billcode DEPOIS de o
-      // canônico já ter pago e completado. Agora:
+      // v798 (incidente 5095634d): este ramo era a PORTA DO VAZAMENTO —
+      // entregava pro providerId LOCAL sem verificar o canônico. Com o
+      // providerId local corrompido pro perdedor, o perdedor nudgava (v774
+      // passava, pois reqAuthor == providerId local) e recebia o billcode
+      // DEPOIS de o canônico já ter pago e completado. Agora:
       // (a) trava de ouro (billcode_locked) bloqueia qualquer re-envio;
       // (b) verificação canônica fail-closed antes de qualquer entrega.
       if (order.status == 'accepted' &&

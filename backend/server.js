@@ -82,6 +82,23 @@ const createLimiter = rateLimit({
   message: { error: 'Limite de criação atingido. Tente novamente em 1 minuto.' },
 });
 
+// v800: leitura do watchtower com limite PRÓPRIO, mais folgado. O generalLimiter
+// (200/15min/IP) estourava com vários aparelhos no mesmo IP (casa de testes):
+// o polling de ordens (GET /canonical + /watchtower/available-orders por ordem
+// ativa, 45s+jitter por aparelho) consumia a cota inteira e o backend voltava
+// 429 pra TUDO — inclusive o aceite. Leitura é barata e identificada por NIP-98:
+// limite por pubkey (com fallback pro IP), 600/15min. O generalLimiter global
+// permanece intacto como proteção contra abuso.
+const watchtowerReadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.verifiedPubkey || req.ip,
+  validate: false,
+  message: { error: 'Limite de leitura do watchtower atingido. Tente novamente em 15 minutos.' },
+});
+
 app.use(generalLimiter);
 
 // ============================================
@@ -157,7 +174,7 @@ app.use('/admin', require('./routes/admin_verify'));
 // continuamente, não um fetch parcial de momento). O app consulta ANTES de
 // revelar o billCode; se diverge, o watchtower manda. Dado já é público nos
 // relays, então rota aberta. Caso 55e37a9e.
-app.get('/canonical/:orderId', (req, res) => {
+app.get('/canonical/:orderId', watchtowerReadLimiter, (req, res) => {
   res.json(watchtower.getCanonicalInfo(req.params.orderId));
 });
 
@@ -165,7 +182,7 @@ app.get('/canonical/:orderId', (req, res) => {
 // pending sem provider ＝ lista pública; providerPubkey ＝ Minhas Ordens do provedor.
 // Sem billCode, comprovante ou dados de pagamento — só id+valor+timestamp.
 // Auth NIP-98: quem consulta as “minhas” deve assinar como provedor.
-app.get('/watchtower/available-orders', requireAuth, (req, res) => {
+app.get('/watchtower/available-orders', watchtowerReadLimiter, requireAuth, (req, res) => {
   const provider = req.query.provider ? String(req.query.provider) : null;
   // Se provider tiver formato inválido (não hex 64), tratamos como público.
   const isHex64 = provider && /^[0-9a-f]{64}$/.test(provider);

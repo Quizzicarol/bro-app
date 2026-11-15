@@ -68,6 +68,12 @@ const generalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Muitas requisições. Tente novamente em 15 minutos.' },
+  // v800b: leituras do watchtower (/canonical, /watchtower/*) têm limiter
+  // PRÓPRIO por pubkey (600/15min) — sem o skip, o teto por-IP global
+  // continuava na frente e o 429 voltava em casas com vários aparelhos
+  // (revisão dupla pegou: v800 adicionou o limiter mas não tirou o global
+  // do caminho). Writes e demais rotas seguem protegidos por este.
+  skip: (req) => req.path.startsWith('/canonical/') || req.path.startsWith('/watchtower/'),
 });
 
 const createLimiter = rateLimit({

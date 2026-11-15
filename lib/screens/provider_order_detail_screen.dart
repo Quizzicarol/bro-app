@@ -889,6 +889,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     // DE ACEITE, ANTES de avançar pro billCode. Publish com sucesso NÃO
     // garante vitória (outro aceite pode ter landed antes em relay que não
     // viu o meu). Só o canônico (acceptedAt mais antigo) avança.
+    // v806: durante o gate, o render mostra o card de apuração (branch
+    // _isAccepting acima) — a tela do billCode só aparece depois do gate OK.
     final lostAtGate = await _confirmRaceBeforeBillcode();
     if (lostAtGate || !mounted) return;
 
@@ -1412,6 +1414,49 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               const SizedBox(height: 16),
             ],
             _buildReceiptSection(),
+          ]
+          // ========== v806: CORRIDA EM APURAÇÃO ==========
+          // O status já virou 'accepted' no sync, mas o gate da corrida
+          // (_confirmRaceBeforeBillcode) ainda está rodando. NUNCA mostrar
+          // a tela do billCode neste estado: o perdedor vê o popup de perda
+          // AQUI (tela de "iniciando corrida") e nunca avança pra tela
+          // otimista do billCode (decisão da Carol, v806).
+          else if (_isAccepting) ...[
+            _buildAmountCard(amount, providerFee),
+            const SizedBox(height: 16),
+            _buildStatusCard(),
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A1A1A),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+              ),
+              child: Column(
+                children: [
+                  const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.orange,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    AppLocalizations.of(context)!.t('prov_det_race_starting'),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ]
           // ========== ORDEM DISPONÍVEL - PODE ACEITAR ==========
           else if (isPending) ...[

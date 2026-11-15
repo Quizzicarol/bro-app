@@ -36,6 +36,12 @@ class OrderProvider with ChangeNotifier {
   Completer<void>? _providerSyncCompleter; // v252: Permite pull-to-refresh aguardar sync em andamento
   bool _isSyncingUser = false; // Guard contra syncs concorrentes (modo usu�?¡rio)
   bool _isSyncingProvider = false; // Guard contra syncs concorrentes (modo provedor)
+  // v806: sync de usuário engolido durante sync em andamento. O evento RT/FCM
+  // (ex: comprovante) dispara syncOrdersFromNostr enquanto a cadeia de
+  // pós-processamentos segura o lock — antes o sync era descartado e o status
+  // ficava preso em "bro encontrado" até o próximo tick. Agora re-executamos
+  // uma vez ao final do sync em andamento.
+  bool _userSyncQueued = false;
   bool _autoRepairDoneThisSession = false; // v256: Auto-repair roda apenas UMA VEZ por sessao
   DateTime? _syncUserStartedAt; // v259: Timestamp de quando sync user iniciou (para detectar lock stale)
   DateTime? _syncProviderStartedAt; // v259: Timestamp de quando sync provider iniciou
@@ -460,6 +466,25 @@ class OrderProvider with ChangeNotifier {
 
   @visibleForTesting
   void debugApplyR5cReconcileMerge() => _applyR5cReconcileMerge();
+
+  // v806: hook de teste — propagação de lostRace do snapshot HTTP pro cache
+  // local (caminho do syncProvider, ramo "ordem já existe em _orders").
+  @visibleForTesting
+  void debugPropagateLostRaceFromSnapshotForV806(Order provOrder) {
+    final existingIndex = _orders.indexWhere((o) => o.id == provOrder.id);
+    if (existingIndex == -1) return;
+    var existing = _orders[existingIndex];
+    if (provOrder.metadata?['raceWon'] == false &&
+        existing.metadata?['lostRace'] != true) {
+      final mergedMeta = Map<String, dynamic>.from(existing.metadata ?? {});
+      mergedMeta['raceWon'] = false;
+      mergedMeta['lostRace'] = true;
+      if (provOrder.metadata?['acceptsCount'] is int) {
+        mergedMeta['acceptsCount'] = provOrder.metadata!['acceptsCount'];
+      }
+      _orders[existingIndex] = existing.copyWith(metadata: mergedMeta);
+    }
+  }
 
   // v790: hook de teste para a regressão do userPubkey vazio (73de8b9a).
   @visibleForTesting
@@ -1928,6 +1953,24 @@ class OrderProvider with ChangeNotifier {
         } else if (existingIndex != -1) {
           // Ordem j�?¡ existe - atualizar se status do Nostr �?© mais avan�?§ado
           var existing = _orders[existingIndex];
+
+            // v806: "Perdida" rápida — o snapshot HTTP (raceWon=false) já sabe o
+            // resultado da corrida antes de qualquer fetch de aceites no relay.
+            // Marcar lostRace no metadata AGORA (sem tocar no status — o status
+            // continua 'accepted' até o gate/sync confirmar; a UI de listas usa
+            // lostRace pra badge/exclusão v699/v805).
+            if (provOrder.metadata?['raceWon'] == false &&
+                existing.metadata?['lostRace'] != true) {
+              final mergedMeta = Map<String, dynamic>.from(existing.metadata ?? {});
+              mergedMeta['raceWon'] = false;
+              mergedMeta['lostRace'] = true;
+              if (provOrder.metadata?['acceptsCount'] is int) {
+                mergedMeta['acceptsCount'] = provOrder.metadata!['acceptsCount'];
+              }
+              _orders[existingIndex] = existing.copyWith(metadata: mergedMeta);
+              existing = _orders[existingIndex];
+              broLog('🏁 [syncProvider v806] lostRace propagado do snapshot para ${existing.id.substring(0, 8)}');
+            }
 
           // v627: HEAL providerId nulo. Esta ordem veio de fetchProviderOrders
           // (== EU sou o accepter), mas o cache local est�?¡ com providerId=null
@@ -5204,10 +5247,15 @@ class OrderProvider with ChangeNotifier {
           _syncUserStartedAt = null;
         } else {
           broLog('syncOrdersFromNostr: sync em andamento (${elapsed}s), ignorando');
+          // v806: em vez de descartar, agendar re-execução ao final do sync atual.
+          // Evento RT/FCM (comprovante, aceite) não pode ser engolido.
+          _userSyncQueued = true;
           return;
         }
       } else {
         broLog('syncOrdersFromNostr: sync em andamento, ignorando');
+        // v806: idem — agendar re-execução ao final do sync atual.
+        _userSyncQueued = true;
         return;
       }
     }
@@ -5466,6 +5514,27 @@ class OrderProvider with ChangeNotifier {
             needsUpdate = true;
           }
           
+          // v806: update SÓ-DE-COMPROVANTE — o 30081 (proof) chegou sem
+          // avanço de status (ordem já 'accepted', providerId igual). Antes
+          // o needsUpdate ficava false e o comprovante era DESCARTADO — a
+          // tela ficava presa em "bro encontrado" até um ciclo que trouxesse
+          // mudança de status. Aplicar o proof agora.
+          if (!needsUpdate) {
+            final hasProofData = update['proofImage'] != null ||
+                update['proofImage_nip44'] != null ||
+                update['providerInvoice'] != null;
+            if (hasProofData) {
+              final existingProof = existing.metadata?['proofImage'] as String?;
+              final hasDecryptedProof = existingProof != null &&
+                  existingProof.isNotEmpty &&
+                  !existingProof.startsWith('[encrypted:');
+              if (!hasDecryptedProof) {
+                needsUpdate = true;
+                broLog('📥 v806: update só-de-comprovante para ${existing.id.substring(0, 8)} — aplicando proof sem mudança de status');
+              }
+            }
+          }
+          
           if (needsUpdate) {
             final isStatusAdvancing = _isStatusMoreRecent(statusToUse, existing.status);
             // TRACKING v233: Marcar ordem como 'wasDisputed' quando transiciona de disputed para completed/cancelled
@@ -5580,6 +5649,13 @@ class OrderProvider with ChangeNotifier {
               cacheProofImage(existing.id, p2proof);
             }
             statusUpdated++;
+            
+            // v806: comprovante aplicado sem avanço de status — avisar a UI
+            // na hora (a tela do comprador sai de "bro encontrado" e mostra
+            // o comprovante sem esperar o próximo ciclo de 15s).
+            if (!isStatusAdvancing) {
+              _immediateNotify();
+            }
             
             // v261: Re-publicar o evento 30078 com status terminal para remover da marketplace
             if (isStatusAdvancing) {
@@ -5800,6 +5876,14 @@ class OrderProvider with ChangeNotifier {
     } finally {
       _isSyncingUser = false;
       _syncUserStartedAt = null; // v259: clear stale tracker
+    }
+
+    // v806: re-executar sync engolido durante o sync atual (uma vez, sem loop
+    // infinito — o re-run limpa a flag antes de rodar).
+    if (_userSyncQueued) {
+      _userSyncQueued = false;
+      broLog('🔁 v806: re-executando sync de usuário engolido durante sync anterior');
+      unawaited(syncOrdersFromNostr(force: true));
     }
 
     // v521: authoritative ghost-order cleanup runs AFTER every sync, not only on login.

@@ -180,6 +180,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       if (hasNewProof) {
         broLog('📡 [LISTENER] proofImage recebido via Provider');
       }
+    } else if (order.status == 'accepted' && !_fetchingProofDirectly) {
+      // v806: ordem segue 'accepted' mas pode ter recebido proof NIP-44 ainda
+      // não descriptografado (marcador [encrypted:]). Tentar fetch direto —
+      // sem isso a tela fica em "bro encontrado" até o próximo ciclo de sync.
+      final p = order.metadata?['proofImage'] as String?;
+      final hasDecryptedProof = p != null && p.isNotEmpty && !p.startsWith('[encrypted:');
+      if (!hasDecryptedProof) {
+        _fetchProofDirectly();
+      }
     }
     // v801: autopay pós-resolução SEM depender da tela estar aberta na hora.
     // Se o sync (v444) aplicou a resolução em background, o status vira
@@ -290,10 +299,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         
         // v490: FALLBACK — Se a ordem está em awaiting_confirmation ou completed
         // mas NÃO tem proof, buscar diretamente do relay via fetchProofForOrder
+        // v806: incluir 'accepted' — comprovante pode chegar enquanto o status
+        // ainda é accepted (sync engolido/relay lento). Sem isso a tela nunca
+        // buscava o proof em accepted e ficava presa em "bro encontrado".
         final metadata = order?['metadata'] as Map<String, dynamic>?;
         final proofImg = metadata?['proofImage'] as String?;
         final hasValidProof = proofImg != null && proofImg.isNotEmpty && !proofImg.startsWith('[encrypted:');
-        if (!hasValidProof && (bestStatus == 'awaiting_confirmation' || bestStatus == 'completed' || bestStatus == 'liquidated')) {
+        if (!hasValidProof && (bestStatus == 'accepted' || bestStatus == 'awaiting_confirmation' || bestStatus == 'completed' || bestStatus == 'liquidated')) {
           _fetchProofDirectly();
         }
         
@@ -623,6 +635,18 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         // Iniciar countdown timer quando chega em awaiting_confirmation
         if (status == 'awaiting_confirmation') {
           _startCountdownTimer();
+        }
+
+        // v806: comprovante chegou sem mudança de status (ordem já estava
+        // 'accepted' e o 30081 chegou antes do 30080/apply). Buscar proof
+        // direto do relay em vez de esperar o próximo ciclo.
+        if (status == 'accepted' && mounted) {
+          final meta = order?.metadata;
+          final p = meta?['proofImage'] as String?;
+          final hasProofNow = p != null && p.isNotEmpty && !p.startsWith('[encrypted:');
+          if (!hasProofNow) {
+            _fetchProofDirectly();
+          }
         }
 
         // v490: Parar polling em estados FINAIS apenas se proof já foi carregado

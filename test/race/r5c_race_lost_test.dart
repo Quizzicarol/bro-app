@@ -198,4 +198,74 @@ void main() {
       await provider.debugRepublishUnpublishedPendingOrdersForV790();
     });
   });
+
+  // v806: "Perdida" rápida — o snapshot HTTP (raceWon=false) propaga
+  // lostRace pro cache local no momento do sync, sem esperar fetch de
+  // aceites no relay (que pode demorar ou falhar). Incidente da Carol:
+  // popup de perda apareceu mas a ordem seguiu "aceita" por muito tempo.
+  group('v806 - lostRace propagado do snapshot (Perdida rápida)', () {
+    test('(g) syncProvider propaga raceWon=false do snapshot pro cache local', () {
+      final provider = OrderProvider();
+      provider.debugSetCurrentUserPubkeyForR5c('pk-me');
+      provider.debugSeedOrdersForR5c([
+        _order('v806-lost-1', userPubkey: 'pk-buyer', providerId: 'pk-me',
+            status: 'accepted'),
+      ]);
+
+      // Snapshot HTTP chegou dizendo que EU perdi a corrida.
+      provider.debugPropagateLostRaceFromSnapshotForV806(
+        _order('v806-lost-1', userPubkey: 'pk-buyer', providerId: 'pk-me',
+            status: 'accepted',
+            metadata: {'raceWon': false, 'acceptsCount': 2}),
+      );
+
+      final o = provider.orders.firstWhere((o) => o.id == 'v806-lost-1');
+      expect(o.metadata?['lostRace'], true,
+          reason: 'badge "Perdida" deve aparecer no próximo render, sem fetch de relay');
+      expect(o.metadata?['raceWon'], false);
+      expect(o.metadata?['acceptsCount'], 2);
+      // Status NÃO muda — o gate/sync decide isso; lostRace é metadata.
+      expect(o.status, 'accepted');
+    });
+
+    test('(h) vencedor (raceWon=true) NÃO ganha lostRace', () {
+      final provider = OrderProvider();
+      provider.debugSetCurrentUserPubkeyForR5c('pk-me');
+      provider.debugSeedOrdersForR5c([
+        _order('v806-win-1', userPubkey: 'pk-buyer', providerId: 'pk-me',
+            status: 'accepted'),
+      ]);
+
+      provider.debugPropagateLostRaceFromSnapshotForV806(
+        _order('v806-win-1', userPubkey: 'pk-buyer', providerId: 'pk-me',
+            status: 'accepted',
+            metadata: {'raceWon': true, 'acceptsCount': 2}),
+      );
+
+      final o = provider.orders.firstWhere((o) => o.id == 'v806-win-1');
+      expect(o.metadata?['lostRace'], isNull);
+      expect(o.metadata?['raceWon'], isNull,
+          reason: 'propagação só marca perdedor; vencedor segue fluxo normal');
+    });
+
+    test('(i) lostRace é sticky — snapshot posterior não desmarca', () {
+      final provider = OrderProvider();
+      provider.debugSetCurrentUserPubkeyForR5c('pk-me');
+      provider.debugSeedOrdersForR5c([
+        _order('v806-sticky-1', userPubkey: 'pk-buyer', providerId: 'pk-me',
+            status: 'accepted',
+            metadata: {'lostRace': true, 'raceWon': false}),
+      ]);
+
+      // Snapshot novo sem raceWon (fetch parcial) não pode limpar a marca.
+      provider.debugPropagateLostRaceFromSnapshotForV806(
+        _order('v806-sticky-1', userPubkey: 'pk-buyer', providerId: 'pk-me',
+            status: 'accepted'),
+      );
+
+      final o = provider.orders.firstWhere((o) => o.id == 'v806-sticky-1');
+      expect(o.metadata?['lostRace'], true,
+          reason: 'v712: uma vez perdedor, NUNCA desmarca');
+    });
+  });
 }

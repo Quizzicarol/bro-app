@@ -3659,7 +3659,12 @@ class NostrOrderService {
     final allEvents = <Map<String, dynamic>>[];
     final seenIds = <String>{};
     
-    for (final relay in _relays.take(3)) {
+    // v806: PARALELO em TODOS os relays (mesmo modelo do _fetchAllOrderStatusUpdates
+    // v568). Antes: _relays.take(3) SEQUENCIAL — o evento 30081 (comprovante) num
+    // relay fora do take(3) ou num relay lento atrasava o status do comprador em
+    // dezenas de segundos ("bro encontrado" que nunca evolvia). Pior caso cai de
+    // ~3×10s para ~10s. Dedup por seenIds continua cross-relay.
+    final relayTasks = _relays.map((relay) async {
       try {
         // 2 core strategies per relay (reduced from 5)
         final strategies = <Future<List<Map<String, dynamic>>>>[
@@ -3678,25 +3683,28 @@ class NostrOrderService {
           );
         }
         final results = await Future.wait(strategies);
-        // v507: seenIds now shared across all relays (declared outside loop)
+        final combined = <Map<String, dynamic>>[];
         for (final eventList in results) {
-          for (final e in eventList) {
-            final id = e['id'];
-            if (id != null && !seenIds.contains(id)) {
-              seenIds.add(id);
-              allEvents.add(e);
-            }
-          }
+          combined.addAll(eventList);
         }
-        // v500: Query ALL relays, don't stop at first with data.
-        // The old behavior missed events that only exist on later relays
-        // (e.g., kind 30081 only on primal, but damus returns older events → sync stops).
-      } catch (e) {
-        // Relay failed, try next
+        return combined;
+      } catch (_) {
+        return <Map<String, dynamic>>[];
+      }
+    }).toList();
+
+    final perRelayEvents = await Future.wait(relayTasks);
+    for (final relayEvents in perRelayEvents) {
+      for (final e in relayEvents) {
+        final id = e['id'];
+        if (id != null && !seenIds.contains(id)) {
+          seenIds.add(id);
+          allEvents.add(e);
+        }
       }
     }
-    
-    broLog('🔍 fetchOrderUpdatesForUser: ${allEvents.length} eventos (sequential relay)');
+
+    broLog('🔍 fetchOrderUpdatesForUser: ${allEvents.length} eventos (parallel relays v806)');
     
     // v406: CORREÇÃO DEFINITIVA — Acumular proof de TODOS os eventos por orderId
     // antes de processar. Garante que proof do kind 30081 (provider complete) NUNCA

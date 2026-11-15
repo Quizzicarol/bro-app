@@ -90,6 +90,43 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   bool? _wonRace; // v742: EU sou o canônico — mostrar "você venceu" no aguardo
   int _acceptsCount = 0; // v713: quantos Bros aceitaram (msg de apuração)
 
+  // v804: gate da tela de aceite — ANTES de avançar pro billCode, confirmar
+  // nos relays que EU sou o canônico. Decisão da Carol (15/11): "só vai pra
+  // frente o provedor que realmente venceu a corrida". Retorna true se
+  // PERDI (popup já mostrado), false se posso avançar.
+  Future<bool> _confirmRaceBeforeBillcode() async {
+    try {
+      final myPk = NostrService().publicKey;
+      if (myPk == null || myPk.isEmpty) return false; // sem identidade: fail-open (não bloqueia aceite legítimo)
+      final accepts = await NostrOrderService()
+          .fetchAllAcceptsForOrder(widget.orderId)
+          .timeout(const Duration(seconds: 10), onTimeout: () => <String>[]);
+      if (!mounted) return false;
+      if (accepts.isEmpty) {
+        broLog('🏁 [RACE-GATE] v804: sem dados de aceite nos relays — fail-open (avançando)');
+        return false;
+      }
+      if (accepts.length != _acceptsCount) {
+        if (mounted) setState(() => _acceptsCount = accepts.length);
+      }
+      if (accepts.first.toLowerCase() != myPk.toLowerCase()) {
+        broLog('🏁 [RACE-GATE] v804: corrida PERDIDA na checagem pré-billcode — canônico=${accepts.first.substring(0, 8)}');
+        if (mounted) setState(() => _lostRace = true);
+        try {
+          context.read<OrderProvider>().markOrderTakenByOther(widget.orderId);
+        } catch (_) {}
+        await _showRaceLostDialog();
+        return true;
+      }
+      broLog('🏁 [RACE-GATE] v804: EU sou o canônico (${accepts.length} aceite(s)) — avançando pro billCode');
+      if (_wonRace != true && mounted) setState(() => _wonRace = true);
+      return false;
+    } catch (e) {
+      broLog('⚠️ [RACE-GATE] v804: erro na checagem (fail-open): $e');
+      return false;
+    }
+  }
+
   Future<void> _checkLostRace() async {
     try {
       final myPk = NostrService().publicKey;
@@ -447,6 +484,17 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       }
       await _loadOrderDetails(forceSync: true);
 
+      // v804: RE-CHECAGEM DA CORRIDA no polling — o aceite concorrente pode
+      // chegar DEPOIS do meu (relays lentos). _checkLostRace rodava 1x no
+      // initState e o polling nunca re-checava: o perdedor ficava preso no
+      // "carregando PIX" até o billcode chegar (incidente 15/11). Re-checa
+      // enquanto a corrida não está decidida (_lostRace/_wonRace null) e a
+      // ordem está aceita. _confirmRaceBeforeBillcode já atualiza
+      // _acceptsCount/_lostRace/_wonRace e mostra o pop-up se perder.
+      if (_orderAccepted && _lostRace != true && _wonRace != true) {
+        unawaited(_confirmRaceBeforeBillcode());
+      }
+
       // CORREÇÃO v234: Recalcular _timeRemaining a cada tick pra manter o countdown atualizado
       if (_receiptSubmittedAt != null && mounted) {
         final deadline = _receiptSubmittedAt!.add(const Duration(hours: 36));
@@ -731,6 +779,10 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       } catch (_) {}
       if (landed && mounted) {
         broLog('✅ [ACCEPT] Aceite confirmado nos relays apesar do timeout');
+        // v804: mesmo com o aceite landado, confirmar a corrida ANTES de
+        // avançar pro billCode (publish ok ≠ vitória — incidente 15/11).
+        final lostAtGate = await _confirmRaceBeforeBillcode();
+        if (lostAtGate || !mounted) return;
         setState(() {
           _orderAccepted = true;
         });
@@ -830,6 +882,13 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       _showError(AppLocalizations.of(context)!.t('prov_det_publish_fail'));
       return;
     }
+
+    // v804: GATE DA CORRIDA — decisão da Carol: a checagem acontece NA TELA
+    // DE ACEITE, ANTES de avançar pro billCode. Publish com sucesso NÃO
+    // garante vitória (outro aceite pode ter landed antes em relay que não
+    // viu o meu). Só o canônico (acceptedAt mais antigo) avança.
+    final lostAtGate = await _confirmRaceBeforeBillcode();
+    if (lostAtGate || !mounted) return;
 
     if (mounted) {
       setState(() {

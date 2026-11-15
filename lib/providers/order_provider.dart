@@ -3069,11 +3069,17 @@ class OrderProvider with ChangeNotifier {
           // do pre-check — o pós-check roda SEMPRE no caminho de sucesso e
           // não pode somar 6s de relay morto ao aceite.
           final postcheckSw = Stopwatch()..start();
+          // v804: FAIL-CLOSED no timeout. Antes: onTimeout retornava o
+          // PRÓPRIO pubkey (eu "ganhava" por padrão) — com relays lentos,
+          // AMBOS provedores davam timeout e ambos passavam como vencedores
+          // (incidente 15/11: dois aceites, nenhum pop-up de perda). Agora
+          // timeout = inconclusivo (null): o aceite segue otimista, mas a
+          // tela de aceite re-checa a corrida antes de mostrar o billCode.
           final canonical = await _nostrOrderService
               .fetchOrderProviderPubkey(orderId, perRelayTimeout: const Duration(seconds: 3))
-              .timeout(const Duration(seconds: 4), onTimeout: () => providerPubkey);
+              .timeout(const Duration(seconds: 4), onTimeout: () => null);
           postcheckSw.stop();
-          broLog('⏱️ [ACCEPT] v802 pós-check canônico: ${postcheckSw.elapsedMilliseconds}ms');
+          broLog('⏱️ [ACCEPT] v804 pós-check canônico: ${postcheckSw.elapsedMilliseconds}ms (${canonical == null ? "inconclusivo — tela re-checa" : "conclusivo"})');
           if (canonical != null &&
               canonical.toLowerCase() != providerPubkey.toLowerCase()) {
             broLog('🏁 [acceptOrderAsProvider] publish ok MAS corrida perdida p/ ${canonical.substring(0, 8)} — deletando accept fantasma');

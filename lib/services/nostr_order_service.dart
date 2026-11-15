@@ -130,6 +130,11 @@ class NostrOrderService {
   /// v437: Público para que OrderProvider possa bloquear ordens canceladas localmente
   Future<void> addToBlocklistPublic(Set<String> orderIds) => _addToBlocklist(orderIds);
 
+  /// v794: Consulta read-only da blocklist (sem carregar do disco).
+  /// Usada pelo OrderProvider no early-return de sync vazio para filtrar
+  /// ordens zumbis da lista visível mesmo quando API+relays falham.
+  bool isOrderBlocklisted(String orderId) => _blockedOrderIds.contains(orderId);
+
   /// Helper: Verifica se newStatus é progressão válida em relação a currentStatus
   /// Mesma lógica de _isStatusMoreRecent do OrderProvider, mas local
   /// REGRA DE OURO: Status NUNCA regride. cancelled/completed/liquidated/disputed são terminais.

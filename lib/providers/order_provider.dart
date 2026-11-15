@@ -1719,6 +1719,22 @@ class OrderProvider with ChangeNotifier {
       // N�?£o limpar a lista anterior para n�?£o perder dados
       if (allPendingOrders.isEmpty && userOrders.isEmpty && providerOrders.isEmpty) {
         broLog('âš ï¸ syncProvider: TODAS as buscas retornaram vazio - mantendo dados anteriores');
+        // v794: lista mantida nao pode conter zumbis - filtrar blocklist +
+        // status terminal antes de sair. e6da82ef: ordem completed ficava
+        // visivel indefinidamente porque este early-return preservava a lista crua.
+        final before = _availableOrdersForProvider.length;
+        if (before > 0) {
+          _availableOrdersForProvider.removeWhere((o) =>
+              _nostrOrderService.isOrderBlocklisted(o.id) ||
+              o.status == 'cancelled' ||
+              o.status == 'completed' ||
+              o.status == 'liquidated' ||
+              o.status == 'disputed');
+          if (_availableOrdersForProvider.length != before) {
+            broLog('v794: sync vazio - ${before - _availableOrdersForProvider.length} zumbi(s) removido(s) da lista visivel');
+            notifyListeners();
+          }
+        }
         _lastProviderSyncTime = DateTime.now();
         _isSyncingProvider = false;
         _syncProviderStartedAt = null; // v259: clear stale tracker

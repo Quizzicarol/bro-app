@@ -704,16 +704,20 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       _isAccepting = true;
     });
 
+    // v802: cronômetro do aceite — critério medido DE VERDADE no broLog.
+    final acceptStopwatch = Stopwatch()..start();
+
     try {
       // TIMEOUT GLOBAL: Toda operação de aceitar deve completar em 45s
       // Inclui retry automático se falhar na primeira tentativa
       await _doAcceptOrder(orderAmount).timeout(
         const Duration(seconds: 45),
         onTimeout: () {
-          broLog('⏱️ [ACCEPT] TIMEOUT GLOBAL de 45s atingido!');
+          broLog('⏱️ [ACCEPT] TIMEOUT GLOBAL de 45s atingido! (${acceptStopwatch.elapsedMilliseconds}ms)');
           throw TimeoutException('Tempo esgotado ao aceitar ordem (45s)');
         },
       );
+      broLog('⏱️ [ACCEPT] v802 TEMPO TOTAL DO ACEITE: ${acceptStopwatch.elapsedMilliseconds}ms (alvo < 15000ms)');
     } on TimeoutException catch (_) {
       // v625: o timeout global pode disparar mesmo com o aceite JÁ publicado
       // em ≥1 relay (relays lentos / contenda). Antes de mostrar erro, CONFIRMAR
@@ -799,7 +803,8 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     // Retry automático: até 2 tentativas se falhar
     broLog('🔵 [ACCEPT] Publicando aceitação no Nostr...');
     final orderProvider = context.read<OrderProvider>();
-    
+    final publishSw = Stopwatch()..start();
+
     bool success = false;
     for (int attempt = 1; attempt <= 2; attempt++) {
       broLog('🔵 [ACCEPT] Tentativa $attempt/2...');
@@ -810,8 +815,9 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         await Future.delayed(const Duration(seconds: 2));
       }
     }
-    
-    broLog('🔵 [ACCEPT] Resultado final: success=$success');
+    publishSw.stop();
+
+    broLog('🔵 [ACCEPT] Resultado final: success=$success (publish=${publishSw.elapsedMilliseconds}ms)');
     
     if (!success) {
       // v655: se perdeu a CORRIDA (outro Bro aceitou antes), mostrar POP-UP

@@ -55,21 +55,28 @@ class RelayService extends ChangeNotifier {
   /// v791: testa conectividade REAL (TCP+WebSocket) com os relays de ordens.
   /// Não publica nada — só abre conexão e fecha. Usado pela tela de gestão
   /// e pelo fail-closed do aceite (order_provider).
-  Future<Map<String, bool>> probeOrderRelays({Duration timeout = const Duration(seconds: 5)}) async {
+  ///
+  /// v802: considerar o relay VIVO quando o handshake WebSocket completa
+  /// (channel.ready). Antes esperávamos o primeiro frame espontâneo do stream
+  /// (channel.stream.first) — relays públicos raramente mandam frame sem
+  /// subscrição, então contavam como MORTOS (falso-negativo) e o fail-closed
+  /// bloqueava aceites com rede perfeitamente boa. Timeout 5s→3s: o probe é
+  /// paralelo, o wall time do aceite não pode pagar 5s de relay morto.
+  Future<Map<String, bool>> probeOrderRelays({Duration timeout = const Duration(seconds: 3)}) async {
     _orderRelayStatus.clear();
     await Future.wait(orderRelays.map((url) async {
+      WebSocketChannel? channel;
       try {
-        final channel = WebSocketChannel.connect(Uri.parse(url));
-        // Espera o handshake completar (primeiro frame ou erro) antes de
-        // considerar o relay vivo — connect() sozinho não valida rede.
-        final ok = await channel.stream.first
+        channel = WebSocketChannel.connect(Uri.parse(url));
+        final ok = await channel.ready
             .timeout(timeout, onTimeout: () => throw TimeoutException('probe $url'))
             .then((_) => true)
             .catchError((_) => false);
-        try { await channel.sink.close(); } catch (_) {}
         _orderRelayStatus[url] = ok;
       } catch (_) {
         _orderRelayStatus[url] = false;
+      } finally {
+        try { await channel?.sink.close().timeout(const Duration(seconds: 1), onTimeout: () {}); } catch (_) {}
       }
     }));
     notifyListeners();

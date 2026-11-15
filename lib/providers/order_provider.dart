@@ -2877,8 +2877,11 @@ class OrderProvider with ChangeNotifier {
       // Agora: 0 relays vivos = bloqueia o aceite com mensagem clara e
       // botão de tentar de novo. Com ≥1 relay vivo, o fluxo antigo segue.
       try {
+        final probeSw = Stopwatch()..start();
         final relayProbe = await RelayService().probeOrderRelays();
+        probeSw.stop();
         final relaysAlive = relayProbe.values.where((s) => s).length;
+        broLog('⏱️ [ACCEPT] v802 probe relays: ${probeSw.elapsedMilliseconds}ms — $relaysAlive/${RelayService.orderRelays.length} vivos');
         if (relaysAlive == 0) {
           _error = '⚠️ Sem conexão com os relays Nostr — não dá pra garantir que você não perca a corrida. Verifique sua internet e tente de novo.';
           broLog('🚫 [acceptOrderAsProvider] v791 fail-closed: 0/${RelayService.orderRelays.length} relays responderam — aceite bloqueado');
@@ -2896,9 +2899,15 @@ class OrderProvider with ChangeNotifier {
         return false;
       }
       try {
+        // v802: perRelayTimeout 3s + caller 4s (antes: 8s/6s). O pre-check é
+        // o caminho feliz do aceite — relays mortos não podem custar 8s aqui.
+        // A agregação v648 (todos os relays) continua; só o teto cai.
+        final precheckSw = Stopwatch()..start();
         final existingProvider = await _nostrOrderService
-            .fetchOrderProviderPubkey(orderId)
-            .timeout(const Duration(seconds: 6), onTimeout: () => null);
+            .fetchOrderProviderPubkey(orderId, perRelayTimeout: const Duration(seconds: 3))
+            .timeout(const Duration(seconds: 4), onTimeout: () => null);
+        precheckSw.stop();
+        broLog('⏱️ [ACCEPT] v802 pre-check corrida: ${precheckSw.elapsedMilliseconds}ms');
         if (existingProvider != null && existingProvider != providerPubkey) {
           _error = 'Ordem já foi aceita por outro bro';
           broLog('🚫 [acceptOrderAsProvider] RACE: ordem já aceita por ${existingProvider.substring(0, 8)}');
@@ -3039,9 +3048,15 @@ class OrderProvider with ChangeNotifier {
       // Isso cobre o caso em que o publish teve sucesso mas a ordem era de outro.
       if (providerPubkey != null) {
         try {
+          // v802: perRelayTimeout 3s + caller 4s (antes: 8s/6s). Mesma lógica
+          // do pre-check — o pós-check roda SEMPRE no caminho de sucesso e
+          // não pode somar 6s de relay morto ao aceite.
+          final postcheckSw = Stopwatch()..start();
           final canonical = await _nostrOrderService
-              .fetchOrderProviderPubkey(orderId)
-              .timeout(const Duration(seconds: 6), onTimeout: () => providerPubkey);
+              .fetchOrderProviderPubkey(orderId, perRelayTimeout: const Duration(seconds: 3))
+              .timeout(const Duration(seconds: 4), onTimeout: () => providerPubkey);
+          postcheckSw.stop();
+          broLog('⏱️ [ACCEPT] v802 pós-check canônico: ${postcheckSw.elapsedMilliseconds}ms');
           if (canonical != null &&
               canonical.toLowerCase() != providerPubkey.toLowerCase()) {
             broLog('🏁 [acceptOrderAsProvider] publish ok MAS corrida perdida p/ ${canonical.substring(0, 8)} — deletando accept fantasma');

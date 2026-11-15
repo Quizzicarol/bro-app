@@ -2156,19 +2156,21 @@ class NostrOrderService {
       // Publicar em paralelo - retornar assim que pelo menos 1 relay aceitar
       // Não esperar todos os relays (evita timeout quando um relay é lento)
       final futures = _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)).toList();
-      
-      // Esperar o primeiro sucesso ou todos falharem
+
+      // v802: esperar por ORDEM DE CONCLUSÃO, não pela ordem da lista. Antes o
+      // loop fazia `await futures[i]` em sequência — se o relay 0 (apexcord)
+      // travasse 15s, esperávamos 15s MESMO com o relay 1 (bro-relay2) tendo
+      // ACKado em 1s. Agora: primeiro future que completar com true encerra.
       bool anySuccess = false;
-      for (final future in futures) {
-        try {
-          final result = await future;
-          if (result) {
-            anySuccess = true;
-            break;
-          }
-        } catch (_) {}
+      final pending = List<Future<bool>>.from(futures);
+      while (pending.isNotEmpty && !anySuccess) {
+        final done = await Future.any(pending.map((f) async {
+          try { return MapEntry(f, await f); } catch (_) { return MapEntry(f, false); }
+        }));
+        if (done.value) anySuccess = true;
+        pending.remove(done.key);
       }
-      
+
       // Se nenhum retornou true via loop (pode ter saído cedo), verificar os restantes em background
       if (!anySuccess) {
         final results = await Future.wait(
@@ -6109,7 +6111,12 @@ class NostrOrderService {
   /// Retorna o pubkey do provedor ou null
   /// CORREÇÃO build 216: Usar #d tag (single-letter, suportada por relays)
   /// em vez de #orderId (multi-char, NÃO suportada por relays)
-  Future<String?> fetchOrderProviderPubkey(String orderId) async {
+  ///
+  /// v802: [perRelayTimeout] parametrizável (antes: 8s fixo). Chamadores no
+  /// caminho crítico do ACEITE passam 3s — a agregação de todos os relays
+  /// (v648) continua, mas o wall time do aceite não paga 8s de relay morto.
+  /// Fora do aceite (sync, ghost-check, telas) o default 8s se mantém.
+  Future<String?> fetchOrderProviderPubkey(String orderId, {Duration perRelayTimeout = const Duration(seconds: 8)}) async {
     try {
       // v648: consultar TODOS os relays + fallback (antes: `_relays.take(3)` e
       // parava no 1º que respondesse). No duplo-aceite (ordem 72fd7667), o 2º
@@ -6129,8 +6136,8 @@ class NostrOrderService {
             kinds: [kindBroAccept],
             tags: {'#d': ['${orderId}_accept']},
             limit: 5,
-          ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]);
-          
+          ).timeout(perRelayTimeout, onTimeout: () => <Map<String, dynamic>>[]);
+
           // Estratégia 2: #t bro-accept (fallback mais amplo)
           if (events.isEmpty) {
             events = await _fetchFromRelay(
@@ -6138,7 +6145,7 @@ class NostrOrderService {
               kinds: [kindBroAccept],
               tags: {'#t': ['bro-accept']},
               limit: 30,
-            ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]);
+            ).timeout(perRelayTimeout, onTimeout: () => <Map<String, dynamic>>[]);
           }
           
           for (final event in events) {

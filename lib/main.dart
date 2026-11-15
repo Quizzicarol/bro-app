@@ -1089,6 +1089,129 @@ class BroApp extends StatelessWidget {
             return false;
           };
 
+          // v801: AUTO-PAGAMENTO DO VENCEDOR pós-resolução de disputa (regra da
+          // dona: sem botão). Quando a resolução resolved_provider chega via
+          // sync, o app da usuária paga a invoice do provedor SOZINHA (o botão
+          // "Pagar provedor" vira redundância da mediadora, não o caminho).
+          // SEGURANÇA: reusa os mesmos guards do fluxo manual — ProviderPaymentGuard
+          // (v634, anti double-spend), validação de invoice (decode, expiry,
+          // 0 sats, teto de sanidade) e idempotência via disputeProviderPaid.
+          orderProvider.onAutoPayDisputeWinner = (String orderId, order) async {
+            broLog('⚡ [WinnerAutoPay-Main] Pagamento do provedor pós-resolução para ${orderId.substring(0, 8)}');
+            // 🛡️ v634: se o provedor já foi pago (qualquer fluxo), NÃO pagar de novo.
+            if (ProviderPaymentGuard.isPaid(orderId)) {
+              broLog('🛡️ [WinnerAutoPay-Main] Ordem ${orderId.substring(0, 8)} já paga — pulando (anti double-spend)');
+              return true;
+            }
+            // Se o admin já reembolsou o provedor, o caminho do dinheiro é o
+            // reembolso (onAutoPayDisputeReimbursement) — não pagar 2x.
+            String? adminInvoice;
+            try {
+              adminInvoice = await NostrOrderService().fetchAdminReimbursementInvoice(orderId);
+            } catch (_) {}
+            if (adminInvoice != null && adminInvoice.isNotEmpty) {
+              broLog('🧾 [WinnerAutoPay-Main] Admin já pagou o provedor — reembolso cobre o fluxo, pulando pagamento direto');
+              return true;
+            }
+
+            // Invoice do provedor: metadata → evento COMPLETE (excluindo
+            // refresh self-assinado, v773).
+            String? providerInvoice = order.metadata?['providerInvoice'] as String?;
+            if (providerInvoice == null || providerInvoice.isEmpty) {
+              try {
+                final completeData = await NostrOrderService().fetchOrderCompleteEvent(orderId, excludeAuthorPubkey: order.userPubkey);
+                providerInvoice = completeData?['providerInvoice'] as String?;
+              } catch (e) {
+                broLog('⚠️ [WinnerAutoPay-Main] Erro ao buscar invoice do Nostr: $e');
+              }
+            }
+            if (providerInvoice == null || providerInvoice.isEmpty) {
+              broLog('❌ [WinnerAutoPay-Main] Sem providerInvoice para ${orderId.substring(0, 8)} — tentará no próximo sync');
+              return false;
+            }
+
+            // Validar invoice antes de pagar (mesma classe do AutoPay-Main)
+            try {
+              if (breezProvider.isInitialized) {
+                final decoded = await breezProvider.decodeInvoice(providerInvoice);
+                if (decoded == null || decoded['success'] != true) {
+                  broLog('🚨 [WinnerAutoPay-Main] BLOQUEADO: falha ao decodificar invoice — não pagar sem validar');
+                  return false;
+                }
+                final tsSecs = int.tryParse(decoded['invoice']?['timestamp']?.toString() ?? '0') ?? 0;
+                final expSecs = int.tryParse(decoded['invoice']?['expiry']?.toString() ?? '0') ?? 0;
+                if (tsSecs > 0 && expSecs > 0) {
+                  final expiresAt = DateTime.fromMillisecondsSinceEpoch((tsSecs + expSecs) * 1000);
+                  if (DateTime.now().isAfter(expiresAt)) {
+                    broLog('⏳ [WinnerAutoPay-Main] Invoice EXPIRADO — pulando (provedor renova)');
+                    return false;
+                  }
+                }
+                final invoiceSats = int.tryParse(decoded['invoice']?['amountSats']?.toString() ?? '0') ?? 0;
+                if (invoiceSats <= 0) {
+                  broLog('🚨 [WinnerAutoPay-Main] BLOQUEADO: invoice 0 sats');
+                  return false;
+                }
+                final baseSats = (order.btcAmount * 100000000).round();
+                final sanityCap = ((baseSats + (baseSats * AppConfig.providerFeePercent).round()) * 2).ceil();
+                if (sanityCap > 0 && invoiceSats > sanityCap) {
+                  broLog('🚨 [WinnerAutoPay-Main] BLOQUEADO: invoice inflado! $invoiceSats > $sanityCap');
+                  return false;
+                }
+              }
+            } catch (e) {
+              broLog('🚨 [WinnerAutoPay-Main] Erro ao decodificar invoice — bloqueando: $e');
+              return false;
+            }
+
+            for (int attempt = 1; attempt <= 3; attempt++) {
+              try {
+                Map<String, dynamic>? payResult;
+                if (breezProvider.isInitialized) {
+                  payResult = await breezProvider.payInvoice(providerInvoice!);
+                } else {
+                  broLog('⚠️ [WinnerAutoPay-Main] Nenhuma carteira inicializada');
+                  return false;
+                }
+                if (payResult != null && payResult['success'] == true) {
+                  broLog('✅ [WinnerAutoPay-Main] Provedor pago na tentativa $attempt');
+                  await ProviderPaymentGuard.markPaid(orderId);
+                  // Taxa da plataforma (2% da base, padrão v621)
+                  final amountSats = (order.btcAmount * 100000000).round();
+                  if (AppConfig.isPlatformLightningAddressValid && amountSats > 0) {
+                    await PlatformFeeService.sendPlatformFee(orderId: orderId, totalSats: amountSats);
+                  }
+                  return true;
+                }
+                final payError = payResult?['error']?.toString().toLowerCase() ?? '';
+                if (payError.contains('alreadyexists') ||
+                    payError.contains('already paid') ||
+                    payError.contains('already settled') ||
+                    payError.contains('preimage request already exists')) {
+                  broLog('✅ [WinnerAutoPay-Main] Invoice já pago (AlreadyExists) — sucesso');
+                  await ProviderPaymentGuard.markPaid(orderId);
+                  return true;
+                }
+                broLog('⚠️ [WinnerAutoPay-Main] Tentativa $attempt falhou: ${payResult?['error']}');
+              } catch (e) {
+                final errStr = e.toString().toLowerCase();
+                if (errStr.contains('alreadyexists') ||
+                    errStr.contains('already paid') ||
+                    errStr.contains('preimage request already exists')) {
+                  broLog('✅ [WinnerAutoPay-Main] Invoice já pago (AlreadyExists exception) — sucesso');
+                  await ProviderPaymentGuard.markPaid(orderId);
+                  return true;
+                }
+                broLog('⚠️ [WinnerAutoPay-Main] Tentativa $attempt erro: $e');
+              }
+              if (attempt < 3) {
+                await Future.delayed(const Duration(seconds: 2));
+              }
+            }
+            broLog('❌ [WinnerAutoPay-Main] 3 tentativas falharam para ${orderId.substring(0, 8)}');
+            return false;
+          };
+
           // v133: Callback para gerar invoice Lightning (provider side)
           orderProvider.onGenerateProviderInvoice = (int amountSats, String orderId) async {
             try {

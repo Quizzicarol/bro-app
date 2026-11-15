@@ -1315,6 +1315,7 @@ class NostrOrderService {
     Map<String, List<String>>? tags,
     int? since,
     int limit = 50,
+    int? untilOverride,
   }) async {
     final events = <Map<String, dynamic>>[];
     final subscriptionId = const Uuid().v4().substring(0, 8);
@@ -1393,6 +1394,9 @@ class NostrOrderService {
         }
         if (since != null) {
           filter['since'] = since;
+        }
+        if (untilOverride != null) {
+          filter['until'] = untilOverride;
         }
 
         // Enviar requisição
@@ -3559,33 +3563,66 @@ class NostrOrderService {
   /// ROBUSTO: Retorna lista vazia em caso de QUALQUER erro
   Future<List<Map<String, dynamic>>> _fetchUserOrdersFromRelay(String relay, String pubkey) async {
     final orders = <Map<String, dynamic>>[];
-    
+    final seenIds = <String>{};
+
     try {
-      // ESTRATÉGIA 1: Buscar por author (com timeout)
-      final relayOrders = await _fetchFromRelay(
-        relay,
-        kinds: [kindBroOrder],
-        authors: [pubkey],
-        limit: 100,
-      ).timeout(
-        const Duration(seconds: 8),
-        onTimeout: () {
-          return <Map<String, dynamic>>[];
-        },
-      );
-      
-      for (final order in relayOrders) {
-        // Verificar se é ordem do Bro app
-        try {
-          final content = order['parsedContent'] ?? jsonDecode(order['content'] ?? '{}');
-          if (content['type'] == 'bro_order') {
-            orders.add(order);
-          }
-        } catch (_) {}
+      // v801: PAGINAÇÃO por janelas de created_at. A query antiga (limit 100,
+      // sem since/until) perdia histórico quando o usuário tinha >100 ordens
+      // ou o relay podou eventos antigos — era a causa do "sumiço" da aba
+      // Minhas após pm clear (recuperação via relay só trazia as 100 mais
+      // recentes). Agora paginamos do presente pro passado em janelas de 90
+      // dias (limit 100 por janela) até esgotar ou atingir o teto de 10
+      // janelas (~2.5 anos de histórico).
+      DateTime? windowUntil; // null = presente
+      const windowDays = 90;
+      const maxWindows = 10;
+
+      for (int w = 0; w < maxWindows; w++) {
+        final untilSecs = windowUntil != null ? windowUntil.millisecondsSinceEpoch ~/ 1000 : null;
+
+        final relayOrders = await _fetchFromRelayWithSince(
+          relay,
+          kinds: [kindBroOrder],
+          authors: [pubkey],
+          limit: 100,
+          since: null,
+          untilOverride: untilSecs,
+        ).timeout(
+          const Duration(seconds: 8),
+          onTimeout: () {
+            return <Map<String, dynamic>>[];
+          },
+        );
+
+        int newInWindow = 0;
+        int oldestCreatedAt = 0;
+        for (final order in relayOrders) {
+          // Verificar se é ordem do Bro app
+          try {
+            final content = order['parsedContent'] ?? jsonDecode(order['content'] ?? '{}');
+            if (content['type'] == 'bro_order') {
+              final id = order['id'];
+              if (id != null && !seenIds.contains(id)) {
+                seenIds.add(id);
+                orders.add(order);
+                newInWindow++;
+              }
+              final ca = (order['created_at'] as num?)?.toInt() ?? 0;
+              if (ca > 0 && (oldestCreatedAt == 0 || ca < oldestCreatedAt)) {
+                oldestCreatedAt = ca;
+              }
+            }
+          } catch (_) {}
+        }
+
+        // Página cheia → pode haver mais no passado; página vazia/curta → fim.
+        if (relayOrders.length < 100 || oldestCreatedAt == 0) break;
+        windowUntil = DateTime.fromMillisecondsSinceEpoch((oldestCreatedAt - 1) * 1000);
+        if (DateTime.now().difference(windowUntil).inDays > windowDays * maxWindows) break;
       }
     } catch (e) {
     }
-    
+
     return orders;
   }
 

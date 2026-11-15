@@ -667,6 +667,35 @@ class NostrWatchtowerService {
       }
       return;
     }
+
+    // v801: resolução de disputa no KNOWLEDGE PASS. A resolução (kind 1
+    // bro-resolucao, assinada pela admin) não tinha case no switch principal
+    // nem aqui — o watchtower nunca marcava a ordem como terminal, e o
+    // snapshot seguia listando a ordem como disponível. Pior: o app da
+    // usuária, sem ver a resolução, republicava a ordem como PENDING depois
+    // da resolução (zumbi pós-disputa, incidente 5095634d de 14/11). Aqui
+    // registramos o terminal de forma idempotente (sem push — o push da
+    // resolução é responsabilidade do app/admin).
+    if (eventType === 'bro_dispute_resolution') {
+      // Fail-closed: só a admin pode declarar terminal via resolução.
+      const adminPk = (process.env.ADMIN_PUBKEY || '').toLowerCase();
+      if (isHexPubkey(adminPk) && sender === adminPk) {
+        const resolution = content.resolution;
+        const terminalStatus = resolution === 'resolved_user' ? 'cancelled'
+          : resolution === 'resolved_provider' ? 'completed' : null;
+        if (terminalStatus) {
+          this._terminalOrders.set(orderId, Date.now());
+          if (this._terminalOrders.size > 5000) {
+            const tEntries = Array.from(this._terminalOrders.entries());
+            this._terminalOrders = new Map(tEntries.slice(-2500));
+          }
+          this._recordOrderSnapshot(orderId, null, null, null, terminalStatus);
+          this._scheduleStateSave();
+          console.log(`⚖️ [Watchtower] Resolução ${orderId.substring(0, 8)} → ${terminalStatus} (terminal registrado)`);
+        }
+      }
+      return;
+    }
   }
 
   async _handleEvent(relayUrl, event) {

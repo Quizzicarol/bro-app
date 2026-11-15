@@ -99,6 +99,12 @@ class OrderProvider with ChangeNotifier {
   // tela da ordem — mas "ninguém volta na ordem", então nunca acontecia.
   Future<bool> Function(String orderId, Order order)? onAutoPayDisputeReimbursement;
 
+  // v801: Callback para auto-pagamento do VENCEDOR pós-resolução de disputa
+  // (regra da dona: sem botão). Quando a resolução resolved_provider chega
+  // via sync, o app da usuária paga a invoice do provedor sozinha (idempotente:
+  // ProviderPaymentGuard + disputeProviderPaid). Setado pelo main.dart.
+  Future<bool> Function(String orderId, Order order)? onAutoPayDisputeWinner;
+
   // v133: Callback para gerar invoice Lightning (provider side)
   // Usado para renovar invoices expirados em ordens liquidadas
   Future<String?> Function(int amountSats, String orderId)? onGenerateProviderInvoice;
@@ -4371,6 +4377,69 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
+  // v801: autopay do VENCEDOR pós-resolução (regra da dona: sem botão).
+  bool _isAutoPayingDisputeWinners = false;
+
+  /// Varre ordens onde EU sou o comprador, a disputa foi resolvida a favor do
+  /// provedor (resolved_provider) e o pagamento ainda não saiu — e paga a
+  /// invoice do provedor SOZINHA no sync. Idempotente: ProviderPaymentGuard
+  /// (v634) + disputeProviderPaid no metadata + AlreadyExists = sucesso.
+  /// O botão "Pagar provedor" na tela vira redundância, não o caminho.
+  Future<void> _autoPayDisputeWinners() async {
+    if (onAutoPayDisputeWinner == null) return;
+    if (_isAutoPayingDisputeWinners) return;
+    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return;
+
+    _isAutoPayingDisputeWinners = true;
+    try {
+      // Candidatas: minhas, com flag disputePaymentPending (setada quando a
+      // resolução resolved_provider é aplicada — v444 sync, L5346/L5489) e
+      // ainda não pagas. O fetchDisputeResolution dentro do callback revalida
+      // a resolução assinada pelo admin (fail-closed).
+      final candidates = _orders.where((order) {
+        if (order.userPubkey != _currentUserPubkey) return false;
+        final meta = order.metadata ?? const {};
+        if (meta['disputePaymentPending'] != true) return false;
+        if (meta['disputeProviderPaid'] == true) return false;
+        if (order.status != 'completed') return false;
+        return true;
+      }).toList();
+
+      if (candidates.isEmpty) return;
+
+      broLog('[WinnerAutoPay] ${candidates.length} ordem(ns) com pagamento pós-resolução pendente');
+
+      for (final order in candidates) {
+        try {
+          final success = await onAutoPayDisputeWinner!(order.id, order);
+          final index = _orders.indexWhere((o) => o.id == order.id);
+          if (success) {
+            if (index != -1) {
+              _orders[index] = _orders[index].copyWith(
+                metadata: {
+                  ...(_orders[index].metadata ?? {}),
+                  'disputeProviderPaid': true,
+                  'disputeProviderPaidAt': DateTime.now().toIso8601String(),
+                  'disputePaymentPending': false,
+                },
+              );
+            }
+            broLog('[WinnerAutoPay] ✅ Provedor da ordem ${order.id.substring(0, 8)} pago (pós-resolução)');
+          } else {
+            broLog('[WinnerAutoPay] ⏳ Ordem ${order.id.substring(0, 8)} não concluída (tentará no próximo sync)');
+          }
+        } catch (e) {
+          broLog('[WinnerAutoPay] Erro na ordem ${order.id.substring(0, 8)}: $e');
+        }
+      }
+      await _saveOrders();
+    } catch (e) {
+      broLog('[WinnerAutoPay] Erro geral: $e');
+    } finally {
+      _isAutoPayingDisputeWinners = false;
+    }
+  }
+
   // v622: Reconciliação de taxa da plataforma.
   bool _isReconcilingFees = false;
 
@@ -5491,6 +5560,13 @@ class OrderProvider with ChangeNotifier {
                     );
                     broLog('⚖️ Disputa resolvida via sync: ${order.id.substring(0, 8)} → $newStatus ($resolutionType)');
                     statusUpdated++;
+                    // v801: publicar 30078 terminal — sem isso a ordem ficava
+                    // 'disputed' nos relays (ou pior: republicada como PENDING
+                    // pelo republish de eventId NULL) e continuava visível na
+                    // marketplace mesmo após a resolução da mediadora. O
+                    // terminal assinado por nós mata o zumbi em todos os
+                    // relays. Idempotente (d-tag substituível).
+                    _republishOrderEventWithTerminalStatus(_orders[idx], newStatus);
                   }
                 }
               }
@@ -5533,6 +5609,9 @@ class OrderProvider with ChangeNotifier {
       
       // Auto-pagamento em background do reembolso de disputa (resolved_provider)
       await _autoPayDisputeReimbursements();
+
+      // v801: auto-pagamento do VENCEDOR pós-resolução (sem botão)
+      await _autoPayDisputeWinners();
       
       // v680: Auto-pagamento de cobranças de mediação do admin (resoluções)
       await _autoPayMediationCharges();
@@ -5936,8 +6015,13 @@ class OrderProvider with ChangeNotifier {
     }
 
     // v437: Re-publicar ordens ativas sem eventId (publish falhou na criação)
+    // v801: 'disputed' e ordens já resolvidas por mediação NUNCA republicam
+    // (mesmo filtro do republishLocalOrdersToNostr — zumbi pós-disputa).
     final candidates = _orders.where((o) =>
       !['completed', 'cancelled', 'liquidated'].contains(o.status) &&
+      o.status != 'disputed' &&
+      (o.metadata?['wasDisputed'] != true) &&
+      (o.metadata?['disputeResolvedAt'] == null) &&
       (o.eventId == null || o.eventId!.isEmpty) &&
       o.userPubkey == _currentUserPubkey
     ).toList();
@@ -6101,6 +6185,13 @@ class OrderProvider with ChangeNotifier {
     // PERFORMANCE: Coletar ordens a republicar e fazer em paralelo
     final ordersToRepublish = _orders.where((order) {
       if (order.userPubkey != _currentUserPubkey) return false;
+      // v801: NUNCA republicar ordem em disputa ou já resolvida por mediação.
+      // Republish de 'disputed' sem eventId recriava a ordem como PENDING nos
+      // relays DEPOIS da resolução terminal (zumbi pós-disputa, incidente
+      // 5095634d de 14/11: republicada 20min após a resolução da mediadora).
+      if (order.status == 'disputed') return false;
+      final meta = order.metadata ?? const {};
+      if (meta['wasDisputed'] == true || meta['disputeResolvedAt'] != null) return false;
       if (order.eventId == null || order.eventId!.isEmpty) return true;
       return false;
     }).toList();

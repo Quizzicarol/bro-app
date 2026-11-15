@@ -146,3 +146,6 @@ tools/*.exe
 /dump-evidence.bin
 /backend/audit_triage.py
 /backend/data/
+
+# gitleaks binary + docs (local tooling, not repo content)
+tools/

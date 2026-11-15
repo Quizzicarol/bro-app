@@ -181,6 +181,19 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         broLog('📡 [LISTENER] proofImage recebido via Provider');
       }
     }
+    // v801: autopay pós-resolução SEM depender da tela estar aberta na hora.
+    // Se o sync (v444) aplicou a resolução em background, o status vira
+    // completed com disputePaymentPending=true — dispara o mesmo fluxo do
+    // botão (autoMode), que já é idempotente (ProviderPaymentGuard v634 +
+    // disputeProviderPaid no metadata).
+    if (order.status == 'completed' &&
+        order.metadata?['disputePaymentPending'] == true &&
+        order.metadata?['disputeProviderPaid'] != true &&
+        !_isPayingDisputeResolution &&
+        !ProviderPaymentGuard.isPaid(widget.orderId)) {
+      broLog('🤖 [AutoPay v801] Resolução detectada via listener — pagamento automático ao provedor');
+      _handleDisputePayment(autoMode: true);
+    }
   }
 
   /// Verifica se newStatus é mais recente que currentStatus na progressão de ordem

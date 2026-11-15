@@ -909,6 +909,14 @@ workflows:
       - name: Deploy backend to Fly.io
         script: |
           export PATH="$HOME/.fly/bin:$PATH"
+          # v803b: so deploya se backend/ mudou neste push. Sem isso, TODO push
+          # no main deployava o backend a toa (mesmo mudando so app Flutter).
+          CHANGED=$(git diff --name-only HEAD~1 HEAD -- backend/ 2>/dev/null || echo '')
+          if [ -z "$CHANGED" ]; then
+            echo "backend/ nao mudou neste push — pulando deploy (v803b)."
+            exit 0
+          fi
+          echo "backend/ mudou: $CHANGED"
           # v658: limpeza AGRESSIVA do token. Além de espaços/quebras de linha,
           # copiar/colar do dashboard pode trazer caracteres invisíveis (BOM,
           # zero-width space, non-breaking space) que quebram a validação do
@@ -949,15 +957,12 @@ workflows:
       events:
         - push
       branch_patterns:
-        - pattern: 'main'
-          include: true
-        - pattern: 'master'
-          include: true
+        # v803b: main/master FORA do race-tests. O gate roda de novo dentro de
+        # cada workflow de release, entao rodar aqui era duplicado (2x os mesmos
+        # 24 testes por push). Fica so pra branches de desenvolvimento.
         - pattern: 'develop'
           include: true
         - pattern: 'feature/*'
-          include: true
-        - pattern: 'release/*'
           include: true
 
     scripts:

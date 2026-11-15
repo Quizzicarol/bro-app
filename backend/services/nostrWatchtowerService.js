@@ -58,7 +58,10 @@ const BILLCODE_WAKEUP_FILE = process.env.NODE_ENV === 'production'
 // geravam push de wakeup (ordens travadas em "bro aceitou" sem billCode).
 // v732: bro-relay2.fly.dev = segundo relay próprio (Fly.io) — criado depois do
 // incidente 06-07/11 (apexcord ~24h fora, eventos perdidos). Redundância real.
-const RELAYS = (process.env.RELAYS || 'wss://apexcord.duckdns.org,wss://bro-relay2.fly.dev,wss://relay.damus.io,wss://nos.lol,wss://relay.primal.net')
+// v800: damus/nos.lol FORA DO BACKEND — no Fly o damus dá 521 em loop (spam de
+// reconexão nos logs). SÓ o backend: no app eles ficam (v799 — alcance de
+// relay é por-rede, e o app tem probe v791 pra decidir).
+const RELAYS = (process.env.RELAYS || 'wss://apexcord.duckdns.org,wss://bro-relay2.fly.dev,wss://relay.primal.net')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);

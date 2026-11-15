@@ -13,7 +13,9 @@ const EventEmitter = require('events');
 // Relays podem ser sobrescritos via env RELAYS (CSV). Fallback = padrão atual.
 // v664: inclui o Apex cord (nosso relay) — disputas/evidências que caíam só
 // nele não eram detectadas em tempo real.
-const RELAYS = (process.env.RELAYS || 'wss://apexcord.duckdns.org,wss://bro-relay2.fly.dev,wss://relay.damus.io,wss://nos.lol,wss://relay.primal.net')
+// v800: damus/nos.lol FORA DO BACKEND (vide nostrWatchtowerService.js — no Fly
+// o damus dá 521 em loop). No app eles ficam (v799 — alcance por-rede).
+const RELAYS = (process.env.RELAYS || 'wss://apexcord.duckdns.org,wss://bro-relay2.fly.dev,wss://relay.primal.net')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);

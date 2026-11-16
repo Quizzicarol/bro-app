@@ -5743,7 +5743,25 @@ class OrderProvider with ChangeNotifier {
             if (existing.metadata?['billcode_locked'] == true) {
               broLog('🔒 v798: troca de providerId de ${existing.id.substring(0, 8)} BLOQUEADA pela trava de ouro (${(newProviderId).substring(0, 8)} ignorado).');
             } else {
-              needsUpdate = true;
+              // v812: troca de providerId só com AUTORIDADE — prova de trabalho
+              // (comprovante no update), autor = dono da ordem, autor =
+              // provedor atual, ou status terminal (resolução de disputa).
+              // Sem isso, o update auto-atribuído do PERDEDOR da corrida
+              // (accepted providerId=si) roubava a referência local e o
+              // complete do pagador real virava órfão (incidente ac6ae697,
+              // 16/11 — travada em "Bro encontrado" com prova no relay).
+              final author = update['eventAuthorPubkey'] as String?;
+              final hasProof = update['proofImage'] != null || update['proofImage_nip44'] != null;
+              final isTerminal = newStatus == 'completed' || newStatus == 'cancelled' || newStatus == 'liquidated';
+              final authoritative = hasProof ||
+                  (author != null && author == existing.userPubkey) ||
+                  (author != null && author == existing.providerId) ||
+                  isTerminal;
+              if (authoritative) {
+                needsUpdate = true;
+              } else {
+                broLog('🛡️ v812: providerId de ${existing.id.substring(0, 8)} NÃO trocado por ${newProviderId.substring(0, 8)} — update sem autoridade (autor ${author?.substring(0, 8) ?? "?"}, sem prova, não-terminal).');
+              }
             }
           }
           

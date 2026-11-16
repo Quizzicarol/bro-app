@@ -3844,6 +3844,21 @@ class NostrOrderService {
             _fetchFromRelay(relay, kinds: [kindBroPaymentProof], tags: {'#r': activeOrderIdSet.toList()}, limit: 100)
               .catchError((_) => <Map<String, dynamic>>[]),
           );
+          // v812: 4. COMPLETES por #d — RAIZ do "travado em Bro encontrado" /
+          // "concluída sem comprovante" (casos ac6ae697/cdbd6089, 16/11).
+          // O publish do complete tagueia #p=order.userPubkey, mas ordens
+          // vindas do snapshot API (R5b) carregam userPubkey '' no provedor →
+          // o complete sai com #p VAZIO e a estratégia 1 (#p=eu) nunca o vê.
+          // #d={id}_complete é indexado e não depende de #p nenhum.
+          final ids = activeOrderIdSet.toList();
+          for (var i = 0; i < ids.length; i += 15) {
+            final batch = ids.sublist(i, i + 15 > ids.length ? ids.length : i)
+                .map((id) => '${id}_complete').toList();
+            strategies.add(
+              _fetchFromRelay(relay, kinds: [kindBroComplete], tags: {'#d': batch}, limit: 50)
+                .catchError((_) => <Map<String, dynamic>>[]),
+            );
+          }
         }
         final results = await Future.wait(strategies);
         final combined = <Map<String, dynamic>>[];
@@ -4014,6 +4029,10 @@ class NostrOrderService {
               'proofImage': content['proofImage'] ?? previousUpdate?['proofImage'] ?? accum?['proofImage'],
               'proofImage_nip44': content['proofImage_nip44'] ?? previousUpdate?['proofImage_nip44'] ?? accum?['proofImage_nip44'],
               'encryption': content['encryption'] ?? previousUpdate?['encryption'] ?? accum?['encryption'],
+              // v812: a invoice do provedor também entra no mapa — sem ela o
+              // autopay/fluxo de pagamento não acha a invoice mesmo com o
+              // complete visível (buraco irmão do #p vazio).
+              'providerInvoice': content['providerInvoice'] ?? previousUpdate?['providerInvoice'],
               'eventAuthorPubkey': event['pubkey'] as String? ?? previousUpdate?['eventAuthorPubkey'] as String? ?? accum?['eventAuthorPubkey'] as String?,
               'created_at': createdAt,
             };

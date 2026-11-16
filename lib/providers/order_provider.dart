@@ -490,6 +490,36 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
+  // v808: CURA do lostRace envenenado (3f49da19) — prova canônica POSITIVA
+  // (snapshot do watchtower com raceWon=true) desmente a marca v712 sticky.
+  // Sticky v712 continua valendo para fetch PARCIAL/sem dados: cura exige
+  // prova explícita, nunca mera ausência de lostRace.
+  bool _cureLostRaceFromSnapshot(int existingIndex, Order provOrder) {
+    final existing = _orders[existingIndex];
+    if (existing.metadata?['lostRace'] != true) return false;
+    if (provOrder.metadata?['raceWon'] != true) return false;
+    final mergedMeta = Map<String, dynamic>.from(existing.metadata ?? {});
+    mergedMeta.remove('lostRace');
+    mergedMeta.remove('lostRaceTo');
+    mergedMeta['raceWon'] = true;
+    mergedMeta['raceChecked'] = true;
+    if (provOrder.metadata?['acceptsCount'] is int) {
+      mergedMeta['acceptsCount'] = provOrder.metadata!['acceptsCount'];
+    }
+    _orders[existingIndex] = existing.copyWith(metadata: mergedMeta);
+    broLog('💊 [v808] lostRace CURADO por snapshot canônico (raceWon=true) em ${existing.id.substring(0, 8)}');
+    _debouncedSave();
+    notifyListeners();
+    return true;
+  }
+
+  // v808: hook de teste — cura via snapshot canônico.
+  @visibleForTesting
+  bool debugCureLostRaceFromSnapshotForV808(Order provOrder) {
+    final existingIndex = _orders.indexWhere((o) => o.id == provOrder.id);
+    if (existingIndex == -1) return false;
+    return _cureLostRaceFromSnapshot(existingIndex, provOrder);
+  }
   // v790: hook de teste para a regressão do userPubkey vazio (73de8b9a).
   @visibleForTesting
   Future<void> debugRepublishUnpublishedPendingOrdersForV790() =>
@@ -1979,6 +2009,14 @@ class OrderProvider with ChangeNotifier {
               _orders[existingIndex] = existing.copyWith(metadata: mergedMeta);
               existing = _orders[existingIndex];
               broLog('🏁 [syncProvider v806] lostRace propagado do snapshot para ${existing.id.substring(0, 8)}');
+            }
+
+            // v808: CURA do envenenamento pré-v807 (3f49da19) — snapshot
+            // canônico dizendo raceWon=true desmente a marca v712 sticky.
+            // O guard v807 acima impede nova contaminação; isto cura a
+            // existente, destravando billcode/comprovante do vencedor real.
+            if (_cureLostRaceFromSnapshot(existingIndex, provOrder)) {
+              existing = _orders[existingIndex];
             }
 
           // v627: HEAL providerId nulo. Esta ordem veio de fetchProviderOrders
@@ -4279,6 +4317,38 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
+  // v808: CURA pública do lostRace envenenado — o relay prova que EU sou o
+  // canônico (accepts.first == meu pk, com accepts não-vazio e cobertura de
+  // relay suficiente). Usada pela tela de detalhe quando o banner "Perdida"
+  // conflita com a prova do relay. Sticky v712 preservado: sem prova
+  // POSITIVA (accepts vazio / cobertura < 2), NÃO cura.
+  Future<bool> cureLostRaceViaRelay(String orderId) async {
+    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return false;
+    final idx = _orders.indexWhere((o) => o.id == orderId);
+    if (idx == -1) return false;
+    if (_orders[idx].metadata?['lostRace'] != true) return false;
+    final accepts = await _nostrOrderService.fetchAllAcceptsForOrder(orderId)
+        .timeout(const Duration(seconds: 8), onTimeout: () => <String>[]);
+    if (accepts.isEmpty) return false; // fail-open: sem dados, não cura
+    if (_nostrOrderService.lastAcceptsRelayCoverage < 2) return false; // fetch parcial
+    if (accepts.first != _currentUserPubkey) return false; // perdi de verdade
+    final curedMeta = Map<String, dynamic>.from(_orders[idx].metadata ?? {});
+    curedMeta.remove('lostRace');
+    curedMeta.remove('lostRaceTo');
+    curedMeta['raceWon'] = true;
+    curedMeta['raceChecked'] = true;
+    _orders[idx] = _orders[idx].copyWith(metadata: curedMeta);
+    broLog('💊 [v808] lostRace CURADO por relay canônico (tela de detalhe) em ${orderId.substring(0, 8)}');
+    await _saveOrders();
+    notifyListeners();
+    return true;
+  }
+
+  // v808: hook de teste — mesma lógica da cura pública.
+  @visibleForTesting
+  Future<bool> debugCureLostRaceViaAcceptsForV808(String orderId) =>
+      cureLostRaceViaRelay(orderId);
+
   Future<void> _markLostRaces() async {
     if (_markingLostRaces) return;
     if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return;
@@ -4288,8 +4358,9 @@ class OrderProvider with ChangeNotifier {
         o.providerId == _currentUserPubkey &&
         o.userPubkey != _currentUserPubkey &&
         (o.status == 'accepted' || o.status == 'awaiting_confirmation' || o.status == 'completed') &&
-        o.metadata?['lostRace'] != true &&
-        o.metadata?['raceChecked'] != true).toList();
+        // v808: ordens envenenadas com lostRace TAMBÉM são candidatas — é
+        // justamente elas que a cura precisa re-checar contra o relay.
+        (o.metadata?['raceChecked'] != true || o.metadata?['lostRace'] == true)).toList();
       for (final o in candidates.take(5)) {
         try {
           final accepts = await _nostrOrderService.fetchAllAcceptsForOrder(o.id)
@@ -4305,6 +4376,18 @@ class OrderProvider with ChangeNotifier {
               'lostRaceTo': accepts.first,
             });
             broLog('🏁 v699: corrida PERDIDA em ${o.id.substring(0, 8)} (canônico=${accepts.first.substring(0, 8)}) — sai das Minhas');
+          } else if (_orders[idx].metadata?['lostRace'] == true) {
+            // v808: CURA — o relay prova que EU sou o canônico (accepts.first
+            // == meu pk, com accepts não-vazio). Desmente a marca v712 sticky
+            // envenenada antes do v807 (3f49da19): remove lostRace e destrava
+            // billcode/comprovante do vencedor real.
+            final curedMeta = Map<String, dynamic>.from(_orders[idx].metadata ?? {});
+            curedMeta.remove('lostRace');
+            curedMeta.remove('lostRaceTo');
+            curedMeta['raceWon'] = true;
+            curedMeta['raceChecked'] = true;
+            _orders[idx] = _orders[idx].copyWith(metadata: curedMeta);
+            broLog('💊 [v808] lostRace CURADO por relay canônico (accepts.first==meu pk) em ${o.id.substring(0, 8)}');
           } else {
             _orders[idx] = _orders[idx].copyWith(metadata: {
               ...(_orders[idx].metadata ?? {}),

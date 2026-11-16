@@ -156,6 +156,18 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       if (accepts.first == myPk && _wonRace != true) {
         setState(() => _wonRace = true);
       }
+      // v808: CURA — banner "Perdida" envenenado (pré-v807, 3f49da19) conflita
+      // com a prova do relay de que EU sou o canônico. Exige cobertura de
+      // relay >= 2 (fetch parcial não cura — sticky v712 preservado).
+      if (accepts.first == myPk &&
+          _lostRace == true &&
+          NostrOrderService().lastAcceptsRelayCoverage >= 2) {
+        broLog('💊 [v808] tela de detalhe: lostRace envenenado CURADO em ${widget.orderId.substring(0, 8)}');
+        if (mounted) setState(() { _lostRace = false; _wonRace = true; });
+        try {
+          await context.read<OrderProvider>().cureLostRaceViaRelay(widget.orderId);
+        } catch (_) {}
+      }
       // v712: STICKY — uma vez perdedor, NUNCA desmarca. Um fetch parcial (só
       // meu aceite visível) fazia a ordem "voltar" e a tela piscar entre
       // perdedor/provedor (péssima experiência da Carol como perdedora, 06/11).

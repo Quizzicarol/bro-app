@@ -844,11 +844,19 @@ class NostrOrderService {
   /// com um subconjunto parcial dos aceites.
   int lastAcceptsRelayCoverage = 0;
 
+  /// v808: override de teste para fetchAllAcceptsForOrder (cura do lostRace
+  /// envenenado sem rede real). Null em produção.
+  @visibleForTesting
+  static Future<List<String>> Function(String orderId)? fetchAllAcceptsForOrderOverride;
+
   /// v541: Busca TODOS os provedores que aceitaram uma ordem (kind 30079).
   /// Retorna lista de pubkeys dos provedores que publicaram bro_accept para
   /// esta ordem, ordenados pelo created_at (primeiro = mais antigo).
   /// Usado para detectar e bloquear double-accept ANTES de revelar o billCode.
   Future<List<String>> fetchAllAcceptsForOrder(String orderId) async {
+    // v808: hook de teste — stub sem rede real.
+    final override = fetchAllAcceptsForOrderOverride;
+    if (override != null) return override(orderId);
     final accepts = <Map<String, dynamic>>[]; // {pubkey, created_at}
     final seenPubkeys = <String>{};
     // vSEC-latency: consultar os relays EM PARALELO (antes era sequencial com

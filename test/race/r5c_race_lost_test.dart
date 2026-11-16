@@ -69,6 +69,8 @@ void main() {
   tearDown(() {
     NostrOrderService.apiGetOverride = null;
     NostrOrderService.relaysOverride = null;
+    NostrOrderService.fetchAllAcceptsForOrderOverride = null;
+    NostrOrderService().lastAcceptsRelayCoverage = 0;
     NostrOrderService.applyRelaysOverride();
     NostrOrderService().lastRelayReconcileResult = null;
   });
@@ -309,6 +311,164 @@ void main() {
       expect(o.metadata?['lostRace'], isNull,
           reason: 'comprovante enviado = dinheiro fluindo; lostRace bloquearia billcode (L4150)');
       expect(o.status, 'awaiting_confirmation');
+    });
+  });
+
+  // v808: CURA do lostRace envenenado (3f49da19) — prova canônica POSITIVA
+  // (snapshot raceWon=true OU relay accepts.first==meu pk) desmente a marca
+  // v712 sticky. Sticky continua valendo para fetch parcial/sem dados.
+  group('v808 - cura do lostRace envenenado (3f49da19)', () {
+    test('(l) snapshot raceWon=true cura ordem envenenada com lostRace', () {
+      final provider = OrderProvider();
+      provider.debugSetCurrentUserPubkeyForR5c('pk-me');
+      provider.debugSeedOrdersForR5c([
+        _order('v808-cure-1', userPubkey: 'pk-buyer', providerId: 'pk-me',
+            status: 'accepted',
+            metadata: {'lostRace': true, 'lostRaceTo': 'pk-other', 'raceWon': false}),
+      ]);
+
+      // Snapshot canônico do watchtower diz: EU ganhei a corrida.
+      final cured = provider.debugCureLostRaceFromSnapshotForV808(
+        _order('v808-cure-1', userPubkey: 'pk-buyer', providerId: 'pk-me',
+            status: 'accepted',
+            metadata: {'raceWon': true, 'acceptsCount': 2}),
+      );
+
+      expect(cured, isTrue);
+      final o = provider.orders.firstWhere((o) => o.id == 'v808-cure-1');
+      expect(o.metadata?['lostRace'], isNull,
+          reason: 'prova canônica POSITIVA desmente a marca v712 sticky');
+      expect(o.metadata?['lostRaceTo'], isNull);
+      expect(o.metadata?['raceWon'], true);
+      expect(o.metadata?['raceChecked'], true);
+      expect(o.metadata?['acceptsCount'], 2);
+      expect(o.status, 'accepted');
+    });
+
+    test('(l2) snapshot raceWon=true em ordem SEM lostRace não faz nada', () {
+      final provider = OrderProvider();
+      provider.debugSetCurrentUserPubkeyForR5c('pk-me');
+      provider.debugSeedOrdersForR5c([
+        _order('v808-nocure-1', userPubkey: 'pk-buyer', providerId: 'pk-me',
+            status: 'accepted'),
+      ]);
+
+      final cured = provider.debugCureLostRaceFromSnapshotForV808(
+        _order('v808-nocure-1', userPubkey: 'pk-buyer', providerId: 'pk-me',
+            status: 'accepted',
+            metadata: {'raceWon': true, 'acceptsCount': 2}),
+      );
+
+      expect(cured, isFalse,
+          reason: 'cura só age em ordem envenenada; ordem sadia segue fluxo normal');
+      final o = provider.orders.firstWhere((o) => o.id == 'v808-nocure-1');
+      expect(o.metadata?['raceWon'], isNull);
+    });
+
+    test('(m) sticky v712 preservado: snapshot SEM raceWon não cura', () {
+      final provider = OrderProvider();
+      provider.debugSetCurrentUserPubkeyForR5c('pk-me');
+      provider.debugSeedOrdersForR5c([
+        _order('v808-sticky-1', userPubkey: 'pk-buyer', providerId: 'pk-me',
+            status: 'accepted',
+            metadata: {'lostRace': true, 'raceWon': false}),
+      ]);
+
+      // Fetch parcial (snapshot sem veredito de corrida) NÃO pode curar.
+      final cured = provider.debugCureLostRaceFromSnapshotForV808(
+        _order('v808-sticky-1', userPubkey: 'pk-buyer', providerId: 'pk-me',
+            status: 'accepted'),
+      );
+
+      expect(cured, isFalse);
+      final o = provider.orders.firstWhere((o) => o.id == 'v808-sticky-1');
+      expect(o.metadata?['lostRace'], true,
+          reason: 'sem prova POSITIVA, sticky v712 continua valendo');
+    });
+
+    test('(n) cura via relay: accepts.first==meu pk remove lostRace', () async {
+      final provider = OrderProvider();
+      provider.debugSetCurrentUserPubkeyForR5c('pk-me');
+      provider.debugSeedOrdersForR5c([
+        _order('v808-relay-1', userPubkey: 'pk-buyer', providerId: 'pk-me',
+            status: 'accepted',
+            metadata: {'lostRace': true, 'lostRaceTo': 'pk-other'}),
+      ]);
+
+      // Relay prova: EU sou o canônico (2 aceites, o meu é o mais antigo).
+      NostrOrderService.relaysOverride = List<String>.from(deadRelays);
+      NostrOrderService.applyRelaysOverride();
+      NostrOrderService.apiGetOverride = null;
+      NostrOrderService.fetchAllAcceptsForOrderOverride = (orderId) async {
+        if (orderId == 'v808-relay-1') {
+          NostrOrderService().lastAcceptsRelayCoverage = 2;
+          return <String>['pk-me', 'pk-other'];
+        }
+        return <String>[];
+      };
+
+      final cured = await provider.debugCureLostRaceViaAcceptsForV808('v808-relay-1');
+
+      expect(cured, isTrue);
+      final o = provider.orders.firstWhere((o) => o.id == 'v808-relay-1');
+      expect(o.metadata?['lostRace'], isNull);
+      expect(o.metadata?['lostRaceTo'], isNull);
+      expect(o.metadata?['raceWon'], true);
+      expect(o.metadata?['raceChecked'], true);
+    });
+
+    test('(n2) cura via relay NÃO cura se accepts.first != meu pk (perdedor real)', () async {
+      final provider = OrderProvider();
+      provider.debugSetCurrentUserPubkeyForR5c('pk-me');
+      provider.debugSeedOrdersForR5c([
+        _order('v808-relay-2', userPubkey: 'pk-buyer', providerId: 'pk-me',
+            status: 'accepted',
+            metadata: {'lostRace': true}),
+      ]);
+
+      NostrOrderService.relaysOverride = List<String>.from(deadRelays);
+      NostrOrderService.applyRelaysOverride();
+      NostrOrderService.fetchAllAcceptsForOrderOverride = (orderId) async {
+        if (orderId == 'v808-relay-2') {
+          NostrOrderService().lastAcceptsRelayCoverage = 2;
+          return <String>['pk-other', 'pk-me'];
+        }
+        return <String>[];
+      };
+
+      final cured = await provider.debugCureLostRaceViaAcceptsForV808('v808-relay-2');
+
+      expect(cured, isFalse,
+          reason: 'perdedor real continua Perdida — cura exige prova de VITÓRIA');
+      final o = provider.orders.firstWhere((o) => o.id == 'v808-relay-2');
+      expect(o.metadata?['lostRace'], true);
+    });
+
+    test('(n3) cura via relay NÃO cura com cobertura de relay < 2 (fetch parcial)', () async {
+      final provider = OrderProvider();
+      provider.debugSetCurrentUserPubkeyForR5c('pk-me');
+      provider.debugSeedOrdersForR5c([
+        _order('v808-relay-3', userPubkey: 'pk-buyer', providerId: 'pk-me',
+            status: 'accepted',
+            metadata: {'lostRace': true}),
+      ]);
+
+      NostrOrderService.relaysOverride = List<String>.from(deadRelays);
+      NostrOrderService.applyRelaysOverride();
+      NostrOrderService.fetchAllAcceptsForOrderOverride = (orderId) async {
+        if (orderId == 'v808-relay-3') {
+          NostrOrderService().lastAcceptsRelayCoverage = 1;
+          return <String>['pk-me'];
+        }
+        return <String>[];
+      };
+
+      final cured = await provider.debugCureLostRaceViaAcceptsForV808('v808-relay-3');
+
+      expect(cured, isFalse,
+          reason: 'fetch parcial (1 relay) não é prova suficiente — sticky v712');
+      final o = provider.orders.firstWhere((o) => o.id == 'v808-relay-3');
+      expect(o.metadata?['lostRace'], true);
     });
   });
 }

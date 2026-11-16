@@ -89,6 +89,10 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   bool? _lostRace;
   bool? _wonRace; // v742: EU sou o canônico — mostrar "você venceu" no aguardo
   int _acceptsCount = 0; // v713: quantos Bros aceitaram (msg de apuração)
+  // v814: contagem de fail-open do gate (rede ruim não trava o vencedor) e
+  // guarda do disparo imediato na primeira render da tela de apuração.
+  int _raceGateAttempts = 0;
+  bool _raceGateScheduled = false;
 
   // v804: gate da tela de aceite — ANTES de avançar pro billCode, confirmar
   // nos relays que EU sou o canônico. Decisão da Carol (15/11): "só vai pra
@@ -103,7 +107,17 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           .timeout(const Duration(seconds: 10), onTimeout: () => <String>[]);
       if (!mounted) return false;
       if (accepts.isEmpty) {
-        broLog('🏁 [RACE-GATE] v804: sem dados de aceite nos relays — fail-open (avançando)');
+        // v814: fail-open IMEDIATO deixava o perdedor ver a tela de billcode
+        // por alguns segundos (Carol, 16/11: "perdeu mas foi pra tela de
+        // billcode"). Agora: 3 tentativas apurando; só depois libera — rede
+        // ruim não pode travar o vencedor legítimo pra sempre.
+        _raceGateAttempts++;
+        if (_raceGateAttempts >= 3) {
+          broLog('🏁 [RACE-GATE] v814: 3 tentativas sem dados de aceite — fail-open (won provisório)');
+          if (mounted) setState(() => _wonRace = true);
+        } else {
+          broLog('🏁 [RACE-GATE] v804: sem dados de aceite nos relays (tentativa $_raceGateAttempts/3) — segue apurando');
+        }
         return false;
       }
       if (accepts.length != _acceptsCount) {
@@ -122,7 +136,14 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
       if (_wonRace != true && mounted) setState(() => _wonRace = true);
       return false;
     } catch (e) {
-      broLog('⚠️ [RACE-GATE] v804: erro na checagem (fail-open): $e');
+      // v814: mesmo regime do caminho de vazio — 3 erros antes de abrir.
+      _raceGateAttempts++;
+      if (_raceGateAttempts >= 3) {
+        broLog('⚠️ [RACE-GATE] v814: 3 erros na checagem — fail-open (won provisório): $e');
+        if (mounted) setState(() => _wonRace = true);
+      } else {
+        broLog('⚠️ [RACE-GATE] v804: erro na checagem (tentativa $_raceGateAttempts/3): $e');
+      }
       return false;
     }
   }
@@ -447,6 +468,52 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           padding: const EdgeInsets.symmetric(vertical: 10),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
+      ),
+    );
+  }
+
+  /// v814: card "apurando corrida" — renderiza ENQUANTO o gate v804 não
+  /// decidiu (regra da Carol 16/11: "só vai pra tela de billcode quem ganhou;
+  /// senão fica na tela de corrida até sair o resultado"). Dispara o gate na
+  /// primeira renderização (sem esperar o poll de 4s). Sem botão — automático.
+  Widget _buildRaceCheckingCard() {
+    if (!_raceGateScheduled) {
+      _raceGateScheduled = true;
+      Future.microtask(() async {
+        await _confirmRaceBeforeBillcode();
+        _raceGateScheduled = false;
+      });
+    }
+    final loc = AppLocalizations.of(context)!;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.orange,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            loc.t('prov_det_race_checking'),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.orange,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1337,12 +1404,20 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             const SizedBox(height: 16),
             _buildStatusCard(),
             const SizedBox(height: 16),
+            // v814: corrida INDECISA → nem pagamento nem "carregando PIX"
+            // renderizam: a tela fica na apuração até o gate decidir (regra da
+            // Carol 16/11 — o fail-open async deixava o perdedor ver a tela de
+            // billcode por ~4s antes do popup de perda).
+            if (_wonRace != true) ...[
+              _buildRaceCheckingCard(),
+              const SizedBox(height: 16),
+            ]
             // Mostrar código de pagamento APENAS quando Bro precisa pagar.
             // v762: corrida CONHECIDA e ainda não vencida → esconder o código
             // e mostrar "apurando" (o else abaixo já tem o texto). Na janela
             // entre a entrega do billCode e a detecção da perda, o perdedor
-            // conseguia copiar o código e pagar (caso Roberto, 72154135).
-            if (paymentData != null && paymentData.isNotEmpty &&
+            // conseguia copiar o código e pagar (incidente 72154135, 08/11).
+            else if (paymentData != null && paymentData.isNotEmpty &&
                 !(_acceptsCount > 1 && _wonRace != true)) ...[
               _buildPaymentDataCard(billType, paymentData),
               const SizedBox(height: 16),

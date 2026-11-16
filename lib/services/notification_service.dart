@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../main.dart' show broNavigatorKey;
 import '../models/notification_item.dart';
 
 /// Servico de notificacoes locais para alertar o usuario sobre eventos importantes
@@ -76,7 +77,37 @@ class NotificationService {
 
   void _onNotificationTapped(NotificationResponse response) {
     broLog('👆 Notificação clicada: ${response.payload}');
-    // Aqui pode navegar para tela especifica baseado no payload
+    // v809: navegar para a ordem citada no payload (ex.: 'order_accepted:d7a9b848...').
+    // Antes o tap só logava — a notificação chegava, a usuária clicava e nada
+    // atualizava. A rota /order-status busca os dados reais do OrderProvider
+    // (a tela tem _loadInitialStatusFromProvider), então {'orderId': ...} basta
+    // (mesma convenção de notifications_inbox_screen._openOrder).
+    final payload = response.payload;
+    if (payload == null || !payload.contains(':')) return;
+    final prefix = payload.split(':').first;
+    const orderPrefixes = [
+      'order_accepted',
+      'payment_received',
+      'confirm_required',
+      'order_completed',
+      'dispute_opened',
+      'new_order',
+      'payment_confirmed',
+      'order_expiring',
+      'dispute_as_bro',
+      'auto_liquidation',
+      'order_liquidated',
+    ];
+    if (!orderPrefixes.contains(prefix)) return;
+    final orderId = payload.substring(prefix.length + 1).trim();
+    if (orderId.isEmpty) return;
+    final nav = broNavigatorKey.currentState;
+    if (nav == null) {
+      broLog('⚠️ v809: navigatorKey indisponível — tap de notificação sem navegação');
+      return;
+    }
+    broLog('👆 v809: navegando para /order-status ($orderId) via tap de notificação');
+    nav.pushNamed('/order-status', arguments: {'orderId': orderId});
   }
 
   /// Notifica que uma ordem foi aceita por um Bro

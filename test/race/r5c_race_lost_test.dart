@@ -471,4 +471,112 @@ void main() {
       expect(o.metadata?['lostRace'], true);
     });
   });
+
+  group('v809 - comprovante em ordem terminal (caso 3f49da19)', () {
+    test('(a) sync orderIds inclui terminais recentes e ativas, exclui antigas', () {
+      final provider = OrderProvider();
+      provider.debugSeedOrdersForR5c([
+        _order('v809-active-1', status: 'accepted'),
+        _order('v809-recent-1',
+            status: 'completed',
+            metadata: {'proofReceivedAt': DateTime.now().toIso8601String()}),
+        _order('v809-old-1',
+            status: 'completed',
+            metadata: {
+              'proofReceivedAt':
+                  DateTime.now().subtract(const Duration(days: 3)).toIso8601String(),
+            }),
+      ]);
+
+      final ids = provider.debugComputeSyncOrderIdsForV809();
+
+      expect(ids, contains('v809-active-1'),
+          reason: 'ordem ativa sempre entra');
+      expect(ids, contains('v809-recent-1'),
+          reason: 'terminal recente (<48h) entra: o 30081 pode chegar depois do 30080');
+      expect(ids, isNot(contains('v809-old-1')),
+          reason: 'terminal antiga (>48h) fica fora (performance)');
+    });
+
+    test('(b) terminal sem âncora de tempo é assumida recente', () {
+      final provider = OrderProvider();
+      provider.debugSeedOrdersForR5c([
+        _order('v809-noanchor-1', status: 'completed'),
+      ]);
+
+      final ids = provider.debugComputeSyncOrderIdsForV809();
+
+      expect(ids, contains('v809-noanchor-1'),
+          reason: 'sem completedAt/proofReceivedAt, assumir recente (sync preenche depois)');
+    });
+
+    test('(c) proof-only aplicado a ordem terminal: status/providerId preservados', () {
+      final provider = OrderProvider();
+      provider.debugSetCurrentUserPubkeyForR5c('pk-me');
+      provider.debugSeedOrdersForR5c([
+        _order('v809-proof-1',
+            userPubkey: 'pk-buyer',
+            providerId: 'pk-me',
+            status: 'completed'),
+      ]);
+
+      final applied = provider.debugApplyTerminalProofForV809(
+        provider.orders.first,
+        {
+          'orderId': 'v809-proof-1',
+          'status': 'completed',
+          'proofImage': 'data:image/png;base64,AAAA',
+          'created_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        },
+      );
+
+      expect(applied, isTrue);
+      final o = provider.orders.firstWhere((o) => o.id == 'v809-proof-1');
+      expect(o.status, 'completed', reason: 'status intocado');
+      expect(o.providerId, 'pk-me', reason: 'providerId intocado');
+      expect(o.metadata?['proofImage'], 'data:image/png;base64,AAAA');
+      expect(o.metadata?['proofReceivedAt'], isNotNull);
+      expect(o.metadata?['receipt_submitted_at'], isNotNull);
+    });
+
+    test('(d) idempotente: ordem que já tem proof decriptado retorna false', () {
+      final provider = OrderProvider();
+      provider.debugSetCurrentUserPubkeyForR5c('pk-me');
+      provider.debugSeedOrdersForR5c([
+        _order('v809-idem-1',
+            userPubkey: 'pk-buyer',
+            providerId: 'pk-me',
+            status: 'completed',
+            metadata: {'proofImage': 'data:image/png;base64,EXISTE'}),
+      ]);
+
+      final applied = provider.debugApplyTerminalProofForV809(
+        provider.orders.first,
+        {'orderId': 'v809-idem-1', 'proofImage': 'data:image/png;base64,NOVO'},
+      );
+
+      expect(applied, isFalse);
+      final o = provider.orders.firstWhere((o) => o.id == 'v809-idem-1');
+      expect(o.metadata?['proofImage'], 'data:image/png;base64,EXISTE',
+          reason: 'proof existente não é sobrescrito');
+    });
+
+    test('(e) update sem proof retorna false', () {
+      final provider = OrderProvider();
+      provider.debugSetCurrentUserPubkeyForR5c('pk-me');
+      provider.debugSeedOrdersForR5c([
+        _order('v809-noproof-1',
+            userPubkey: 'pk-buyer',
+            providerId: 'pk-me',
+            status: 'completed'),
+      ]);
+
+      final applied = provider.debugApplyTerminalProofForV809(
+        provider.orders.first,
+        {'orderId': 'v809-noproof-1', 'status': 'completed'},
+      );
+
+      expect(applied, isFalse);
+    });
+  });
 }

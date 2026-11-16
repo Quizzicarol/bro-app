@@ -66,6 +66,10 @@ import 'services/background_billcode_relay.dart';
 import 'config.dart';
 import 'config/breez_config.dart';
 
+// v809: navigatorKey global — permite navegar a partir do tap de notificação
+// (NotificationService não tem contexto/Provider).
+final GlobalKey<NavigatorState> broNavigatorKey = GlobalKey<NavigatorState>();
+
 /// Top-level handler for background FCM messages (required by Firebase).
 /// When the app is killed, this tries to generate invoices for BRIX payments.
 /// If SDK init fails, shows a notification to prompt the user to open the app.
@@ -1238,6 +1242,7 @@ class BroApp extends StatelessWidget {
               return MaterialApp(
                 title: 'Bro',
                 debugShowCheckedModeBanner: false,
+                navigatorKey: broNavigatorKey,
                 theme: BroThemes.lightTheme,
                 darkTheme: BroThemes.darkTheme,
                 themeMode: themeProvider.themeMode,

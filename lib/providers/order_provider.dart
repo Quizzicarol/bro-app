@@ -524,6 +524,105 @@ class OrderProvider with ChangeNotifier {
   @visibleForTesting
   Future<void> debugRepublishUnpublishedPendingOrdersForV790() =>
       _republishUnpublishedPendingOrders();
+
+  // v809: orderIds do fetch de updates do sync de usuário — ordens ativas +
+  // terminais RECENTES (janela 48h). O 30081 (comprovante) pode chegar DEPOIS
+  // do 30080 (completed); se a ordem terminal ficar fora do orderIds, o filtro
+  // do serviço descarta o proof e a ordem fica "concluída sem comprovante"
+  // para sempre (caso 3f49da19). Terminais antigas continuam fora
+  // (performance preservada).
+  List<String> _computeSyncOrderIdsForV809() {
+    const terminalStatuses = ['completed', 'cancelled', 'liquidated'];
+    final activeOrders = _orders.where((o) => !terminalStatuses.contains(o.status)).toList();
+    final recentCutoff = DateTime.now().subtract(const Duration(hours: 48));
+    bool isRecentTerminal(Order o) {
+      final proofAt = o.metadata?['proofReceivedAt'];
+      if (proofAt is String && proofAt.isNotEmpty) {
+        final dt = DateTime.tryParse(proofAt);
+        if (dt != null) return dt.isAfter(recentCutoff);
+      }
+      final completedAt = o.completedAt;
+      if (completedAt != null) return completedAt.isAfter(recentCutoff);
+      // Sem âncora de tempo confiável: assumir recente (o sync vai preencher
+      // proofReceivedAt no primeiro ciclo e a ordem sai da janela naturalmente).
+      return true;
+    }
+    final recentTerminalOrders = _orders
+        .where((o) => terminalStatuses.contains(o.status) && isRecentTerminal(o))
+        .toList();
+    final orderIds = (activeOrders + recentTerminalOrders).map((o) => o.id).toList();
+    broLog('syncOrdersFromNostr: ${orderIds.length} ordens ativas, ${_orders.length - orderIds.length} terminais antigas ignoradas (v809: ${recentTerminalOrders.length} terminais recentes incluídas)');
+    return orderIds;
+  }
+
+  @visibleForTesting
+  List<String> debugComputeSyncOrderIdsForV809() => _computeSyncOrderIdsForV809();
+
+  // v809: aplica SÓ o metadata do proof a uma ordem já terminal (caminho do
+  // early-continue de protectedStatuses). Status/providerId intocados.
+  // Retorna true se aplicou (o caller faz continue).
+  bool _applyTerminalProofOnly(int existingIndex, Map<String, dynamic> update) {
+    final existing = _orders[existingIndex];
+    final hasProofData = update['proofImage'] != null ||
+        update['proofImage_nip44'] != null ||
+        update['providerInvoice'] != null;
+    final existingProof = existing.metadata?['proofImage'] as String?;
+    final hasDecryptedProof = existingProof != null &&
+        existingProof.isNotEmpty &&
+        !existingProof.startsWith('[encrypted:');
+    if (!hasProofData || hasDecryptedProof) return false;
+    final proofImageNip44 = update['proofImage_nip44'] as String?;
+    final senderPubkey = update['eventAuthorPubkey'] as String? ?? update['providerId'] as String?;
+    String? decryptedProofImage;
+    if (proofImageNip44 != null && proofImageNip44.isNotEmpty) {
+      final privateKey = _nostrService.privateKey;
+      if (privateKey != null && senderPubkey != null) {
+        try {
+          decryptedProofImage = _nostrOrderService.decryptNip44(
+            proofImageNip44, privateKey, senderPubkey,
+          );
+          broLog('🔓 v809: proofImage descriptografado (ordem terminal) para ${existing.id.substring(0, 8)}');
+          cacheProofImage(existing.id, decryptedProofImage!);
+        } catch (e) {
+          broLog('⚠️ v809: falha ao descriptografar proofImage (terminal): $e');
+        }
+      }
+    }
+    final proofCreatedAtSec = update['created_at'] as int?;
+    final proofTimeIso = proofCreatedAtSec != null
+        ? DateTime.fromMillisecondsSinceEpoch(proofCreatedAtSec * 1000).toIso8601String()
+        : DateTime.now().toIso8601String();
+    final updatedMetadata = {
+      ...?existing.metadata,
+      if (decryptedProofImage != null) 'proofImage': decryptedProofImage,
+      if (decryptedProofImage != null) 'paymentProof': decryptedProofImage,
+      if (decryptedProofImage == null && !hasDecryptedProof && update['proofImage'] != null)
+        'proofImage': update['proofImage'],
+      if (update['providerInvoice'] != null) 'providerInvoice': update['providerInvoice'],
+      if (proofImageNip44 != null) 'proofImage_nip44': proofImageNip44,
+      if (senderPubkey != null) 'proofImage_senderPubkey': senderPubkey,
+      if (update['encryption'] != null) 'encryption': update['encryption'],
+      'proofReceivedAt': existing.metadata?['proofReceivedAt'] ?? proofTimeIso,
+      'receipt_submitted_at': existing.metadata?['receipt_submitted_at'] ?? proofTimeIso,
+    };
+    _orders[existingIndex] = existing.copyWith(metadata: updatedMetadata);
+    final p2proof = updatedMetadata['proofImage'] as String?;
+    if (p2proof != null && p2proof.isNotEmpty && !p2proof.startsWith('[encrypted:')) {
+      cacheProofImage(existing.id, p2proof);
+    }
+    // v806: avisar a UI na hora (tela mostra o comprovante sem esperar o
+    // próximo ciclo de sync).
+    _immediateNotify();
+    broLog('📥 v809: proof aplicado a ordem terminal ${existing.id.substring(0, 8)} (status/providerId preservados)');
+    return true;
+  }
+
+  @visibleForTesting
+  bool debugApplyTerminalProofForV809(Order order, Map<String, dynamic> update) {
+    final idx = _orders.indexWhere((o) => o.id == order.id);
+    if (idx == -1) return false;
+    return _applyTerminalProofOnly(idx, update);
+  }
   
   /// PERFORMANCE: Debounced save â�?��?� coalesce rapid writes into one 500ms later
   void _debouncedSave() {
@@ -5533,8 +5632,13 @@ class OrderProvider with ChangeNotifier {
       // Ordens completed/cancelled/liquidated ja tem status final
       const terminalStatuses = ['completed', 'cancelled', 'liquidated'];
       final activeOrders = _orders.where((o) => !terminalStatuses.contains(o.status)).toList();
-      final orderIds = activeOrders.map((o) => o.id).toList();
-      broLog('syncOrdersFromNostr: ${orderIds.length} ordens ativas, ${_orders.length - orderIds.length} terminais ignoradas');
+      // v809: incluir terminais RECENTES no fetch — o 30081 (comprovante) pode
+      // chegar DEPOIS do 30080 (completed). Se a ordem já terminal for excluída
+      // do orderIds, o filtro do serviço descarta o proof e a ordem fica
+      // "concluída sem comprovante" para sempre (caso 3f49da19). Janela de 48h
+      // cobre reinstalação/sync atrasado; terminais antigas continuam fora
+      // (performance preservada). Lógica extraída p/ _computeSyncOrderIdsForV809.
+      final orderIds = _computeSyncOrderIdsForV809();
       final orderUpdates = await _nostrOrderService.fetchOrderUpdatesForUser(
         _currentUserPubkey!,
         orderIds: orderIds,
@@ -5556,6 +5660,16 @@ class OrderProvider with ChangeNotifier {
           // Isso evita que 'completed' volte para 'awaiting_confirmation'
           const protectedStatuses = ['completed', 'cancelled', 'liquidated'];
           if (protectedStatuses.contains(existing.status) && !_isStatusMoreRecent(newStatus, existing.status)) {
+            // v809: o 30081 (comprovante) pode chegar DEPOIS do 30080 (completed).
+            // Antes este early-continue descartava o proof de ordem já terminal —
+            // a ordem ficava "concluída sem comprovante" (caso 3f49da19).
+            // Aplicar SÓ o metadata do proof (mesmo padrão v806 proof-only),
+            // sem tocar em status/providerId. Lógica extraída p/
+            // _applyTerminalProofOnly (testável via debugApplyTerminalProofForV809).
+            if (_applyTerminalProofOnly(existingIndex, update)) {
+              statusUpdated++;
+              continue;
+            }
             // Apenas atualizar providerId se necessário, sem mudar status
             // v798: trava de ouro — com prova do canônico recebida, providerId
             // está congelado; update do Nostr não pode re-corromper.

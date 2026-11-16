@@ -180,10 +180,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       if (hasNewProof) {
         broLog('📡 [LISTENER] proofImage recebido via Provider');
       }
-    } else if (order.status == 'accepted' && !_fetchingProofDirectly) {
-      // v806: ordem segue 'accepted' mas pode ter recebido proof NIP-44 ainda
-      // não descriptografado (marcador [encrypted:]). Tentar fetch direto —
-      // sem isso a tela fica em "bro encontrado" até o próximo ciclo de sync.
+    } else if (!_fetchingProofDirectly) {
+      // v806/v809: ordem pode ter recebido proof NIP-44 ainda não
+      // descriptografado (marcador [encrypted:]) em accepted OU já terminal
+      // (30081 chega depois do 30080 — caso 3f49da19). Tentar fetch direto —
+      // sem isso a tela fica sem comprovante até o próximo ciclo de sync.
       final p = order.metadata?['proofImage'] as String?;
       final hasDecryptedProof = p != null && p.isNotEmpty && !p.startsWith('[encrypted:');
       if (!hasDecryptedProof) {
@@ -671,7 +672,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             timer.cancel();
             _countdownTimer?.cancel();
           } else {
-            broLog('🔄 [POLLING] Status terminal ($status) mas proof ainda não carregado, continuando polling...');
+            // v809: terminal sem proof — buscar direto do relay em vez de só
+            // logar e esperar o próximo ciclo (caso 3f49da19: ordem concluída
+            // sem comprovante). _fetchProofDirectly é idempotente.
+            broLog('🔄 [POLLING] Status terminal ($status) mas proof ainda não carregado — fetch direto (v809)');
+            _fetchProofDirectly();
           }
         }
       }

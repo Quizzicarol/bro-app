@@ -2691,6 +2691,12 @@ class OrderProvider with ChangeNotifier {
   /// Garante que outros provedores NAO vejam a ordem como disponivel,
   /// mesmo se a query de status updates (kind 30079/30080/30081) falhar.
   /// So deve ser chamado pelo DONO da ordem.
+  // v811 Fix 4: throttle de re-publicação terminal (orderId|status → timestamp).
+  // Sem isso, cada sync re-publicava o 30078 terminal da mesma ordem,
+  // alimentando o loop zumbi e o rate-limit do damus.
+  final Map<String, DateTime> _terminalRepublishThrottle = {};
+  static const int _terminalRepublishCooldownMinutes = 1;
+
   Future<void> _republishOrderEventWithTerminalStatus(Order order, String newStatus) async {
     // So re-publicar para status terminal-ish
     const terminalStatuses = ['accepted', 'awaiting_confirmation', 'completed', 'cancelled', 'liquidated', 'disputed'];
@@ -2698,6 +2704,17 @@ class OrderProvider with ChangeNotifier {
     
     // So re-publicar se EU sou o dono da ordem
     if (order.userPubkey != _currentUserPubkey) return;
+    
+    // v811 Fix 4: throttle — no máximo 1 re-publicação por orderId+status a
+    // cada 60s. Re-publicações repetidas do mesmo status não agregam nada
+    // (evento replaceable) e só geram tráfego/ban.
+    final throttleKey = '${order.id}|$newStatus';
+    final lastRepublish = _terminalRepublishThrottle[throttleKey];
+    if (lastRepublish != null &&
+        DateTime.now().difference(lastRepublish).inMinutes < _terminalRepublishCooldownMinutes) {
+      return;
+    }
+    _terminalRepublishThrottle[throttleKey] = DateTime.now();
     
     final privateKey = _nostrService.privateKey;
     if (privateKey == null || privateKey.isEmpty) return;
@@ -3546,6 +3563,17 @@ class OrderProvider with ChangeNotifier {
           return false;
         },
       );
+
+      // v811 Fix 5b: o publish destrava no primeiro relay OK (v563), mas o
+      // 30081 (~80KB) pode ser descartado por size limit nos demais relays —
+      // o cliente nunca vê o comprovante e a ordem fica presa em "bro
+      // encontrado". A verificação de visibilidade + retry roda em background
+      // dentro do service (Fix 5); aqui apenas LOGAMOS o resultado para
+      // diagnóstico — o fluxo de dinheiro (status local awaiting_confirmation)
+      // segue imediato.
+      if (success) {
+        broLog('[v811] completeOrderAsProvider: publish OK para ${orderId.substring(0, 8)} — verificação de visibilidade do 30081 em background.');
+      }
 
       if (!success) {
         _error = 'Falha ao publicar comprovante no Nostr';
@@ -5585,6 +5613,16 @@ class OrderProvider with ChangeNotifier {
             // Aqui apenas aplicamos o status que j�?¡ foi filtrado pelo NostrOrderService.
             String statusToUse = nostrOrder.status;
             
+            // v811 Fix 1b: se a ordem local já tem resolução de disputa
+            // (wasDisputed/disputeResolvedAt), um evento 30078 velho 'disputed'
+            // NÃO pode reverter o status resolvido (cancelled/completed).
+            if (statusToUse == 'disputed' &&
+                (existing.metadata?['disputeResolvedAt'] != null ||
+                 existing.metadata?['wasDisputed'] == true)) {
+              broLog('⚖️ v811: evento disputed velho ignorado para ${existing.id.substring(0, 8)} — ordem já resolvida.');
+              statusToUse = existing.status;
+            }
+            
             // v406: PROTEÇÃO ABSOLUTA — Mesclar metadata preservando proofImage decriptografado
             // O spread ...?nostrOrder.metadata sobrescrevia proofImage local decriptografado
             // com versão encriptada ou null do Nostr. Agora protege explicitamente.
@@ -5592,6 +5630,16 @@ class OrderProvider with ChangeNotifier {
               ...?existing.metadata,
               ...?nostrOrder.metadata,
             };
+            // v811 Fix 2: o spread acima sobrescreve chaves de lost-race com
+            // valores do evento Nostr (que frequentemente não as traz). Se o
+            // evento não trouxer a chave, preservar o valor local (veredito da
+            // corrida é local-first; servidor não pode apagar).
+            for (final raceKey in ['lostRace', 'lostRaceTo', 'raceChecked', 'raceWon']) {
+              if (existing.metadata?.containsKey(raceKey) == true &&
+                  nostrOrder.metadata?.containsKey(raceKey) != true) {
+                mergedMetadata[raceKey] = existing.metadata![raceKey];
+              }
+            }
             // GUARD: Se existing tinha proofImage decriptografado, NUNCA substituir
             final _existProof = existing.metadata?['proofImage'] as String?;
             if (_existProof != null && _existProof.isNotEmpty && !_existProof.startsWith('[encrypted:')) {
@@ -5884,6 +5932,16 @@ class OrderProvider with ChangeNotifier {
         if (disputedOrders.isNotEmpty) {
           broLog('⚖️ syncOrdersFromNostr: ${disputedOrders.length} ordens em disputa, verificando resoluções...');
           for (final order in disputedOrders) {
+            // v811 Fix 1: guard anti-loop — se esta disputa JÁ foi resolvida
+            // (metadata de resolução presente), NUNCA re-processar. Antes, um
+            // evento 30078 velho 'disputed' chegava no sync e re-disparava
+            // fetchDisputeResolution + republish terminal a cada ciclo,
+            // revertendo a ordem resolvida (loop zumbi da af95b3ab).
+            if (order.metadata?['disputeResolvedAt'] != null ||
+                order.metadata?['wasDisputed'] == true) {
+              broLog('⚖️ v811: disputa ${order.id.substring(0, 8)} já resolvida localmente — skip (anti-loop).');
+              continue;
+            }
             try {
               final resolution = await _nostrOrderService.fetchDisputeResolution(order.id)
                   .timeout(const Duration(seconds: 10), onTimeout: () => null);
@@ -6240,7 +6298,14 @@ class OrderProvider with ChangeNotifier {
 
     broLog('📩 _handleIncomingRepublishRequests: ${requests.length} pedidos recebidos');
 
-    for (final orderId in requests) {
+    // v811 Fix 3: processar no máximo 2 pedidos por ciclo. Cada pedido pode
+    // disparar fetchAllAcceptsForOrder (timeout 10s) + publish; o loop
+    // sequencial completo estourava o timeout externo de 15s (chamada em
+    // syncOrders), derrubando o sync inteiro. O restante fica na fila para o
+    // próximo ciclo (removeRepublishRequests remove só os processados).
+    final batch = requests.take(2).toList();
+
+    for (final orderId in batch) {
       final order = _orders.firstWhere(
         (o) => o.id == orderId,
         orElse: () => Order(id: '', billType: '', billCode: '', amount: 0, btcAmount: 0, btcPrice: 0, providerFee: 0, platformFee: 0, total: 0, status: '', createdAt: DateTime.now()),
@@ -6351,7 +6416,9 @@ class OrderProvider with ChangeNotifier {
       }
     }
 
-    _nostrOrderService.clearRepublishRequests();
+    // v811 Fix 3: remover da fila apenas os pedidos processados neste ciclo;
+    // os demais (além do batch de 2) permanecem para o próximo ciclo.
+    _nostrOrderService.removeRepublishRequests(batch);
   }
 
   /// v436: Re-publicar confirmações de ordens completed que falharam no Nostr

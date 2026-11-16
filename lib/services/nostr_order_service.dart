@@ -80,6 +80,16 @@ class NostrOrderService {
   Map<String, String> get pendingRepublishRequestAuthors => Map.unmodifiable(_pendingRepublishRequestAuthors);
   void clearRepublishRequests() { _pendingRepublishRequests.clear(); _pendingRepublishRequestAuthors.clear(); }
 
+  /// v811 Fix 3: remove apenas os pedidos já processados (o provider processa
+  /// no máximo 2 por ciclo para caber no timeout externo de 15s; o resto fica
+  /// na fila pro próximo ciclo).
+  void removeRepublishRequests(List<String> orderIds) {
+    _pendingRepublishRequests.removeWhere(orderIds.contains);
+    for (final id in orderIds) {
+      _pendingRepublishRequestAuthors.remove(id);
+    }
+  }
+
   // BLOCKLIST LOCAL: IDs de ordens em estado terminal (completed, cancelled, etc)
   // Persistida em SharedPreferences para sobreviver a reinicializações
   // Resolve: relay não retorna evento de status → ordem aparece como disponível
@@ -2353,6 +2363,21 @@ class NostrOrderService {
       }
       anySuccess = await completer.future;
 
+      // v811 Fix 5: verificação de visibilidade do 30081 (complete). O
+      // publish destrava no PRIMEIRO relay OK (v563), mas o 30081 carrega o
+      // proofImage cifrado (~80KB) e relays rejeitam silenciosamente por
+      // size limit — o cliente da ordem nunca vê o comprovante (bug das
+      // ordens 3f49da19/cdbd6089/ac6ae697). Se <2 relays têm o evento,
+      // enfileirar retry em background (não bloqueia o fluxo de dinheiro).
+      if (anySuccess) {
+        unawaited(_verifyCompleteVisibilityAndRetry(
+          order: order,
+          event: event,
+          providerPrivateKey: providerPrivateKey,
+          providerInvoice: providerInvoice,
+        ));
+      }
+
       // Adicionar à blocklist local + invalidar cache
       if (anySuccess) {
         _addToBlocklist({order.id});
@@ -2386,6 +2411,123 @@ class NostrOrderService {
 
       return anySuccess;
     } catch (e) {
+      return false;
+    }
+  }
+
+  /// v811 Fix 5: fila de retry do 30081 (complete/comprovante). Verifica em
+  /// quantos relays o evento está visível (query por #d = {orderId}_complete);
+  /// se <2, re-publica em background com backoff. Garante que o comprovante
+  /// chegue ao cliente mesmo quando relays descartam o evento grande.
+  /// Hook de teste: [completeVisibilityOverride] substitui a checagem de
+  /// visibilidade (produção nunca seta).
+  @visibleForTesting
+  static Future<int> Function(String orderId)? completeVisibilityOverride;
+
+  static final Map<String, int> _completeRetryAttempts = {};
+  static const int _completeMaxRetries = 5;
+
+  Future<void> _verifyCompleteVisibilityAndRetry({
+    required Order order,
+    required dynamic event,
+    String? providerPrivateKey,
+    String? providerInvoice,
+  }) async {
+    try {
+      final dTag = '${order.id}_complete';
+      int visible = 0;
+      final List<String> visibleRelays = [];
+
+      if (completeVisibilityOverride != null) {
+        visible = await completeVisibilityOverride!(order.id);
+      } else {
+        for (final relay in _relays) {
+          try {
+            final events = await _fetchFromRelay(
+              relay,
+              kinds: [kindBroComplete],
+              tags: {'#d': [dTag]},
+              limit: 1,
+            ).timeout(const Duration(seconds: 8), onTimeout: () => []);
+            if (events.isNotEmpty) {
+              visible++;
+              visibleRelays.add(relay);
+            }
+          } catch (_) {
+            // relay lento/morto — não conta como visível
+          }
+        }
+      }
+
+      broLog('[v811] complete ${order.id.substring(0, 8)} visível em $visible/${_relays.length} relays (${visibleRelays.join(", ")})');
+
+      if (visible >= 2) return; // quórum OK
+
+      final attempts = (_completeRetryAttempts[order.id] ?? 0) + 1;
+      if (attempts > _completeMaxRetries) {
+        broLog('[v811] complete ${order.id.substring(0, 8)}: esgotou $_completeMaxRetries retries (visível em $visible relays). Desistindo.');
+        _completeRetryAttempts.remove(order.id);
+        return;
+      }
+      _completeRetryAttempts[order.id] = attempts;
+
+      // Backoff progressivo: 15s, 30s, 60s, 120s, 240s
+      final delay = Duration(seconds: 15 * (1 << (attempts - 1)));
+      broLog('[v811] complete ${order.id.substring(0, 8)}: visível em só $visible relays — retry $attempts/$_completeMaxRetries em ${delay.inSeconds}s.');
+      await Future.delayed(delay);
+
+      // Re-publicar o mesmo evento (replaceable — mesmo d tag substitui)
+      final republished = await _publishCompleteEvent(
+        order: order,
+        event: event,
+        providerPrivateKey: providerPrivateKey,
+        providerInvoice: providerInvoice,
+      );
+      if (republished) {
+        // Re-verificar visibilidade após re-publicação
+        await _verifyCompleteVisibilityAndRetry(
+          order: order,
+          event: event,
+          providerPrivateKey: providerPrivateKey,
+          providerInvoice: providerInvoice,
+        );
+      }
+    } catch (e) {
+      broLog('[v811] erro na verificação de visibilidade do complete ${order.id.substring(0, 8)}: $e');
+    }
+  }
+
+  /// v811 Fix 5: re-publica o evento complete (30081) em todos os relays.
+  Future<bool> _publishCompleteEvent({
+    required Order order,
+    required dynamic event,
+    String? providerPrivateKey,
+    String? providerInvoice,
+  }) async {
+    try {
+      final completer = Completer<bool>();
+      int pending = _relays.length;
+      bool anySuccess = false;
+      for (final relay in _relays) {
+        _publishToRelay(relay, event).then((ok) {
+          if (ok && !completer.isCompleted) {
+            anySuccess = true;
+            completer.complete(true);
+          }
+          pending--;
+          if (pending <= 0 && !completer.isCompleted) {
+            completer.complete(anySuccess);
+          }
+        }).catchError((_) {
+          pending--;
+          if (pending <= 0 && !completer.isCompleted) {
+            completer.complete(anySuccess);
+          }
+        });
+      }
+      return await completer.future;
+    } catch (e) {
+      broLog('[v811] erro re-publicando complete ${order.id.substring(0, 8)}: $e');
       return false;
     }
   }

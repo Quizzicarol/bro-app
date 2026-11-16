@@ -474,8 +474,12 @@ class OrderProvider with ChangeNotifier {
     final existingIndex = _orders.indexWhere((o) => o.id == provOrder.id);
     if (existingIndex == -1) return;
     var existing = _orders[existingIndex];
+    // v807: mesmo guard do syncProvider — não propagar lostRace em ordem
+    // evoluída (dinheiro fluindo). v712 sticky envenenaria.
+    final v807StatusOk = existing.status == 'pending' || existing.status == 'accepted';
     if (provOrder.metadata?['raceWon'] == false &&
-        existing.metadata?['lostRace'] != true) {
+        existing.metadata?['lostRace'] != true &&
+        v807StatusOk) {
       final mergedMeta = Map<String, dynamic>.from(existing.metadata ?? {});
       mergedMeta['raceWon'] = false;
       mergedMeta['lostRace'] = true;
@@ -1959,8 +1963,13 @@ class OrderProvider with ChangeNotifier {
             // Marcar lostRace no metadata AGORA (sem tocar no status — o status
             // continua 'accepted' até o gate/sync confirmar; a UI de listas usa
             // lostRace pra badge/exclusão v699/v805).
+            // v807: só propagar se a ordem NÃO evoluiu além de 'accepted'.
+            // Dinheiro fluindo (awaiting_confirmation/completed) nunca pode ser
+            // marcado como perdido — v712 sticky envenenaria o status pra sempre.
+            final v807StatusOk = existing.status == 'pending' || existing.status == 'accepted';
             if (provOrder.metadata?['raceWon'] == false &&
-                existing.metadata?['lostRace'] != true) {
+                existing.metadata?['lostRace'] != true &&
+                v807StatusOk) {
               final mergedMeta = Map<String, dynamic>.from(existing.metadata ?? {});
               mergedMeta['raceWon'] = false;
               mergedMeta['lostRace'] = true;

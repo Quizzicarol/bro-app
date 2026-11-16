@@ -267,5 +267,48 @@ void main() {
       expect(o.metadata?['lostRace'], true,
           reason: 'v712: uma vez perdedor, NUNCA desmarca');
     });
+
+    test('(j) v807: lostRace NÃO propagado em ordem completed (dinheiro fluindo)', () {
+      final provider = OrderProvider();
+      provider.debugSetCurrentUserPubkeyForR5c('pk-me');
+      provider.debugSeedOrdersForR5c([
+        _order('v807-done-1', userPubkey: 'pk-buyer', providerId: 'pk-me',
+            status: 'completed'),
+      ]);
+
+      // Snapshot atrasado/mentiroso (watchtower viu aceite do perdedor
+      // primeiro) não pode envenenar ordem já concluída (v712 sticky).
+      provider.debugPropagateLostRaceFromSnapshotForV806(
+        _order('v807-done-1', userPubkey: 'pk-buyer', providerId: 'pk-me',
+            status: 'completed',
+            metadata: {'raceWon': false, 'acceptsCount': 2}),
+      );
+
+      final o = provider.orders.firstWhere((o) => o.id == 'v807-done-1');
+      expect(o.metadata?['lostRace'], isNull,
+          reason: 'bug 3f49da19: ordem paga/comprovante enviado nunca vira "Perdida"');
+      expect(o.metadata?['raceWon'], isNull);
+      expect(o.status, 'completed');
+    });
+
+    test('(k) v807: lostRace NÃO propagado em awaiting_confirmation', () {
+      final provider = OrderProvider();
+      provider.debugSetCurrentUserPubkeyForR5c('pk-me');
+      provider.debugSeedOrdersForR5c([
+        _order('v807-await-1', userPubkey: 'pk-buyer', providerId: 'pk-me',
+            status: 'awaiting_confirmation'),
+      ]);
+
+      provider.debugPropagateLostRaceFromSnapshotForV806(
+        _order('v807-await-1', userPubkey: 'pk-buyer', providerId: 'pk-me',
+            status: 'awaiting_confirmation',
+            metadata: {'raceWon': false, 'acceptsCount': 2}),
+      );
+
+      final o = provider.orders.firstWhere((o) => o.id == 'v807-await-1');
+      expect(o.metadata?['lostRace'], isNull,
+          reason: 'comprovante enviado = dinheiro fluindo; lostRace bloquearia billcode (L4150)');
+      expect(o.status, 'awaiting_confirmation');
+    });
   });
 }

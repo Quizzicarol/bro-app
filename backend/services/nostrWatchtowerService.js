@@ -2340,7 +2340,14 @@ class NostrWatchtowerService {
       // R5c: resultado da corrida — quem aceitou precisa saber se ganhou
       // ou perdeu (o perdedor antes ficava no escuro).
       const accepts = this._orderAccepts.get(orderId) || [];
-      const raceWon = snap.acceptedBy === providerPubkey;
+      // v807: raceWon pelo aceite CANONICO (menor acceptedAt de _orderAccepts),
+      // nao pelo primeiro aceite VISTO (snap.acceptedBy e first-seen por chegada
+      // no relay e pode apontar pro perdedor). Mesmo padrao de _notifyRaceLosers
+      // e getProviderForOrder (v712). Fallback: snap.acceptedBy se accepts vazio.
+      const canonicalPk = accepts.length > 0
+        ? [...accepts].sort((a, b) => a.acceptedAt - b.acceptedAt)[0].pubkey
+        : snap.acceptedBy;
+      const raceWon = canonicalPk === providerPubkey;
       const row = {
         id: orderId,
         amountBrl: snap.amountBrl,

@@ -1132,11 +1132,16 @@ class NostrOrderService {
                          : DateTime.now()),
             // R5c: resultado da corrida vindo do snapshot do watchtower.
             // lostRace alinhado com a chave v699 já usada pelo app.
+            // v807: defesa em profundidade — não setar lostRace se o status
+            // já é terminal (dinheiro fluindo/concluído nunca é "perdido").
             metadata: (raw['raceWon'] is bool)
                 ? <String, dynamic>{
                     'raceWon': raw['raceWon'],
                     if (raw['acceptsCount'] is int) 'acceptsCount': raw['acceptsCount'],
-                    if (raw['raceWon'] == false) 'lostRace': true,
+                    if (raw['raceWon'] == false &&
+                        !const ['completed', 'cancelled', 'liquidated', 'disputed']
+                            .contains(raw['status']?.toString()))
+                      'lostRace': true,
                   }
                 : null,
           );

@@ -4764,20 +4764,28 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       try {
         var trackedProvider = order?.providerId ?? orderDetails?['provider_id']?.toString() ?? '';
         var accepts = <String>[];
+        // v807: os 3 fetches da guarda são INDEPENDENTES entre si — rodar em
+        // paralelo (Future.wait) em vez de sequencial (8s + 10s + 6s → max ~10s).
+        // Semântica v679/v713/v767/v768 preservada: aceites canônicos, complete
+        // sem self-assinatura, desempate pelo watchtower.
+        final orderOwnerPk = order?.userPubkey ?? orderDetails?['userPubkey']?.toString();
+        final results = await Future.wait<dynamic>([
+          NostrOrderService().fetchAllAcceptsForOrder(widget.orderId)
+              .timeout(const Duration(seconds: 8), onTimeout: () => <String>[]),
+          NostrOrderService().fetchOrderCompleteEvent(widget.orderId, excludeAuthorPubkey: orderOwnerPk)
+              .timeout(const Duration(seconds: 10), onTimeout: () => null),
+          ApiService().get('/canonical/${widget.orderId}')
+              .timeout(const Duration(seconds: 6), onTimeout: () => null),
+        ]).catchError((_) => <dynamic>[<String>[], null, null]);
         try {
-          accepts = await NostrOrderService().fetchAllAcceptsForOrder(widget.orderId)
-              .timeout(const Duration(seconds: 8), onTimeout: () => <String>[]);
+          accepts = (results[0] as List?)?.cast<String>() ?? <String>[];
           if (accepts.isNotEmpty) {
             trackedProvider = accepts.first; // canônico = acceptedAt mais antigo
           }
         } catch (_) {}
+        final completeEvt = results[1] as Map<String, dynamic>?;
+        final wt = results[2] as Map<String, dynamic>?;
         if (trackedProvider.isNotEmpty) {
-          // v768: excluir eventos assinados pelo PRÓPRIO comprador — um
-          // invoice_refresh self-assinado (providerId corrompido p/ self)
-          // envenenava o completer e bloqueava pagamento legítimo (7b7542f8).
-          final orderOwnerPk = order?.userPubkey ?? orderDetails?['userPubkey']?.toString();
-          final completeEvt = await NostrOrderService().fetchOrderCompleteEvent(widget.orderId, excludeAuthorPubkey: orderOwnerPk)
-              .timeout(const Duration(seconds: 10), onTimeout: () => null);
           final completerId = completeEvt?['providerId']?.toString() ?? '';
           if (completerId.isNotEmpty && completerId != trackedProvider) {
             // v713 REGRA DA PROVA DE POSSE (decisão da Carol, caso 58ebf198):
@@ -4805,10 +4813,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               // Se o completer É o canônico do servidor → pagar ELE (a invoice
               // é dele, o trabalho é dele). Servidor fora/não conhece/
               // completer ≠ canônico → mantém o bloqueio (fail-safe).
+              // v807: wt já veio do fetch paralelo acima.
               bool serverVouched = false;
               try {
-                final wt = await ApiService().get('/canonical/${widget.orderId}')
-                    .timeout(const Duration(seconds: 6), onTimeout: () => null);
                 if (wt != null && wt['known'] == true) {
                   final serverCanon = wt['canonical']?.toString() ?? '';
                   if (serverCanon.isNotEmpty && completerId == serverCanon) {
@@ -5264,16 +5271,22 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         broLog('   widget.amountSats: ${widget.amountSats}');
         
         if (AppConfig.platformLightningAddress.isNotEmpty && platformFeeSats > 0) {
-          broLog('💼 Enviando taxa da plataforma via PlatformFeeService...');
-          final feeSuccess = await PlatformFeeService.sendPlatformFee(
+          // v807: envio da taxa NÃO bloqueia mais o feedback final — o usuário
+          // já esperou o pagamento do provedor; a taxa roda em background
+          // (fire-and-forget) e só loga o resultado. Registro local
+          // (addPlatformFee) continua síncrono logo abaixo.
+          unawaited(PlatformFeeService.sendPlatformFee(
             orderId: widget.orderId,
             totalSats: widget.amountSats,
-          );
-          if (!feeSuccess) {
-            broLog('⚠️ Falha ao enviar taxa da plataforma');
-          } else {
-            broLog('✅ Taxa da plataforma enviada com sucesso!');
-          }
+          ).then((feeSuccess) {
+            if (!feeSuccess) {
+              broLog('⚠️ Falha ao enviar taxa da plataforma');
+            } else {
+              broLog('✅ Taxa da plataforma enviada com sucesso!');
+            }
+          }).catchError((e) {
+            broLog('⚠️ Erro ao enviar taxa da plataforma: $e');
+          }));
         } else {
           broLog('⚠️ Taxa da plataforma não enviada: address=${AppConfig.platformLightningAddress.isNotEmpty}, sats=$platformFeeSats');
         }

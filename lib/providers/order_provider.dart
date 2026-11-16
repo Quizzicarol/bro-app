@@ -5939,7 +5939,26 @@ class OrderProvider with ChangeNotifier {
             // revertendo a ordem resolvida (loop zumbi da af95b3ab).
             if (order.metadata?['disputeResolvedAt'] != null ||
                 order.metadata?['wasDisputed'] == true) {
-              broLog('⚖️ v811: disputa ${order.id.substring(0, 8)} já resolvida localmente — skip (anti-loop).');
+              // v812: auto-cura — o guard v811 parava o loop mas deixava a
+              // ordem PRESA em 'disputed' (estado herdado da v810, ex.:
+              // af95b3ab). Se o metadata já diz que a disputa foi resolvida
+              // mas o status ainda é 'disputed', derivar o status terminal
+              // do metadata (sem rede, sem re-processar a resolução):
+              // disputePaymentPending=true → completed; senão → cancelled.
+              if (order.status == 'disputed') {
+                final cured = (order.metadata?['disputePaymentPending'] == true)
+                    ? 'completed'
+                    : 'cancelled';
+                final idx = _orders.indexWhere((o) => o.id == order.id);
+                if (idx != -1) {
+                  _orders[idx] = _orders[idx].copyWith(status: cured);
+                  broLog('⚖️ v812: auto-cura ${order.id.substring(0, 8)}: disputed → $cured (metadata já tinha resolução).');
+                  statusUpdated++;
+                  _republishOrderEventWithTerminalStatus(_orders[idx], cured);
+                }
+              } else {
+                broLog('⚖️ v811: disputa ${order.id.substring(0, 8)} já resolvida localmente — skip (anti-loop).');
+              }
               continue;
             }
             try {

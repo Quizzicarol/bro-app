@@ -332,27 +332,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
           )
           .timeout(const Duration(seconds: 10));
 
-      final ok = resp.statusCode == 200 && (jsonDecode(resp.body)['ok'] == true);
+      // v812: o backend tem rate limit (5/min/IP) e o Fly pode devolver 502.
+      // Antes TUDO virava "senha incorreta" — Carol digitava certo, via erro,
+      // tentava de novo e aí logava. Agora a mensagem diz o que aconteceu.
+      // Fail-closed mantido: só ok:true destrava.
+      String? errorMsg;
+      if (resp.statusCode == 200) {
+        final ok = (jsonDecode(resp.body)['ok'] == true);
+        if (ok) {
+          if (!mounted) return;
+          Navigator.pop(context); // Fechar dialog
+          Navigator.pushNamed(context, '/admin-bro-2024');
+          return;
+        }
+        errorMsg = AppLocalizations.of(context).t('settings_wrong_password');
+      } else if (resp.statusCode == 429) {
+        errorMsg = 'Muitas tentativas. Aguarde 1 minuto.';
+      } else {
+        errorMsg = 'Servidor indisponível (${resp.statusCode}). Tente novamente.';
+      }
 
       if (!mounted) return;
-      if (ok) {
-        Navigator.pop(context); // Fechar dialog
-        Navigator.pushNamed(context, '/admin-bro-2024');
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(AppLocalizations.of(context).t('settings_wrong_password')),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMsg),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 2),
+        ),
+      );
     } catch (_) {
       // timeout/rede = SEM acesso (fail-closed, nunca destravar)
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(AppLocalizations.of(context).t('settings_wrong_password')),
+            content: Text('Sem conexão com o servidor. Tente novamente.'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 2),
           ),

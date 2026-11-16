@@ -2940,7 +2940,10 @@ class NostrOrderService {
     final fourteenDaysAgo = DateTime.now().subtract(const Duration(days: 14));
     final statusSince = (fourteenDaysAgo.millisecondsSinceEpoch / 1000).floor();
 
-    final relayTasks = _relays.map((relay) async {
+    // v810: + fallback relays — o 30081 (comprovante) às vezes só existe em
+    // 1 relay; se ele não responder no ciclo, o proof se perde NAQUELE ciclo
+    // e o sintoma persiste (mesmo gap do fetchOrderUpdatesForUser v810).
+    final relayTasks = <String>[..._relays, ..._fallbackRelays].map((relay) async {
       try {
         final results = await Future.wait([
           _fetchFromRelayWithSince(
@@ -3677,7 +3680,12 @@ class NostrOrderService {
     // relay fora do take(3) ou num relay lento atrasava o status do comprador em
     // dezenas de segundos ("bro encontrado" que nunca evolvia). Pior caso cai de
     // ~3×10s para ~10s. Dedup por seenIds continua cross-relay.
-    final relayTasks = _relays.map((relay) async {
+    // v810: + fallback relays (nostr.band, nostr.mom). O 30081 (~80KB+) às vezes
+    // é aceito por UM único relay (casos reais: 3dd5cb49 só damus; 92a2fdeb 1/6).
+    // Consultar só os 5 principais deixava o comprovante invisível por MUITOS
+    // ciclos quando esse relay não respondia (caso cdbd6089/ac6ae697, v809 não
+    // resolveu). Mesmo modelo v646 de _fetchTargetedStatusUpdates.
+    final relayTasks = <String>[..._relays, ..._fallbackRelays].map((relay) async {
       try {
         // 2 core strategies per relay (reduced from 5)
         final strategies = <Future<List<Map<String, dynamic>>>>[

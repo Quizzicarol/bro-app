@@ -5457,9 +5457,17 @@ class NostrOrderService {
   /// Retorna o mapa de resolução ou null se não encontrada
   Future<Map<String, dynamic>?> fetchDisputeResolution(String orderId) async {
     try {
+      // v815: REMOVIDA a exigência de '#t bro-resolucao' — resoluções de builds
+      // antigos (ex.: 20/10, disputa 2706f28d) não carregam essa tag e ficavam
+      // invisíveis PRA SEMPRE: a disputa ressurgia como aberta em qualquer
+      // install novo (marca local morre no reinstall). A guarda real já está
+      // abaixo: type==bro_dispute_resolution + assinatura Schnorr válida +
+      // pubkey == adminPubkey (fail-closed). O #t era redundante E excluía
+      // legado. READ-ONLY: isto só LÊ o relay — não publica nada, não dispara
+      // pagamento (re-resolver republicaria resolved_provider e o autopay
+      // v801 pagaria de novo — por isso o conserto é na LEITURA).
       final filter = {
         'kinds': [1],
-        '#t': ['bro-resolucao'],
         '#r': [orderId],
         'limit': 5,
       };

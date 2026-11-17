@@ -145,6 +145,10 @@ class NostrOrderService {
   /// ordens zumbis da lista visível mesmo quando API+relays falham.
   bool isOrderBlocklisted(String orderId) => _blockedOrderIds.contains(orderId);
 
+  /// R3 (v816): exposição read-only para testes de corrida.
+  static bool isStatusProgressionPublic(String newStatus, String currentStatus) =>
+      _isStatusProgression(newStatus, currentStatus);
+
   /// Helper: Verifica se newStatus é progressão válida em relação a currentStatus
   /// Mesma lógica de _isStatusMoreRecent do OrderProvider, mas local
   /// REGRA DE OURO: Status NUNCA regride. cancelled/completed/liquidated/disputed são terminais.
@@ -153,11 +157,27 @@ class NostrOrderService {
     // cancelled é TERMINAL ABSOLUTO - só disputed pode sobrescrever
     if (currentStatus == 'cancelled') return newStatus == 'disputed';
     // v708: cancel SO de estados iniciais — disputa resolvida NUNCA vira cancelled
-    if (newStatus == 'cancelled') return currentStatus.isEmpty || currentStatus == 'draft' || currentStatus == 'pending';
+    // R3 (v816): a partir de accept_expired, cancelar é autorizado (sacar sats).
+    if (newStatus == 'cancelled') {
+      return currentStatus.isEmpty ||
+          currentStatus == 'draft' ||
+          currentStatus == 'pending' ||
+          currentStatus == 'accept_expired';
+    }
     // v719: disputed → cancelled VOLTA a valer (resolução resolved_user da
     // mediação). Cancelamento manual segue bloqueado nas pontas (v708).
     if (currentStatus == 'disputed') {
       return newStatus == 'completed' || newStatus == 'cancelled';
+    }
+    // R3 (v816): accept_expired só nasce de accepted/processing (aceite sem
+    // prova dentro da janela de 1h). Nunca depois de prova enviada ou além.
+    if (newStatus == 'accept_expired') {
+      return currentStatus == 'accepted' || currentStatus == 'processing';
+    }
+    // R3 (v816): cancelar e republicar a partir de aceite expirado são as duas
+    // saídas autorizadas. Qualquer outro caminho para pending/cancelled segue bloqueado.
+    if (currentStatus == 'accept_expired') {
+      return newStatus == 'cancelled' || newStatus == 'pending';
     }
     // Status finais NÃO regridem — completed/liquidated é definitivo
     const finalStatuses = ['completed', 'liquidated'];
@@ -486,7 +506,7 @@ class NostrOrderService {
       
       // Adicionar à blocklist se status é terminal
       if (successCount > 0) {
-        const terminalStatuses = ['accepted', 'awaiting_confirmation', 'completed', 'cancelled', 'liquidated', 'disputed'];
+        const terminalStatuses = ['accepted', 'awaiting_confirmation', 'completed', 'cancelled', 'liquidated', 'disputed', 'accept_expired'];
         if (terminalStatuses.contains(newStatus)) {
           _addToBlocklist({orderId});
           _statusUpdatesCache = null;

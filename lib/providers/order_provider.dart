@@ -1410,7 +1410,9 @@ class OrderProvider with ChangeNotifier {
       return false;
     }
     
-    if (order.status != 'pending') {
+    // R3 (v816): aceite expirado também pode ser cancelado pelo dono
+    // (cancelar e sacar os sats). pending segue a regra original.
+    if (order.status != 'pending' && order.status != 'accept_expired') {
       return false;
     }
     
@@ -2295,7 +2297,10 @@ class OrderProvider with ChangeNotifier {
 
       // AUTO-LIQUIDA�?�?��?�?O: Verificar ordens awaiting_confirmation com prazo expirado
       await _checkAutoLiquidation();
-      
+
+      // R3 (v816): aceites sem prova expiram em 1h
+      await _checkAcceptExpiry();
+
       // v133: Renovar invoices para ordens liquidadas (provider side)
       await _renewInvoicesForLiquidatedAsProvider();
       
@@ -2862,26 +2867,31 @@ class OrderProvider with ChangeNotifier {
       if (status == 'cancelled') {
         final existingCancelOrder = getOrderById(orderId);
         final cancelCurrentStatus = existingCancelOrder?.status ?? '';
-        if (!(cancelCurrentStatus.isEmpty || cancelCurrentStatus == 'draft' || cancelCurrentStatus == 'pending')) {
+        // R3 (v816): a partir de accept_expired o cancel é autorizado mesmo
+        // com aceite na rede — o aceite expirou, o dono saca os sats.
+        final cancelExpired = cancelCurrentStatus == 'accept_expired';
+        if (!cancelExpired && !(cancelCurrentStatus.isEmpty || cancelCurrentStatus == 'draft' || cancelCurrentStatus == 'pending')) {
           broLog('⛔ BLOQUEADO: cancelled em status "$cancelCurrentStatus" (v708)');
           _isLoading = false;
           _immediateNotify();
           return false;
         }
-        try {
-          final cancelAccepts = await _nostrOrderService
-              .fetchAllAcceptsForOrder(orderId)
-              .timeout(const Duration(seconds: 10), onTimeout: () => <String>['__timeout__']);
-          if (cancelAccepts.isNotEmpty) {
-            broLog('⛔ BLOQUEADO: cancel com aceite na rede (${cancelAccepts.length}) (v708)');
+        if (!cancelExpired) {
+          try {
+            final cancelAccepts = await _nostrOrderService
+                .fetchAllAcceptsForOrder(orderId)
+                .timeout(const Duration(seconds: 10), onTimeout: () => <String>['__timeout__']);
+            if (cancelAccepts.isNotEmpty) {
+              broLog('⛔ BLOQUEADO: cancel com aceite na rede (${cancelAccepts.length}) (v708)');
+              _isLoading = false;
+              _immediateNotify();
+              return false;
+            }
+          } catch (_) {
             _isLoading = false;
             _immediateNotify();
             return false;
           }
-        } catch (_) {
-          _isLoading = false;
-          _immediateNotify();
-          return false;
         }
       }
 
@@ -3859,6 +3869,147 @@ class OrderProvider with ChangeNotifier {
       }
     } catch (e) {
       broLog('[FCM] Token re-registration error: $e');
+    }
+  }
+
+  /// R3 (v816): Aceite expira em 1h sem prova. Publica kind 30080
+  /// 'accept_expired' (evidência do aceite NÃO é deletada), notifica via
+  /// watchtower e deixa o dono escolher: republicar ou cancelar e sacar.
+  /// Modelo: _checkAutoLiquidation (lock de prefs + clock-skew guard).
+  static const acceptExpiryWindow = Duration(hours: 1);
+
+  Future<void> _checkAcceptExpiry() async {
+    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final lockTime = prefs.getInt('bg_accept_expiry_lock');
+    if (lockTime != null) {
+      final elapsed = DateTime.now().millisecondsSinceEpoch - lockTime;
+      if (elapsed < 120000) {
+        return;
+      }
+    }
+    await prefs.setInt('bg_accept_expiry_lock', DateTime.now().millisecondsSinceEpoch);
+
+    final localNow = DateTime.now();
+    var now = localNow;
+    // vSEC: relógio local adiantado >15min vs rede → usar tempo da rede
+    // (expirar cedo demais é o pior cenário). Atrasado só adia (direção segura).
+    if (_lastNetworkTimeSec > 0) {
+      final networkNow = DateTime.fromMillisecondsSinceEpoch(_lastNetworkTimeSec * 1000);
+      if (localNow.difference(networkNow) > const Duration(minutes: 15)) {
+        broLog('[AcceptExpiry] ⚠️ relógio local adiantado >15min vs rede — usando tempo da rede');
+        now = networkNow;
+      }
+    }
+
+    final expiredOrders = _orders.where((order) {
+      if (order.status != 'accepted') return false;
+      // Só o dono da ordem decide a expiração do aceite
+      if (order.userPubkey != _currentUserPubkey) return false;
+      if (order.providerId == null || order.providerId!.isEmpty) return false;
+      // Prova já enviada? O aceite vale — billCode revelado trava a janela.
+      if (order.metadata?['billcode_locked'] == true) return false;
+      if (order.metadata?['proofReceivedAt'] != null) return false;
+      if (order.metadata?['receipt_submitted_at'] != null) return false;
+      final acceptedAt = order.acceptedAt;
+      if (acceptedAt == null) return false;
+      // Idempotência: já publicamos o accept_expired desta ordem?
+      if (order.metadata?['accept_expired_published'] == true) return false;
+      try {
+        return now.difference(acceptedAt) > acceptExpiryWindow;
+      } catch (_) {
+        return false;
+      }
+    }).toList();
+
+    for (final order in expiredOrders) {
+      broLog('[AcceptExpiry] Ordem ${order.id.substring(0, 8)} estourou 1h sem prova — publicando accept_expired');
+      final ok = await _publishAcceptExpired(order);
+      if (ok) {
+        final idx = _orders.indexWhere((o) => o.id == order.id);
+        if (idx != -1) {
+          _orders[idx] = _orders[idx].copyWith(
+            status: 'accept_expired',
+            metadata: {...?_orders[idx].metadata, 'accept_expired_published': true},
+          );
+          await _saveOrders();
+        }
+      }
+    }
+
+    if (expiredOrders.isNotEmpty) {
+      broLog('[AcceptExpiry] ${expiredOrders.length} aceites expirados processados');
+      _throttledNotify();
+    }
+  }
+
+  /// R3 (v816): publica o evento accept_expired (kind 30080) e marca a ordem.
+  /// O aceite original permanece nos relays (evidência preservada, sem NIP-09).
+  Future<bool> _publishAcceptExpired(Order order) async {
+    final privateKey = _nostrService.privateKey;
+    if (privateKey == null) return false;
+    try {
+      final ok = await _nostrOrderService.updateOrderStatus(
+        privateKey: privateKey,
+        orderId: order.id,
+        newStatus: 'accept_expired',
+        providerId: order.providerId,
+        orderUserPubkey: order.userPubkey,
+        extraContent: {
+          'expiredAt': DateTime.now().toUtc().toIso8601String(),
+          'expiredAcceptAt': order.acceptedAt?.toUtc().toIso8601String(),
+        },
+      );
+      if (!ok) {
+        broLog('[AcceptExpiry] falha ao publicar accept_expired para ${order.id.substring(0, 8)}');
+      }
+      return ok;
+    } catch (e) {
+      broLog('[AcceptExpiry] EXCEPTION ao publicar accept_expired: $e');
+      return false;
+    }
+  }
+
+  /// R3 (v816): Republicar ordem com aceite expirado — volta a 'pending' com
+  /// novo kind 30078. v663: o eventId retornado DEVE ser gravado na ordem,
+  /// senão _republishUnpublishedPendingOrders entra em loop infinito.
+  Future<bool> republicarOrderExpirada(String orderId) async {
+    final index = _orders.indexWhere((o) => o.id == orderId);
+    if (index == -1) return false;
+    final order = _orders[index];
+    if (order.status != 'accept_expired') return false;
+    if (order.userPubkey != _currentUserPubkey) return false;
+
+    final privateKey = _nostrService.privateKey;
+    if (privateKey == null) return false;
+
+    try {
+      // v629: NUNCA gravar providerId == owner pubkey no republish
+      final newEventId = await _nostrOrderService.republishOrderWithStatus(
+        privateKey: privateKey,
+        order: order,
+        newStatus: 'pending',
+        providerId: null,
+      );
+      if (newEventId == null || newEventId.isEmpty) {
+        broLog('[Republicar] falha ao republicar ${orderId.substring(0, 8)}');
+        return false;
+      }
+      _orders[index] = order.copyWith(
+        status: 'pending',
+        eventId: newEventId,
+        providerId: null,
+        acceptedAt: null,
+        metadata: {...?order.metadata, 'accept_expired_published': true},
+      );
+      await _saveOrders();
+      _throttledNotify();
+      broLog('[Republicar] ordem ${orderId.substring(0, 8)} republicada como pending (eventId=${newEventId.substring(0, 8)})');
+      return true;
+    } catch (e) {
+      broLog('[Republicar] EXCEPTION: $e');
+      return false;
     }
   }
 
@@ -6047,7 +6198,10 @@ class OrderProvider with ChangeNotifier {
       
       // AUTO-LIQUIDA��O v234: Tamb�m verificar no sync do usu�rio
       await _checkAutoLiquidation();
-      
+
+      // R3 (v816): aceites sem prova expiram em 1h
+      await _checkAcceptExpiry();
+
       // v132: Auto-pagamento de ordens liquidadas sem pagamento
       await _autoPayLiquidatedOrders();
       
@@ -6589,13 +6743,26 @@ class OrderProvider with ChangeNotifier {
       // cancel sobrescrevia disputa RESOLVIDA e ordem em andamento (caso
       // 33ed1ced: provedor pagou o boleto, mediacao deu ganho a ele, e o
       // usuario cancelou 4h depois ficando com os sats).
-      return currentStatus.isEmpty || currentStatus == 'draft' || currentStatus == 'pending';
+      // R3 (v816): a partir de accept_expired, cancelar é autorizado (sacar sats).
+      return currentStatus.isEmpty ||
+          currentStatus == 'draft' ||
+          currentStatus == 'pending' ||
+          currentStatus == 'accept_expired';
     }
     // CORRE��O v349: disputed pode transicionar para completed/cancelled (resolu��o)
     if (currentStatus == 'disputed') {
       // v719: disputed → cancelled VOLTA a valer — é o fluxo resolved_user da
       // mediação (33ed1ced). O cancel MANUAL segue bloqueado nas pontas (v708).
       return newStatus == 'completed' || newStatus == 'cancelled';
+    }
+    // R3 (v816): accept_expired só nasce de accepted/processing (aceite sem
+    // prova dentro da janela de 1h). Nunca depois de prova enviada ou além.
+    if (newStatus == 'accept_expired') {
+      return currentStatus == 'accepted' || currentStatus == 'processing';
+    }
+    // R3 (v816): a partir de aceite expirado, só cancelar ou republicar.
+    if (currentStatus == 'accept_expired') {
+      return newStatus == 'cancelled' || newStatus == 'pending';
     }
     // Status finais N�O regridem  completed/liquidated � definitivo
     const finalStatuses = ['completed', 'liquidated'];

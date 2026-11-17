@@ -492,7 +492,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
       // Ativas: pending, payment_received, confirmed, accepted, awaiting_confirmation, disputed
       return _orders.where((order) {
         final status = order['status'] as String;
-        return ['pending', 'payment_received', 'confirmed', 'accepted', 'awaiting_confirmation', 'disputed'].contains(status);
+        return ['pending', 'payment_received', 'confirmed', 'accepted', 'awaiting_confirmation', 'disputed', 'accept_expired'].contains(status);
       }).toList();
     } else if (_filterStatus == 'completed') {
       // Completadas (inclui resolvidas por mediação)
@@ -502,6 +502,48 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
       return _orders.where((order) => order['status'] == 'cancelled').toList();
     }
     return _orders;
+  }
+
+  /// R3 (v816): Republica ordem com aceite expirado — volta a 'pending'
+  /// para um novo round de aceites.
+  Future<void> _handleRepublicarExpirada(String orderId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Republicar Ordem?'),
+        content: const Text(
+          'A ordem voltará para a lista de disponíveis e um novo Bro poderá aceitá-la.\n\n'
+          'O aceite anterior expirou (1h sem pagamento).',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Não'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+            ),
+            child: const Text('Sim, Republicar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+      final success = await orderProvider.republicarOrderExpirada(orderId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(success
+              ? 'Ordem republicada! Aguardando novo Bro.'
+              : 'Falha ao republicar. Tente novamente.'),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
+      );
+    }
   }
 
   Future<void> _handleCancelOrder(String orderId) async {
@@ -1724,6 +1766,58 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                   ),
                 ),
               ],
+              // R3 (v816): aceite expirado — republicar ou cancelar e sacar
+              if (status == 'accept_expired') ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.timer_off, color: Colors.orange, size: 20),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'O Bro não pagou em 1h. Republicar a ordem ou cancelar e sacar seus sats?',
+                          style: TextStyle(color: Colors.orange, fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () => _handleRepublicarExpirada(orderId),
+                        icon: const Icon(Icons.refresh, size: 18),
+                        label: const Text('Republicar'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _handleCancelOrder(orderId),
+                        icon: const Icon(Icons.cancel, size: 18),
+                        label: const Text('Cancelar e Sacar'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.red,
+                          side: const BorderSide(color: Colors.red),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               // Botão de saque para ordens canceladas
               if (status == 'cancelled') ...[
                 const SizedBox(height: 12),
@@ -1831,6 +1925,12 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
           'label': 'Em Disputa',
           'color': Colors.deepOrange,
           'icon': Icons.gavel,
+        };
+      case 'accept_expired':
+        return {
+          'label': 'Aceite Expirado ⏰',
+          'color': Colors.orange,
+          'icon': Icons.timer_off,
         };
       default:
         return {

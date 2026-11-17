@@ -91,6 +91,8 @@ const NOTIFICATION_MAP = {
   'cancelled': { title: '❌ Ordem cancelada', body: 'A ordem foi cancelada' },
   'disputed': { title: '⚖️ Disputa aberta', body: 'Uma disputa foi aberta nesta ordem' },
   'liquidated': { title: '⚡ Auto-liquidação', body: 'A ordem foi auto-liquidada' },
+  // R3 (v816): aceite expirou 1h sem prova — alvo é o PROVEDOR (via #p tag)
+  'accept_expired': { title: '⏰ Seu aceite expirou', body: 'O tempo de 1h para pagar a ordem acabou. O cliente pode republicar ou cancelar.' },
   'new_order': { title: '📋 Nova ordem disponível!', body: 'Uma nova ordem de pagamento está disponível' },
 };
 

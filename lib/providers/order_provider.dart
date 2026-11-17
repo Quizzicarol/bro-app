@@ -5901,10 +5901,16 @@ class OrderProvider with ChangeNotifier {
               // (accepted providerId=si) roubava a referência local e o
               // complete do pagador real virava órfão (incidente ac6ae697,
               // 16/11 — travada em "Bro encontrado" com prova no relay).
+              // v815b: PRIMEIRO PREENCHIMENTO sempre autorizado (providerId
+              // vazio ← aceite) — sem isso a ordem nunca avançava pra
+              // "aguardando Bro" (regressão minha do v812, pega pela Carol:
+              // "antes mudava sozinha, não importa o tempo").
               final author = update['eventAuthorPubkey'] as String?;
               final hasProof = update['proofImage'] != null || update['proofImage_nip44'] != null;
               final isTerminal = newStatus == 'completed' || newStatus == 'cancelled' || newStatus == 'liquidated';
-              final authoritative = hasProof ||
+              final isFirstFill = existing.providerId == null || existing.providerId!.isEmpty;
+              final authoritative = isFirstFill ||
+                  hasProof ||
                   (author != null && author == existing.userPubkey) ||
                   (author != null && author == existing.providerId) ||
                   isTerminal;

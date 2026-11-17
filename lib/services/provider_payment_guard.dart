@@ -76,6 +76,18 @@ class ProviderPaymentGuard {
     await _saveAttemptHashes();
   }
 
+  /// v820e: limpa a flag 'paga' quando ela NÃO tem evidência de envio
+  /// liquidado (falso-positivo antigo, ex.: detecção 'already paid' de uma
+  /// tentativa pendente-pra-sempre). Só chamar DEPOIS de verificar a
+  /// ausência de evidência — é o self-heal do 'completed sem pagamento'
+  /// (caso 98bc3e84, 17/11: provedor canônico trabalhou e nunca recebeu).
+  static Future<void> clearPaid(String orderId) async {
+    if (!_paidOrderIds.remove(orderId)) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_paidKey, _paidOrderIds.toList());
+    broLog('🛡️ ProviderPaymentGuard: flag paga de ${_short(orderId)} LIMPA (sem evidência settled — v820e)');
+  }
+
   /// Marca a ordem como PAGA (settled) — bloqueio absoluto e persistente.
   static Future<void> markPaid(String orderId, {String? paymentHash}) async {
     _paying.remove(orderId);

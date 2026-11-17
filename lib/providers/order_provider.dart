@@ -3965,6 +3965,14 @@ class OrderProvider with ChangeNotifier {
         broLog('[republishInvoice] RECUSADO: signatário não é o provedor da ordem (provider-only)');
         return false;
       }
+      // v820d: perdedor de corrida não republica invoice. O app do perdedor
+      // pode se auto-atribuir providerId — e um refresh dele vira ruído na
+      // hora do pagamento (caso 98bc3e84, 17/11: perdedor republicou invoice
+      // 1h40 após perder, 67s antes do comprador confirmar).
+      if (order.metadata?['lostRace'] == true) {
+        broLog('[republishInvoice] RECUSADO: ordem com lostRace — perdedor não publica invoice (v820d)');
+        return false;
+      }
       final userPubkey = order.userPubkey;
       if (userPubkey == null || userPubkey.isEmpty) {
         broLog('[republishInvoice] ordem sem userPubkey');
@@ -4918,6 +4926,10 @@ class OrderProvider with ChangeNotifier {
         if (order.status != 'liquidated' && order.status != 'awaiting_confirmation') return false;
         final providerId = order.providerId ?? order.metadata?['providerId'] ?? order.metadata?['provider_id'] ?? '';
         if (providerId != _currentUserPubkey) return false;
+        // v820d: perdedor de corrida NÃO renova invoice — o refresh do
+        // perdedor é ruído venenoso na frente do comprador (caso 98bc3e84,
+        // 17/11: perdedor republicou invoice 1h40 após perder a corrida).
+        if (order.metadata?['lostRace'] == true) return false;
         // v517: Allow re-refresh every 30min instead of 2h. If the first refreshed
         // invoice also fails (buyer kept timing out), next sync will publish a new one.
         final refreshedAtStr = order.metadata?['invoiceRefreshedAt']?.toString();

@@ -2003,6 +2003,37 @@ class NostrOrderService {
     };
   }
 
+  /// v820b: extrai o userPubkey do evento 30078 da ordem (o content do
+  /// evento de criação sempre carrega o dono). Usado quando a cópia local da
+  /// ordem veio do snapshot API (R5b) com userPubkey '' — sem ele o complete
+  /// sairia com prova em plaintext e #p vazio. Retorna null se não achar
+  /// (fail-open, chamador decide o fallback).
+  Future<String?> _fetchUserPubkeyFromOrderEvent(String orderId) async {
+    final allRelays = <String>[..._relays, ..._fallbackRelays];
+    final results = await Future.wait(
+      allRelays.map((relay) => _fetchFromRelay(
+        relay,
+        kinds: [kindBroOrder],
+        tags: {'#d': [orderId]},
+        limit: 5,
+      ).timeout(const Duration(seconds: 5), onTimeout: () => <Map<String, dynamic>>[])
+       .catchError((_) => <Map<String, dynamic>>[])),
+    );
+    final hex64 = RegExp(r'^[0-9a-f]{64}$');
+    for (final events in results) {
+      for (final event in events) {
+        try {
+          final content = event['parsedContent'] ?? jsonDecode(event['content']);
+          if (content['orderId'] != orderId) continue;
+          if (content['type'] != 'bro_order') continue;
+          final pk = content['userPubkey'] as String?;
+          if (pk != null && hex64.hasMatch(pk)) return pk;
+        } catch (_) {}
+      }
+    }
+    return null;
+  }
+
   /// v133: Publica invoice refresh para ordem liquidada (provider side)
   /// Usa d-tag diferente para não sobrescrever o evento bro_complete original
   Future<bool> publishInvoiceRefresh({
@@ -2266,17 +2297,35 @@ class NostrOrderService {
       }
 
       final keychain = Keychain(providerPrivateKey);
-      
+
+      // v820b: ordem API-sourced (R5b) chega com userPubkey '' — sem ele o
+      // NIP-44 falha e a prova sai em PLAINTEXT num relay público (privacidade)
+      // e com #p vazio (invisível pra builds antigos). O 30078 original no
+      // relay TEM o userPubkey no content — resolver antes de criptografar.
+      // Fail-open: se não achar, segue o fluxo anterior (nunca bloquear o
+      // complete por causa de relay).
+      var effectiveUserPubkey = order.userPubkey;
+      if (effectiveUserPubkey == null || effectiveUserPubkey.isEmpty) {
+        try {
+          final fetched = await _fetchUserPubkeyFromOrderEvent(order.id)
+              .timeout(const Duration(seconds: 6), onTimeout: () => null);
+          if (fetched != null && fetched.isNotEmpty) {
+            effectiveUserPubkey = fetched;
+            broLog('🔑 v820b: userPubkey resolvido do 30078 (${fetched.substring(0, 8)}...) — prova vai cifrada e endereçada');
+          }
+        } catch (_) {}
+      }
+
       // Criptografar comprovante para: usuário, admin E provedor (self)
       String? encryptedProofImage;
       String? encryptedProofImageAdmin;
       String? encryptedProofImageProvider;
       try {
-        if (order.userPubkey != null && order.userPubkey!.isNotEmpty) {
+        if (effectiveUserPubkey != null && effectiveUserPubkey.isNotEmpty) {
           encryptedProofImage = _nip44.encryptBetween(
             proofImageBase64,
             keychain.private,
-            order.userPubkey!,
+            effectiveUserPubkey,
           );
           broLog('🔐 proofImage criptografado com NIP-44 para usuário (${encryptedProofImage.length} chars)');
         }
@@ -2305,8 +2354,8 @@ class NostrOrderService {
         'orderId': order.id,
         'orderEventId': order.eventId,
         'providerId': keychain.public,
-        'userPubkey': order.userPubkey ?? '', // v512: Include for watchtower routing
-        'recipientPubkey': order.userPubkey, // Para quem é destinado
+        'userPubkey': effectiveUserPubkey ?? '', // v512: Include for watchtower routing
+        'recipientPubkey': effectiveUserPubkey, // Para quem é destinado
         'completedAt': DateTime.now().toIso8601String(),
       };
       
@@ -2338,7 +2387,9 @@ class NostrOrderService {
       // Construir tags - só incluir 'e' se tivermos eventId válido (64 chars hex)
       final tags = [
         ['d', '${order.id}_complete'],
-        ['p', order.userPubkey ?? ''], // Tag do usuário que criou a ordem
+        // v820b: com o userPubkey resolvido, o #p volta a endereçar — além de
+        // privacidade, o complete fica visível até pra builds sem o fetch #d.
+        ['p', effectiveUserPubkey ?? ''], // Tag do usuário que criou a ordem
         ['t', broTag],
         ['t', 'bro-complete'],
         ['orderId', order.id],

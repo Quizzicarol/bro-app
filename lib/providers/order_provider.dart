@@ -6212,13 +6212,29 @@ class OrderProvider with ChangeNotifier {
       await _autoPayLiquidatedOrders();
       
       // Auto-pagamento em background do reembolso de disputa (resolved_provider)
-      await _autoPayDisputeReimbursements();
+      // v817: cada seção de manutenção em seu próprio try — um relay morto
+      // (socket que não responde, ex.: apexcord fora 17/11) NUNCA mais mata
+      // nem pendura o sync inteiro (o sync morria aqui e os status — incluindo
+      // aceites — não aplicavam: ordem presa em "aguardando Bro", 906b67c1).
+      try {
+        await _autoPayDisputeReimbursements();
+      } catch (e) {
+        broLog('⚠️ sync: _autoPayDisputeReimbursements falhou (não bloqueia): $e');
+      }
 
       // v801: auto-pagamento do VENCEDOR pós-resolução (sem botão)
-      await _autoPayDisputeWinners();
+      try {
+        await _autoPayDisputeWinners();
+      } catch (e) {
+        broLog('⚠️ sync: _autoPayDisputeWinners falhou (não bloqueia): $e');
+      }
       
       // v680: Auto-pagamento de cobranças de mediação do admin (resoluções)
-      await _autoPayMediationCharges();
+      try {
+        await _autoPayMediationCharges();
+      } catch (e) {
+        broLog('⚠️ sync: _autoPayMediationCharges falhou (não bloqueia): $e');
+      }
       
       // v699: marcar corridas perdidas (tira ordem fantasma das Minhas)
       _markLostRaces();

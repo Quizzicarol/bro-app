@@ -1025,7 +1025,7 @@ class NostrOrderService {
               sortKey = ((aaTs - createdAt).abs() > 300) ? createdAt : aaTs;
             }
           }
-          accepts.add({'pubkey': pubkey, 'created_at': sortKey});
+          accepts.add({'pubkey': pubkey, 'created_at': sortKey, 'relay_ts': createdAt});
         } catch (_) {}
       }
     }
@@ -1034,12 +1034,17 @@ class NostrOrderService {
     // ordem (R3: aceite expirou 1h, dono republicou como pending). O aceite
     // velho fica nos relays para sempre e envenenava v697/v802/v575/v438/v725.
     // Aceite GENUÍNO é mais novo que qualquer republicação 'pending' → intacto.
+    // Mantém se QUALQUER timestamp passar do corte: o sortKey pode ser
+    // acceptedAt (relógio do device) — o relay_ts (created_at do evento,
+    // horário do relay) protege o aceite genuíno de device com relógio atrasado.
     try {
       final republishTs = await fetchLatestRepublishTimestamp(orderId);
       if (republishTs != null) {
+        final cutoff = republishTs - _republishGraceSeconds;
         final before = accepts.length;
         accepts.removeWhere((e) =>
-          (e['created_at'] as int) < republishTs - _republishGraceSeconds);
+          (e['created_at'] as int) < cutoff &&
+          ((e['relay_ts'] as int?) ?? (e['created_at'] as int)) < cutoff);
         if (accepts.length < before) {
           broLog('v819: ${before - accepts.length} aceite(s) anterior(es) à republicação de ${orderId.substring(0, 8)} ignorado(s)');
         }
@@ -1084,19 +1089,23 @@ class NostrOrderService {
               ts = ((aaTs - ts).abs() > 300) ? ts : aaTs;
             }
           }
-          out.add({'pubkey': pk, 'acceptedAt': ts});
+          out.add({'pubkey': pk, 'acceptedAt': ts, 'relay_ts': event['created_at'] as int? ?? ts});
         } catch (_) {}
       }
     }
     out.sort((a, b) => (a['acceptedAt'] as int).compareTo(b['acceptedAt'] as int));
     // v819: mesmo filtro de aceites anteriores à republicação (R3) — o caller
     // (janela de propagação v702) não pode considerar o aceite expirado.
+    // Mantém se QUALQUER timestamp passar do corte (relay_ts protege aceite
+    // genuíno de device com relógio atrasado — ver v819 em fetchAllAcceptsForOrder).
     try {
       final republishTs = await fetchLatestRepublishTimestamp(orderId);
       if (republishTs != null) {
+        final cutoff = republishTs - _republishGraceSeconds;
         final before = out.length;
         out.removeWhere((e) =>
-          (e['acceptedAt'] as int) < republishTs - _republishGraceSeconds);
+          (e['acceptedAt'] as int) < cutoff &&
+          ((e['relay_ts'] as int?) ?? (e['acceptedAt'] as int)) < cutoff);
         if (out.length < before) {
           broLog('v819: ${before - out.length} aceite(s) anterior(es) à republicação de ${orderId.substring(0, 8)} ignorado(s) (com timestamps)');
         }
@@ -6513,12 +6522,12 @@ class NostrOrderService {
                 if (accParsed != null) ts = (accParsed.millisecondsSinceEpoch / 1000).round();
                 final providerId = content['providerId'] as String?;
                 if (providerId != null && providerId.isNotEmpty) {
-                  candidates.add({'pubkey': providerId, 'created_at': ts});
+                  candidates.add({'pubkey': providerId, 'created_at': ts, 'relay_ts': event['created_at'] as int? ?? ts});
                   continue;
                 }
                 final eventPubkey = event['pubkey'] as String?;
                 if (eventPubkey != null && eventPubkey.isNotEmpty) {
-                  candidates.add({'pubkey': eventPubkey, 'created_at': ts});
+                  candidates.add({'pubkey': eventPubkey, 'created_at': ts, 'relay_ts': event['created_at'] as int? ?? ts});
                 }
               }
             } catch (_) {}
@@ -6528,13 +6537,17 @@ class NostrOrderService {
 
       // v819: descartar candidatos ANTERIORES à última republicação que reabriu
       // a ordem (R3) — o aceite expirado não pode mais ser "canônico" nos
-      // pré/pós-checks do aceite (v802/v575/v804).
+      // pré/pós-checks do aceite (v802/v575/v804). Mantém se QUALQUER timestamp
+      // passar do corte (relay_ts protege aceite genuíno de device com
+      // relógio atrasado — ver v819 em fetchAllAcceptsForOrder).
       try {
         final republishTs = await fetchLatestRepublishTimestamp(orderId, perRelayTimeout: perRelayTimeout);
         if (republishTs != null) {
+          final cutoff = republishTs - _republishGraceSeconds;
           final before = candidates.length;
           candidates.removeWhere((c) =>
-            (c['created_at'] as int) < republishTs - _republishGraceSeconds);
+            (c['created_at'] as int) < cutoff &&
+            ((c['relay_ts'] as int?) ?? (c['created_at'] as int)) < cutoff);
           if (candidates.length < before) {
             broLog('v819: ${before - candidates.length} aceite(s) anterior(es) à republicação de ${orderId.substring(0, 8)} ignorado(s) (providerPubkey)');
           }

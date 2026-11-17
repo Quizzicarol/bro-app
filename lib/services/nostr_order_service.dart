@@ -5486,9 +5486,14 @@ class NostrOrderService {
       // legado. READ-ONLY: isto só LÊ o relay — não publica nada, não dispara
       // pagamento (re-resolver republicaria resolved_provider e o autopay
       // v801 pagaria de novo — por isso o conserto é na LEITURA).
+      // v815b: o #r TAMBÉM varia — builds antigos gravavam o PREFIXO de 8 chars
+      // em vez do UUID completo. Tentar os dois, senão a resolução velha
+      // continua invisível (a de outubro sobreviveu ao v815 por isso).
+      final rTags = <String>[orderId];
+      if (orderId.length > 8) rTags.add(orderId.substring(0, 8));
       final filter = {
         'kinds': [1],
-        '#r': [orderId],
+        '#r': rTags,
         'limit': 5,
       };
       

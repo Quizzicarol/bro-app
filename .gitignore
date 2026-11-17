@@ -149,3 +149,6 @@ tools/*.exe
 
 # gitleaks binary + docs (local tooling, not repo content)
 tools/
+
+# doc operacional interno - so local, nunca publico (pedido da dona do produto 17/11)
+docs/internal/GUIA_OPERACAO_AGENTES.md

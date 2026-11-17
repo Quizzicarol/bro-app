@@ -2425,11 +2425,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       final res = await NostrOrderService().fetchProofFromRelay(widget.orderId)
           .timeout(const Duration(seconds: 15), onTimeout: () => null);
       if (res == null) return;
-      final plain = Nip44Service().decryptBetween(
-        res['proofImage_nip44']!,
-        privateKey,
-        res['senderPubkey']!,
-      );
+      // v820a: prova plaintext (fallback do provedor em ordem API-sourced)
+      // nao passa por descriptografia — ja e a imagem em base64.
+      final plainFromRelay = res['proofImage_plain'];
+      final plain = (plainFromRelay != null && plainFromRelay.isNotEmpty)
+          ? plainFromRelay
+          : Nip44Service().decryptBetween(
+              res['proofImage_nip44']!,
+              privateKey,
+              res['senderPubkey']!,
+            );
       if (plain.isNotEmpty && !plain.startsWith('[encrypted:')) {
         await orderProvider.cacheProofImage(widget.orderId, plain);
         broLog('✅ v696: prova recuperada direto dos relays');

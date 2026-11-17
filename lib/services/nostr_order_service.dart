@@ -1899,7 +1899,18 @@ class NostrOrderService {
               if (content['type'] != 'bro_complete') continue;
               if (content['orderId'] != orderId) continue;
               final enc = content['proofImage_nip44'] as String?;
-              if (enc == null || enc.isEmpty) continue;
+              // v820a: prova PLAINTEXT tambem e prova. O fallback de
+              // criptografia do provedor (ordem API-sourced com userPubkey
+              // vazio -> NIP-44 falha) publica proofImage sem nip44, e o
+              // filtro nip44-only deixava essa prova invisivel justo no
+              // fetch de ultimo recurso (caso 27c916e7, 17/11: comprovante
+              // no relay, app cego, disputa aberta sem necessidade).
+              final plainProof = content['proofImage'] as String?;
+              final hasEnc = enc != null && enc.isNotEmpty;
+              final hasPlain = plainProof != null &&
+                  plainProof.isNotEmpty &&
+                  !plainProof.startsWith('[encrypted:');
+              if (!hasEnc && !hasPlain) continue;
               final ts = event['created_at'] as int? ?? 0;
               if (ts >= bestTs) {
                 bestTs = ts;
@@ -1923,8 +1934,17 @@ class NostrOrderService {
         for (final ev in results) {
           if (ev == null) continue;
           final content = ev['parsedContent'] ?? jsonDecode(ev['content']);
+          final encOut = content['proofImage_nip44'] as String?;
+          final plainOut = content['proofImage'] as String?;
           return {
-            'proofImage_nip44': content['proofImage_nip44'] as String,
+            if (encOut != null && encOut.isNotEmpty)
+              'proofImage_nip44': encOut,
+            // v820a: plaintext quando nao ha nip44 (ver filtro acima)
+            if ((encOut == null || encOut.isEmpty) &&
+                plainOut != null &&
+                plainOut.isNotEmpty &&
+                !plainOut.startsWith('[encrypted:'))
+              'proofImage_plain': plainOut,
             'senderPubkey': ev['pubkey'] as String,
             if (distinctSenders.length > 1) 'conflict': distinctSenders.join(','),
             if (content['providerInvoice'] != null)

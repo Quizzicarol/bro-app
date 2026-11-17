@@ -5750,10 +5750,16 @@ class OrderProvider with ChangeNotifier {
               // (accepted providerId=si) roubava a referência local e o
               // complete do pagador real virava órfão (incidente ac6ae697,
               // 16/11 — travada em "Bro encontrado" com prova no relay).
+              // v815b: PRIMEIRO PREENCHIMENTO sempre autorizado (providerId
+              // vazio ← aceite) — sem isso a ordem nunca avançava pra
+              // "aguardando Bro" (regressão minha do v812, pega pela Carol:
+              // "antes mudava sozinha, não importa o tempo").
               final author = update['eventAuthorPubkey'] as String?;
               final hasProof = update['proofImage'] != null || update['proofImage_nip44'] != null;
               final isTerminal = newStatus == 'completed' || newStatus == 'cancelled' || newStatus == 'liquidated';
-              final authoritative = hasProof ||
+              final isFirstFill = existing.providerId == null || existing.providerId!.isEmpty;
+              final authoritative = isFirstFill ||
+                  hasProof ||
                   (author != null && author == existing.userPubkey) ||
                   (author != null && author == existing.providerId) ||
                   isTerminal;
@@ -6052,13 +6058,29 @@ class OrderProvider with ChangeNotifier {
       await _autoPayLiquidatedOrders();
       
       // Auto-pagamento em background do reembolso de disputa (resolved_provider)
-      await _autoPayDisputeReimbursements();
+      // v817: cada seção de manutenção em seu próprio try — um relay morto
+      // (socket que não responde, ex.: apexcord fora 17/11) NUNCA mais mata
+      // nem pendura o sync inteiro (o sync morria aqui e os status — incluindo
+      // aceites — não aplicavam: ordem presa em "aguardando Bro", 906b67c1).
+      try {
+        await _autoPayDisputeReimbursements();
+      } catch (e) {
+        broLog('⚠️ sync: _autoPayDisputeReimbursements falhou (não bloqueia): $e');
+      }
 
       // v801: auto-pagamento do VENCEDOR pós-resolução (sem botão)
-      await _autoPayDisputeWinners();
+      try {
+        await _autoPayDisputeWinners();
+      } catch (e) {
+        broLog('⚠️ sync: _autoPayDisputeWinners falhou (não bloqueia): $e');
+      }
       
       // v680: Auto-pagamento de cobranças de mediação do admin (resoluções)
-      await _autoPayMediationCharges();
+      try {
+        await _autoPayMediationCharges();
+      } catch (e) {
+        broLog('⚠️ sync: _autoPayMediationCharges falhou (não bloqueia): $e');
+      }
       
       // v699: marcar corridas perdidas (tira ordem fantasma das Minhas)
       _markLostRaces();

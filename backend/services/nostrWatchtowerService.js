@@ -1062,6 +1062,29 @@ class NostrWatchtowerService {
             console.log(`⚠️ [Watchtower] Order ${shortId} completed but no userPubkey found (content: ${content.userPubkey || 'empty'}, recipient: ${content.recipientPubkey || 'empty'}, cache: ${this._orderUsers.has(orderId) ? 'hit' : 'miss'})`);
           }
 
+          // v818: push 'proof_ready' pro COMPRADOR — o complete chegou COM prova
+          // (proofImage/proofImage_nip44; o campo pode ser o marcador
+          // '[encrypted:nip44v2]', o que importa é a presença). O app dele
+          // acorda e busca na hora em vez de esperar o próximo ciclo de sync
+          // (~25s com relay engasgado). Mesmo padrão do billcode_ready (v742).
+          // Dedup 24h por pubkey+orderId+subtype no _sendPush = 1x por ordem.
+          const hasProof = (typeof content.proofImage_nip44 === 'string' && content.proofImage_nip44.length > 0) ||
+              (typeof content.proofImage === 'string' && content.proofImage.length > 0);
+          if (hasProof && isValidPubkey(userPubkeyC) && userPubkeyC !== senderPubkey) {
+            try {
+              await this._sendPush(userPubkeyC, {
+                type: 'order_update',
+                subtype: 'proof_ready',
+                order_id: orderId,
+              }, {
+                title: '📸 Bro: comprovante chegou!',
+                body: `Ordem ${orderId.substring(0, 8)}: abra o app para conferir o comprovante e liberar o pagamento.`,
+              });
+            } catch (e) {
+              console.error(`⚠️ [Watchtower] push proof_ready falhou: ${e.message}`);
+            }
+          }
+
           // R5c: primeiro complete também fecha a corrida (ordem sem billcode
           // roteado — ex. fluxo alternativo). Perdedores ficam sabendo.
           await this._notifyRaceLosers(orderId, senderPubkey);

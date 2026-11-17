@@ -3879,6 +3879,19 @@ class NostrOrderService {
                 .catchError((_) => <Map<String, dynamic>>[]),
             );
           }
+          // v815d: ACEITES por #d — o IRMÃO do bug do complete (prova na ordem
+          // e752ad89, 17/11): aceite publicado de ordem API-sourced sai com
+          // #p VAZIO → a estratégia 1 (#p=eu) perde o aceite → a ordem fica
+          // presa em "aguardando Bro" mesmo aceita (o push chega, o status
+          // não anda). #d={id}_accept é indexado e não depende de #p.
+          for (var i = 0; i < ids.length; i += 15) {
+            final batchA = ids.sublist(i, i + 15 > ids.length ? ids.length : i)
+                .map((id) => '${id}_accept').toList();
+            strategies.add(
+              _fetchFromRelay(relay, kinds: [kindBroAccept], tags: {'#d': batchA}, limit: 50)
+                .catchError((_) => <Map<String, dynamic>>[]),
+            );
+          }
         }
         final results = await Future.wait(strategies);
         final combined = <Map<String, dynamic>>[];

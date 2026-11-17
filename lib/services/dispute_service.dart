@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import '../config.dart';
 import 'storage_service.dart';
 import 'relay_service.dart';
+import 'nostr_order_service.dart'; // v815d: sweep lê resoluções do relay (read-only)
 
 /// Modelo de Disputa
 class Dispute {
@@ -379,5 +380,42 @@ class DisputeService {
       d.orderId == orderId && 
       (d.status == 'open' || d.status == 'in_review')
     );
+  }
+
+  /// v815d: FAXINA DE FANTASMAS (Carol, 16/11: disputa de outubro + setembro
+  /// presas na tela de admin). Disputa aberta há >30 dias:
+  /// (a) relay TEM resolução (mesmo de build velha — v815b cobre #r prefixo)
+  ///     → aplica o status da resolução localmente;
+  /// (b) relay NÃO tem rastro nenhum → cancelada LOCALMENTE (a janela de
+  ///     evidência NIP-40 é 30d; sem evidência não há disputa aberta real).
+  /// READ-ONLY para o relay: NADA é publicado, NADA dispara pagamento — é só
+  /// a tela de admin refletindo a verdade (pedido explícito da Carol).
+  /// Retorna quantas foram varridas.
+  Future<int> sweepStaleOpenDisputes() async {
+    final cutoff = DateTime.now().subtract(const Duration(days: 30));
+    int swept = 0;
+    final stale = _disputes.where((d) =>
+        (d.status == 'open' || d.status == 'in_review') &&
+        d.createdAt.isBefore(cutoff)).toList();
+    for (final d in stale) {
+      try {
+        final res = await NostrOrderService().fetchDisputeResolution(d.orderId)
+            .timeout(const Duration(seconds: 8), onTimeout: () => null);
+        if (res != null) {
+          final tag = res['resolution'] as String? ?? 'cancelled';
+          final mapped = (tag == 'resolved_provider' || tag == 'resolved_user') ? tag : 'cancelled';
+          await updateDisputeStatus(d.id, mapped, mediatorNotes: 'v815d: resolução recuperada do relay');
+          broLog('🧹 v815d: fantasma ${d.orderId.substring(0, 8)} resolvido via relay ($mapped)');
+          swept++;
+          continue;
+        }
+      } catch (_) {}
+      // Sem rastro no relay → expirar localmente (fantasma de reinstall).
+      await updateDisputeStatus(d.id, 'cancelled',
+          mediatorNotes: 'v815d: disputa >30d sem evidência no relay — expirada localmente');
+      broLog('🧹 v815d: fantasma ${d.orderId.substring(0, 8)} expirado (sem rastro no relay, >30d)');
+      swept++;
+    }
+    return swept;
   }
 }

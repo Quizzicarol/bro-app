@@ -120,6 +120,13 @@ class _PlatformAdminScreenState extends State<PlatformAdminScreen> {
       
       // Carregar disputas locais
       await _disputeService.initialize();
+      // v815d: faxina de fantasmas ANTES de ler as listas — disputa aberta
+      // >30d com resolução no relay (ou sem rastro nenhum) sai das abertas.
+      // Read-only: não publica nada. (Carol, 16/11: outubro+setembro presas.)
+      try {
+        final swept = await _disputeService.sweepStaleOpenDisputes();
+        if (swept > 0) broLog('🧹 Admin: $swept disputa(s) fantasma varrida(s)');
+      } catch (_) {}
       final openDisputes = _disputeService.getOpenDisputes();
       final allDisputes = _disputeService.getAllDisputes();
       

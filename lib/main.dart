@@ -750,6 +750,13 @@ class BroApp extends StatelessWidget {
               broLog('[RT] race_lost push — sync imediato (corrida perdida)');
               orderProvider.syncOrdersFromNostr(force: true);
             }
+            // v818: proof_ready — o watchtower viu o complete COM prova nos
+            // relays. Sync imediato pra baixar/decifrar o comprovante na hora
+            // em vez de esperar o próximo ciclo (~25s com relay engasgado).
+            if (subtype == 'proof_ready') {
+              broLog('[RT] proof_ready push — sync imediato (comprovante pronto)');
+              orderProvider.syncOrdersFromNostr(force: true);
+            }
           };
           
           // Callback para pagamentos RECEBIDOS (menos comum no fluxo atual)

@@ -111,6 +111,13 @@ class OrderProvider with ChangeNotifier {
   // ProviderPaymentGuard + disputeProviderPaid). Setado pelo main.dart.
   Future<bool> Function(String orderId, Order order)? onAutoPayDisputeWinner;
 
+  // v820f: Callback para reconciliar pagamento de ordem 'completed' SEM
+  // evidência de envio liquidado ao provedor — o "completed sem pagamento"
+  // (falso-positivo do guarda anti double-pay) deixava o provedor que
+  // trabalhou sem receber pra sempre (caso 98bc3e84, 17/11). Setado pelo
+  // main.dart (precisa da carteira). Idempotente: evidência settled → só marca.
+  Future<bool> Function(String orderId, Order order)? onReconcileProviderPayment;
+
   // v133: Callback para gerar invoice Lightning (provider side)
   // Usado para renovar invoices expirados em ordens liquidadas
   Future<String?> Function(int amountSats, String orderId)? onGenerateProviderInvoice;
@@ -4116,6 +4123,14 @@ class OrderProvider with ChangeNotifier {
         broLog('[republishInvoice] RECUSADO: signatário não é o provedor da ordem (provider-only)');
         return false;
       }
+      // v820d: perdedor de corrida não republica invoice. O app do perdedor
+      // pode se auto-atribuir providerId — e um refresh dele vira ruído na
+      // hora do pagamento (caso 98bc3e84, 17/11: perdedor republicou invoice
+      // 1h40 após perder, 67s antes do comprador confirmar).
+      if (order.metadata?['lostRace'] == true) {
+        broLog('[republishInvoice] RECUSADO: ordem com lostRace — perdedor não publica invoice (v820d)');
+        return false;
+      }
       final userPubkey = order.userPubkey;
       if (userPubkey == null || userPubkey.isEmpty) {
         broLog('[republishInvoice] ordem sem userPubkey');
@@ -4920,6 +4935,95 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
+  /// v820f: candidatas à reconciliação de pagamento ao provedor — 'completed'
+  /// minhas, sem marca de pagamento, dentro da janela de 5 dias (mesmo padrão
+  /// v622 das taxas: limita dupla cobrança se o tracking local se perdeu numa
+  /// reinstalação), fora do cooldown de 10min entre tentativas. Extraído p/ teste.
+  List<Order> _computeReconcilePayCandidates() {
+    final now = DateTime.now();
+    final windowStart = now.subtract(const Duration(days: 5));
+    return _orders.where((order) {
+      if (order.status != 'completed') return false;
+      if (order.userPubkey != _currentUserPubkey) return false;
+      final meta = order.metadata ?? const <String, dynamic>{};
+      // Já confirmada como paga por outro fluxo
+      if (meta['providerPaidAt'] != null) return false;
+      // Resolvidas por disputa têm pagadores próprios (winner/reimbursement)
+      if (meta['wasDisputed'] == true) return false;
+      // Janela de 5 dias (âncora: completedAt → proofReceivedAt → createdAt)
+      final anchorStr = meta['completedAt']?.toString() ??
+          meta['proofReceivedAt']?.toString() ??
+          order.createdAt.toIso8601String();
+      final anchor = DateTime.tryParse(anchorStr) ?? order.createdAt;
+      if (anchor.isBefore(windowStart)) return false;
+      // Cooldown de 10 min entre tentativas (não martelar a carteira/relays)
+      final lastStr = meta['reconcilePaymentLastAttempt']?.toString();
+      if (lastStr != null) {
+        final last = DateTime.tryParse(lastStr);
+        if (last != null && now.difference(last).inMinutes < 10) return false;
+      }
+      return true;
+    }).toList();
+  }
+
+  @visibleForTesting
+  List<String> debugComputeReconcilePayCandidatesForV820f() =>
+      _computeReconcilePayCandidates().map((o) => o.id).toList();
+
+  /// v820f: reconciliação de pagamento ao provedor em ordens CONCLUÍDAS.
+  /// A regra que a dona pediu: completou mas NÃO há evidência de envio
+  /// liquidado na carteira → o pagamento acontece aqui, com as mesmas travas
+  /// dos outros autopays (invoice de quem PROVOU — v723, teto de valor,
+  /// anti double-pay com evidência — v820e). Máx 3 por passe.
+  bool _isReconcilingCompletedUnpaid = false;
+  Future<void> _reconcileCompletedUnpaidOrders() async {
+    if (onReconcileProviderPayment == null) return;
+    if (_isReconcilingCompletedUnpaid) return;
+    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return;
+
+    _isReconcilingCompletedUnpaid = true;
+    try {
+      final candidates = _computeReconcilePayCandidates();
+      if (candidates.isEmpty) return;
+      final batch = candidates.take(3).toList();
+      final now = DateTime.now();
+      broLog('[ReconcilePay] ${batch.length} ordem(ns) completed a verificar pagamento (${candidates.length} candidatas)');
+
+      for (final order in batch) {
+        final idx = _orders.indexWhere((o) => o.id == order.id);
+        if (idx != -1) {
+          _orders[idx] = _orders[idx].copyWith(metadata: {
+            ...?_orders[idx].metadata,
+            'reconcilePaymentLastAttempt': now.toIso8601String(),
+          });
+        }
+        try {
+          final success = await onReconcileProviderPayment!(order.id, order);
+          if (success) {
+            final i2 = _orders.indexWhere((o) => o.id == order.id);
+            if (i2 != -1) {
+              _orders[i2] = _orders[i2].copyWith(metadata: {
+                ...?_orders[i2].metadata,
+                'providerPaidAt': now.toIso8601String(),
+                'providerPaidVia': 'v820f_reconcile',
+              });
+            }
+            broLog('[ReconcilePay] ✅ ${order.id.substring(0, 8)} paga/confirmada na reconciliação');
+          } else {
+            broLog('[ReconcilePay] ⏳ ${order.id.substring(0, 8)} não concluída (tenta no próximo ciclo)');
+          }
+        } catch (e) {
+          broLog('[ReconcilePay] erro na ordem ${order.id.substring(0, 8)}: $e');
+        }
+      }
+      await _saveOrders();
+    } catch (e) {
+      broLog('[ReconcilePay] erro geral: $e');
+    } finally {
+      _isReconcilingCompletedUnpaid = false;
+    }
+  }
+
   // v622: Reconciliação de taxa da plataforma.
   bool _isReconcilingFees = false;
 
@@ -5069,6 +5173,10 @@ class OrderProvider with ChangeNotifier {
         if (order.status != 'liquidated' && order.status != 'awaiting_confirmation') return false;
         final providerId = order.providerId ?? order.metadata?['providerId'] ?? order.metadata?['provider_id'] ?? '';
         if (providerId != _currentUserPubkey) return false;
+        // v820d: perdedor de corrida NÃO renova invoice — o refresh do
+        // perdedor é ruído venenoso na frente do comprador (caso 98bc3e84,
+        // 17/11: perdedor republicou invoice 1h40 após perder a corrida).
+        if (order.metadata?['lostRace'] == true) return false;
         // v517: Allow re-refresh every 30min instead of 2h. If the first refreshed
         // invoice also fails (buyer kept timing out), next sync will publish a new one.
         final refreshedAtStr = order.metadata?['invoiceRefreshedAt']?.toString();
@@ -5663,9 +5771,18 @@ class OrderProvider with ChangeNotifier {
       // pular fetchUserOrders (que abre 9+ WebSocket connections).
       // Novas ordens do usu�rio aparecem via syncAllPendingOrdersFromNostr.
       // S� buscar do Nostr se: sem ordens locais (primeira vez) OU tem ordens ativas.
+      // v820c: o fetch MIRADO (aceites/completes — o que destrava o fluxo)
+      // dispara em PARALELO com a fase pesada abaixo. Antes era sequencial:
+      // fase pesada (13s em PC, 30-60s+ em celular comum) e SÓ DEPOIS o
+      // mirado (~8s). Qualquer interrupção no meio = passe inteiro perdido.
+      final orderUpdatesFutureV820c = _nostrOrderService.fetchOrderUpdatesForUser(
+        _currentUserPubkey!,
+        orderIds: _computeSyncOrderIdsForV809(),
+      );
+
       const terminalOnly = ['completed', 'cancelled', 'liquidated'];
       final hasActiveOrders = _orders.isEmpty || _orders.any((o) => !terminalOnly.contains(o.status));
-      
+
       List<Order> nostrOrders;
       if (hasActiveOrders) {
         nostrOrders = await _nostrOrderService.fetchUserOrders(_currentUserPubkey!);
@@ -5829,19 +5946,9 @@ class OrderProvider with ChangeNotifier {
       // para recuperar status 'completed' ap�?³s reinstala�?§�?£o do app
       // PERFORMANCE v1.0.129+218: Buscar updates APENAS para ordens NAO-TERMINAIS
       // Ordens completed/cancelled/liquidated ja tem status final
-      const terminalStatuses = ['completed', 'cancelled', 'liquidated'];
-      final activeOrders = _orders.where((o) => !terminalStatuses.contains(o.status)).toList();
-      // v809: incluir terminais RECENTES no fetch — o 30081 (comprovante) pode
-      // chegar DEPOIS do 30080 (completed). Se a ordem já terminal for excluída
-      // do orderIds, o filtro do serviço descarta o proof e a ordem fica
-      // "concluída sem comprovante" para sempre (caso 3f49da19). Janela de 48h
-      // cobre reinstalação/sync atrasado; terminais antigas continuam fora
-      // (performance preservada). Lógica extraída p/ _computeSyncOrderIdsForV809.
-      final orderIds = _computeSyncOrderIdsForV809();
-      final orderUpdates = await _nostrOrderService.fetchOrderUpdatesForUser(
-        _currentUserPubkey!,
-        orderIds: orderIds,
-      );
+      // v820c: o fetch mirado já roda desde o topo do sync (paralelo à fase
+      // pesada) — aqui só aguardamos o resultado dele.
+      final orderUpdates = await orderUpdatesFutureV820c;
       
       broLog('ðŸ�??¡ syncOrdersFromNostr: ${orderUpdates.length} updates recebidos');
       int statusUpdated = 0;
@@ -6182,7 +6289,19 @@ class OrderProvider with ChangeNotifier {
       } catch (e) {
         broLog('⚠️ dispute resolution sync exception: $e');
       }
-      
+
+      // v820c: PERSISTIR AGORA — antes da cauda de manutenção (billcode 90s,
+      // repairs, nudges, renovações de invoice...). O sync era tudo-ou-nada:
+      // o save só acontecia no FIM; um passe interrompido na cauda perdia o
+      // status já aplicado e o usuário nunca via o botão destravar (disputa
+      // 27c916e7, 17/11). Aplicou → salvou. A cauda pode morrer à vontade.
+      try {
+        await _saveOnlyUserOrders();
+      } catch (e) {
+        broLog('⚠️ v820c: save cedo falhou (não bloqueia): $e');
+      }
+      _throttledNotify();
+
       // v388: One-time migration of old encrypted billCode to plain text
       await _migrateBillCodeToPlainText();
 
@@ -6235,7 +6354,16 @@ class OrderProvider with ChangeNotifier {
       } catch (e) {
         broLog('⚠️ sync: _autoPayMediationCharges falhou (não bloqueia): $e');
       }
-      
+
+      // v820f: reconciliar ordens 'completed' SEM pagamento liquidado ao
+      // provedor — a ordem nem devia aparecer concluída sem isso; como já
+      // aconteceu (98bc3e84), o pagamento acontece aqui, sozinho.
+      try {
+        await _reconcileCompletedUnpaidOrders();
+      } catch (e) {
+        broLog('⚠️ sync: _reconcileCompletedUnpaidOrders falhou (não bloqueia): $e');
+      }
+
       // v699: marcar corridas perdidas (tira ordem fantasma das Minhas)
       _markLostRaces();
 

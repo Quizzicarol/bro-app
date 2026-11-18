@@ -235,7 +235,15 @@ workflows:
       - name: Install CocoaPods
         script: |
           cd ios
-          pod install
+          # v820g: flake de rede do CDN do CocoaPods (trunk) no builder
+          # Codemagic derrubou o build de 17/11 (18 erros 'Failed sending
+          # data to the peer'). Transitório: 3 tentativas com backoff.
+          for i in 1 2 3; do
+            pod install && break
+            echo "pod install falhou (tentativa $i/3) — aguardando 30s..."
+            sleep 30
+          done
+          test -d Runner.xcworkspace
           
       - name: Set up iOS code signing
         script: xcode-project use-profiles --project ios/Runner.xcodeproj
@@ -354,7 +362,15 @@ workflows:
       - name: Install CocoaPods
         script: |
           cd ios
-          pod install
+          # v820g: flake de rede do CDN do CocoaPods (trunk) no builder
+          # Codemagic derrubou o build de 17/11 (18 erros 'Failed sending
+          # data to the peer'). Transitório: 3 tentativas com backoff.
+          for i in 1 2 3; do
+            pod install && break
+            echo "pod install falhou (tentativa $i/3) — aguardando 30s..."
+            sleep 30
+          done
+          test -d Runner.xcworkspace
 
       - name: Set up iOS code signing
         script: xcode-project use-profiles --project ios/Runner.xcodeproj
@@ -477,7 +493,15 @@ workflows:
       - name: Install CocoaPods
         script: |
           cd ios
-          pod install
+          # v820g: flake de rede do CDN do CocoaPods (trunk) no builder
+          # Codemagic derrubou o build de 17/11 (18 erros 'Failed sending
+          # data to the peer'). Transitório: 3 tentativas com backoff.
+          for i in 1 2 3; do
+            pod install && break
+            echo "pod install falhou (tentativa $i/3) — aguardando 30s..."
+            sleep 30
+          done
+          test -d Runner.xcworkspace
 
       - name: Set up iOS code signing
         script: xcode-project use-profiles --project ios/Runner.xcodeproj
@@ -804,7 +828,15 @@ workflows:
       - name: Install CocoaPods
         script: |
           cd ios
-          pod install
+          # v820g: flake de rede do CDN do CocoaPods (trunk) no builder
+          # Codemagic derrubou o build de 17/11 (18 erros 'Failed sending
+          # data to the peer'). Transitório: 3 tentativas com backoff.
+          for i in 1 2 3; do
+            pod install && break
+            echo "pod install falhou (tentativa $i/3) — aguardando 30s..."
+            sleep 30
+          done
+          test -d Runner.xcworkspace
           
       - name: Generate env.json from CI variables
         script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" > "$CM_BUILD_DIR/env.json"

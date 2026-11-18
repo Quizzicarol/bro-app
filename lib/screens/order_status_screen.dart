@@ -4552,33 +4552,46 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   /// descrição da ordem). Sem evidência, os caminhos de force-complete são
   /// falso-positivo (caso 98bc3e84, 17/11: ordem completed e provedor sem
   /// receber um sat).
-  Future<bool> _hasSettledProviderPayment() async {
+  /// Retorna true = evidência settled EXISTE; false = VERIFICADO que não há;
+  /// null = INCERTEZA (carteira não pronta/fetch falhou) → fail-closed,
+  /// NUNCA limpar flag nem pagar de novo na incerteza (anti double-pay).
+  Future<bool?> _hasSettledProviderPayment() async {
     try {
       final breez = context.read<BreezProvider>();
-      if (!breez.isInitialized) return false;
-      // 1) o hash registrado de uma tentativa anterior liquidou?
+      if (!breez.isInitialized) return null;
       final priorHash = ProviderPaymentGuard.attemptHashFor(widget.orderId);
       if (priorHash != null && priorHash.isNotEmpty) {
         try {
           final st = await breez.checkPaymentStatus(priorHash);
           if (st['paid'] == true) return true;
-        } catch (_) {}
+        } catch (_) {
+          // erro no hash-check → cai pro histórico antes de concluir
+        }
       }
-      // 2) histórico: envio concluído com a descrição desta ordem
       final shortId = widget.orderId.length > 8
           ? widget.orderId.substring(0, 8)
           : widget.orderId;
-      final history = await breez.listPayments()
-          .timeout(const Duration(seconds: 15), onTimeout: () => <Map<String, dynamic>>[]);
+      final List<Map<String, dynamic>> history;
+      try {
+        history = await breez.listPayments()
+            .timeout(const Duration(seconds: 15));
+      } catch (_) {
+        return null; // timeout/erro = incerteza, não ausência
+      }
       return history.any((p) {
         if (p['type'] != 'sent') return false;
         final st = p['status']?.toString().toLowerCase() ?? '';
         if (!st.contains('complete')) return false;
+        if (priorHash != null &&
+            priorHash.isNotEmpty &&
+            p['paymentHash'] == priorHash) {
+          return true;
+        }
         final desc = p['description']?.toString() ?? '';
         return desc.contains(shortId);
       });
     } catch (_) {
-      return false;
+      return null;
     }
   }
 
@@ -4592,15 +4605,19 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     // voltava para awaiting_confirmation permitia um 2º pagamento real ao provedor.
     if (ProviderPaymentGuard.isPaid(widget.orderId)) {
       // v820e: a flag persistida só vale com EVIDÊNCIA de envio liquidado.
-      // Sem ela, a flag é resto de um falso-positivo antigo — limpar e seguir
-      // para o pagamento real em vez de completar sem pagar (caso 98bc3e84:
-      // ordem completed, provedor canônico sem receber).
-      if (await _hasSettledProviderPayment()) {
-        broLog('🛡️ Ordem ${widget.orderId.substring(0, 8)} já teve o provedor PAGO (evidência settled ok) — bloqueando 2º pagamento');
+      // Três saídas: evidência ok → completa sem pagar; INCERTEZA → completa
+      // sem pagar MANTENDO a flag (fail-closed, nunca arriscar 2º pagamento);
+      // verificado que NÃO há envio → limpa a flag obsoleta e segue pro
+      // pagamento real (caso 98bc3e84: completed sem o provedor receber).
+      final evidence = await _hasSettledProviderPayment();
+      if (evidence != false) {
+        broLog(evidence == true
+            ? '🛡️ Ordem ${widget.orderId.substring(0, 8)} já teve o provedor PAGO (evidência settled ok) — bloqueando 2º pagamento'
+            : '🛡️ v820e: evidência não verificável agora — mantendo flag e completando sem pagar (fail-closed)');
         await _forceCompletedNoPayment();
         return;
       }
-      broLog('⚠️ v820e: flag isPaid SEM evidência de envio liquidado — limpando flag obsoleta e seguindo pro pagamento real');
+      broLog('⚠️ v820e: flag isPaid SEM evidência de envio liquidado (verificado) — limpando flag obsoleta e seguindo pro pagamento real');
       await ProviderPaymentGuard.clearPaid(widget.orderId);
       // NÃO retorna — segue o fluxo normal de pagamento abaixo
     }
@@ -5192,7 +5209,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     paymentSuccess = true;
                     break;
                   }
-                  broLog('⚠️ v820e: SDK reportou "já pago" mas o hash NÃO consta liquidado — NÃO tratar como sucesso');
+                  // v820e: "já pago" sem hash liquidado = tentativa PENDENTE
+                  // em voo. NUNCA seguir o loop (a tentativa 2/3 pagaria uma
+                  // invoice NOVA → gasto duplo quando a pendente liquidar).
+                  // Esperar a pendente liquidar; se não, sair sem sucesso.
+                  broLog('⚠️ v820e: SDK reportou "já pago" sem hash liquidado — aguardando a tentativa pendente (não pagar de novo)');
+                  if (await verifyPendingSparkPayment()) {
+                    paymentSuccess = true;
+                  }
+                  break;
                 }
                 if (mayStillSucceed && await verifyPendingSparkPayment()) {
                   paymentSuccess = true;
@@ -5224,7 +5249,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   paymentSuccess = true;
                   break;
                 }
-                broLog('⚠️ v820e: "já pago" (exception) sem hash liquidado — NÃO tratar como sucesso');
+                // v820e: mesma regra do ramo acima — pendente em voo não é
+                // sucesso nem licença pra invoice nova. Esperar e sair.
+                broLog('⚠️ v820e: "já pago" (exception) sem hash liquidado — aguardando pendente (não pagar de novo)');
+                if (await verifyPendingSparkPayment()) {
+                  paymentSuccess = true;
+                }
+                break;
               }
               if ((paymentError.contains('timeout') || paymentError.contains('Timeout')) &&
                   await verifyPendingSparkPayment()) {

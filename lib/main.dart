@@ -1107,12 +1107,61 @@ class BroApp extends StatelessWidget {
           // SEGURANÇA: reusa os mesmos guards do fluxo manual — ProviderPaymentGuard
           // (v634, anti double-spend), validação de invoice (decode, expiry,
           // 0 sats, teto de sanidade) e idempotência via disputeProviderPaid.
+          // v820e: evidência de envio LIQUIDADO na carteira — 3 estados:
+          // true = pagou de verdade; false = verificado que NÃO há envio;
+          // null = incerteza (carteira não pronta/erro) → fail-closed.
+          Future<bool?> verifySettledProviderPayment(String oid) async {
+            try {
+              if (!breezProvider.isInitialized) return null;
+              final priorHash = ProviderPaymentGuard.attemptHashFor(oid);
+              if (priorHash != null && priorHash.isNotEmpty) {
+                try {
+                  final st = await breezProvider.checkPaymentStatus(priorHash);
+                  if (st['paid'] == true) return true;
+                } catch (_) {}
+              }
+              final List<Map<String, dynamic>> history;
+              try {
+                history = await breezProvider.listPayments()
+                    .timeout(const Duration(seconds: 15));
+              } catch (_) {
+                return null;
+              }
+              final shortId = oid.length > 8 ? oid.substring(0, 8) : oid;
+              return history.any((p) {
+                if (p['type'] != 'sent') return false;
+                final st = p['status']?.toString().toLowerCase() ?? '';
+                if (!st.contains('complete')) return false;
+                if (priorHash != null &&
+                    priorHash.isNotEmpty &&
+                    p['paymentHash'] == priorHash) {
+                  return true;
+                }
+                final desc = p['description']?.toString() ?? '';
+                return desc.contains(shortId);
+              });
+            } catch (_) {
+              return null;
+            }
+          }
+
           orderProvider.onAutoPayDisputeWinner = (String orderId, order) async {
             broLog('⚡ [WinnerAutoPay-Main] Pagamento do provedor pós-resolução para ${orderId.substring(0, 8)}');
             // 🛡️ v634: se o provedor já foi pago (qualquer fluxo), NÃO pagar de novo.
             if (ProviderPaymentGuard.isPaid(orderId)) {
-              broLog('🛡️ [WinnerAutoPay-Main] Ordem ${orderId.substring(0, 8)} já paga — pulando (anti double-spend)');
-              return true;
+              // v820e: a flag precisa de evidência de envio liquidado — o
+              // falso-positivo (tentativa pendente-pra-sempre) bloquearia até
+              // o pagamento pós-mediação (caso 98bc3e84, 17/11). Verificado
+              // que NÃO há envio → limpa a flag e paga. Incerteza → pula
+              // (fail-closed, tenta no próximo sync).
+              final ev = await verifySettledProviderPayment(orderId);
+              if (ev == false) {
+                broLog('⚠️ [WinnerAutoPay-Main] v820e: flag isPaid SEM evidência settled (verificado) — limpando e pagando o vencedor');
+                await ProviderPaymentGuard.clearPaid(orderId);
+              } else {
+                broLog('🛡️ [WinnerAutoPay-Main] Ordem ${orderId.substring(0, 8)} já paga (evidência: ${ev == true ? 'ok' : 'não verificável agora — fail-closed'}) — pulando (anti double-spend)');
+                return true;
+              }
             }
             // Se o admin já reembolsou o provedor, o caminho do dinheiro é o
             // reembolso (onAutoPayDisputeReimbursement) — não pagar 2x.

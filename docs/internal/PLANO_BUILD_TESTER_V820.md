@@ -39,16 +39,19 @@ semântica deles só faz sentido acoplada ao R3 — testar junto com o R3, não 
   pagamentos por causa de relay).
 - Risco: baixo. Teste: complete de ordem API-sourced sai com proofImage_nip44.
 
-### v820c — sync aplica updates por fase (fim do "botão travado")
+### v820c — sync resistente a interrupção (fim do "botão travado")
 - Sintoma real (27c916e7, disputa aberta pelo usuário 17/11): botão de
-  confirmação nunca aparece porque o passe de sync é tudo-ou-nada e leva
+  confirmação nunca aparece porque o passe de sync era tudo-ou-nada e levava
   13-60s+ (scans largos de 500 eventos + relays mortos + ordens gigantes do
-  usuário). Passe interrompido = nada aplicado = status congelado.
-- Fix: aplicar os resultados de `fetchOrderUpdatesForUser` (fase mirada, ~8s,
-  carrega aceites/completes) MESMO se a fase pesada (`fetchUserOrders` +
-  broad scan) ainda não terminou — ou inverter a ordem das fases.
-- Risco: médio (mexe no coração do sync). Mitigação: testes de regressão nos
-  89 atuais + repro forense de ponta a ponta.
+  usuário). Passe interrompido na cauda de manutenção = status aplicado mas
+  PERDIDO (o save só acontecia no fim) = status congelado pra sempre.
+- Fix (como implementado): (1) o fetch mirado (`fetchOrderUpdatesForUser`,
+  ~8s, carrega aceites/completes) dispara em PARALELO com a fase pesada —
+  wall time cai de 21s+ para ~13s; (2) save+notify logo após o loop de
+  aplicação, ANTES da cauda de manutenção (billcode 90s, repairs, nudges) —
+  aplicou → persistiu, a cauda pode morrer à vontade.
+- Risco: médio (mexe no coração do sync). Mitigação: suíte 89/89 verde +
+  repro forense de ponta a ponta.
 
 ### v820d — perdedor de corrida para de agir
 - Sintoma real (98bc3e84, 17/11): o perdedor (fe533154) publicou

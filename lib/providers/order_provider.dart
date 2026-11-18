@@ -5524,9 +5524,18 @@ class OrderProvider with ChangeNotifier {
       // pular fetchUserOrders (que abre 9+ WebSocket connections).
       // Novas ordens do usu�rio aparecem via syncAllPendingOrdersFromNostr.
       // S� buscar do Nostr se: sem ordens locais (primeira vez) OU tem ordens ativas.
+      // v820c: o fetch MIRADO (aceites/completes — o que destrava o fluxo)
+      // dispara em PARALELO com a fase pesada abaixo. Antes era sequencial:
+      // fase pesada (13s em PC, 30-60s+ em celular comum) e SÓ DEPOIS o
+      // mirado (~8s). Qualquer interrupção no meio = passe inteiro perdido.
+      final orderUpdatesFutureV820c = _nostrOrderService.fetchOrderUpdatesForUser(
+        _currentUserPubkey!,
+        orderIds: _computeSyncOrderIdsForV809(),
+      );
+
       const terminalOnly = ['completed', 'cancelled', 'liquidated'];
       final hasActiveOrders = _orders.isEmpty || _orders.any((o) => !terminalOnly.contains(o.status));
-      
+
       List<Order> nostrOrders;
       if (hasActiveOrders) {
         nostrOrders = await _nostrOrderService.fetchUserOrders(_currentUserPubkey!);
@@ -5690,19 +5699,9 @@ class OrderProvider with ChangeNotifier {
       // para recuperar status 'completed' ap�?³s reinstala�?§�?£o do app
       // PERFORMANCE v1.0.129+218: Buscar updates APENAS para ordens NAO-TERMINAIS
       // Ordens completed/cancelled/liquidated ja tem status final
-      const terminalStatuses = ['completed', 'cancelled', 'liquidated'];
-      final activeOrders = _orders.where((o) => !terminalStatuses.contains(o.status)).toList();
-      // v809: incluir terminais RECENTES no fetch — o 30081 (comprovante) pode
-      // chegar DEPOIS do 30080 (completed). Se a ordem já terminal for excluída
-      // do orderIds, o filtro do serviço descarta o proof e a ordem fica
-      // "concluída sem comprovante" para sempre (caso 3f49da19). Janela de 48h
-      // cobre reinstalação/sync atrasado; terminais antigas continuam fora
-      // (performance preservada). Lógica extraída p/ _computeSyncOrderIdsForV809.
-      final orderIds = _computeSyncOrderIdsForV809();
-      final orderUpdates = await _nostrOrderService.fetchOrderUpdatesForUser(
-        _currentUserPubkey!,
-        orderIds: orderIds,
-      );
+      // v820c: o fetch mirado já roda desde o topo do sync (paralelo à fase
+      // pesada) — aqui só aguardamos o resultado dele.
+      final orderUpdates = await orderUpdatesFutureV820c;
       
       broLog('ðŸ�??¡ syncOrdersFromNostr: ${orderUpdates.length} updates recebidos');
       int statusUpdated = 0;
@@ -6043,7 +6042,19 @@ class OrderProvider with ChangeNotifier {
       } catch (e) {
         broLog('⚠️ dispute resolution sync exception: $e');
       }
-      
+
+      // v820c: PERSISTIR AGORA — antes da cauda de manutenção (billcode 90s,
+      // repairs, nudges, renovações de invoice...). O sync era tudo-ou-nada:
+      // o save só acontecia no FIM; um passe interrompido na cauda perdia o
+      // status já aplicado e o usuário nunca via o botão destravar (disputa
+      // 27c916e7, 17/11). Aplicou → salvou. A cauda pode morrer à vontade.
+      try {
+        await _saveOnlyUserOrders();
+      } catch (e) {
+        broLog('⚠️ v820c: save cedo falhou (não bloqueia): $e');
+      }
+      _throttledNotify();
+
       // v388: One-time migration of old encrypted billCode to plain text
       await _migrateBillCodeToPlainText();
 

@@ -3883,7 +3883,13 @@ class OrderProvider with ChangeNotifier {
   /// 'accept_expired' (evidência do aceite NÃO é deletada), notifica via
   /// watchtower e deixa o dono escolher: republicar ou cancelar e sacar.
   /// Modelo: _checkAutoLiquidation (lock de prefs + clock-skew guard).
-  static const acceptExpiryWindow = Duration(hours: 1);
+  /// Knob de teste interno: ACCEPT_EXPIRY_MINUTES no env.json encurta a
+  /// janela (ex.: 2 min) pra testar o ciclo sem esperar 1h. Ausente = 60min,
+  /// comportamento de produção idêntico. (revisar junto com o R3)
+  static const int _acceptExpiryMinutesEnv =
+      int.fromEnvironment('ACCEPT_EXPIRY_MINUTES', defaultValue: 60);
+  static Duration get acceptExpiryWindow =>
+      Duration(minutes: _acceptExpiryMinutesEnv);
 
   Future<void> _checkAcceptExpiry() async {
     if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return;

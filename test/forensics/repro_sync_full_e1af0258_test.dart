@@ -76,5 +76,5 @@ void main() {
         reason: 'se a fase 2 acha o complete com as duas fases em sequência, '
             'o caminho é são e o problema é do aparelho/rede dele');
     expect(u!['status'], 'awaiting_confirmation');
-  }, timeout: const Timeout(Duration(seconds: 180)));
+  }, timeout: const Timeout(Duration(seconds: 180)), skip: 'forense de 17/11: bate em relay REAL e a ordem real já foi resolvida via disputa (status=completed) — não é mais reproduzível. Rodar manual só com nova ordem-âncora.');
 }

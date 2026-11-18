@@ -71,5 +71,5 @@ void main() {
       reason: 'proofImage plaintext (fallback de criptografia) precisa sobreviver até o update',
     );
     expect((u['providerInvoice'] as String?)?.isNotEmpty ?? false, isTrue);
-  }, timeout: const Timeout(Duration(seconds: 90)));
+  }, timeout: const Timeout(Duration(seconds: 90)), skip: 'forense de 17/11: bate em relay REAL e a ordem real já foi concluída — estado de produção mudou, não é mais reproduzível. Rodar manual só com nova ordem-âncora.');
 }

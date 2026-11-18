@@ -1248,9 +1248,21 @@ class BroApp extends StatelessWidget {
                     payError.contains('already paid') ||
                     payError.contains('already settled') ||
                     payError.contains('preimage request already exists')) {
-                  broLog('✅ [WinnerAutoPay-Main] Invoice já pago (AlreadyExists) — sucesso');
-                  await ProviderPaymentGuard.markPaid(orderId);
-                  return true;
+                  // v820e: string 'already paid' só vale com hash LIQUIDADO.
+                  final ev2 = await verifySettledProviderPayment(orderId);
+                  if (ev2 == true) {
+                    broLog('✅ [WinnerAutoPay-Main] Invoice já pago E liquidado (verificado) — sucesso');
+                    await ProviderPaymentGuard.markPaid(orderId);
+                    // v820f: a taxa também sai NESTE ramo — antes retornava
+                    // sucesso SEM enviar a taxa da plataforma.
+                    final amountSats = (order.btcAmount * 100000000).round();
+                    if (AppConfig.isPlatformLightningAddressValid && amountSats > 0) {
+                      await PlatformFeeService.sendPlatformFee(orderId: orderId, totalSats: amountSats);
+                    }
+                    return true;
+                  }
+                  broLog('⚠️ [WinnerAutoPay-Main] "já pago" sem evidência liquidada — próximo sync re-verifica');
+                  return false;
                 }
                 broLog('⚠️ [WinnerAutoPay-Main] Tentativa $attempt falhou: ${payResult?['error']}');
               } catch (e) {
@@ -1258,9 +1270,19 @@ class BroApp extends StatelessWidget {
                 if (errStr.contains('alreadyexists') ||
                     errStr.contains('already paid') ||
                     errStr.contains('preimage request already exists')) {
-                  broLog('✅ [WinnerAutoPay-Main] Invoice já pago (AlreadyExists exception) — sucesso');
-                  await ProviderPaymentGuard.markPaid(orderId);
-                  return true;
+                  // v820e: idem — só com hash LIQUIDADO, e com a taxa (v820f).
+                  final ev2 = await verifySettledProviderPayment(orderId);
+                  if (ev2 == true) {
+                    broLog('✅ [WinnerAutoPay-Main] Invoice já pago E liquidado (exception, verificado)');
+                    await ProviderPaymentGuard.markPaid(orderId);
+                    final amountSats = (order.btcAmount * 100000000).round();
+                    if (AppConfig.isPlatformLightningAddressValid && amountSats > 0) {
+                      await PlatformFeeService.sendPlatformFee(orderId: orderId, totalSats: amountSats);
+                    }
+                    return true;
+                  }
+                  broLog('⚠️ [WinnerAutoPay-Main] "já pago" (exception) sem evidência liquidada — próximo sync re-verifica');
+                  return false;
                 }
                 broLog('⚠️ [WinnerAutoPay-Main] Tentativa $attempt erro: $e');
               }
@@ -1270,6 +1292,109 @@ class BroApp extends StatelessWidget {
             }
             broLog('❌ [WinnerAutoPay-Main] 3 tentativas falharam para ${orderId.substring(0, 8)}');
             return false;
+          };
+
+          // v820f: reconciliação de ordens 'completed' SEM evidência de
+          // pagamento liquidado ao provedor. A regra: completou sem o
+          // provedor receber → paga aqui, sozinho, com todas as travas
+          // (invoice de quem PROVOU — v723; teto de valor; anti double-pay
+          // com evidência — v820e). Caso-âncora: 98bc3e84 (17/11).
+          orderProvider.onReconcileProviderPayment = (String orderId, order) async {
+            broLog('🔎 [ReconcilePay-Main] Verificando pagamento da ordem completed ${orderId.substring(0, 8)}');
+            // 0) Já pago de verdade? Evidência settled encerra sem pagar.
+            final ev = await verifySettledProviderPayment(orderId);
+            if (ev == true) {
+              await ProviderPaymentGuard.markPaid(orderId);
+              broLog('✅ [ReconcilePay-Main] ${orderId.substring(0, 8)} já paga (evidência) — só marcando');
+              return true;
+            }
+            if (ev == null) {
+              broLog('⏳ [ReconcilePay-Main] ${orderId.substring(0, 8)}: evidência não verificável agora — próximo sync');
+              return false;
+            }
+            if (ProviderPaymentGuard.isPaid(orderId)) {
+              // flag sem evidência (verificado) → limpar antes de pagar (v820e)
+              await ProviderPaymentGuard.clearPaid(orderId);
+            }
+            // 1) Invoice de QUEM PROVOU (v723) — nunca de refresh de terceiro
+            String? providerInvoice;
+            try {
+              final proof = await NostrOrderService().fetchProofWithInvoice(orderId)
+                  .timeout(const Duration(seconds: 12), onTimeout: () => null);
+              providerInvoice = proof?['providerInvoice'];
+            } catch (_) {}
+            if (providerInvoice == null || providerInvoice.isEmpty) {
+              providerInvoice = order.metadata?['providerInvoice'] as String?;
+            }
+            if (providerInvoice == null || providerInvoice.isEmpty) {
+              broLog('❌ [ReconcilePay-Main] sem providerInvoice para ${orderId.substring(0, 8)}');
+              return false;
+            }
+            // 2) validação: decode + expiry + teto (mesma classe do WinnerAutoPay)
+            try {
+              if (!breezProvider.isInitialized) return false;
+              final decoded = await breezProvider.decodeInvoice(providerInvoice);
+              if (decoded == null || decoded['success'] != true) {
+                broLog('🚨 [ReconcilePay-Main] falha ao decodificar invoice');
+                return false;
+              }
+              final tsSecs = int.tryParse(decoded['invoice']?['timestamp']?.toString() ?? '0') ?? 0;
+              final expSecs = int.tryParse(decoded['invoice']?['expiry']?.toString() ?? '0') ?? 0;
+              if (tsSecs > 0 && expSecs > 0 &&
+                  DateTime.now().isAfter(DateTime.fromMillisecondsSinceEpoch((tsSecs + expSecs) * 1000))) {
+                broLog('⏳ [ReconcilePay-Main] invoice EXPIRADO — o provedor renova');
+                return false;
+              }
+              final invoiceSats = int.tryParse(decoded['invoice']?['amountSats']?.toString() ?? '0') ?? 0;
+              final baseSats = (order.btcAmount * 100000000).round();
+              final sanityCap = ((baseSats + (baseSats * AppConfig.providerFeePercent).round()) * 2).ceil();
+              if (invoiceSats <= 0 || (sanityCap > 0 && invoiceSats > sanityCap)) {
+                broLog('🚨 [ReconcilePay-Main] invoice fora do teto: $invoiceSats (cap $sanityCap)');
+                return false;
+              }
+              await ProviderPaymentGuard.recordAttempt(
+                orderId,
+                decoded['invoice']?['paymentHash']?.toString(),
+              );
+            } catch (e) {
+              broLog('🚨 [ReconcilePay-Main] erro ao validar invoice: $e');
+              return false;
+            }
+            // 3) pagar (1 tentativa por passe — o cooldown de 10min governa)
+            try {
+              final payResult = await breezProvider.payInvoice(providerInvoice);
+              if (payResult != null && payResult['success'] == true) {
+                await ProviderPaymentGuard.markPaid(orderId);
+                final amountSats = (order.btcAmount * 100000000).round();
+                if (AppConfig.isPlatformLightningAddressValid && amountSats > 0) {
+                  await PlatformFeeService.sendPlatformFee(orderId: orderId, totalSats: amountSats);
+                }
+                broLog('✅ [ReconcilePay-Main] ${orderId.substring(0, 8)} PAGA na reconciliação');
+                return true;
+              }
+              final err = payResult?['error']?.toString().toLowerCase() ?? '';
+              if (err.contains('alreadyexists') ||
+                  err.contains('already paid') ||
+                  err.contains('already settled') ||
+                  err.contains('preimage request already exists')) {
+                // v820e: só vale com evidência liquidada
+                final ev2 = await verifySettledProviderPayment(orderId);
+                if (ev2 == true) {
+                  await ProviderPaymentGuard.markPaid(orderId);
+                  final amountSats = (order.btcAmount * 100000000).round();
+                  if (AppConfig.isPlatformLightningAddressValid && amountSats > 0) {
+                    await PlatformFeeService.sendPlatformFee(orderId: orderId, totalSats: amountSats);
+                  }
+                  return true;
+                }
+                return false; // pendente em voo — o próximo sync re-verifica
+              }
+              broLog('⚠️ [ReconcilePay-Main] pagamento falhou: ${payResult?['error']}');
+              return false;
+            } catch (e) {
+              broLog('⚠️ [ReconcilePay-Main] exceção ao pagar: $e');
+              return false;
+            }
           };
 
           // v133: Callback para gerar invoice Lightning (provider side)

@@ -111,6 +111,13 @@ class OrderProvider with ChangeNotifier {
   // ProviderPaymentGuard + disputeProviderPaid). Setado pelo main.dart.
   Future<bool> Function(String orderId, Order order)? onAutoPayDisputeWinner;
 
+  // v820f: Callback para reconciliar pagamento de ordem 'completed' SEM
+  // evidência de envio liquidado ao provedor — o "completed sem pagamento"
+  // (falso-positivo do guarda anti double-pay) deixava o provedor que
+  // trabalhou sem receber pra sempre (caso 98bc3e84, 17/11). Setado pelo
+  // main.dart (precisa da carteira). Idempotente: evidência settled → só marca.
+  Future<bool> Function(String orderId, Order order)? onReconcileProviderPayment;
+
   // v133: Callback para gerar invoice Lightning (provider side)
   // Usado para renovar invoices expirados em ordens liquidadas
   Future<String?> Function(int amountSats, String orderId)? onGenerateProviderInvoice;
@@ -4777,6 +4784,95 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
+  /// v820f: candidatas à reconciliação de pagamento ao provedor — 'completed'
+  /// minhas, sem marca de pagamento, dentro da janela de 5 dias (mesmo padrão
+  /// v622 das taxas: limita dupla cobrança se o tracking local se perdeu numa
+  /// reinstalação), fora do cooldown de 10min entre tentativas. Extraído p/ teste.
+  List<Order> _computeReconcilePayCandidates() {
+    final now = DateTime.now();
+    final windowStart = now.subtract(const Duration(days: 5));
+    return _orders.where((order) {
+      if (order.status != 'completed') return false;
+      if (order.userPubkey != _currentUserPubkey) return false;
+      final meta = order.metadata ?? const <String, dynamic>{};
+      // Já confirmada como paga por outro fluxo
+      if (meta['providerPaidAt'] != null) return false;
+      // Resolvidas por disputa têm pagadores próprios (winner/reimbursement)
+      if (meta['wasDisputed'] == true) return false;
+      // Janela de 5 dias (âncora: completedAt → proofReceivedAt → createdAt)
+      final anchorStr = meta['completedAt']?.toString() ??
+          meta['proofReceivedAt']?.toString() ??
+          order.createdAt.toIso8601String();
+      final anchor = DateTime.tryParse(anchorStr) ?? order.createdAt;
+      if (anchor.isBefore(windowStart)) return false;
+      // Cooldown de 10 min entre tentativas (não martelar a carteira/relays)
+      final lastStr = meta['reconcilePaymentLastAttempt']?.toString();
+      if (lastStr != null) {
+        final last = DateTime.tryParse(lastStr);
+        if (last != null && now.difference(last).inMinutes < 10) return false;
+      }
+      return true;
+    }).toList();
+  }
+
+  @visibleForTesting
+  List<String> debugComputeReconcilePayCandidatesForV820f() =>
+      _computeReconcilePayCandidates().map((o) => o.id).toList();
+
+  /// v820f: reconciliação de pagamento ao provedor em ordens CONCLUÍDAS.
+  /// A regra que a dona pediu: completou mas NÃO há evidência de envio
+  /// liquidado na carteira → o pagamento acontece aqui, com as mesmas travas
+  /// dos outros autopays (invoice de quem PROVOU — v723, teto de valor,
+  /// anti double-pay com evidência — v820e). Máx 3 por passe.
+  bool _isReconcilingCompletedUnpaid = false;
+  Future<void> _reconcileCompletedUnpaidOrders() async {
+    if (onReconcileProviderPayment == null) return;
+    if (_isReconcilingCompletedUnpaid) return;
+    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return;
+
+    _isReconcilingCompletedUnpaid = true;
+    try {
+      final candidates = _computeReconcilePayCandidates();
+      if (candidates.isEmpty) return;
+      final batch = candidates.take(3).toList();
+      final now = DateTime.now();
+      broLog('[ReconcilePay] ${batch.length} ordem(ns) completed a verificar pagamento (${candidates.length} candidatas)');
+
+      for (final order in batch) {
+        final idx = _orders.indexWhere((o) => o.id == order.id);
+        if (idx != -1) {
+          _orders[idx] = _orders[idx].copyWith(metadata: {
+            ...?_orders[idx].metadata,
+            'reconcilePaymentLastAttempt': now.toIso8601String(),
+          });
+        }
+        try {
+          final success = await onReconcileProviderPayment!(order.id, order);
+          if (success) {
+            final i2 = _orders.indexWhere((o) => o.id == order.id);
+            if (i2 != -1) {
+              _orders[i2] = _orders[i2].copyWith(metadata: {
+                ...?_orders[i2].metadata,
+                'providerPaidAt': now.toIso8601String(),
+                'providerPaidVia': 'v820f_reconcile',
+              });
+            }
+            broLog('[ReconcilePay] ✅ ${order.id.substring(0, 8)} paga/confirmada na reconciliação');
+          } else {
+            broLog('[ReconcilePay] ⏳ ${order.id.substring(0, 8)} não concluída (tenta no próximo ciclo)');
+          }
+        } catch (e) {
+          broLog('[ReconcilePay] erro na ordem ${order.id.substring(0, 8)}: $e');
+        }
+      }
+      await _saveOrders();
+    } catch (e) {
+      broLog('[ReconcilePay] erro geral: $e');
+    } finally {
+      _isReconcilingCompletedUnpaid = false;
+    }
+  }
+
   // v622: Reconciliação de taxa da plataforma.
   bool _isReconcilingFees = false;
 
@@ -6104,7 +6200,16 @@ class OrderProvider with ChangeNotifier {
       } catch (e) {
         broLog('⚠️ sync: _autoPayMediationCharges falhou (não bloqueia): $e');
       }
-      
+
+      // v820f: reconciliar ordens 'completed' SEM pagamento liquidado ao
+      // provedor — a ordem nem devia aparecer concluída sem isso; como já
+      // aconteceu (98bc3e84), o pagamento acontece aqui, sozinho.
+      try {
+        await _reconcileCompletedUnpaidOrders();
+      } catch (e) {
+        broLog('⚠️ sync: _reconcileCompletedUnpaidOrders falhou (não bloqueia): $e');
+      }
+
       // v699: marcar corridas perdidas (tira ordem fantasma das Minhas)
       _markLostRaces();
 

@@ -74,6 +74,24 @@ semântica deles só faz sentido acoplada ao R3 — testar junto com o R3, não 
 - Risco: médio (caminho de dinheiro). Teste: simular guarda populada sem
   pagamento real → ordem NÃO pode completar.
 
+### v820f — reconciliador: completed sem pagamento liquidado SE PAGA sozinha
+- Regra da dona (17/11): "se a ordem não foi paga para o provedor ela nem
+  tinha que aparecer como concluída; sem gasto duplo". Ordem completed sem
+  evidência de envio settled → o app paga a invoice de QUEM PROVOU (v723)
+  com teto de valor, no sync, sem botão. Janela de 5 dias + cooldown 10min
+  + máx 3/passe (anti dupla cobrança, padrão v622). Disputas ficam com os
+  pagadores próprios (winner/reembolso).
+- Bônus incluído: o caminho "already paid" do WinnerAutoPay agora exige hash
+  liquidado E envia a taxa da plataforma (antes retornava sucesso sem a taxa
+  — candidato a explicar a taxa da 27c916e7 que não entrou).
+- Teste: filtro de candidatas 2/2.
+
+### v820g — CI: pod install com retry (3x, backoff 30s)
+- O build iOS de 17/11 morreu em flake de rede do CDN do CocoaPods no
+  builder do Codemagic (18 erros 'Failed sending data to the peer').
+  Transitório — retry em vez de falhar o build inteiro. Aplicado nos 4
+  workflows iOS.
+
 ## Fica de fora (congelado até a dona mandar)
 
 - R3 (expiração de aceite 1h) + v819/v819b → só `test/v816`, teste demorado.

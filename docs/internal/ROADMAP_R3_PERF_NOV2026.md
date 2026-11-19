@@ -51,6 +51,20 @@ no build + cache; reconciliação única de carteira; proteção de concorrênci
 Sequência: baseline (profile no aparelho) → PERF-UI-1 (Home cache) →
 PERF-UI-2 (reconciliação única) → validação isolada → integração.
 
+## Trilha 3.5 — Latência do billcode (queixa da dona, 19/11)
+
+Sintoma real: a notificação chega rápido, mas o billcode demora ~8 minutos
+pra chegar ao provedor. 8 min é tempo de suporte e ansiedade de usuário.
+
+Investigação inicial (assento do integrador): o fast-lane v750 existe
+(`_scheduleBillCodeFastLane`) — medir onde os 8min moram: (a) o comprador
+demora pra perceber o aceite? (b) o provedor demora pra baixar o billcode
+(seu próximo poll/sync)? (c) o push billcode_ready (v742) não dispara ou
+cai? Suspeita principal: o provedor só busca o billcode no próximo ciclo
+de sync dele (timer), não no push. Alvo: billcode na mão do provedor em
+<30s. Dono: assento do integrador (encosta na máquina de estados).
+Revisão: **Nemotron 3 Ultra**. Medição: **Nemotron 3.5 Lightning**.
+
 ## Trilha 4 (depois) — PERF-SYNC
 
 Coalescência de sync, backoff, republicações redundantes. Proposta: **GLM-5.3**.

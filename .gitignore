@@ -152,3 +152,6 @@ tools/
 
 # doc operacional interno - so local, nunca publico (pedido da dona do produto 17/11)
 docs/internal/GUIA_OPERACAO_AGENTES.md
+
+# prompts/handoff de agentes = comunicacao interna - so local
+docs/internal/PROMPT_INTEGRADOR.md

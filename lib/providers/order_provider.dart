@@ -2953,7 +2953,10 @@ class OrderProvider with ChangeNotifier {
       }
       
       if (privateKey != null && privateKey.isNotEmpty) {
-        
+        // v823a: sem preimage novo, preservar o do metadata — republicações
+        // NUNCA podem apagar o atestado do relay (clobber c2ee78f3, 19/11).
+        final effectiveProof = paymentProof ??
+            existingForUpdate?.metadata?['paymentPreimage'] as String?;
         nostrSuccess = await _nostrOrderService.updateOrderStatus(
           privateKey: privateKey,
           orderId: orderId,
@@ -2961,7 +2964,7 @@ class OrderProvider with ChangeNotifier {
           providerId: effectiveProviderIdForUpdate,
           orderUserPubkey: orderUserPubkeyForUpdate,
           extraContent: nostrExtra,
-          paymentProof: paymentProof, // v823a
+          paymentProof: effectiveProof,
         );
         
         if (nostrSuccess) {
@@ -6803,6 +6806,9 @@ class OrderProvider with ChangeNotifier {
           newStatus: 'completed',
           providerId: order.providerId,
           orderUserPubkey: order.userPubkey,
+          // v823a: preservar o atestado de entrega (o republish direto no
+          // serviço clobberava o update que tinha o preimage — c2ee78f3).
+          paymentProof: order.metadata?['paymentPreimage'] as String?,
         );
         broLog('✅ Re-publicado completed para ${order.id.substring(0, 8)}');
       } catch (e) {

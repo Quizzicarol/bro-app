@@ -1004,6 +1004,7 @@ class BroApp extends StatelessWidget {
                   // verificável por qualquer um: sha256 == payment_hash)
                   final preAuto = payResult['payment']?['preimage'] as String?;
                   if (preAuto != null && preAuto.isNotEmpty) {
+                    orderProvider.updateOrderMetadataLocal(orderId, {'paymentPreimage': preAuto});
                     unawaited(orderProvider.updateOrderStatus(
                       orderId: orderId,
                       status: 'completed',
@@ -1277,6 +1278,7 @@ class BroApp extends StatelessWidget {
                   // verificável por qualquer um: sha256 == payment_hash)
                   final pre = payResult['payment']?['preimage'] as String?;
                   if (pre != null && pre.isNotEmpty) {
+                    orderProvider.updateOrderMetadataLocal(orderId, {'paymentPreimage': pre});
                     unawaited(orderProvider.updateOrderStatus(
                       orderId: orderId,
                       status: 'completed',
@@ -1416,6 +1418,7 @@ class BroApp extends StatelessWidget {
                 // v823a: atestar a entrega no relay (preimage = prova verificável)
                 final pre = payResult['payment']?['preimage'] as String?;
                 if (pre != null && pre.isNotEmpty) {
+                  orderProvider.updateOrderMetadataLocal(orderId, {'paymentPreimage': pre});
                   unawaited(orderProvider.updateOrderStatus(
                     orderId: orderId,
                     status: 'completed',

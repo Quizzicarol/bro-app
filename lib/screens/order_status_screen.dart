@@ -5349,6 +5349,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       // histórico da carteira (pagamento settled por hash) antes de publicar.
       settledPreimage ??= await _resolvePreimageFromHistory(providerInvoicePaymentHash);
 
+      // v823a: persistir o preimage LOCALMENTE também — as republicações
+      // (v436/v779/reattest) re-publicam o update e, sem ele no metadata,
+      // CLOBBERAM o atestado no relay (caso c2ee78f3: prova publicada às
+      // 19:34, apagada pelo republish das 19:36).
+      if (settledPreimage != null && settledPreimage!.isNotEmpty) {
+        orderProvider.updateOrderMetadataLocal(
+            widget.orderId, {'paymentPreimage': settledPreimage});
+      }
+
       // 🛡️ v634: pagamento CONFIRMADO — travar a ordem de forma PERSISTENTE para
       // que nenhum fluxo futuro (revert de status, reabertura de tela) pague de novo.
       await ProviderPaymentGuard.markPaid(widget.orderId, paymentHash: providerInvoicePaymentHash);

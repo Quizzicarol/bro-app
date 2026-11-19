@@ -249,18 +249,15 @@ workflows:
         script: xcode-project use-profiles --project ios/Runner.xcodeproj
 
       - name: Build iOS
-        # v648: CFBundleVersion elegante e sempre crescente. O App Store ja tem um
-        # build com timestamp (1790619223) de quando CM_BUILD_NUMBER estava vazio.
-        # Agora: 2000000000 + commits-desde-2026-09-28 — sempre maior que o anterior
-        # e sem numero feio de timestamp. agvtool seta direto no Xcode.
+        # v826 (19/11): CFBundleVersion por TEMPO — monotono em QUALQUER branch.
+        # A contagem de commits varia por branch (test/v816 tinha mais commits
+        # que test/v823: saiu 224 e depois 217 — o TestFlight nunca oferece o
+        # menor como atualizacao; pego pela dona). 2000000000 + segundos desde
+        # 28/09/2026 cresce SEMPRE e fica acima do 224 vigente. agvtool seta
+        # direto no Xcode.
         script: |
-          # v682: o clone do Codemagic e SHALLOW (depth 50) — sem unshallow o
-          # rev-list --count fica travado em 50 e o CFBundleVersion nunca sobe
-          # (falha real 28/out: upload rejeitado, versao duplicada 2000000050).
-          git fetch --unshallow --quiet 2>/dev/null || git fetch --deepen=500 --quiet 2>/dev/null || true
-          COMMITS_TODAY=$(git rev-list --count HEAD --since="2026-09-28 00:00:00")
-          BUILD_NUMBER=$(( 2000000000 + COMMITS_TODAY ))
-          echo "iOS build number FINAL: $BUILD_NUMBER (commits hoje: $COMMITS_TODAY)"
+          BUILD_NUMBER=$(( 2000000000 + $(date +%s) - 1790553600 ))
+          echo "iOS build number FINAL: $BUILD_NUMBER (tempo, monotono)"
           cd ios
           agvtool new-version -all "$BUILD_NUMBER"
           cd ..
@@ -376,11 +373,12 @@ workflows:
         script: xcode-project use-profiles --project ios/Runner.xcodeproj
 
       - name: Build iOS
+        # v826 (19/11): numero por TEMPO — monotono em qualquer branch (a
+        # contagem de commits variava por branch e o TestFlight escondia o
+        # build novo; pego pela dona). 2000000000 + segundos desde 28/09/2026.
         script: |
-          git fetch --unshallow --quiet 2>/dev/null || git fetch --deepen=500 --quiet 2>/dev/null || true
-          COMMITS_TODAY=$(git rev-list --count HEAD --since="2026-09-28 00:00:00")
-          BUILD_NUMBER=$(( 2000000000 + COMMITS_TODAY ))
-          echo "iOS build number FINAL: $BUILD_NUMBER (commits hoje: $COMMITS_TODAY)"
+          BUILD_NUMBER=$(( 2000000000 + $(date +%s) - 1790553600 ))
+          echo "iOS build number FINAL: $BUILD_NUMBER (tempo, monotono)"
           cd ios
           agvtool new-version -all "$BUILD_NUMBER"
           cd ..
@@ -507,11 +505,10 @@ workflows:
         script: xcode-project use-profiles --project ios/Runner.xcodeproj
 
       - name: Build iOS
+        # v826 (19/11): numero por TEMPO — monotono em qualquer branch.
         script: |
-          git fetch --unshallow --quiet 2>/dev/null || git fetch --deepen=500 --quiet 2>/dev/null || true
-          COMMITS_TODAY=$(git rev-list --count HEAD --since="2026-09-28 00:00:00")
-          BUILD_NUMBER=$(( 2000000000 + COMMITS_TODAY ))
-          echo "iOS build number FINAL: $BUILD_NUMBER (commits hoje: $COMMITS_TODAY)"
+          BUILD_NUMBER=$(( 2000000000 + $(date +%s) - 1790553600 ))
+          echo "iOS build number FINAL: $BUILD_NUMBER (tempo, monotono)"
           cd ios
           agvtool new-version -all "$BUILD_NUMBER"
           cd ..
@@ -842,11 +839,10 @@ workflows:
         script: printf '{"BREEZ_API_KEY":"%s","PLATFORM_LIGHTNING_ADDRESS":"%s","BACKEND_URL":"%s","ADMIN_PUBKEY":"%s"}' "$BREEZ_API_KEY" "$PLATFORM_LIGHTNING_ADDRESS" "$BACKEND_URL" "$ADMIN_PUBKEY" > "$CM_BUILD_DIR/env.json"
 
       - name: Build iOS
+        # v826 (19/11): numero por TEMPO — monotono em qualquer branch.
         script: |
-          git fetch --unshallow --quiet 2>/dev/null || git fetch --deepen=500 --quiet 2>/dev/null || true
-          COMMITS_TODAY=$(git rev-list --count HEAD --since="2026-09-28 00:00:00")
-          BUILD_NUMBER=$(( 2000000000 + COMMITS_TODAY ))
-          echo "iOS build number FINAL: $BUILD_NUMBER (commits hoje: $COMMITS_TODAY)"
+          BUILD_NUMBER=$(( 2000000000 + $(date +%s) - 1790553600 ))
+          echo "iOS build number FINAL: $BUILD_NUMBER (tempo, monotono)"
           cd ios
           agvtool new-version -all "$BUILD_NUMBER"
           cd ..

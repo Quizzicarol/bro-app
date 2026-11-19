@@ -4595,6 +4595,28 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     }
   }
 
+  /// v823a: recupera o preimage de um pagamento LIQUIDADO no histórico da
+  /// carteira, pelo paymentHash. Cobre a liquidação tardia (o sendPayment
+  /// volta sem preimage e o settle chega depois) e o caminho "já pago".
+  Future<String?> _resolvePreimageFromHistory(String? paymentHash) async {
+    if (paymentHash == null || paymentHash.isEmpty) return null;
+    try {
+      final breez = context.read<BreezProvider>();
+      if (!breez.isInitialized) return null;
+      final history = await breez.listPayments()
+          .timeout(const Duration(seconds: 10), onTimeout: () => <Map<String, dynamic>>[]);
+      for (final p in history) {
+        if (p['type'] != 'sent') continue;
+        if (p['paymentHash'] != paymentHash) continue;
+        final st = p['status']?.toString().toLowerCase() ?? '';
+        if (!st.contains('complete')) continue;
+        final pre = p['preimage'] as String?;
+        if (pre != null && pre.isNotEmpty) return pre;
+      }
+    } catch (_) {}
+    return null;
+  }
+
   Future<void> _handleConfirmPayment() async {
     if (_isConfirming) return;
     final l = AppLocalizations.of(context)!; // Prevenir duplo clique
@@ -5320,6 +5342,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         }
         return; // CRÍTICO: Não finalizar sem pagamento
       }
+
+      // v823a: o preimage nem sempre vem no retorno do sendPayment — quando a
+      // liquidação confirma DEPOIS (pending→settled no verifyPending) ou o
+      // caminho foi "já pago", o capture inicial sai vazio. Recuperar do
+      // histórico da carteira (pagamento settled por hash) antes de publicar.
+      settledPreimage ??= await _resolvePreimageFromHistory(providerInvoicePaymentHash);
 
       // 🛡️ v634: pagamento CONFIRMADO — travar a ordem de forma PERSISTENTE para
       // que nenhum fluxo futuro (revert de status, reabertura de tela) pague de novo.

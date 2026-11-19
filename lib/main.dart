@@ -707,6 +707,46 @@ class BroApp extends StatelessWidget {
           // RECONCILIACAO AUTOMATICA: Conectar callback de pagamento ao OrderProvider
           final orderProvider = context.read<OrderProvider>();
 
+          // v820e: evidência de envio LIQUIDADO na carteira — 3 estados:
+          // true = pagou de verdade; false = verificado que NÃO há envio;
+          // null = incerteza (carteira não pronta/erro) → fail-closed.
+          // Declarada ANTES dos callbacks que a usam (Dart não içá funções
+          // locais declaradas depois).
+          Future<bool?> verifySettledProviderPayment(String oid) async {
+            try {
+              if (!breezProvider.isInitialized) return null;
+              final priorHash = ProviderPaymentGuard.attemptHashFor(oid);
+              if (priorHash != null && priorHash.isNotEmpty) {
+                try {
+                  final st = await breezProvider.checkPaymentStatus(priorHash);
+                  if (st['paid'] == true) return true;
+                } catch (_) {}
+              }
+              final List<Map<String, dynamic>> history;
+              try {
+                history = await breezProvider.listPayments()
+                    .timeout(const Duration(seconds: 15));
+              } catch (_) {
+                return null;
+              }
+              final shortId = oid.length > 8 ? oid.substring(0, 8) : oid;
+              return history.any((p) {
+                if (p['type'] != 'sent') return false;
+                final st = p['status']?.toString().toLowerCase() ?? '';
+                if (!st.contains('complete')) return false;
+                if (priorHash != null &&
+                    priorHash.isNotEmpty &&
+                    p['paymentHash'] == priorHash) {
+                  return true;
+                }
+                final desc = p['description']?.toString() ?? '';
+                return desc.contains(shortId);
+              });
+            } catch (_) {
+              return null;
+            }
+          }
+
           // v677: recuperar ordem cujo pagamento confirmou COM O APP FECHADO
           // (ex.: usuária saiu pra atender ligação no meio do pagamento).
           // Se a carteira ainda não subiu, o checker falha e tenta no próximo start.
@@ -960,6 +1000,17 @@ class BroApp extends StatelessWidget {
                       totalSats: amountSats,
                     );
                   }
+                  // v823a: atestar a entrega no relay (preimage = prova
+                  // verificável por qualquer um: sha256 == payment_hash)
+                  final preAuto = payResult['payment']?['preimage'] as String?;
+                  if (preAuto != null && preAuto.isNotEmpty) {
+                    unawaited(orderProvider.updateOrderStatus(
+                      orderId: orderId,
+                      status: 'completed',
+                      providerId: order.providerId,
+                      paymentProof: preAuto,
+                    ).catchError((_) => false));
+                  }
                   return true;
                 }
                 
@@ -969,9 +1020,19 @@ class BroApp extends StatelessWidget {
                     payError.contains('already paid') ||
                     payError.contains('already settled') ||
                     payError.contains('preimage request already exists')) {
-                  broLog('✅ [AutoPay-Main] Invoice já pago (AlreadyExists) — marcando como sucesso');
-                  await ProviderPaymentGuard.markPaid(orderId);
-                  return true;
+                  // v820e: a string 'already paid' só vale com evidência de
+                  // envio LIQUIDADO (falso-positivo de pendente-pra-sempre).
+                  final evAuto = await verifySettledProviderPayment(orderId);
+                  if (evAuto == true) {
+                    broLog('✅ [AutoPay-Main] Invoice já pago E liquidado (verificado)');
+                    await ProviderPaymentGuard.markPaid(orderId);
+                    return true;
+                  }
+                  if (evAuto == false) {
+                    await ProviderPaymentGuard.clearPaid(orderId);
+                  }
+                  broLog('⚠️ [AutoPay-Main] "já pago" sem evidência liquidada — próximo sync re-verifica');
+                  return false;
                 }
                 
                 broLog('⚠️ [AutoPay-Main] Tentativa $attempt falhou: ${payResult?['error']}');
@@ -980,9 +1041,18 @@ class BroApp extends StatelessWidget {
                 if (errStr.contains('alreadyexists') ||
                     errStr.contains('already paid') ||
                     errStr.contains('preimage request already exists')) {
-                  broLog('✅ [AutoPay-Main] Invoice já pago (AlreadyExists exception) — marcando como sucesso');
-                  await ProviderPaymentGuard.markPaid(orderId);
-                  return true;
+                  // v820e: idem no caminho de exceção.
+                  final evAuto2 = await verifySettledProviderPayment(orderId);
+                  if (evAuto2 == true) {
+                    broLog('✅ [AutoPay-Main] Invoice já pago E liquidado (exception, verificado)');
+                    await ProviderPaymentGuard.markPaid(orderId);
+                    return true;
+                  }
+                  if (evAuto2 == false) {
+                    await ProviderPaymentGuard.clearPaid(orderId);
+                  }
+                  broLog('⚠️ [AutoPay-Main] "já pago" (exception) sem evidência liquidada — próximo sync re-verifica');
+                  return false;
                 }
                 broLog('⚠️ [AutoPay-Main] Tentativa $attempt erro: $e');
               }
@@ -1107,44 +1177,6 @@ class BroApp extends StatelessWidget {
           // SEGURANÇA: reusa os mesmos guards do fluxo manual — ProviderPaymentGuard
           // (v634, anti double-spend), validação de invoice (decode, expiry,
           // 0 sats, teto de sanidade) e idempotência via disputeProviderPaid.
-          // v820e: evidência de envio LIQUIDADO na carteira — 3 estados:
-          // true = pagou de verdade; false = verificado que NÃO há envio;
-          // null = incerteza (carteira não pronta/erro) → fail-closed.
-          Future<bool?> verifySettledProviderPayment(String oid) async {
-            try {
-              if (!breezProvider.isInitialized) return null;
-              final priorHash = ProviderPaymentGuard.attemptHashFor(oid);
-              if (priorHash != null && priorHash.isNotEmpty) {
-                try {
-                  final st = await breezProvider.checkPaymentStatus(priorHash);
-                  if (st['paid'] == true) return true;
-                } catch (_) {}
-              }
-              final List<Map<String, dynamic>> history;
-              try {
-                history = await breezProvider.listPayments()
-                    .timeout(const Duration(seconds: 15));
-              } catch (_) {
-                return null;
-              }
-              final shortId = oid.length > 8 ? oid.substring(0, 8) : oid;
-              return history.any((p) {
-                if (p['type'] != 'sent') return false;
-                final st = p['status']?.toString().toLowerCase() ?? '';
-                if (!st.contains('complete')) return false;
-                if (priorHash != null &&
-                    priorHash.isNotEmpty &&
-                    p['paymentHash'] == priorHash) {
-                  return true;
-                }
-                final desc = p['description']?.toString() ?? '';
-                return desc.contains(shortId);
-              });
-            } catch (_) {
-              return null;
-            }
-          }
-
           orderProvider.onAutoPayDisputeWinner = (String orderId, order) async {
             broLog('⚡ [WinnerAutoPay-Main] Pagamento do provedor pós-resolução para ${orderId.substring(0, 8)}');
             // 🛡️ v634: se o provedor já foi pago (qualquer fluxo), NÃO pagar de novo.

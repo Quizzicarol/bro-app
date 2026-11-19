@@ -1435,10 +1435,12 @@ class BreezProvider with ChangeNotifier {
         
         // Extrair detalhes específicos por tipo
         bool internalConversion = false;
+        String? preimage; // v823a: prova criptográfica quando liquidado
         if (payment.details is spark.PaymentDetails_Lightning) {
           final details = payment.details as spark.PaymentDetails_Lightning;
           paymentHash = details.htlcDetails.paymentHash;
           description = details.description;
+          preimage = details.htlcDetails.preimage;
         } else if (payment.details is spark.PaymentDetails_Spark) {
           final details = payment.details as spark.PaymentDetails_Spark;
           description = details.invoiceDetails?.description;
@@ -1478,6 +1480,7 @@ class BreezProvider with ChangeNotifier {
           'fees': feeSats,
           'paymentHash': paymentHash,
           'description': description ?? '',  // NOVO: Incluir descrição
+          'preimage': preimage, // v823a: atestado de entrega (liquidação tardia)
           'internalConversion': internalConversion, // v719: filtro de consolidação Spark
           'timestamp': timestamp,
           'createdAt': timestamp,

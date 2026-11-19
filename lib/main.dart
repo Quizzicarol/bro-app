@@ -1241,6 +1241,17 @@ class BroApp extends StatelessWidget {
                   if (AppConfig.isPlatformLightningAddressValid && amountSats > 0) {
                     await PlatformFeeService.sendPlatformFee(orderId: orderId, totalSats: amountSats);
                   }
+                  // v823a: atestar a entrega no relay (preimage = prova
+                  // verificável por qualquer um: sha256 == payment_hash)
+                  final pre = payResult['payment']?['preimage'] as String?;
+                  if (pre != null && pre.isNotEmpty) {
+                    unawaited(orderProvider.updateOrderStatus(
+                      orderId: orderId,
+                      status: 'completed',
+                      providerId: order.providerId,
+                      paymentProof: pre,
+                    ).catchError((_) => false));
+                  }
                   return true;
                 }
                 final payError = payResult?['error']?.toString().toLowerCase() ?? '';
@@ -1370,6 +1381,16 @@ class BroApp extends StatelessWidget {
                   await PlatformFeeService.sendPlatformFee(orderId: orderId, totalSats: amountSats);
                 }
                 broLog('✅ [ReconcilePay-Main] ${orderId.substring(0, 8)} PAGA na reconciliação');
+                // v823a: atestar a entrega no relay (preimage = prova verificável)
+                final pre = payResult['payment']?['preimage'] as String?;
+                if (pre != null && pre.isNotEmpty) {
+                  unawaited(orderProvider.updateOrderStatus(
+                    orderId: orderId,
+                    status: 'completed',
+                    providerId: order.providerId,
+                    paymentProof: pre,
+                  ).catchError((_) => false));
+                }
                 return true;
               }
               final err = payResult?['error']?.toString().toLowerCase() ?? '';
@@ -1406,6 +1427,11 @@ class BroApp extends StatelessWidget {
                   amountSats: amountSats,
                   description: 'Bro - Ordem ${orderId.substring(0, 8)}',
                 ).timeout(const Duration(seconds: 30));
+              }
+              // v823b: guardar o hash — o atestado de recebimento casa por string
+              final ph = result?['paymentHash'] as String?;
+              if (ph != null && ph.isNotEmpty) {
+                try { await orderProvider.setProviderInvoiceHash(orderId, ph); } catch (_) {}
               }
               return result?['bolt11'] as String?;
             } catch (e) {

@@ -1259,12 +1259,20 @@ class BreezProvider with ChangeNotifier {
       broLog('   Status: ${resp.payment.status}');
 
       String? paymentHash;
+      // v823a: o PREIMAGE é a prova criptográfica do pagamento
+      // (sha256(preimage) == payment_hash da invoice). Capturar para o
+      // atestado de entrega no relay — sem ele, ninguém conseguia provar
+      // que o pagamento liquidou (caso 98bc3e84: provedor trabalhou e a
+      // gente não conseguia nem verificar a entrega).
+      String? preimage;
       if (resp.payment.details is spark.PaymentDetails_Lightning) {
-        paymentHash = (resp.payment.details as spark.PaymentDetails_Lightning).htlcDetails.paymentHash;
+        final htlc = (resp.payment.details as spark.PaymentDetails_Lightning).htlcDetails;
+        paymentHash = htlc.paymentHash;
+        preimage = htlc.preimage;
       } else if (resp.payment.details is spark.PaymentDetails_Spark) {
         paymentHash = resp.payment.id;
       }
-      broLog('🔑 Payment details type: ${resp.payment.details?.runtimeType}, method: ${resp.payment.method}, hash: $paymentHash');
+      broLog('🔑 Payment details type: ${resp.payment.details?.runtimeType}, method: ${resp.payment.method}, hash: $paymentHash, preimage: ${preimage != null ? 'capturado' : 'null'}');
 
       // NOTIFICAR callback de pagamento enviado (para reconciliação automática)
       if (onPaymentSent != null) {
@@ -1279,6 +1287,7 @@ class BreezProvider with ChangeNotifier {
           'amount': resp.payment.amount.toString(),
           'status': resp.payment.status.toString(),
           'paymentHash': paymentHash,
+          'preimage': preimage, // v823a
         },
       };
     } catch (e) {

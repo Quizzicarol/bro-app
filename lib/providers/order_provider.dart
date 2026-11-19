@@ -2854,6 +2854,7 @@ class OrderProvider with ChangeNotifier {
     String? providerId,
     Map<String, dynamic>? metadata,
     Map<String, dynamic>? nostrExtra, // v630: campos extras publicados no kind 30080 (ex.: disputa)
+    String? paymentProof, // v823a: preimage do pagamento ao provedor (prova verificável de entrega)
   }) async {
     _isLoading = true;
     _error = null;
@@ -2960,6 +2961,7 @@ class OrderProvider with ChangeNotifier {
           providerId: effectiveProviderIdForUpdate,
           orderUserPubkey: orderUserPubkeyForUpdate,
           extraContent: nostrExtra,
+          paymentProof: paymentProof, // v823a
         );
         
         if (nostrSuccess) {
@@ -5403,7 +5405,17 @@ class OrderProvider with ChangeNotifier {
     required int amountSats,
     String? paymentHash,
   }) async {
-    
+    // v823b: atestado de RECEBIMENTO (lado provedor) roda SEMPRE — casa por
+    // hash contra as invoices que EU gerei como provedor, sem interferir no
+    // matcher de depósitos (ordens pending) abaixo.
+    if (paymentHash != null && paymentHash.isNotEmpty) {
+      try {
+        await _attestProviderPayment(paymentHash: paymentHash, amountSats: amountSats);
+      } catch (e) {
+        broLog('⚠️ v823b: atestado falhou (não bloqueia): $e');
+      }
+    }
+
     // Buscar ordens pendentes
     final pendingOrders = _orders.where((o) => o.status == 'pending').toList();
     
@@ -5443,6 +5455,81 @@ class OrderProvider with ChangeNotifier {
   }
 
   /// Atualizar o paymentHash de uma ordem (chamado quando a invoice �?© gerada)
+  /// v823b: guardar o hash da invoice que EU (provedor) gerei pra ordem.
+  /// Sem isso, casar o recebimento com a ordem exigiria decodificar bolt11
+  /// em runtime — com o hash guardado é comparação de string.
+  Future<void> setProviderInvoiceHash(String orderId, String paymentHash) async {
+    if (paymentHash.isEmpty) return;
+    final idx = _orders.indexWhere((o) => o.id == orderId);
+    if (idx == -1) return;
+    _orders[idx] = _orders[idx].copyWith(metadata: {
+      ...?_orders[idx].metadata,
+      'providerInvoiceHash': paymentHash,
+    });
+    await _saveOrders();
+  }
+
+  /// v823b: ordens minhas como provedor cuja invoice tem ESTE hash e ainda
+  /// não atestei recebimento. Extraído p/ teste.
+  List<Order> _attestableOrdersFor(String paymentHash) {
+    if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) {
+      return const [];
+    }
+    return _orders.where((o) =>
+        o.providerId == _currentUserPubkey &&
+        o.metadata?['paymentReceiptPublished'] != true &&
+        o.metadata?['providerInvoiceHash'] == paymentHash).toList();
+  }
+
+  @visibleForTesting
+  List<String> debugAttestableOrdersForV823b(String paymentHash) =>
+      _attestableOrdersFor(paymentHash).map((o) => o.id).toList();
+
+  /// v823b: publica o RECIBO assinado do pagamento do provedor.
+  /// O evento é um order_update com o MESMO status (não é transição) e
+  /// paymentProof='received:<hash>' — qualquer um (suporte, mediadora, o
+  /// comprador) verifica no relay que a ponta recebedora confirmou a entrega.
+  /// Acende também providerPaymentReceived (o filtro do renew loop estava
+  /// morto: a flag era lida e nunca escrita).
+  Future<void> _attestProviderPayment({required String paymentHash, required int amountSats}) async {
+    final candidates = _attestableOrdersFor(paymentHash);
+    if (candidates.isEmpty) return;
+    final privKey = _nostrService.privateKey;
+    if (privKey == null || privKey.isEmpty) return;
+    for (final order in candidates) {
+      try {
+        final ok = await _nostrOrderService.updateOrderStatus(
+          privateKey: privKey,
+          orderId: order.id,
+          newStatus: order.status, // NÃO é transição — recibo informativo
+          providerId: _currentUserPubkey,
+          orderUserPubkey: order.userPubkey,
+          paymentProof: 'received:$paymentHash',
+          extraContent: {
+            'receiptOf': 'provider_payment',
+            'receivedSats': amountSats,
+            'receivedAt': DateTime.now().toIso8601String(),
+          },
+        );
+        if (ok) {
+          final idx = _orders.indexWhere((o) => o.id == order.id);
+          if (idx != -1) {
+            _orders[idx] = _orders[idx].copyWith(metadata: {
+              ...?_orders[idx].metadata,
+              'paymentReceiptPublished': true,
+              'providerPaymentReceived': true,
+              'providerPaymentReceivedAt': DateTime.now().toIso8601String(),
+            });
+          }
+          broLog('🧾 v823b: recibo publicado — ${order.id.substring(0, 8)} recebeu $amountSats sats (hash ${paymentHash.substring(0, 8)}...)');
+        }
+      } catch (e) {
+        broLog('⚠️ v823b: falha ao publicar recibo de ${order.id.substring(0, 8)}: $e');
+      }
+    }
+    if (candidates.isNotEmpty) await _saveOrders();
+  }
+
   Future<void> setOrderPaymentHash(String orderId, String paymentHash, String invoice) async {
     final index = _orders.indexWhere((o) => o.id == orderId);
     if (index == -1) {

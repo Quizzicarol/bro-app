@@ -5084,6 +5084,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       broLog('⚡ Pagando invoice do provedor: ${providerInvoice!.substring(0, 30)}...');
       bool paymentSuccess = false;
       String paymentError = '';
+      String? settledPreimage; // v823a: prova verificável de entrega (vai pro relay)
       
       try {
         final breezProvider = context.read<BreezProvider>();
@@ -5181,6 +5182,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               if (payResult != null && payResult['success'] == true) {
                 broLog('✅ Invoice do provedor pago com sucesso via $usedBackend na tentativa $attempt!');
                 paymentSuccess = true;
+                // v823a: capturar o preimage — a prova criptográfica de que o
+                // pagamento liquidou (vai pro update completed no relay).
+                settledPreimage = payResult['payment']?['preimage'] as String?;
                 break;
               } else {
                 paymentError = payResult?['error']?.toString() ?? l.t('order_unknown_failure');
@@ -5335,6 +5339,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         orderId: widget.orderId,
         status: 'completed',
         providerId: providerId,
+        paymentProof: settledPreimage, // v823a: atestado de entrega
       );
       
       if (!updateSuccess) {
@@ -5344,6 +5349,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           orderId: widget.orderId,
           status: 'completed',
           providerId: providerId,
+          paymentProof: settledPreimage, // v823a
         );
         if (!retrySuccess) {
           broLog('⚠️ Segunda tentativa de publicar status falhou - pagamento foi feito, status atualizado localmente');

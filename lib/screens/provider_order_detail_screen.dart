@@ -1127,6 +1127,14 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           if (result != null && result['bolt11'] != null) {
             generatedInvoice = result['bolt11'] as String;
             broLog('✅ Invoice gerado via Spark: ${generatedInvoice.substring(0, 30)}...');
+            // v823b: guardar o hash da invoice — o atestado de recebimento
+            // casa o pagamento que cair na carteira por string, sem decode.
+            final invHash = result['paymentHash'] as String?;
+            if (invHash != null && invHash.isNotEmpty) {
+              try {
+                await context.read<OrderProvider>().setProviderInvoiceHash(widget.orderId, invHash);
+              } catch (_) {}
+            }
           } else {
             broLog('⚠️ Falha ao gerar invoice via Spark: $result');
           }
@@ -2297,6 +2305,11 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
         ).timeout(const Duration(seconds: 30));
         if (result != null && result['bolt11'] != null) {
           newInvoice = result['bolt11'] as String;
+          // v823b: idem na regeneração — guardar o hash pro atestado
+          final invHash = result['paymentHash'] as String?;
+          if (invHash != null && invHash.isNotEmpty) {
+            try { await orderProvider.setProviderInvoiceHash(widget.orderId, invHash); } catch (_) {}
+          }
         }
       }
 

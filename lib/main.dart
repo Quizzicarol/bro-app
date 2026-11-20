@@ -605,26 +605,64 @@ Future<void> _restoreNostrKeys(StorageService storage) async {
   }
 }
 
-/// Agendar reconciliacao automatica quando o SDK estiver pronto
-void _scheduleReconciliationOnStartup(BreezProvider breezProvider, OrderProvider orderProvider) {
-  // Tentar reconciliacao inicial apos 5 segundos
-  Future.delayed(const Duration(seconds: 5), () async {
-    await _tryReconciliation(breezProvider, orderProvider);
-  });
+/// Coordena uma única reconciliação por inicialização real da carteira.
+class StartupReconciliationCoordinator {
+  final BreezProvider _breezProvider;
+  final OrderProvider _orderProvider;
+  final Duration _delay;
+  Timer? _timer;
+  Future<void>? _inFlight;
+  bool _wasInitialized = false;
+  bool _disposed = false;
 
-  // Adicionar listener para quando o SDK inicializar depois
-  breezProvider.addListener(() async {
-    if (breezProvider.isInitialized) {
-      await _tryReconciliation(breezProvider, orderProvider);
-    }
-  });
+  StartupReconciliationCoordinator(
+    this._breezProvider,
+    this._orderProvider, {
+    Duration delay = const Duration(seconds: 5),
+  }) : _delay = delay;
+
+  void start() {
+    if (_disposed) return;
+    _wasInitialized = _breezProvider.isInitialized;
+    _breezProvider.addListener(_onWalletChanged);
+    _timer = Timer(_delay, _tryOnce);
+    if (_wasInitialized) _tryOnce();
+  }
+
+  void _onWalletChanged() {
+    final initialized = _breezProvider.isInitialized;
+    final becameInitialized = initialized && !_wasInitialized;
+    _wasInitialized = initialized;
+    if (becameInitialized) _tryOnce();
+  }
+
+  void _tryOnce() {
+    if (_disposed || !_breezProvider.isInitialized || _inFlight != null) return;
+    _timer?.cancel();
+    late final Future<void> attempt;
+    attempt = _tryReconciliation(_breezProvider, _orderProvider)
+        .then((succeeded) {
+      if (succeeded && !_disposed) {
+        _breezProvider.removeListener(_onWalletChanged);
+      }
+    }).whenComplete(() {
+      if (identical(_inFlight, attempt)) _inFlight = null;
+    });
+    _inFlight = attempt;
+  }
+
+  void dispose() {
+    _disposed = true;
+    _timer?.cancel();
+    _breezProvider.removeListener(_onWalletChanged);
+  }
 }
 
 /// Tentar reconciliacao completa com pagamentos do Breez
-Future<void> _tryReconciliation(BreezProvider breezProvider, OrderProvider orderProvider) async {
+Future<bool> _tryReconciliation(BreezProvider breezProvider, OrderProvider orderProvider) async {
   if (!breezProvider.isInitialized) {
     broLog('SDK ainda nao inicializado, reconciliacao adiada');
-    return;
+    return false;
   }
 
   try {
@@ -635,7 +673,7 @@ Future<void> _tryReconciliation(BreezProvider breezProvider, OrderProvider order
     
     if (payments.isEmpty) {
       broLog('📭 Nenhum pagamento na carteira para reconciliar');
-      return;
+      return true;
     }
     
     broLog('💰 ${payments.length} pagamentos encontrados, reconciliando...');
@@ -651,12 +689,14 @@ Future<void> _tryReconciliation(BreezProvider breezProvider, OrderProvider order
     } else {
       broLog('✅ Nenhuma ordem precisou ser reconciliada na inicialização');
     }
+    return true;
   } catch (e) {
     broLog('Erro na reconciliacao: $e');
+    return false;
   }
 }
 
-class BroApp extends StatelessWidget {
+class BroApp extends StatefulWidget {
   final bool isLoggedIn;
   final String? userPubkey;
   final bool hasSeenOnboarding;
@@ -665,10 +705,23 @@ class BroApp extends StatelessWidget {
   const BroApp({Key? key, required this.isLoggedIn, this.userPubkey, required this.hasSeenOnboarding, required this.localeProvider}) : super(key: key);
 
   @override
+  State<BroApp> createState() => _BroAppState();
+}
+
+class _BroAppState extends State<BroApp> {
+  StartupReconciliationCoordinator? _startupReconciliation;
+
+  @override
+  void dispose() {
+    _startupReconciliation?.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider.value(value: localeProvider),
+        ChangeNotifierProvider.value(value: widget.localeProvider),
         Provider(create: (_) => ApiService()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => BreezProvider()),
@@ -689,7 +742,7 @@ class BroApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) {
             final provider = OrderProvider();
-            provider.initialize(userPubkey: userPubkey); // Passar a pubkey!
+            provider.initialize(userPubkey: widget.userPubkey); // Passar a pubkey!
             return provider;
           },
         ),
@@ -1476,7 +1529,10 @@ class BroApp extends StatelessWidget {
           };
 
           // Verificar reconciliacao na inicializacao (quando SDK estiver pronto)
-          _scheduleReconciliationOnStartup(breezProvider, orderProvider);
+          _startupReconciliation ??= StartupReconciliationCoordinator(
+            breezProvider,
+            orderProvider,
+          )..start();
 
           return Consumer<ThemeProvider>(
             builder: (context, themeProvider, _) {
@@ -1509,9 +1565,9 @@ class BroApp extends StatelessWidget {
                     ),
                   );
                 },
-                home: isLoggedIn 
-                    ? const HomeScreen() 
-                    : (!hasSeenOnboarding 
+                home: widget.isLoggedIn
+                    ? const HomeScreen()
+                    : (!widget.hasSeenOnboarding
                         ? const OnboardingScreen() 
                         : const LoginScreen()),
             onGenerateRoute: (settings) {

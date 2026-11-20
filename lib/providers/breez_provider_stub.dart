@@ -22,6 +22,7 @@ class BreezProvider with ChangeNotifier {
   
   String? get lastPaymentId => null;
   int? get lastPaymentAmount => null;
+  int get paymentRevision => 0;
   
   void clearLastPayment() {}
   

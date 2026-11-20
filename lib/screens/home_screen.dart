@@ -53,6 +53,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String? _currentUserPubkey; // Para filtro extra de segurança
   int _unreadMessages = 0;
   StreamSubscription<int>? _unreadSub;
+  final GlobalKey<_MarketplaceActivityState> _marketplaceActivityKey = GlobalKey<_MarketplaceActivityState>();
 
   @override
   void initState() {
@@ -322,7 +323,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     }
   }
-  
+
   /// Carrega a pubkey do usuário atual para filtro extra de segurança
   Future<void> _loadCurrentUserPubkey() async {
     final pubkey = await StorageService().getNostrPublicKey();
@@ -338,9 +339,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _checkSeedRecoveryStatus() async {
     await Future.delayed(const Duration(milliseconds: 500));
     if (!mounted) return;
-    
+
     final breezProvider = Provider.of<BreezProvider>(context, listen: false);
-    
+
     if (breezProvider.seedRecoveryNeeded) {
       await showDialog(
         context: context,
@@ -389,15 +390,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // Atraso para não competir com outros dialogs de inicialização
     await Future.delayed(const Duration(seconds: 4));
     if (!mounted) return;
-    
+
     final versionService = VersionCheckService();
     final hasUpdate = await versionService.checkForUpdate();
-    
+
     if (hasUpdate && mounted) {
       await versionService.showUpdateDialog(context);
     }
   }
-  
+
   /// v390: Check if battery optimization is disabled, prompt user if not.
   /// vSEC-fix (notificações não chegam em background): antes só perguntava UMA
   /// vez (flag 'battery_opt_prompted') e desistia. Se o usuário negasse/ignorasse,
@@ -408,7 +409,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _checkBatteryOptimization() async {
     await Future.delayed(const Duration(seconds: 6));
     if (!mounted) return;
-    
+
     try {
       const platform = MethodChannel('app.bro.mobile/settings');
       final isIgnoring = await platform.invokeMethod<bool>('isIgnoringBatteryOptimizations');
@@ -457,16 +458,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _checkAndShowBackupReminder() async {
     final storage = StorageService();
     await storage.init();
-    
+
     // Verificar se já mostrou o aviso de backup
     final hasShownBackupReminder = await storage.getData('has_shown_backup_reminder');
     if (hasShownBackupReminder == 'true') return;
-    
+
     // Aguardar um pouco para não atrapalhar a inicialização
     await Future.delayed(const Duration(seconds: 2));
-    
+
     if (!mounted) return;
-    
+
     final result = await showDialog<String>(
       context: context,
       barrierDismissible: false,
@@ -568,10 +569,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ],
       ),
     );
-    
+
     // Marcar como já mostrado
     await storage.saveData('has_shown_backup_reminder', 'true');
-    
+
     if (result == 'backup' && mounted) {
       Navigator.pushNamed(context, '/settings');
     }
@@ -688,7 +689,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     });
   }
-  
+
   void _startOrdersPolling() {
     // v390: Increased from 15s to 45s to reduce WebSocket connections and CPU usage
     // v615: + jitter de 0-8s para dessincronizar os celulares entre si.
@@ -725,7 +726,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       // Mostrar mensagem de progresso
       _showSyncSnackbar(AppLocalizations.of(context).t('home_connecting_nostr'));
-      
+
       await Future.wait([
         breezProvider.refresh(),
         // PERFORMANCE: Na inicialização, não forçar sync — o initialize() já faz
@@ -751,7 +752,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     }
   }
-  
+
   void _showSyncSnackbar(String message, {Duration duration = const Duration(seconds: 30)}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -824,7 +825,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       appBar: _buildAppBar(),
       body: RefreshIndicator(
         onRefresh: () async {
-          await _loadData(force: true);
+          await Future.wait([
+            _loadData(force: true),
+            _marketplaceActivityKey.currentState?.refresh() ?? Future<void>.value(),
+          ]);
           await _fetchBitcoinPrice();
         },
         backgroundColor: const Color(0xFF1A1A1A),
@@ -967,10 +971,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         // Lista de Ordens
         _buildTransactionsList(orderProvider),
         const SizedBox(height: 16),
-        
+
         // v246: Atividade do Marketplace
-        _buildMarketplaceActivity(breezProvider),
-        
+        MarketplaceActivity(key: _marketplaceActivityKey),
+
         // Extra space
         const SizedBox(height: 80),
       ],
@@ -1028,7 +1032,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   final pubkey = await StorageService().getNostrPublicKey();
                   final collateralService = LocalCollateralService();
                   final hasActiveTier = await collateralService.hasCollateral(userPubkey: pubkey);
-                  
+
                   if (hasActiveTier) {
                     final providerId = pubkey ?? 'unknown';
                     Navigator.pushNamed(context, '/provider-orders', arguments: {
@@ -1093,8 +1097,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Widget _buildBitcoinPriceButton() {
     // Só mostrar preço se tiver valor real da API
-    final btcPriceFormatted = _btcPrice > 0 
-        ? _currencyFormat.format(_btcPrice) 
+    final btcPriceFormatted = _btcPrice > 0
+        ? _currencyFormat.format(_btcPrice)
         : AppLocalizations.of(context).t('loading');
 
     return Container(
@@ -1143,10 +1147,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   /// Ticker compacto do preço Bitcoin (inline, abaixo dos botões)
   Widget _buildBtcPriceTicker() {
-    final btcPriceFormatted = _btcPrice > 0 
-        ? _currencyFormat.format(_btcPrice) 
+    final btcPriceFormatted = _btcPrice > 0
+        ? _currencyFormat.format(_btcPrice)
         : AppLocalizations.of(context).t('loading');
-    
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -1443,7 +1447,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             builder: (context) {
               // myCreatedOrders já retorna apenas ordens onde userPubkey == currentUser
               final myOrders = orderProvider.myCreatedOrders;
-              
+
               if (myOrders.isEmpty) {
                 // v448: Se ainda não completou o sync inicial, mostrar "sincronizando"
                 if (!orderProvider.hasCompletedInitialSync) {
@@ -1504,168 +1508,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         ],
       ),
-    );
-  }
-
-  /// v246: Seção de atividade recente do Marketplace na dashboard
-  Widget _buildMarketplaceActivity(BreezProvider breezProvider) {
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: breezProvider.listPayments(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) return const SizedBox.shrink();
-        
-        final allPayments = snapshot.data!;
-        // Filtrar apenas transações do marketplace
-        final marketplaceTxs = allPayments.where((p) {
-          final desc = p['description']?.toString() ?? '';
-          return desc.contains('Bro Marketplace');
-        }).take(5).toList();
-        
-        if (marketplaceTxs.isEmpty) return const SizedBox.shrink();
-        
-        return Container(
-          decoration: BoxDecoration(
-            color: const Color(0x0DFFFFFF),
-            border: Border.all(
-              color: const Color(0x33FF8A00),
-              width: 1,
-            ),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xFFFF8A00), Color(0xFFFFAA33)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(16),
-                    topRight: Radius.circular(16),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.storefront, color: Colors.white, size: 20),
-                    const SizedBox(width: 12),
-                    Text(
-                      AppLocalizations.of(context).t('home_marketplace_section'),
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      '${marketplaceTxs.length} transaç${marketplaceTxs.length == 1 ? 'ão' : 'ões'}',
-                      style: const TextStyle(color: Colors.white70, fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-              // Transactions list
-              ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(12),
-                itemCount: marketplaceTxs.length,
-                itemBuilder: (context, index) {
-                  final tx = marketplaceTxs[index];
-                  final isReceived = tx['type'] == 'received' || 
-                                     tx['direction'] == 'incoming' ||
-                                     tx['type'] == 'Receive';
-                  final amount = tx['amountSats'] ?? tx['amount'] ?? 0;
-                  final description = tx['description']?.toString() ?? '';
-                  final product = description
-                      .replaceFirst('Bro Marketplace: ', '')
-                      .replaceFirst('Bro Marketplace:', '')
-                      .trim();
-                  final date = tx['createdAt'] ?? tx['timestamp'];
-                  
-                  String dateStr = '';
-                  if (date != null) {
-                    try {
-                      final dt = date is int 
-                          ? DateTime.fromMillisecondsSinceEpoch(date * 1000) 
-                          : DateTime.parse(date.toString());
-                      dateStr = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-                    } catch (_) {}
-                  }
-                  
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A2A),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.orange.withOpacity(0.2)),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 34,
-                          height: 34,
-                          decoration: BoxDecoration(
-                            color: (isReceived ? Colors.green : Colors.orange).withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(17),
-                          ),
-                          child: Icon(
-                            isReceived ? Icons.storefront : Icons.shopping_cart,
-                            color: isReceived ? Colors.green : Colors.orange,
-                            size: 17,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                isReceived 
-                                    ? AppLocalizations.of(context).tp('home_sale_label', {'product': product.isEmpty ? AppLocalizations.of(context).t('home_product') : product}) 
-                                    : AppLocalizations.of(context).tp('home_purchase_label', {'product': product.isEmpty ? AppLocalizations.of(context).t('home_product') : product}),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              if (dateStr.isNotEmpty)
-                                Text(
-                                  dateStr,
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.4),
-                                    fontSize: 11,
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                        Text(
-                          '${isReceived ? '+' : '-'}$amount sats',
-                          style: TextStyle(
-                            color: isReceived ? Colors.green : Colors.orange,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 
@@ -1901,7 +1743,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         final collateralService = LocalCollateralService();
         final hasActiveTier = await collateralService.hasCollateral(userPubkey: pubkey);
         broLog('🔍 hasActiveTier (button): $hasActiveTier (pubkey: ${pubkey?.substring(0, 8) ?? "null"})');
-        
+
         if (hasActiveTier) {
           // Já tem tier, ir direto para tela de ordens
           final providerId = pubkey ?? 'unknown';
@@ -2081,7 +1923,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       Navigator.pushNamed(context, '/settings');
       return;
     }
-    
+
     if (result == 'logout' && mounted) {
       final orderProvider = context.read<OrderProvider>();
       await orderProvider.clearAllOrders();
@@ -2096,6 +1938,255 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
       }
     }
+  }
+}
+
+class MarketplaceActivity extends StatefulWidget {
+  const MarketplaceActivity({Key? key}) : super(key: key);
+
+  @override
+  State<MarketplaceActivity> createState() => _MarketplaceActivityState();
+}
+
+class _MarketplaceActivityState extends State<MarketplaceActivity> {
+  BreezProvider? _breezProvider;
+  Future<List<Map<String, dynamic>>>? _paymentsFuture;
+  List<Map<String, dynamic>>? _payments;
+  int _generation = 0;
+  bool _wasInitialized = false;
+  int _paymentRevision = -1;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final breezProvider = context.read<BreezProvider>();
+    if (identical(_breezProvider, breezProvider)) return;
+    _breezProvider?.removeListener(_onWalletChanged);
+    _generation++;
+    _payments = null;
+    _paymentsFuture = null;
+    _breezProvider = breezProvider;
+    _wasInitialized = breezProvider.isInitialized;
+    _paymentRevision = breezProvider.paymentRevision;
+    breezProvider.addListener(_onWalletChanged);
+    _loadPayments();
+  }
+
+  void _onWalletChanged() {
+    final breezProvider = _breezProvider;
+    if (breezProvider == null) return;
+    final initialized = breezProvider.isInitialized;
+    final paymentRevision = breezProvider.paymentRevision;
+    final shouldReload = (initialized && !_wasInitialized) ||
+        paymentRevision != _paymentRevision;
+    _wasInitialized = initialized;
+    _paymentRevision = paymentRevision;
+    if (shouldReload) _loadPayments();
+  }
+
+  void _loadPayments() {
+    final breezProvider = _breezProvider;
+    if (breezProvider == null || !mounted) return;
+    final generation = ++_generation;
+    final future = breezProvider.listPayments();
+    setState(() {
+      _paymentsFuture = future;
+    });
+    future.then((payments) {
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        _payments = payments;
+      });
+    });
+  }
+
+  Future<void> refresh() async {
+    _loadPayments();
+    await _paymentsFuture;
+  }
+
+  @override
+  void dispose() {
+    _generation++;
+    _breezProvider?.removeListener(_onWalletChanged);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _paymentsFuture,
+      initialData: _payments,
+      builder: (context, snapshot) => _MarketplaceActivityView(snapshot: snapshot),
+    );
+  }
+}
+
+class _MarketplaceActivityView extends StatelessWidget {
+  final AsyncSnapshot<List<Map<String, dynamic>>> snapshot;
+
+  const _MarketplaceActivityView({required this.snapshot});
+
+  /// v246: Seção de atividade recente do Marketplace na dashboard
+  @override
+  Widget build(BuildContext context) {
+    return Builder(
+      builder: (context) {
+        if (!snapshot.hasData) return const SizedBox.shrink();
+
+        final allPayments = snapshot.data!;
+        // Filtrar apenas transações do marketplace
+        final marketplaceTxs = allPayments.where((p) {
+          final desc = p['description']?.toString() ?? '';
+          return desc.contains('Bro Marketplace');
+        }).take(5).toList();
+
+        if (marketplaceTxs.isEmpty) return const SizedBox.shrink();
+
+        return Container(
+          decoration: BoxDecoration(
+            color: const Color(0x0DFFFFFF),
+            border: Border.all(
+              color: const Color(0x33FF8A00),
+              width: 1,
+            ),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFFFF8A00), Color(0xFFFFAA33)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.storefront, color: Colors.white, size: 20),
+                    const SizedBox(width: 12),
+                    Text(
+                      AppLocalizations.of(context).t('home_marketplace_section'),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '${marketplaceTxs.length} transaç${marketplaceTxs.length == 1 ? 'ão' : 'ões'}',
+                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              // Transactions list
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(12),
+                itemCount: marketplaceTxs.length,
+                itemBuilder: (context, index) {
+                  final tx = marketplaceTxs[index];
+                  final isReceived = tx['type'] == 'received' ||
+                                     tx['direction'] == 'incoming' ||
+                                     tx['type'] == 'Receive';
+                  final amount = tx['amountSats'] ?? tx['amount'] ?? 0;
+                  final description = tx['description']?.toString() ?? '';
+                  final product = description
+                      .replaceFirst('Bro Marketplace: ', '')
+                      .replaceFirst('Bro Marketplace:', '')
+                      .trim();
+                  final date = tx['createdAt'] ?? tx['timestamp'];
+
+                  String dateStr = '';
+                  if (date != null) {
+                    try {
+                      final dt = date is int
+                          ? DateTime.fromMillisecondsSinceEpoch(date * 1000)
+                          : DateTime.parse(date.toString());
+                      dateStr = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+                    } catch (_) {}
+                  }
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1A2A),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.orange.withOpacity(0.2)),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: (isReceived ? Colors.green : Colors.orange).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(17),
+                          ),
+                          child: Icon(
+                            isReceived ? Icons.storefront : Icons.shopping_cart,
+                            color: isReceived ? Colors.green : Colors.orange,
+                            size: 17,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                isReceived
+                                    ? AppLocalizations.of(context).tp('home_sale_label', {'product': product.isEmpty ? AppLocalizations.of(context).t('home_product') : product})
+                                    : AppLocalizations.of(context).tp('home_purchase_label', {'product': product.isEmpty ? AppLocalizations.of(context).t('home_product') : product}),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              if (dateStr.isNotEmpty)
+                                Text(
+                                  dateStr,
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.4),
+                                    fontSize: 11,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          '${isReceived ? '+' : '-'}$amount sats',
+                          style: TextStyle(
+                            color: isReceived ? Colors.green : Colors.orange,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 }
 

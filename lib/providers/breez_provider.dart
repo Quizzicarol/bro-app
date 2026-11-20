@@ -59,6 +59,9 @@ class BreezProvider with ChangeNotifier {
   String? _lastPaymentId;
   int? _lastPaymentAmount;
   String? _lastPaymentHash;  // PaymentHash do último pagamento para verificação precisa
+  int _paymentRevision = 0;
+
+  int get paymentRevision => _paymentRevision;
   
   spark.BreezSdk? get sdk => _sdk;
   bool get isInitialized => _isInitialized;
@@ -388,6 +391,7 @@ class BreezProvider with ChangeNotifier {
       _lastPaymentId = payment.id;
       _lastPaymentAmount = payment.amount.toInt();
       _lastPaymentHash = paymentHash;
+      _paymentRevision++;
       
       // CRÍTICO: Persistir pagamento IMEDIATAMENTE para não perder
       _persistPayment(payment.id, payment.amount.toInt(), paymentHash: paymentHash);
@@ -1273,6 +1277,8 @@ class BreezProvider with ChangeNotifier {
         paymentHash = resp.payment.id;
       }
       broLog('🔑 Payment details type: ${resp.payment.details?.runtimeType}, method: ${resp.payment.method}, hash: $paymentHash, preimage: ${preimage != null ? 'capturado' : 'null'}');
+
+      _paymentRevision++;
 
       // NOTIFICAR callback de pagamento enviado (para reconciliação automática)
       if (onPaymentSent != null) {

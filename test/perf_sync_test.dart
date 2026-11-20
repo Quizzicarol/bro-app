@@ -230,5 +230,52 @@ void main() {
       await provider.debugRepublishUnconfirmedCompletions();
       expect(publications, ['order-failure', 'order-failure']);
     });
+
+    test('timeout externo não permite segunda execução sobreposta', () async {
+      provider.debugSeedOrdersForR5c([_completedOrder('order-slow')]);
+      final slowPublish = Completer<bool>();
+      provider.completionRepublisherOverride = (order) {
+        publications.add(order.id);
+        return slowPublish.future;
+      };
+
+      final first = provider.debugRepublishUnconfirmedCompletions();
+      await Future<void>.delayed(Duration.zero);
+      final timedOut = first.timeout(
+        const Duration(milliseconds: 10),
+        onTimeout: () {},
+      );
+      await timedOut;
+
+      final second = provider.debugRepublishUnconfirmedCompletions();
+      await Future<void>.delayed(Duration.zero);
+      expect(publications, ['order-slow']);
+      expect(identical(first, second), isTrue);
+
+      slowPublish.complete(true);
+      await Future.wait([first, second]);
+      await provider.debugRepublishUnconfirmedCompletions();
+      expect(publications, ['order-slow'],
+          reason: 'ACK da execução única ativa o cooldown após conclusão');
+    });
+
+    test('exceção libera single-flight para retry posterior', () async {
+      provider.debugSeedOrdersForR5c([_completedOrder('order-retry')]);
+      var attempts = 0;
+      provider.completionRepublisherOverride = (order) async {
+        attempts++;
+        publications.add(order.id);
+        if (attempts == 1) throw StateError('relay failed');
+        return true;
+      };
+
+      await provider.debugRepublishUnconfirmedCompletions();
+      await provider.debugRepublishUnconfirmedCompletions();
+      expect(publications, ['order-retry', 'order-retry']);
+
+      await provider.debugRepublishUnconfirmedCompletions();
+      expect(publications, ['order-retry', 'order-retry'],
+          reason: 'retry com ACK ativa cooldown');
+    });
   });
 }

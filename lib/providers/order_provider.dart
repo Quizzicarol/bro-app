@@ -71,6 +71,7 @@ class OrderProvider with ChangeNotifier {
   // recuperação posterior. Falha nunca entra neste mapa.
   final Map<String, DateTime> _completionRepublishAckedAt = {};
   static const Duration _completionRepublishCooldown = Duration(minutes: 10);
+  Future<void>? _completionRepublishInFlight;
 
   // v552: Sync expectations triggered by FCM push.
   // Quando chega um push de order_update, marcamos a ordem como "sincronizando"
@@ -6863,7 +6864,22 @@ class OrderProvider with ChangeNotifier {
 
   /// v436: Garante que o counterparty receba a confirmação de completed.
   /// o status completed para todas as ordens recentes onde somos o criador.
-  Future<void> _republishUnconfirmedCompletions() async {
+  Future<void> _republishUnconfirmedCompletions() {
+    final inFlight = _completionRepublishInFlight;
+    if (inFlight != null) return inFlight;
+
+    final run = _runRepublishUnconfirmedCompletions();
+    late final Future<void> shared;
+    shared = run.whenComplete(() {
+      if (identical(_completionRepublishInFlight, shared)) {
+        _completionRepublishInFlight = null;
+      }
+    });
+    _completionRepublishInFlight = shared;
+    return shared;
+  }
+
+  Future<void> _runRepublishUnconfirmedCompletions() async {
     final privateKey = _nostrService.privateKey;
     if (completionRepublisherOverride == null &&
         (privateKey == null || privateKey.isEmpty)) return;

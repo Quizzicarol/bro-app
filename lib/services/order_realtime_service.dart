@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:nostr/nostr.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -10,7 +12,8 @@ import 'package:bro_app/services/log_utils.dart';
 /// Maintains persistent connections to relays and triggers callbacks
 /// when new order events arrive (accept, payment, billCode, complete, dispute).
 class OrderRealtimeService {
-  static final OrderRealtimeService _instance = OrderRealtimeService._internal();
+  static final OrderRealtimeService _instance =
+      OrderRealtimeService._internal();
   factory OrderRealtimeService() => _instance;
   OrderRealtimeService._internal();
 
@@ -25,6 +28,11 @@ class OrderRealtimeService {
   ];
 
   final Map<String, WebSocketChannel> _connections = {};
+  final Set<String> _connecting = {};
+  final Map<String, StreamSubscription<dynamic>> _subscriptions = {};
+  final Map<String, WebSocketChannel> _pendingChannels = {};
+  final Map<String, int> _reconnectFailures = {};
+  final Map<String, DateTime> _reconnectNotBefore = {};
   final Set<String> _processedEventIds = {};
   String? _pubkey;
   bool _isRunning = false;
@@ -33,6 +41,35 @@ class OrderRealtimeService {
   int _eventsThisSecond = 0;
   int _lastSecond = 0;
   static const int _maxEventsPerSecond = 20;
+  static const Duration _readyTimeout = Duration(seconds: 8);
+  static const Duration _maxReconnectDelay = Duration(minutes: 5);
+
+  @visibleForTesting
+  static WebSocketChannel Function(Uri uri)? channelFactoryOverride;
+
+  @visibleForTesting
+  static Duration Function(int failures)? reconnectDelayOverride;
+
+  @visibleForTesting
+  static List<String>? relaysOverride;
+
+  @visibleForTesting
+  static Duration readyTimeoutOverride = _readyTimeout;
+
+  @visibleForTesting
+  static Duration reconnectCheckInterval = const Duration(seconds: 30);
+
+  @visibleForTesting
+  static DateTime Function() clockOverride = DateTime.now;
+
+  static Duration reconnectDelay(int failures) {
+    final exponent = min(max(failures - 1, 0), 6);
+    final baseMs = 1000 * (1 << exponent);
+    final jitterMs = Random().nextInt(baseMs + 1);
+    return Duration(
+        milliseconds:
+            min(baseMs + jitterMs, _maxReconnectDelay.inMilliseconds));
+  }
 
   // Callback when a new order event arrives — triggers sync
   void Function()? onOrderEvent;
@@ -50,22 +87,29 @@ class OrderRealtimeService {
 
   /// Start listening for real-time order events
   void start(String pubkey, {void Function()? onEvent}) {
-    if (_isRunning && _pubkey == pubkey) return;
+    if (_isRunning && _pubkey == pubkey) {
+      onOrderEvent = onEvent;
+      return;
+    }
+    if (_isRunning || _pubkey != null) {
+      stop();
+    }
 
     _pubkey = pubkey;
     onOrderEvent = onEvent;
     _isRunning = true;
 
-    broLog('[RT] OrderRealtimeService starting for ${pubkey.substring(0, 16)}...');
+    broLog(
+        '[RT] OrderRealtimeService starting for ${pubkey.substring(0, 16)}...');
 
     // Connect to all relays
-    for (final url in _relays) {
-      _connectAndSubscribe(url);
+    for (final url in relaysOverride ?? _relays) {
+      unawaited(_connectAndSubscribe(url));
     }
 
-    // Reconnect check every 30s
+    // Reconnect check periódico; cada relay tem seu próprio backoff.
     _reconnectTimer?.cancel();
-    _reconnectTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+    _reconnectTimer = Timer.periodic(reconnectCheckInterval, (_) {
       _checkReconnect();
     });
 
@@ -74,10 +118,13 @@ class OrderRealtimeService {
     _cleanupTimer = Timer.periodic(const Duration(minutes: 5), (_) {
       if (_processedEventIds.length > 500) {
         // Keep last 200 IDs instead of clearing all — prevents re-notification
-        final keep = _processedEventIds.toList().sublist(_processedEventIds.length - 200);
+        final keep = _processedEventIds
+            .toList()
+            .sublist(_processedEventIds.length - 200);
         _processedEventIds.clear();
         _processedEventIds.addAll(keep);
-        broLog('[RT] Trimmed processedEventIds to ${_processedEventIds.length}');
+        broLog(
+            '[RT] Trimmed processedEventIds to ${_processedEventIds.length}');
       }
     });
   }
@@ -87,31 +134,60 @@ class OrderRealtimeService {
     _isRunning = false;
     _reconnectTimer?.cancel();
     _cleanupTimer?.cancel();
-    for (final channel in _connections.values) {
-      try { channel.sink.close(); } catch (_) {}
+    for (final subscription in _subscriptions.values) {
+      unawaited(subscription.cancel());
     }
+    _subscriptions.clear();
+    for (final channel in _connections.values) {
+      try {
+        unawaited(channel.sink.close());
+      } catch (_) {}
+    }
+    for (final channel in _pendingChannels.values) {
+      try {
+        unawaited(channel.sink.close());
+      } catch (_) {}
+    }
+    _pendingChannels.clear();
     _connections.clear();
+    _connecting.clear();
+    _reconnectFailures.clear();
+    _reconnectNotBefore.clear();
     _processedEventIds.clear();
     broLog('[RT] OrderRealtimeService stopped');
   }
 
-  void _connectAndSubscribe(String url) {
-    if (_connections.containsKey(url)) return;
-    if (_pubkey == null) return;
+  Future<void> _connectAndSubscribe(String url) async {
+    final pubkey = _pubkey;
+    if (!_isRunning || pubkey == null) return;
+    if (_connections.containsKey(url) || _connecting.contains(url)) return;
+    final notBefore = _reconnectNotBefore[url];
+    if (notBefore != null && clockOverride().isBefore(notBefore)) return;
 
+    _connecting.add(url);
+    WebSocketChannel? channel;
     try {
-      final channel = WebSocketChannel.connect(Uri.parse(url));
-      _connections[url] = channel;
+      final factory = channelFactoryOverride;
+      channel = factory != null
+          ? factory(Uri.parse(url))
+          : WebSocketChannel.connect(Uri.parse(url));
+      _pendingChannels[url] = channel;
+      await channel.ready.timeout(readyTimeoutOverride);
+      if (!_isRunning || _pubkey != pubkey) {
+        await channel.sink.close();
+        return;
+      }
 
-      channel.stream.listen(
+      _connections[url] = channel;
+      _reconnectFailures.remove(url);
+      _reconnectNotBefore.remove(url);
+      _subscriptions[url] = channel.stream.listen(
         (message) => _handleMessage(url, message),
         onError: (error) {
           broLog('[RT] Error on $url: $error');
-          _connections.remove(url);
+          _handleDisconnect(url, channel!);
         },
-        onDone: () {
-          _connections.remove(url);
-        },
+        onDone: () => _handleDisconnect(url, channel!),
       );
 
       // Subscribe to order events where I'm tagged (#p = my pubkey)
@@ -121,14 +197,14 @@ class OrderRealtimeService {
       // Filter 1: Events tagged to me (I'm buyer or provider)
       final filter1 = {
         'kinds': [_kindAccept, _kindPaymentProof, _kindComplete],
-        '#p': [_pubkey],
+        '#p': [pubkey],
         'since': now - 300, // Last 5 min to catch very recent + future
       };
 
       // Filter 2: Events authored by me (to see confirmations)
       final filter2 = {
         'kinds': [_kindAccept, _kindPaymentProof, _kindComplete],
-        'authors': [_pubkey],
+        'authors': [pubkey],
         'since': now - 300,
       };
 
@@ -136,7 +212,35 @@ class OrderRealtimeService {
       channel.sink.add(jsonEncode(['REQ', '${subId}_2', filter2]));
     } catch (e) {
       broLog('[RT] Failed to connect to $url: $e');
+      if (_pubkey == pubkey) _scheduleReconnect(url);
+      try {
+        await channel?.sink.close();
+      } catch (_) {}
+    } finally {
+      if (identical(_pendingChannels[url], channel)) {
+        _pendingChannels.remove(url);
+      }
+      _connecting.remove(url);
     }
+  }
+
+  void _handleDisconnect(String url, WebSocketChannel channel) {
+    if (!identical(_connections[url], channel)) return;
+    _connections.remove(url);
+    final subscription = _subscriptions.remove(url);
+    if (subscription != null) unawaited(subscription.cancel());
+    _scheduleReconnect(url);
+  }
+
+  void _scheduleReconnect(String url) {
+    if (!_isRunning) return;
+    final failures = (_reconnectFailures[url] ?? 0) + 1;
+    _reconnectFailures[url] = failures;
+    final delay =
+        reconnectDelayOverride?.call(failures) ?? reconnectDelay(failures);
+    _reconnectNotBefore[url] = clockOverride().add(delay);
+    broLog(
+        '[RT] $url reconnect em ${delay.inMilliseconds}ms (falha $failures)');
   }
 
   void _handleMessage(String relayUrl, dynamic message) {
@@ -173,7 +277,6 @@ class OrderRealtimeService {
         final createdAt = eventData['created_at'] as int? ?? 0;
         final nowSec2 = DateTime.now().millisecondsSinceEpoch ~/ 1000;
         final eventAge = nowSec2 - createdAt;
-        final isRecentEvent = eventAge < 600; // 10 minutes
 
         // Verify event signature
         try {
@@ -186,16 +289,15 @@ class OrderRealtimeService {
         // Parse content to determine event type
         String? eventType;
         String? orderId;
-        String? status;
         try {
           final content = jsonDecode(eventData['content'] as String);
           eventType = content['type'] as String?;
           orderId = content['orderId'] as String?;
-          status = content['status'] as String?;
         } catch (_) {}
 
         final kind = eventData['kind'] as int?;
-        broLog('[RT] New order event from $relayUrl: kind=$kind type=$eventType orderId=${orderId?.substring(0, 8) ?? "?"} age=${eventAge}s');
+        broLog(
+            '[RT] New order event from $relayUrl: kind=$kind type=$eventType orderId=${orderId?.substring(0, 8) ?? "?"} age=${eventAge}s');
 
         // Trigger sync callback (always — to update order data)
         onOrderEvent?.call();
@@ -207,7 +309,8 @@ class OrderRealtimeService {
     } catch (_) {}
   }
 
-  void _showNotificationForEvent(int? kind, String? eventType, String? status, String? orderId) {
+  void _showNotificationForEvent(
+      int? kind, String? eventType, String? status, String? orderId) {
     if (orderId == null) return;
 
     String? title;
@@ -249,11 +352,13 @@ class OrderRealtimeService {
     }
 
     if (title != null && body != null && dedupType != null) {
-      _showLocalNotificationDeduped(orderId.hashCode, title, body, 'rt_order:$oid', '$dedupType:$oid');
+      _showLocalNotificationDeduped(
+          orderId.hashCode, title, body, 'rt_order:$oid', '$dedupType:$oid');
     }
   }
 
-  Future<void> _showLocalNotificationDeduped(int id, String title, String body, String payload, String dedupKey) async {
+  Future<void> _showLocalNotificationDeduped(int id, String title, String body,
+      String payload, String dedupKey) async {
     try {
       // v448: SharedPreferences dedup — survives app restart
       final prefs = await SharedPreferences.getInstance();
@@ -269,7 +374,8 @@ class OrderRealtimeService {
         notified.clear();
         notified.addAll(keep);
       }
-      await prefs.setString('bro_notified_transitions', jsonEncode(notified.toList()));
+      await prefs.setString(
+          'bro_notified_transitions', jsonEncode(notified.toList()));
 
       final plugin = FlutterLocalNotificationsPlugin();
       await plugin.show(
@@ -278,7 +384,8 @@ class OrderRealtimeService {
         body,
         const NotificationDetails(
           android: AndroidNotificationDetails(
-            'bro_orders_rt', 'Order Updates',
+            'bro_orders_rt',
+            'Order Updates',
             importance: Importance.high,
             priority: Priority.high,
           ),
@@ -289,13 +396,21 @@ class OrderRealtimeService {
     } catch (_) {}
   }
 
+  @visibleForTesting
+  void debugCheckReconnect() => _checkReconnect();
+
+  @visibleForTesting
+  int debugReconnectFailures(String url) => _reconnectFailures[url] ?? 0;
+
   void _checkReconnect() {
     if (!_isRunning || _pubkey == null) return;
 
-    for (final url in _relays) {
-      if (!_connections.containsKey(url)) {
+    for (final url in relaysOverride ?? _relays) {
+      if (!_connections.containsKey(url) && !_connecting.contains(url)) {
+        final notBefore = _reconnectNotBefore[url];
+        if (notBefore != null && clockOverride().isBefore(notBefore)) continue;
         broLog('[RT] Reconnecting to $url');
-        _connectAndSubscribe(url);
+        unawaited(_connectAndSubscribe(url));
       }
     }
   }

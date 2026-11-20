@@ -593,11 +593,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       // CORREÇÃO: Sincronizar com Nostr para buscar atualizações (aceites, comprovantes)
       final orderProvider = Provider.of<OrderProvider>(context, listen: false);
       
-      // v490: Forçar sincronização com Nostr a cada polling (bypass throttle de 30s)
-      try {
-        await orderProvider.syncOrdersFromNostr(force: true);
-      } catch (e) {
-        broLog('⚠️ Erro ao sincronizar Nostr no polling: $e');
+      // O timer continua ativo, mas não alimenta uma fila enquanto outro
+      // passe global está ativo. RT/FCM mantêm o force urgente no provider.
+      if (orderProvider.isSyncingUser) {
+        broLog('⏭️ [POLLING] sync global já ativo; reutilizando dados locais');
+      } else {
+        try {
+          await orderProvider.syncOrdersFromNostr(force: true);
+        } catch (e) {
+          broLog('⚠️ Erro ao sincronizar Nostr no polling: $e');
+        }
       }
       
       if (!mounted) return;

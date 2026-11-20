@@ -42,6 +42,12 @@ class OrderProvider with ChangeNotifier {
   // ficava preso em "bro encontrado" até o próximo tick. Agora re-executamos
   // uma vez ao final do sync em andamento.
   bool _userSyncQueued = false;
+  bool _userSyncQueuedForce = false;
+  Completer<void>? _userSyncPendingCompleter;
+  int _userSyncGeneration = 0;
+  int _userSyncDrainGeneration = 0;
+  bool _userSyncDraining = false;
+  bool get isSyncingUser => _isSyncingUser;
   bool _autoRepairDoneThisSession = false; // v256: Auto-repair roda apenas UMA VEZ por sessao
   DateTime? _syncUserStartedAt; // v259: Timestamp de quando sync user iniciou (para detectar lock stale)
   DateTime? _syncProviderStartedAt; // v259: Timestamp de quando sync provider iniciou
@@ -59,6 +65,12 @@ class OrderProvider with ChangeNotifier {
   // v437: Tracking de nudges enviados (orderId → último nudge) para throttle
   final Map<String, DateTime> _nudgedOrders = {};
   static const int _nudgeCooldownMinutes = 30;
+
+  // ACK agregado (>0 relays), não prova de entrega em todos os relays nem de
+  // leitura pela contraparte. O cooldown só reduz repetição; expira e permite
+  // recuperação posterior. Falha nunca entra neste mapa.
+  final Map<String, DateTime> _completionRepublishAckedAt = {};
+  static const Duration _completionRepublishCooldown = Duration(minutes: 10);
 
   // v552: Sync expectations triggered by FCM push.
   // Quando chega um push de order_update, marcamos a ordem como "sincronizando"
@@ -470,6 +482,38 @@ class OrderProvider with ChangeNotifier {
   void debugSeedOrdersForR5c(List<Order> seed) {
     _orders.addAll(seed);
   }
+
+  @visibleForTesting
+  Future<void> Function({bool force})? userSyncRunnerOverride;
+
+  @visibleForTesting
+  Future<bool> Function(Order order)? completionRepublisherOverride;
+
+  @visibleForTesting
+  DateTime Function() completionClockOverride = DateTime.now;
+
+  @visibleForTesting
+  Future<void> Function(Duration duration) syncDelayOverride = Future<void>.delayed;
+
+  @visibleForTesting
+  DateTime Function() syncClockOverride = DateTime.now;
+
+  @visibleForTesting
+  void Function()? statusCacheInvalidatorOverride;
+
+  @visibleForTesting
+  void debugMarkLastUserSyncForTest(DateTime value) {
+    _lastUserSyncTime = value;
+  }
+
+  @visibleForTesting
+  void debugMarkUserSyncStartedForTest(DateTime value) {
+    _syncUserStartedAt = value;
+  }
+
+  @visibleForTesting
+  Future<void> debugRepublishUnconfirmedCompletions() =>
+      _republishUnconfirmedCompletions();
 
   @visibleForTesting
   void debugApplyR5cReconcileMerge() => _applyR5cReconcileMerge();
@@ -2968,6 +3012,9 @@ class OrderProvider with ChangeNotifier {
         );
         
         if (nostrSuccess) {
+          if (status == 'completed') {
+            _completionRepublishAckedAt[orderId] = DateTime.now();
+          }
           broLog('[updateOrderStatus] Nostr publish OK');
         } else {
           broLog('[updateOrderStatus] Nostr publish FALHOU');
@@ -5652,38 +5699,38 @@ class OrderProvider with ChangeNotifier {
   /// Buscar hist�?³rico de ordens do usu�?¡rio atual do Nostr
   /// PERFORMANCE: Throttled â�?��?� ignora chamadas se sync j�?¡ em andamento ou muito recente
   /// [force] = true bypassa cooldown (para a�?§�?µes expl�?­citas do usu�?¡rio)
-  Future<void> syncOrdersFromNostr({bool force = false}) async {
-    // PERFORMANCE: N�?£o sincronizar se j�?¡ tem sync em andamento
-    // v259: Detectar lock stale (sync travou e nunca liberou o lock)
+  Future<void> syncOrdersFromNostr({bool force = false}) {
+    // Um passe ativo e no máximo um pendente. Todos os chamadores do passe
+    // pendente compartilham o mesmo Future; force é acumulado, nunca rebaixado.
     if (_isSyncingUser) {
-      if (_syncUserStartedAt != null) {
-        final elapsed = DateTime.now().difference(_syncUserStartedAt!).inSeconds;
-        if (elapsed > _maxSyncDurationSeconds) {
-          broLog('v259: syncUser LOCK STALE detectado (${elapsed}s) - resetando');
-          _isSyncingUser = false;
-          _syncUserStartedAt = null;
-        } else {
-          broLog('syncOrdersFromNostr: sync em andamento (${elapsed}s), ignorando');
-          // v806: em vez de descartar, agendar re-execução ao final do sync atual.
-          // Evento RT/FCM (comprovante, aceite) não pode ser engolido.
-          _userSyncQueued = true;
-          return;
-        }
-      } else {
-        broLog('syncOrdersFromNostr: sync em andamento, ignorando');
-        // v806: idem — agendar re-execução ao final do sync atual.
+      final startedAt = _syncUserStartedAt;
+      final isStale = startedAt != null &&
+          syncClockOverride().difference(startedAt).inSeconds > _maxSyncDurationSeconds;
+      if (!isStale) {
         _userSyncQueued = true;
-        return;
+        _userSyncQueuedForce = _userSyncQueuedForce || force;
+        final completer = _userSyncPendingCompleter ??= Completer<void>();
+        return completer.future;
       }
+      broLog('v259: syncUser LOCK STALE detectado - resetando');
+      // Invalida também um drain que o finally antigo possa ter iniciado.
+      _userSyncGeneration++;
+      _userSyncDrainGeneration++;
+      _isSyncingUser = false;
+      _syncUserStartedAt = null;
+      // O passe antigo perdeu a propriedade da fila. Se esta chamada cair no
+      // throttle ou não tiver pubkey, nenhum finally poderá concluir awaiters.
+      _completeAbandonedUserSyncWaiters();
     }
+
     
     // PERFORMANCE: N�?£o sincronizar se �?ºltimo sync foi h�?¡ menos de N segundos
     // Ignorado quando force=true (a�?§�?£o expl�?­cita do usu�?¡rio)
     if (!force && _lastUserSyncTime != null) {
-      final elapsed = DateTime.now().difference(_lastUserSyncTime!).inSeconds;
+      final elapsed = syncClockOverride().difference(_lastUserSyncTime!).inSeconds;
       if (elapsed < _minSyncIntervalSeconds) {
         broLog('â­ï¸ syncOrdersFromNostr: �?ºltimo sync h�?¡ ${elapsed}s (m�?­n: ${_minSyncIntervalSeconds}s), ignorando');
-        return;
+        return Future.value();
       }
     }
     
@@ -5693,18 +5740,84 @@ class OrderProvider with ChangeNotifier {
     }
     
     if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) {
+      return Future.value();
+    }
+
+    return _runUserSync(force: force);
+  }
+
+  void _completeAbandonedUserSyncWaiters() {
+    _userSyncQueued = false;
+    _userSyncQueuedForce = false;
+    final completer = _userSyncPendingCompleter;
+    _userSyncPendingCompleter = null;
+    if (completer != null && !completer.isCompleted) completer.complete();
+  }
+
+  Future<void> _drainUserSyncQueue(int syncGeneration) async {
+    if (_userSyncDraining || syncGeneration != _userSyncGeneration) return;
+    _userSyncDraining = true;
+    final drainGeneration = ++_userSyncDrainGeneration;
+    try {
+      while (_userSyncQueued) {
+        if (drainGeneration != _userSyncDrainGeneration) {
+          _completeAbandonedUserSyncWaiters();
+          return;
+        }
+        final completer = _userSyncPendingCompleter!;
+        _userSyncPendingCompleter = null;
+        final force = _userSyncQueuedForce;
+        _userSyncQueued = false;
+        _userSyncQueuedForce = false;
+        // Inicia o pendente antes de qualquer await: um evento nesta transição
+        // cria a próxima geração coalescida em vez de cair no throttle.
+        final pending = _runUserSync(force: force);
+        try {
+          await pending;
+          if (!completer.isCompleted) completer.complete();
+        } catch (error, stackTrace) {
+          if (!completer.isCompleted) {
+            completer.completeError(error, stackTrace);
+          }
+        }
+      }
+    } finally {
+      _userSyncDraining = false;
+    }
+  }
+
+  void _finishUserSync(int generation) {
+    if (generation != _userSyncGeneration) return;
+    _isSyncingUser = false;
+    _syncUserStartedAt = null;
+    unawaited(_drainUserSyncQueue(generation));
+  }
+
+  Future<void> _runUserSync({required bool force}) async {
+    final generation = ++_userSyncGeneration;
+    _isSyncingUser = true;
+    _syncUserStartedAt = syncClockOverride();
+
+    // v507: push/pull-to-refresh invalida o cache para buscar dados frescos.
+    if (force) {
+      final invalidator = statusCacheInvalidatorOverride;
+      if (invalidator != null) {
+        invalidator();
+      } else {
+        _nostrOrderService.invalidateStatusCache();
+      }
+    }
+
+    final runner = userSyncRunnerOverride;
+    if (runner != null) {
+      try {
+        await runner(force: force);
+      } finally {
+        _finishUserSync(generation);
+      }
       return;
     }
-    
-    _isSyncingUser = true;
-    _syncUserStartedAt = DateTime.now(); // v259: track start time
-    
-    // v507: When force=true (push notification or pull-to-refresh),
-    // invalidate the relay status cache so we get fresh data
-    if (force) {
-      _nostrOrderService.invalidateStatusCache();
-    }
-    
+
     try {
       // PERFORMANCE v1.0.129+218: Se TODAS as ordens locais s�o terminais,
       // pular fetchUserOrders (que abre 9+ WebSocket connections).
@@ -6415,16 +6528,7 @@ class OrderProvider with ChangeNotifier {
       
     } catch (e) {
     } finally {
-      _isSyncingUser = false;
-      _syncUserStartedAt = null; // v259: clear stale tracker
-    }
-
-    // v806: re-executar sync engolido durante o sync atual (uma vez, sem loop
-    // infinito — o re-run limpa a flag antes de rodar).
-    if (_userSyncQueued) {
-      _userSyncQueued = false;
-      broLog('🔁 v806: re-executando sync de usuário engolido durante sync anterior');
-      unawaited(syncOrdersFromNostr(force: true));
+      _finishUserSync(generation);
     }
 
     // v521: authoritative ghost-order cleanup runs AFTER every sync, not only on login.
@@ -6761,15 +6865,23 @@ class OrderProvider with ChangeNotifier {
   /// o status completed para todas as ordens recentes onde somos o criador.
   Future<void> _republishUnconfirmedCompletions() async {
     final privateKey = _nostrService.privateKey;
-    if (privateKey == null || privateKey.isEmpty) return;
+    if (completionRepublisherOverride == null &&
+        (privateKey == null || privateKey.isEmpty)) return;
     if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return;
     
     // Encontrar ordens onde: somos o criador, status local é completed, últimas 48h
-    final cutoff = DateTime.now().subtract(const Duration(hours: 48));
+    final now = completionClockOverride();
+    final cutoff = now.subtract(const Duration(hours: 48));
     final candidates = _orders.where((o) {
       if (o.status != 'completed') return false;
       if (o.userPubkey != _currentUserPubkey) return false; // Só ordens que criamos
       if (o.createdAt.isBefore(cutoff)) return false; // Só recentes
+      // Resolução antiga tem publicação própria e não pode ser reemitida aqui.
+      if (o.metadata?['wasDisputed'] == true ||
+          o.metadata?['disputeResolvedAt'] != null) return false;
+      final ackedAt = _completionRepublishAckedAt[o.id];
+      if (ackedAt != null &&
+          now.difference(ackedAt) < _completionRepublishCooldown) return false;
       return true;
     }).toList();
     
@@ -6800,17 +6912,25 @@ class OrderProvider with ChangeNotifier {
           broLog('v779-M1: ${order.id.substring(0, 8)} SEM prova (local+relay) - completion NAO republicada');
           continue;
         }
-        await _nostrOrderService.updateOrderStatus(
-          privateKey: privateKey,
-          orderId: order.id,
-          newStatus: 'completed',
-          providerId: order.providerId,
-          orderUserPubkey: order.userPubkey,
-          // v823a: preservar o atestado de entrega (o republish direto no
-          // serviço clobberava o update que tinha o preimage — c2ee78f3).
-          paymentProof: order.metadata?['paymentPreimage'] as String?,
-        );
-        broLog('✅ Re-publicado completed para ${order.id.substring(0, 8)}');
+        final republisher = completionRepublisherOverride;
+        final published = republisher != null
+            ? await republisher(order)
+            : await _nostrOrderService.updateOrderStatus(
+                privateKey: privateKey!,
+                orderId: order.id,
+                newStatus: 'completed',
+                providerId: order.providerId,
+                orderUserPubkey: order.userPubkey,
+                // v823a: preservar o atestado de entrega (o republish direto no
+                // serviço clobberava o update que tinha o preimage — c2ee78f3).
+                paymentProof: order.metadata?['paymentPreimage'] as String?,
+              );
+        if (published) {
+          _completionRepublishAckedAt[order.id] = completionClockOverride();
+          broLog('✅ Re-publicado completed para ${order.id.substring(0, 8)} (ACK agregado; cooldown 10min)');
+        } else {
+          broLog('⚠️ Re-publicação completed sem ACK para ${order.id.substring(0, 8)}; nova tentativa liberada');
+        }
       } catch (e) {
         broLog('⚠️ Falha ao re-publicar completed para ${order.id.substring(0, 8)}: $e');
       }

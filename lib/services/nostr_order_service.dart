@@ -145,6 +145,10 @@ class NostrOrderService {
   /// ordens zumbis da lista visível mesmo quando API+relays falham.
   bool isOrderBlocklisted(String orderId) => _blockedOrderIds.contains(orderId);
 
+  /// R3 (v816): exposição read-only para testes de corrida.
+  static bool isStatusProgressionPublic(String newStatus, String currentStatus) =>
+      _isStatusProgression(newStatus, currentStatus);
+
   /// Helper: Verifica se newStatus é progressão válida em relação a currentStatus
   /// Mesma lógica de _isStatusMoreRecent do OrderProvider, mas local
   /// REGRA DE OURO: Status NUNCA regride. cancelled/completed/liquidated/disputed são terminais.
@@ -153,11 +157,27 @@ class NostrOrderService {
     // cancelled é TERMINAL ABSOLUTO - só disputed pode sobrescrever
     if (currentStatus == 'cancelled') return newStatus == 'disputed';
     // v708: cancel SO de estados iniciais — disputa resolvida NUNCA vira cancelled
-    if (newStatus == 'cancelled') return currentStatus.isEmpty || currentStatus == 'draft' || currentStatus == 'pending';
+    // R3 (v816): a partir de accept_expired, cancelar é autorizado (sacar sats).
+    if (newStatus == 'cancelled') {
+      return currentStatus.isEmpty ||
+          currentStatus == 'draft' ||
+          currentStatus == 'pending' ||
+          currentStatus == 'accept_expired';
+    }
     // v719: disputed → cancelled VOLTA a valer (resolução resolved_user da
     // mediação). Cancelamento manual segue bloqueado nas pontas (v708).
     if (currentStatus == 'disputed') {
       return newStatus == 'completed' || newStatus == 'cancelled';
+    }
+    // R3 (v816): accept_expired só nasce de accepted/processing (aceite sem
+    // prova dentro da janela de 1h). Nunca depois de prova enviada ou além.
+    if (newStatus == 'accept_expired') {
+      return currentStatus == 'accepted' || currentStatus == 'processing';
+    }
+    // R3 (v816): cancelar e republicar a partir de aceite expirado são as duas
+    // saídas autorizadas. Qualquer outro caminho para pending/cancelled segue bloqueado.
+    if (currentStatus == 'accept_expired') {
+      return newStatus == 'cancelled' || newStatus == 'pending';
     }
     // Status finais NÃO regridem — completed/liquidated é definitivo
     const finalStatuses = ['completed', 'liquidated'];
@@ -486,7 +506,7 @@ class NostrOrderService {
       
       // Adicionar à blocklist se status é terminal
       if (successCount > 0) {
-        const terminalStatuses = ['accepted', 'awaiting_confirmation', 'completed', 'cancelled', 'liquidated', 'disputed'];
+        const terminalStatuses = ['accepted', 'awaiting_confirmation', 'completed', 'cancelled', 'liquidated', 'disputed', 'accept_expired'];
         if (terminalStatuses.contains(newStatus)) {
           _addToBlocklist({orderId});
           _statusUpdatesCache = null;
@@ -859,6 +879,81 @@ class NostrOrderService {
   @visibleForTesting
   static Future<List<String>> Function(String orderId)? fetchAllAcceptsForOrderOverride;
 
+  /// v819: cache do timestamp de republicação por ordem (TTL curto) — v697,
+  /// v802, v575 e a entrega do billCode consultam a mesma ordem em sequência;
+  /// sem cache seriam 3-4 queries iguais por ciclo. 'ts' null = sem
+  /// republicação válida (também cacheado).
+  final Map<String, Map<String, dynamic>> _republishTsCache = {};
+  static const int _republishTsCacheTtlSeconds = 60;
+
+  /// v819: tolerância de relógio — aceite novo até 2min "antes" do created_at
+  /// da republicação ainda conta (skew entre relógio do device e do relay).
+  /// O aceite expirado que estamos ignorando é >1h mais antigo (janela R3),
+  /// então a tolerância não o reabilita.
+  static const int _republishGraceSeconds = 120;
+
+  /// v819: timestamp (created_at) da última REPUBLICAÇÃO da ordem que REABRE a
+  /// disputa pelo aceite — kind 30078 com status 'pending' ou 'accept_expired'.
+  /// Discriminador republicação × criação original: o content da publicação
+  /// original nunca tem 'updatedAt' (só createdAt); só republishOrderWithStatus
+  /// grava updatedAt. Republicação terminal ('accepted', 'completed', ...) NÃO
+  /// conta — o aceite genuíno é ANTERIOR a ela e não pode ser descartado.
+  /// Null = sem republicação válida OU erro de rede (fail-open: comportamento
+  /// idêntico ao pré-v819).
+  /// Motivo: o aceite expirado (kind 30079) permanece nos relays para sempre
+  /// (evidência R3, sem NIP-09) e envenenava v697 (ordem republicada invisível
+  /// na Disponíveis), v802/v575 (pré/pós-check do aceite), v804, a entrega
+  /// canônica do billCode (v438) e o background relay (v725).
+  Future<int?> fetchLatestRepublishTimestamp(String orderId, {Duration perRelayTimeout = const Duration(seconds: 4)}) async {
+    final cached = _republishTsCache[orderId];
+    if (cached != null) {
+      if (DateTime.now().millisecondsSinceEpoch < (cached['expiry'] as int)) {
+        return cached['ts'] as int?;
+      }
+      _republishTsCache.remove(orderId);
+    }
+    int? result;
+    try {
+      final allRelays = <String>[..._relays, ..._fallbackRelays];
+      final results = await Future.wait(
+        allRelays.map((relay) => _fetchFromRelay(
+          relay,
+          kinds: [kindBroOrder],
+          tags: {'#d': [orderId]},
+          limit: 5,
+        ).timeout(perRelayTimeout, onTimeout: () => <Map<String, dynamic>>[])
+         .catchError((_) => <Map<String, dynamic>>[])),
+      );
+      int? latestTs;
+      for (final events in results) {
+        for (final event in events) {
+          try {
+            final content = event['parsedContent'] ?? jsonDecode(event['content']);
+            if (content['orderId'] != orderId) continue;
+            if (content['type'] != 'bro_order') continue;
+            // Sem updatedAt = evento de criação original → não é republicação.
+            if (content['updatedAt'] == null) continue;
+            final status = (content['status'] as String?) ?? _getStatusFromTags(event['tags']);
+            // Só republicação que REABRE a ordem invalida aceites antigos.
+            if (status != 'pending' && status != 'accept_expired') continue;
+            final createdAt = event['created_at'] as int?;
+            if (createdAt == null) continue;
+            if (latestTs == null || createdAt > latestTs) latestTs = createdAt;
+          } catch (_) {}
+        }
+      }
+      result = latestTs;
+    } catch (_) {
+      result = null; // fail-open
+    }
+    if (_republishTsCache.length > 200) _republishTsCache.clear();
+    _republishTsCache[orderId] = {
+      'ts': result,
+      'expiry': DateTime.now().millisecondsSinceEpoch + _republishTsCacheTtlSeconds * 1000,
+    };
+    return result;
+  }
+
   /// v541: Busca TODOS os provedores que aceitaram uma ordem (kind 30079).
   /// Retorna lista de pubkeys dos provedores que publicaram bro_accept para
   /// esta ordem, ordenados pelo created_at (primeiro = mais antigo).
@@ -930,11 +1025,31 @@ class NostrOrderService {
               sortKey = ((aaTs - createdAt).abs() > 300) ? createdAt : aaTs;
             }
           }
-          accepts.add({'pubkey': pubkey, 'created_at': sortKey});
+          accepts.add({'pubkey': pubkey, 'created_at': sortKey, 'relay_ts': createdAt});
         } catch (_) {}
       }
     }
     accepts.sort((a, b) => (a['created_at'] as int).compareTo(b['created_at'] as int));
+    // v819: descartar aceites ANTERIORES à última republicação que reabriu a
+    // ordem (R3: aceite expirou 1h, dono republicou como pending). O aceite
+    // velho fica nos relays para sempre e envenenava v697/v802/v575/v438/v725.
+    // Aceite GENUÍNO é mais novo que qualquer republicação 'pending' → intacto.
+    // Mantém se QUALQUER timestamp passar do corte: o sortKey pode ser
+    // acceptedAt (relógio do device) — o relay_ts (created_at do evento,
+    // horário do relay) protege o aceite genuíno de device com relógio atrasado.
+    try {
+      final republishTs = await fetchLatestRepublishTimestamp(orderId);
+      if (republishTs != null) {
+        final cutoff = republishTs - _republishGraceSeconds;
+        final before = accepts.length;
+        accepts.removeWhere((e) =>
+          (e['created_at'] as int) < cutoff &&
+          ((e['relay_ts'] as int?) ?? (e['created_at'] as int)) < cutoff);
+        if (accepts.length < before) {
+          broLog('v819: ${before - accepts.length} aceite(s) anterior(es) à republicação de ${orderId.substring(0, 8)} ignorado(s)');
+        }
+      }
+    } catch (_) {}
     return accepts.map((e) => e['pubkey'] as String).toList();
   }
 
@@ -974,11 +1089,28 @@ class NostrOrderService {
               ts = ((aaTs - ts).abs() > 300) ? ts : aaTs;
             }
           }
-          out.add({'pubkey': pk, 'acceptedAt': ts});
+          out.add({'pubkey': pk, 'acceptedAt': ts, 'relay_ts': event['created_at'] as int? ?? ts});
         } catch (_) {}
       }
     }
     out.sort((a, b) => (a['acceptedAt'] as int).compareTo(b['acceptedAt'] as int));
+    // v819: mesmo filtro de aceites anteriores à republicação (R3) — o caller
+    // (janela de propagação v702) não pode considerar o aceite expirado.
+    // Mantém se QUALQUER timestamp passar do corte (relay_ts protege aceite
+    // genuíno de device com relógio atrasado — ver v819 em fetchAllAcceptsForOrder).
+    try {
+      final republishTs = await fetchLatestRepublishTimestamp(orderId);
+      if (republishTs != null) {
+        final cutoff = republishTs - _republishGraceSeconds;
+        final before = out.length;
+        out.removeWhere((e) =>
+          (e['acceptedAt'] as int) < cutoff &&
+          ((e['relay_ts'] as int?) ?? (e['acceptedAt'] as int)) < cutoff);
+        if (out.length < before) {
+          broLog('v819: ${before - out.length} aceite(s) anterior(es) à republicação de ${orderId.substring(0, 8)} ignorado(s) (com timestamps)');
+        }
+      }
+    } catch (_) {}
     return out;
   }
 
@@ -6461,18 +6593,37 @@ class NostrOrderService {
                 if (accParsed != null) ts = (accParsed.millisecondsSinceEpoch / 1000).round();
                 final providerId = content['providerId'] as String?;
                 if (providerId != null && providerId.isNotEmpty) {
-                  candidates.add({'pubkey': providerId, 'created_at': ts});
+                  candidates.add({'pubkey': providerId, 'created_at': ts, 'relay_ts': event['created_at'] as int? ?? ts});
                   continue;
                 }
                 final eventPubkey = event['pubkey'] as String?;
                 if (eventPubkey != null && eventPubkey.isNotEmpty) {
-                  candidates.add({'pubkey': eventPubkey, 'created_at': ts});
+                  candidates.add({'pubkey': eventPubkey, 'created_at': ts, 'relay_ts': event['created_at'] as int? ?? ts});
                 }
               }
             } catch (_) {}
           }
         } catch (_) {}
       }));
+
+      // v819: descartar candidatos ANTERIORES à última republicação que reabriu
+      // a ordem (R3) — o aceite expirado não pode mais ser "canônico" nos
+      // pré/pós-checks do aceite (v802/v575/v804). Mantém se QUALQUER timestamp
+      // passar do corte (relay_ts protege aceite genuíno de device com
+      // relógio atrasado — ver v819 em fetchAllAcceptsForOrder).
+      try {
+        final republishTs = await fetchLatestRepublishTimestamp(orderId, perRelayTimeout: perRelayTimeout);
+        if (republishTs != null) {
+          final cutoff = republishTs - _republishGraceSeconds;
+          final before = candidates.length;
+          candidates.removeWhere((c) =>
+            (c['created_at'] as int) < cutoff &&
+            ((c['relay_ts'] as int?) ?? (c['created_at'] as int)) < cutoff);
+          if (candidates.length < before) {
+            broLog('v819: ${before - candidates.length} aceite(s) anterior(es) à republicação de ${orderId.substring(0, 8)} ignorado(s) (providerPubkey)');
+          }
+        }
+      } catch (_) {}
 
       if (candidates.isNotEmpty) {
         candidates.sort((a, b) {

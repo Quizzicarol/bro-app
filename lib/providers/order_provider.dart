@@ -493,6 +493,23 @@ class OrderProvider with ChangeNotifier {
   }
 
   @visibleForTesting
+  List<String> debugAcceptExpiryCandidatesForR3({DateTime? now}) =>
+      _acceptExpiryCandidates(
+        now ?? DateTime.now(),
+        window: const Duration(minutes: 2),
+      ).map((o) => o.id).toList();
+
+  @visibleForTesting
+  void debugApplyUserStatusUpdateForR3(
+    String orderId,
+    Map<String, dynamic> update,
+  ) {
+    final index = _orders.indexWhere((o) => o.id == orderId);
+    if (index == -1) return;
+    _applyUserStatusUpdate(index, update);
+  }
+
+  @visibleForTesting
   Future<void> Function({bool force})? userSyncRunnerOverride;
 
   @visibleForTesting
@@ -3979,6 +3996,217 @@ class OrderProvider with ChangeNotifier {
   static Duration get acceptExpiryWindow =>
       Duration(minutes: _acceptExpiryMinutesEnv);
 
+  bool _hasRealProofForAcceptExpiry(Order order) {
+    final metadata = order.metadata;
+    if (metadata == null) return false;
+    final plainProof = metadata['proofImage']?.toString();
+    final hasPlainProof = plainProof != null &&
+        plainProof.isNotEmpty &&
+        !plainProof.startsWith('[encrypted:');
+    final encryptedProof = metadata['proofImage_nip44']?.toString();
+    final hasEncryptedProof = encryptedProof != null && encryptedProof.isNotEmpty;
+    final hasProofTimestamp = metadata['proofReceivedAt'] != null ||
+        metadata['receipt_submitted_at'] != null;
+    // Compatibilidade com registros antigos, cujos timestamps eram a única
+    // evidência persistida. Novos aceites não recebem mais esses campos.
+    return hasPlainProof || hasEncryptedProof || hasProofTimestamp;
+  }
+
+  List<Order> _acceptExpiryCandidates(DateTime now, {Duration? window}) {
+    return _orders.where((order) {
+      if (order.status != 'accepted') return false;
+      if (order.userPubkey != _currentUserPubkey) return false;
+      if (order.providerId == null || order.providerId!.isEmpty) return false;
+      // billcode_locked sem prova é apenas entrega do código, não pagamento.
+      if (_hasRealProofForAcceptExpiry(order)) return false;
+      final acceptedAt = order.acceptedAt;
+      if (acceptedAt == null) return false;
+      if (order.metadata?['accept_expired_published'] == true) return false;
+      return now.difference(acceptedAt) > (window ?? acceptExpiryWindow);
+    }).toList();
+  }
+
+  bool _applyUserStatusUpdate(int existingIndex, Map<String, dynamic> update) {
+    final existing = _orders[existingIndex];
+    final newStatus = update['status'] as String?;
+    if (newStatus == null) return false;
+    final newProviderId = update['providerId'] as String?;
+    const protectedStatuses = ['completed', 'cancelled', 'liquidated'];
+    if (protectedStatuses.contains(existing.status) &&
+        !_isStatusMoreRecent(newStatus, existing.status)) {
+      if (_applyTerminalProofOnly(existingIndex, update)) return true;
+      final locked = existing.metadata?['billcode_locked'] == true;
+      if (newProviderId != null &&
+          newProviderId != existing.providerId &&
+          !locked) {
+        _orders[existingIndex] = existing.copyWith(providerId: newProviderId);
+      } else if (newProviderId != null &&
+          newProviderId != existing.providerId &&
+          locked) {
+        broLog('🔒 v798: providerId de ${existing.id.substring(0, 8)} BLOQUEADO pela trava de ouro (update do Nostr ignorado).');
+      }
+      return false;
+    }
+
+    var needsUpdate = false;
+    if (newProviderId != null && newProviderId != existing.providerId) {
+      if (existing.metadata?['billcode_locked'] == true) {
+        broLog('🔒 v798: troca de providerId de ${existing.id.substring(0, 8)} BLOQUEADA pela trava de ouro (${newProviderId.substring(0, 8)} ignorado).');
+      } else {
+        final author = update['eventAuthorPubkey'] as String?;
+        final hasProof = update['proofImage'] != null ||
+            update['proofImage_nip44'] != null;
+        final isTerminal = newStatus == 'completed' ||
+            newStatus == 'cancelled' ||
+            newStatus == 'liquidated';
+        final isFirstFill = existing.providerId == null || existing.providerId!.isEmpty;
+        final authoritative = isFirstFill ||
+            hasProof ||
+            (author != null && author == existing.userPubkey) ||
+            (author != null && author == existing.providerId) ||
+            isTerminal;
+        if (authoritative) {
+          needsUpdate = true;
+        } else {
+          broLog('🛡️ v812: providerId de ${existing.id.substring(0, 8)} NÃO trocado por ${newProviderId.substring(0, 8)} — update sem autoridade (autor ${author?.substring(0, 8) ?? "?"}, sem prova, não-terminal).');
+        }
+      }
+    }
+
+    final statusToUse = newStatus;
+    if (statusToUse == 'completed') {
+      final effectiveProviderId = newProviderId ?? existing.providerId;
+      if (effectiveProviderId == null || effectiveProviderId.isEmpty) {
+        if (existing.status != 'disputed') {
+          broLog('syncOrdersFromNostr: BLOQUEADO completed sem providerId');
+          return false;
+        }
+        broLog('syncOrdersFromNostr: permitido completed de disputed (resolução de disputa)');
+      }
+    }
+    if (_isStatusMoreRecent(statusToUse, existing.status)) needsUpdate = true;
+
+    if (!needsUpdate) {
+      final hasProofData = update['proofImage'] != null ||
+          update['proofImage_nip44'] != null ||
+          update['providerInvoice'] != null;
+      if (hasProofData) {
+        final existingProof = existing.metadata?['proofImage'] as String?;
+        final hasDecryptedProof = existingProof != null &&
+            existingProof.isNotEmpty &&
+            !existingProof.startsWith('[encrypted:');
+        if (!hasDecryptedProof) {
+          needsUpdate = true;
+          broLog('📥 v806: update só-de-comprovante para ${existing.id.substring(0, 8)} — aplicando proof sem mudança de status');
+        }
+      }
+    }
+    if (!needsUpdate) return false;
+
+    final isStatusAdvancing = _isStatusMoreRecent(statusToUse, existing.status);
+    final wasDisputeResolution = existing.status == 'disputed' &&
+        (statusToUse == 'completed' || statusToUse == 'cancelled') &&
+        isStatusAdvancing;
+    Map<String, dynamic>? updatedMetadata;
+    if (wasDisputeResolution) {
+      updatedMetadata = {
+        ...?existing.metadata,
+        'wasDisputed': true,
+        'disputeResolvedAt': DateTime.now().toIso8601String(),
+        if (statusToUse == 'completed') 'disputePaymentPending': true,
+      };
+      broLog('⚖️ syncOrdersFromNostr: ordem ${existing.id.substring(0, 8)} resolvida de disputa → $statusToUse');
+    } else if (update['proofImage'] != null ||
+        update['providerInvoice'] != null ||
+        update['proofImage_nip44'] != null) {
+      final proofImageNip44 = update['proofImage_nip44'] as String?;
+      final senderPubkey = update['eventAuthorPubkey'] as String? ??
+          update['providerId'] as String?;
+      String? decryptedProofImage;
+      if (proofImageNip44 != null && proofImageNip44.isNotEmpty) {
+        final privateKey = _nostrService.privateKey;
+        if (privateKey != null && senderPubkey != null) {
+          try {
+            decryptedProofImage = _nostrOrderService.decryptNip44(
+              proofImageNip44,
+              privateKey,
+              senderPubkey,
+            );
+            cacheProofImage(existing.id, decryptedProofImage);
+            broLog('🔓 syncOrdersFromNostr: proofImage descriptografado para ${existing.id.substring(0, 8)}');
+          } catch (e) {
+            broLog('⚠️ syncOrdersFromNostr: falha ao descriptografar proofImage: $e');
+          }
+        }
+      }
+      final existingProof = existing.metadata?['proofImage'] as String?;
+      final isExistingDecrypted = existingProof != null &&
+          existingProof.isNotEmpty &&
+          !existingProof.startsWith('[encrypted:');
+      final proofCreatedAtSec = update['created_at'] as int?;
+      final proofTimeIso = proofCreatedAtSec != null
+          ? DateTime.fromMillisecondsSinceEpoch(proofCreatedAtSec * 1000).toIso8601String()
+          : DateTime.now().toIso8601String();
+      final plainUpdateProof = update['proofImage']?.toString();
+      final hasProofEvidence =
+          (plainUpdateProof != null &&
+              plainUpdateProof.isNotEmpty &&
+              !plainUpdateProof.startsWith('[encrypted:')) ||
+          (proofImageNip44 != null && proofImageNip44.isNotEmpty);
+      updatedMetadata = {
+        ...?existing.metadata,
+        if (decryptedProofImage != null) 'proofImage': decryptedProofImage,
+        if (decryptedProofImage != null) 'paymentProof': decryptedProofImage,
+        if (decryptedProofImage == null &&
+            !isExistingDecrypted &&
+            update['proofImage'] != null)
+          'proofImage': update['proofImage'],
+        if (update['providerInvoice'] != null)
+          'providerInvoice': update['providerInvoice'],
+        if (proofImageNip44 != null) 'proofImage_nip44': proofImageNip44,
+        if (senderPubkey != null) 'proofImage_senderPubkey': senderPubkey,
+        if (update['encryption'] != null) 'encryption': update['encryption'],
+        if (hasProofEvidence) 'proofReceivedAt': proofTimeIso,
+        if (hasProofEvidence)
+          'receipt_submitted_at':
+              existing.metadata?['receipt_submitted_at'] ?? proofTimeIso,
+      };
+      final lockAuthor = update['eventAuthorPubkey'] as String? ?? newProviderId ?? '';
+      if (hasProofEvidence &&
+          lockAuthor.isNotEmpty &&
+          (existing.status == 'accepted' ||
+              existing.status == 'awaiting_confirmation')) {
+        updatedMetadata['billcode_locked'] = true;
+        updatedMetadata['billcode_locked_to'] = lockAuthor;
+        updatedMetadata['billcode_locked_at'] = DateTime.now().toIso8601String();
+        broLog('🔒 v798: TRAVA DE OURO em ${existing.id.substring(0, 8)} — comprovante do provedor ${lockAuthor.substring(0, 8)} recebido; billCode/providerId congelados.');
+      }
+      _noteNetworkTime(proofCreatedAtSec);
+    } else {
+      updatedMetadata = existing.metadata;
+    }
+
+    final acceptedAt = existing.acceptedAt ??
+        DateTime.tryParse(update['acceptedAt']?.toString() ?? '');
+    _orders[existingIndex] = existing.copyWith(
+      status: isStatusAdvancing ? statusToUse : existing.status,
+      providerId: (existing.metadata?['billcode_locked'] == true)
+          ? existing.providerId
+          : (newProviderId ?? existing.providerId),
+      acceptedAt: acceptedAt,
+      metadata: updatedMetadata,
+    );
+    final proof = updatedMetadata?['proofImage'] as String?;
+    if (proof != null && proof.isNotEmpty && !proof.startsWith('[encrypted:')) {
+      cacheProofImage(existing.id, proof);
+    }
+    if (!isStatusAdvancing) _immediateNotify();
+    if (isStatusAdvancing) {
+      _republishOrderEventWithTerminalStatus(_orders[existingIndex], statusToUse);
+    }
+    return true;
+  }
+
   Future<void> _checkAcceptExpiry() async {
     if (_currentUserPubkey == null || _currentUserPubkey!.isEmpty) return;
 
@@ -4004,25 +4232,7 @@ class OrderProvider with ChangeNotifier {
       }
     }
 
-    final expiredOrders = _orders.where((order) {
-      if (order.status != 'accepted') return false;
-      // Só o dono da ordem decide a expiração do aceite
-      if (order.userPubkey != _currentUserPubkey) return false;
-      if (order.providerId == null || order.providerId!.isEmpty) return false;
-      // Prova já enviada? O aceite vale — billCode revelado trava a janela.
-      if (order.metadata?['billcode_locked'] == true) return false;
-      if (order.metadata?['proofReceivedAt'] != null) return false;
-      if (order.metadata?['receipt_submitted_at'] != null) return false;
-      final acceptedAt = order.acceptedAt;
-      if (acceptedAt == null) return false;
-      // Idempotência: já publicamos o accept_expired desta ordem?
-      if (order.metadata?['accept_expired_published'] == true) return false;
-      try {
-        return now.difference(acceptedAt) > acceptExpiryWindow;
-      } catch (_) {
-        return false;
-      }
-    }).toList();
+    final expiredOrders = _acceptExpiryCandidates(now);
 
     for (final order in expiredOrders) {
       broLog('[AcceptExpiry] Ordem ${order.id.substring(0, 8)} estourou 1h sem prova — publicando accept_expired');
@@ -6228,249 +6438,10 @@ class OrderProvider with ChangeNotifier {
         
         final existingIndex = _orders.indexWhere((o) => o.id == orderId);
         if (existingIndex != -1) {
-          final existing = _orders[existingIndex];
-          final newStatus = update['status'] as String;
-          final newProviderId = update['providerId'] as String?;
-          
-          // PROTE�?�?��?�?O CR�?TICA: Status finais NUNCA podem regredir
-          // Isso evita que 'completed' volte para 'awaiting_confirmation'
-          const protectedStatuses = ['completed', 'cancelled', 'liquidated'];
-          if (protectedStatuses.contains(existing.status) && !_isStatusMoreRecent(newStatus, existing.status)) {
-            // v809: o 30081 (comprovante) pode chegar DEPOIS do 30080 (completed).
-            // Antes este early-continue descartava o proof de ordem já terminal —
-            // a ordem ficava "concluída sem comprovante" (caso 3f49da19).
-            // Aplicar SÓ o metadata do proof (mesmo padrão v806 proof-only),
-            // sem tocar em status/providerId. Lógica extraída p/
-            // _applyTerminalProofOnly (testável via debugApplyTerminalProofForV809).
-            if (_applyTerminalProofOnly(existingIndex, update)) {
-              statusUpdated++;
-              continue;
-            }
-            // Apenas atualizar providerId se necessário, sem mudar status
-            // v798: trava de ouro — com prova do canônico recebida, providerId
-            // está congelado; update do Nostr não pode re-corromper.
-            final locked = existing.metadata?['billcode_locked'] == true;
-            if (newProviderId != null &&
-                newProviderId != existing.providerId &&
-                !locked) {
-              _orders[existingIndex] = existing.copyWith(
-                providerId: newProviderId,
-              );
-            } else if (newProviderId != null &&
-                newProviderId != existing.providerId &&
-                locked) {
-              broLog('🔒 v798: providerId de ${existing.id.substring(0, 8)} BLOQUEADO pela trava de ouro (update do Nostr ignorado).');
-            }
-            continue;
-          }
-          
-          // SEMPRE atualizar providerId se vier do Nostr e for diferente
-          // v798: exceto com trava de ouro ativa — providerId congelado.
-          bool needsUpdate = false;
-          if (newProviderId != null && newProviderId != existing.providerId) {
-            if (existing.metadata?['billcode_locked'] == true) {
-              broLog('🔒 v798: troca de providerId de ${existing.id.substring(0, 8)} BLOQUEADA pela trava de ouro (${(newProviderId).substring(0, 8)} ignorado).');
-            } else {
-              // v812: troca de providerId só com AUTORIDADE — prova de trabalho
-              // (comprovante no update), autor = dono da ordem, autor =
-              // provedor atual, ou status terminal (resolução de disputa).
-              // Sem isso, o update auto-atribuído do PERDEDOR da corrida
-              // (accepted providerId=si) roubava a referência local e o
-              // complete do pagador real virava órfão (incidente ac6ae697,
-              // 16/11 — travada em "Bro encontrado" com prova no relay).
-              // v815b: PRIMEIRO PREENCHIMENTO sempre autorizado (providerId
-              // vazio ← aceite) — sem isso a ordem nunca avançava pra
-              // "aguardando Bro" (regressão minha do v812, pega pela Carol:
-              // "antes mudava sozinha, não importa o tempo").
-              final author = update['eventAuthorPubkey'] as String?;
-              final hasProof = update['proofImage'] != null || update['proofImage_nip44'] != null;
-              final isTerminal = newStatus == 'completed' || newStatus == 'cancelled' || newStatus == 'liquidated';
-              final isFirstFill = existing.providerId == null || existing.providerId!.isEmpty;
-              final authoritative = isFirstFill ||
-                  hasProof ||
-                  (author != null && author == existing.userPubkey) ||
-                  (author != null && author == existing.providerId) ||
-                  isTerminal;
-              if (authoritative) {
-                needsUpdate = true;
-              } else {
-                broLog('🛡️ v812: providerId de ${existing.id.substring(0, 8)} NÃO trocado por ${newProviderId.substring(0, 8)} — update sem autoridade (autor ${author?.substring(0, 8) ?? "?"}, sem prova, não-terminal).');
-              }
-            }
-          }
-          
-          String statusToUse = newStatus;
-          
-          // GUARDA v1.0.129+232: N�o aplicar 'completed' de sync se n�o h� providerId
-          // EXCE��O v233: Se a ordem est� 'disputed', permitir (resolu��o de disputa pelo admin)
-          if (statusToUse == 'completed') {
-            final effectiveProviderId = newProviderId ?? existing.providerId;
-            if (effectiveProviderId == null || effectiveProviderId.isEmpty) {
-              if (existing.status != 'disputed') {
-                broLog('syncOrdersFromNostr: BLOQUEADO completed sem providerId');
-                continue;
-              } else {
-                broLog('syncOrdersFromNostr: permitido completed de disputed (resolu��o de disputa)');
-              }
-            }
-          }
-          
-          // Verificar se o novo status �?© mais avan�?§ado
-          if (_isStatusMoreRecent(statusToUse, existing.status)) {
-            needsUpdate = true;
-          }
-          
-          // v806: update SÓ-DE-COMPROVANTE — o 30081 (proof) chegou sem
-          // avanço de status (ordem já 'accepted', providerId igual). Antes
-          // o needsUpdate ficava false e o comprovante era DESCARTADO — a
-          // tela ficava presa em "bro encontrado" até um ciclo que trouxesse
-          // mudança de status. Aplicar o proof agora.
-          if (!needsUpdate) {
-            final hasProofData = update['proofImage'] != null ||
-                update['proofImage_nip44'] != null ||
-                update['providerInvoice'] != null;
-            if (hasProofData) {
-              final existingProof = existing.metadata?['proofImage'] as String?;
-              final hasDecryptedProof = existingProof != null &&
-                  existingProof.isNotEmpty &&
-                  !existingProof.startsWith('[encrypted:');
-              if (!hasDecryptedProof) {
-                needsUpdate = true;
-                broLog('📥 v806: update só-de-comprovante para ${existing.id.substring(0, 8)} — aplicando proof sem mudança de status');
-              }
-            }
-          }
-          
-          if (needsUpdate) {
-            final isStatusAdvancing = _isStatusMoreRecent(statusToUse, existing.status);
-            // TRACKING v233: Marcar ordem como 'wasDisputed' quando transiciona de disputed para completed/cancelled
-            final wasDisputeResolution = existing.status == 'disputed' && 
-                (statusToUse == 'completed' || statusToUse == 'cancelled') && isStatusAdvancing;
-            
-            Map<String, dynamic>? updatedMetadata;
-            if (wasDisputeResolution) {
-              updatedMetadata = {
-                ...?existing.metadata,
-                'wasDisputed': true,
-                'disputeResolvedAt': DateTime.now().toIso8601String(),
-                // v338: Marcar pagamento pendente se resolu��o foi a favor do provedor
-                if (statusToUse == 'completed') 'disputePaymentPending': true,
-              };
-              broLog('?? syncOrdersFromNostr: ordem ${existing.id.substring(0, 8)} resolvida de disputa ? $statusToUse');
-            } else if (update['proofImage'] != null || update['providerInvoice'] != null || update['proofImage_nip44'] != null) {
-              // v403: CORREÇÃO CRÍTICA — preservar dados NIP-44 para descriptografia on-demand
-              // Antes, apenas proofImage (marcador [encrypted:nip44v2]) era armazenado,
-              // mas proofImage_nip44 e senderPubkey eram descartados, impossibilitando
-              // a descriptografia do comprovante na UI
-              final proofImageNip44 = update['proofImage_nip44'] as String?;
-              final senderPubkey = update['eventAuthorPubkey'] as String? ?? update['providerId'] as String?;
-              
-              // Tentar descriptografar NIP-44 on-the-fly
-              String? decryptedProofImage;
-              if (proofImageNip44 != null && proofImageNip44.isNotEmpty) {
-                final privateKey = _nostrService.privateKey;
-                if (privateKey != null && senderPubkey != null) {
-                  try {
-                    decryptedProofImage = _nostrOrderService.decryptNip44(
-                      proofImageNip44, privateKey, senderPubkey,
-                    );
-                    broLog('🔓 syncOrdersFromNostr: proofImage descriptografado para ${existing.id.substring(0, 8)}');
-                    // v406: Salvar no cache write-once para NUNCA perder
-                    cacheProofImage(existing.id, decryptedProofImage!);
-                  } catch (e) {
-                    broLog('⚠️ syncOrdersFromNostr: falha ao descriptografar proofImage: $e');
-                  }
-                }
-              }
-              
-              // v404: NÃO sobrescrever proofImage decriptografado com marcador [encrypted:]
-              final existingProof = existing.metadata?['proofImage'] as String?;
-              final isExistingDecrypted = existingProof != null && 
-                  existingProof.isNotEmpty && 
-                  !existingProof.startsWith('[encrypted:');
-
-              // v620: Ancorar o timer de auto-liquidação (36h) no timestamp REAL do
-              // evento Nostr (created_at), NÃO no horário de sync. Antes usávamos
-              // DateTime.now(), que reescrevia a âncora a cada sync — o relógio de 36h
-              // "andava pra frente" e podia atrasar (ou nunca disparar) a liquidação.
-              // created_at é determinístico, então o mesmo evento sempre resolve o
-              // mesmo horário. Mesmo padrão de nostr_order_service.dart (v584).
-              final proofCreatedAtSec = update['created_at'] as int?;
-              final proofTimeIso = proofCreatedAtSec != null
-                  ? DateTime.fromMillisecondsSinceEpoch(proofCreatedAtSec * 1000).toIso8601String()
-                  : DateTime.now().toIso8601String();
-
-              updatedMetadata = {
-                ...?existing.metadata,
-                if (decryptedProofImage != null) 'proofImage': decryptedProofImage,
-                if (decryptedProofImage != null) 'paymentProof': decryptedProofImage,
-                // Só sobrescrever proofImage se NÃO temos versão decriptografada
-                if (decryptedProofImage == null && !isExistingDecrypted && update['proofImage'] != null) 
-                  'proofImage': update['proofImage'],
-                if (update['providerInvoice'] != null) 'providerInvoice': update['providerInvoice'],
-                // Preservar dados NIP-44 para fallback de descriptografia na UI
-                if (proofImageNip44 != null) 'proofImage_nip44': proofImageNip44,
-                if (senderPubkey != null) 'proofImage_senderPubkey': senderPubkey,
-                if (update['encryption'] != null) 'encryption': update['encryption'],
-                // v620: timestamp do evento (determinístico) em vez de DateTime.now().
-                // receipt_submitted_at é a âncora primária da auto-liquidação; preservar
-                // valor canônico já existente se houver.
-                'proofReceivedAt': proofTimeIso,
-                'receipt_submitted_at': existing.metadata?['receipt_submitted_at'] ?? proofTimeIso,
-              };
-              // v798: TRAVA DE OURO — chegou comprovante (prova de pagamento)
-              // de uma ordem accepted/awaiting_confirmation. A partir daqui o
-              // billCode já foi revelado e o provedor pagou de verdade: NUNCA
-              // mais re-entregar billcode nem trocar providerId (incidente
-              // 5095634d, 14/11: republish pro perdedor 74min depois do
-              // complete re-corrompeu tudo). O lock grava QUEM é o canônico;
-              // todos os pontos de entrega/troca checam esta flag.
-              final lockAuthor = update['eventAuthorPubkey'] as String? ?? newProviderId ?? '';
-              if (lockAuthor.isNotEmpty &&
-                  (existing.status == 'accepted' || existing.status == 'awaiting_confirmation')) {
-                updatedMetadata['billcode_locked'] = true;
-                updatedMetadata['billcode_locked_to'] = lockAuthor;
-                updatedMetadata['billcode_locked_at'] = DateTime.now().toIso8601String();
-                broLog('🔒 v798: TRAVA DE OURO em ${existing.id.substring(0, 8)} — comprovante do provedor ${lockAuthor.substring(0, 8)} recebido; billCode/providerId congelados.');
-              }
-              // vSEC: alimentar a referência de tempo da rede (anti clock-skew
-              // na auto-liquidação) com o created_at deste evento.
-              _noteNetworkTime(proofCreatedAtSec);
-            } else {
-              updatedMetadata = existing.metadata;
-            }
-            
-            _orders[existingIndex] = existing.copyWith(
-              status: isStatusAdvancing ? statusToUse : existing.status,
-              // v798: trava de ouro — providerId congelado quando o lock existe
-              // (o lock é gravado com o autor da prova, que é o canônico).
-              providerId: (existing.metadata?['billcode_locked'] == true)
-                  ? existing.providerId
-                  : (newProviderId ?? existing.providerId),
-              metadata: updatedMetadata,
-            );
-            // v406: Cache proof após Phase 2 update
-            final p2proof = updatedMetadata?['proofImage'] as String?;
-            if (p2proof != null && p2proof.isNotEmpty && !p2proof.startsWith('[encrypted:')) {
-              cacheProofImage(existing.id, p2proof);
-            }
-            statusUpdated++;
-            
-            // v806: comprovante aplicado sem avanço de status — avisar a UI
-            // na hora (a tela do comprador sai de "bro encontrado" e mostra
-            // o comprovante sem esperar o próximo ciclo de 15s).
-            if (!isStatusAdvancing) {
-              _immediateNotify();
-            }
-            
-            // v261: Re-publicar o evento 30078 com status terminal para remover da marketplace
-            if (isStatusAdvancing) {
-              _republishOrderEventWithTerminalStatus(_orders[existingIndex], statusToUse);
-            }
-          }
+          if (_applyUserStatusUpdate(existingIndex, update)) statusUpdated++;
         }
       }
-      
+
       if (statusUpdated > 0) {
         _immediateNotify(); // v269: notificar UI imediatamente quando status muda
       }

@@ -1274,6 +1274,7 @@ class NostrOrderService {
             total: (raw['total'] as num?)?.toDouble() ?? 0,
             status: raw['status']?.toString() ?? 'pending',
             providerId: raw['providerId']?.toString() ?? providerPubkey,
+            acceptedAt: DateTime.tryParse(raw['acceptedAt']?.toString() ?? ''),
             // CORREÇÃO v1.0.129: Usar timestamp Nostr como fallback em vez de DateTime.now()
             // DateTime.now() fazia TODAS as ordens sem createdAt ficarem com a mesma data (do sync)
             createdAt: DateTime.tryParse(raw['createdAt']?.toString() ?? '') ??
@@ -1667,6 +1668,7 @@ class NostrOrderService {
         total: (content['total'] as num?)?.toDouble() ?? 0,
         status: content['status'] ?? _getStatusFromTags(event['tags']),
         providerId: content['providerId'],
+        acceptedAt: DateTime.tryParse(content['acceptedAt']?.toString() ?? ''),
         createdAt: DateTime.tryParse(content['createdAt'] ?? '') ?? 
                    DateTime.fromMillisecondsSinceEpoch((event['created_at'] ?? 0) * 1000),
       );
@@ -1819,6 +1821,7 @@ class NostrOrderService {
               'total': (content['total'] as num?)?.toDouble() ?? 0,
               'status': content['status'] ?? 'pending',
               'providerId': content['providerId'],
+              'acceptedAt': content['acceptedAt'],
               'createdAt': content['createdAt'],
               'created_at': event['created_at'],
             };
@@ -1864,6 +1867,7 @@ class NostrOrderService {
           'total': (content['total'] as num?)?.toDouble() ?? 0,
           'status': content['status'] ?? 'pending',
           'providerId': content['providerId'],
+          'acceptedAt': content['acceptedAt'],
           'createdAt': content['createdAt'],
           'created_at': event['created_at'],
         };
@@ -2294,6 +2298,8 @@ class NostrOrderService {
             ? null
             : (providerId ?? order.providerId),
         'createdAt': order.createdAt.toIso8601String(),
+        if (order.acceptedAt != null)
+          'acceptedAt': order.acceptedAt!.toIso8601String(),
         'updatedAt': DateTime.now().toIso8601String(),
       });
 
@@ -3095,6 +3101,7 @@ class NostrOrderService {
             'orderId': orderId,
             'status': status,
             'providerId': providerId,
+            'acceptedAt': content['acceptedAt'] as String?,
             'eventAuthorPubkey': event['pubkey'] as String?,
             'proofImage': proofImage,
             'proofImage_nip44': proofImageNip44,
@@ -3557,6 +3564,7 @@ class NostrOrderService {
                 'orderId': orderId,
                 'status': status,
                 'providerId': providerId ?? previousUpdate?['providerId'] ?? accum?['providerId'],
+                'acceptedAt': content['acceptedAt'] ?? previousUpdate?['acceptedAt'],
                 'eventAuthorPubkey': eventAuthorPubkey ?? previousUpdate?['eventAuthorPubkey'] ?? accum?['eventAuthorPubkey'],
                 'proofImage': proofImage ?? previousUpdate?['proofImage'] ?? accum?['proofImage'],
                 'proofImage_nip44': proofImageNip44 ?? previousUpdate?['proofImage_nip44'] ?? accum?['proofImage_nip44'],
@@ -3601,6 +3609,14 @@ class NostrOrderService {
     }
   }
   
+  @visibleForTesting
+  Order debugApplyStatusUpdateForR3(
+    Order order,
+    Map<String, Map<String, dynamic>> statusUpdates, {
+    String? userPrivateKey,
+  }) =>
+      _applyStatusUpdate(order, statusUpdates, userPrivateKey: userPrivateKey);
+
   /// Aplica o status mais recente de um update a uma ordem
   /// Aplica updates de status do Nostr a uma ordem
   /// [userPrivateKey]: Se fornecido, descriptografa proofImage NIP-44
@@ -3614,6 +3630,8 @@ class NostrOrderService {
     final proofImageNip44 = update['proofImage_nip44'] as String?;
     final encryption = update['encryption'] as String?;
     final completedAt = update['completedAt'] as String?;
+    final acceptedAt = order.acceptedAt ??
+        DateTime.tryParse(update['acceptedAt']?.toString() ?? '');
     // v714: providerId SÓ troca por prova de trabalho (comprovante anexado).
     // Aceites/updates tardios não roubam mais a referência (caso 58ebf198:
     // o iPhone da Carol apareceu como "provedora" da ordem que outro provedor
@@ -3724,15 +3742,20 @@ class NostrOrderService {
         updatedMetadata['proofImage_senderPubkey'] = update['proofAuthorPubkey'] as String?
             ?? update['eventAuthorPubkey'] as String? ?? providerId;
       }
-      if (completedAt != null) {
-        updatedMetadata['proofReceivedAt'] = completedAt;
-        updatedMetadata['receipt_submitted_at'] = completedAt; // Compatibilidade com auto-liquidação
-      } else if (eventCreatedAt != null && eventCreatedAt > 0) {
-        // v504: Fallback to Nostr event's created_at when completedAt is missing
-        // This is the actual time the proof event was published, NOT discovery time
-        final eventTime = DateTime.fromMillisecondsSinceEpoch(eventCreatedAt * 1000).toIso8601String();
-        updatedMetadata['proofReceivedAt'] ??= eventTime;
-        updatedMetadata['receipt_submitted_at'] ??= eventTime;
+      final hasProofEvidence =
+          (proofImage != null && proofImage.isNotEmpty) ||
+          (proofImageNip44 != null && proofImageNip44.isNotEmpty);
+      if (hasProofEvidence) {
+        // Estes campos são a âncora da prova e da auto-liquidação de 36h.
+        // Um created_at isolado (aceite, billcode ou republish) não é prova.
+        final proofTime = completedAt ??
+            (eventCreatedAt != null && eventCreatedAt > 0
+                ? DateTime.fromMillisecondsSinceEpoch(eventCreatedAt * 1000).toIso8601String()
+                : null);
+        if (proofTime != null) {
+          updatedMetadata['proofReceivedAt'] ??= proofTime;
+          updatedMetadata['receipt_submitted_at'] ??= proofTime;
+        }
       }
       // CRÍTICO: Incluir providerInvoice para pagamento automático
       if (providerInvoice != null && providerInvoice.isNotEmpty) {
@@ -3759,6 +3782,8 @@ class NostrOrderService {
         status: statusToApply,
         providerId: providerId ?? order.providerId,
         createdAt: order.createdAt,
+        acceptedAt: acceptedAt,
+        completedAt: order.completedAt,
         metadata: updatedMetadata, // IMPORTANTE: Incluir metadata com proofImage!
       );
     }
@@ -3785,6 +3810,8 @@ class NostrOrderService {
         status: order.status,
         providerId: providerId ?? order.providerId,
         createdAt: order.createdAt,
+        acceptedAt: acceptedAt,
+        completedAt: order.completedAt,
         metadata: updatedMetadata,
       );
     }
@@ -4242,6 +4269,7 @@ class NostrOrderService {
               'status': newStatus,
               'eventKind': eventKind,
               'providerId': content['providerId'] ?? event['pubkey'] ?? previousUpdate?['providerId'],
+              'acceptedAt': content['acceptedAt'] ?? previousUpdate?['acceptedAt'],
               'proofImage': content['proofImage'] ?? previousUpdate?['proofImage'] ?? accum?['proofImage'],
               'proofImage_nip44': content['proofImage_nip44'] ?? previousUpdate?['proofImage_nip44'] ?? accum?['proofImage_nip44'],
               'encryption': content['encryption'] ?? previousUpdate?['encryption'] ?? accum?['encryption'],

@@ -180,6 +180,162 @@ void main() {
     });
   });
 
+  group('PERF-SYNC fases urgente e manutenção', () {
+    late OrderProvider provider;
+
+    setUp(() {
+      provider = OrderProvider();
+      provider.debugSetCurrentUserPubkeyForR5c('buyer-pubkey');
+    });
+
+    tearDown(() => provider.dispose());
+
+    test('urgente conclui antes da cauda e rajada coalesce manutenção', () async {
+      final events = <String>[];
+      final maintenance = Completer<void>();
+      var maintenanceCalls = 0;
+      provider.urgentSyncRunnerOverride = (saveAndNotify) async {
+        events.add('urgent-start');
+        await saveAndNotify();
+        events.add('save-notify');
+      };
+      provider.maintenanceSyncRunnerOverride = (run) async {
+        maintenanceCalls++;
+        events.add('maintenance-start');
+        await maintenance.future;
+        await run();
+        events.add('maintenance-end');
+      };
+
+      await provider.syncOrdersFromNostr(force: true);
+      await Future<void>.delayed(Duration.zero);
+      expect(events, ['urgent-start', 'save-notify', 'maintenance-start']);
+      expect(provider.isSyncingUser, isFalse);
+
+      await provider.syncOrdersFromNostr(force: true);
+      await provider.syncOrdersFromNostr(force: true);
+      expect(maintenanceCalls, 1);
+
+      maintenance.complete();
+      await provider.debugUserMaintenanceIdle;
+      expect(maintenanceCalls, 2,
+          reason: 'uma pendente com o snapshot mais recente, sem sobreposição');
+      expect(events.where((e) => e == 'maintenance-end'), hasLength(2));
+    });
+
+    test('billcode e autopay crítico terminam antes da manutenção', () async {
+      final events = <String>[];
+      provider.urgentSyncRunnerOverride = (saveAndNotify) async {
+        await saveAndNotify();
+        events.add('save-notify');
+        await Future<void>.delayed(Duration.zero);
+        events.add('billcode');
+        await Future<void>.delayed(Duration.zero);
+        events.add('autopay');
+      };
+      provider.maintenanceSyncRunnerOverride = (run) async {
+        events.add('maintenance');
+        await run();
+      };
+
+      await provider.syncOrdersFromNostr(force: true);
+      await Future<void>.delayed(Duration.zero);
+      expect(events, ['save-notify', 'billcode', 'autopay', 'maintenance']);
+    });
+
+    test('campos urgentes são restaurados após save cedo', () async {
+      final now = DateTime(2026, 11, 21);
+      provider.syncClockOverride = () => now;
+      provider.markSyncing('expectation-order', 'completed');
+      expect(provider.isSyncing('expectation-order'), isTrue);
+      provider.debugSeedOrdersForR5c([
+        _completedOrder('expectation-order'),
+      ]);
+      provider.urgentCompletionOverride = () {
+        expect(provider.debugLastUserSyncTime, now);
+        expect(provider.hasCompletedInitialSync, isTrue);
+        expect(provider.isSyncing('expectation-order'), isFalse);
+      };
+      provider.maintenanceSyncRunnerOverride = (_) async {};
+
+      await provider.syncOrdersFromNostr(force: true);
+      expect(provider.debugLastUserSyncTime, now);
+      expect(provider.hasCompletedInitialSync, isTrue);
+      expect(provider.isSyncing('expectation-order'), isFalse);
+    });
+
+    test('manutenção salva e notifica após concluir', () async {
+      var saves = 0;
+      var notifications = 0;
+      provider.addListener(() => notifications++);
+      provider.urgentSyncRunnerOverride = (saveAndNotify) async {
+        await saveAndNotify();
+      };
+      provider.maintenanceSaveOverride = () async {
+        saves++;
+      };
+      provider.maintenanceNotifyOverride = () => notifications++;
+
+      await provider.syncOrdersFromNostr(force: true);
+      await provider.debugUserMaintenanceIdle;
+      expect(saves, 1);
+      expect(notifications, 1);
+    });
+
+    test('cauda que termina durante novo sync não salva snapshot antigo', () async {
+      final maintenanceStarted = Completer<void>();
+      final finishMaintenance = Completer<void>();
+      var saves = 0;
+      provider.syncDelayOverride = (_) => Future<void>.value();
+      provider.urgentSyncRunnerOverride = (saveAndNotify) async {
+        await saveAndNotify();
+      };
+      provider.maintenanceSyncRunnerOverride = (run) async {
+        if (!maintenanceStarted.isCompleted) maintenanceStarted.complete();
+        await finishMaintenance.future;
+        await run();
+      };
+      provider.maintenanceSaveOverride = () async {
+        saves++;
+      };
+
+      await provider.syncOrdersFromNostr(force: true);
+      await maintenanceStarted.future;
+      final nextSync = provider.syncOrdersFromNostr(force: true);
+      finishMaintenance.complete();
+      await nextSync;
+      await provider.debugUserMaintenanceIdle;
+      expect(saves, 1,
+          reason: 'somente a manutenção mais recente persiste; a antiga é suprimida');
+    });
+
+    test('erro da cauda não afeta urgente nem cria loop', () async {
+      var urgentCalls = 0;
+      var maintenanceCalls = 0;
+      provider.urgentSyncRunnerOverride = (saveAndNotify) async {
+        urgentCalls++;
+        await saveAndNotify();
+      };
+      provider.maintenanceSyncRunnerOverride = (_) async {
+        maintenanceCalls++;
+        throw StateError('maintenance failed');
+      };
+
+      await provider.syncOrdersFromNostr(force: true);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      expect(urgentCalls, 1);
+      expect(maintenanceCalls, 1);
+      expect(provider.isSyncingUser, isFalse);
+
+      await provider.syncOrdersFromNostr(force: true);
+      await Future<void>.delayed(Duration.zero);
+      expect(urgentCalls, 2);
+      expect(maintenanceCalls, 2,
+          reason: 'somente novo sync agenda nova tentativa; não há loop automático');
+    });
+  });
+
   group('PERF-SYNC cooldown de completions', () {
     late OrderProvider provider;
     late DateTime now;

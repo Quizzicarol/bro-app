@@ -72,6 +72,11 @@ class OrderProvider with ChangeNotifier {
   final Map<String, DateTime> _completionRepublishAckedAt = {};
   static const Duration _completionRepublishCooldown = Duration(minutes: 10);
   Future<void>? _completionRepublishInFlight;
+  Future<void>? _userMaintenanceInFlight;
+  bool _userMaintenanceQueued = false;
+  List<Order> _userMaintenanceOrders = <Order>[];
+  int _userMaintenanceGeneration = 0;
+  bool _disposed = false;
 
   // v552: Sync expectations triggered by FCM push.
   // Quando chega um push de order_update, marcamos a ordem como "sincronizando"
@@ -381,9 +386,11 @@ class OrderProvider with ChangeNotifier {
 
   /// PERFORMANCE: notifyListeners throttled â�?��?� coalesce calls within 100ms
   void _throttledNotify() {
+    if (_disposed) return;
     _notifyPending = true;
     if (_notifyDebounceTimer?.isActive ?? false) return;
     _notifyDebounceTimer = Timer(const Duration(milliseconds: 100), () {
+      if (_disposed) return;
       if (_notifyPending) {
         _notifyPending = false;
         notifyListeners();
@@ -394,6 +401,7 @@ class OrderProvider with ChangeNotifier {
 
   /// Immediate notify - for loading/error state transitions that must reach UI instantly
   void _immediateNotify() {
+    if (_disposed) return;
     _notifyDebounceTimer?.cancel();
     _notifyPending = false;
     notifyListeners();
@@ -501,6 +509,32 @@ class OrderProvider with ChangeNotifier {
 
   @visibleForTesting
   void Function()? statusCacheInvalidatorOverride;
+
+  @visibleForTesting
+  Future<void> Function(Future<void> Function() urgent)? urgentSyncRunnerOverride;
+
+  @visibleForTesting
+  Future<void> Function(Future<void> Function() maintenance)?
+      maintenanceSyncRunnerOverride;
+
+  @visibleForTesting
+  Future<void> Function()? maintenanceSaveOverride;
+
+  @visibleForTesting
+  void Function()? urgentCompletionOverride;
+
+  @visibleForTesting
+  void Function()? maintenanceNotifyOverride;
+
+  @visibleForTesting
+  Future<void> get debugUserMaintenanceIdle async {
+    while (_userMaintenanceInFlight != null) {
+      await _userMaintenanceInFlight!;
+    }
+  }
+
+  @visibleForTesting
+  DateTime? get debugLastUserSyncTime => _lastUserSyncTime;
 
   @visibleForTesting
   void debugMarkLastUserSyncForTest(DateTime value) {
@@ -678,9 +712,10 @@ class OrderProvider with ChangeNotifier {
   
   /// PERFORMANCE: Debounced save â�?��?� coalesce rapid writes into one 500ms later
   void _debouncedSave() {
+    if (_disposed) return;
     _saveDebounceTimer?.cancel();
     _saveDebounceTimer = Timer(const Duration(milliseconds: 500), () {
-      _saveOnlyUserOrders();
+      if (!_disposed) unawaited(_saveOnlyUserOrders());
     });
   }
 
@@ -5701,6 +5736,7 @@ class OrderProvider with ChangeNotifier {
   /// PERFORMANCE: Throttled â�?��?� ignora chamadas se sync j�?¡ em andamento ou muito recente
   /// [force] = true bypassa cooldown (para a�?§�?µes expl�?­citas do usu�?¡rio)
   Future<void> syncOrdersFromNostr({bool force = false}) {
+    if (_disposed) return Future.value();
     // Um passe ativo e no máximo um pendente. Todos os chamadores do passe
     // pendente compartilham o mesmo Future; force é acumulado, nunca rebaixado.
     if (_isSyncingUser) {
@@ -5756,6 +5792,10 @@ class OrderProvider with ChangeNotifier {
   }
 
   Future<void> _drainUserSyncQueue(int syncGeneration) async {
+    if (_disposed) {
+      _completeAbandonedUserSyncWaiters();
+      return;
+    }
     if (_userSyncDraining || syncGeneration != _userSyncGeneration) return;
     _userSyncDraining = true;
     final drainGeneration = ++_userSyncDrainGeneration;
@@ -5791,6 +5831,10 @@ class OrderProvider with ChangeNotifier {
     if (generation != _userSyncGeneration) return;
     _isSyncingUser = false;
     _syncUserStartedAt = null;
+    if (_disposed) {
+      _completeAbandonedUserSyncWaiters();
+      return;
+    }
     unawaited(_drainUserSyncQueue(generation));
   }
 
@@ -5819,6 +5863,23 @@ class OrderProvider with ChangeNotifier {
       return;
     }
 
+    final urgentRunner = urgentSyncRunnerOverride;
+    if (urgentRunner != null) {
+      var maintenanceScheduled = false;
+      try {
+        await urgentRunner(() async {
+          _completeUrgentUserSync();
+          maintenanceScheduled = true;
+        });
+      } finally {
+        _finishUserSync(generation);
+        if (maintenanceScheduled) _scheduleUserMaintenance(<Order>[]);
+      }
+      return;
+    }
+
+    var nostrOrders = <Order>[];
+    var urgentStatusSaved = false;
     try {
       // PERFORMANCE v1.0.129+218: Se TODAS as ordens locais s�o terminais,
       // pular fetchUserOrders (que abre 9+ WebSocket connections).
@@ -5836,7 +5897,6 @@ class OrderProvider with ChangeNotifier {
       const terminalOnly = ['completed', 'cancelled', 'liquidated'];
       final hasActiveOrders = _orders.isEmpty || _orders.any((o) => !terminalOnly.contains(o.status));
 
-      List<Order> nostrOrders;
       if (hasActiveOrders) {
         nostrOrders = await _nostrOrderService.fetchUserOrders(_currentUserPubkey!);
       } else {
@@ -6354,6 +6414,8 @@ class OrderProvider with ChangeNotifier {
         broLog('⚠️ v820c: save cedo falhou (não bloqueia): $e');
       }
       _throttledNotify();
+      urgentStatusSaved = true;
+      _completeUrgentUserSync();
 
       // v388: One-time migration of old encrypted billCode to plain text
       await _migrateBillCodeToPlainText();
@@ -6414,129 +6476,198 @@ class OrderProvider with ChangeNotifier {
         broLog('⚠️ sync: _reconcileCompletedUnpaidOrders falhou (não bloqueia): $e');
       }
 
-      // v699: marcar corridas perdidas (tira ordem fantasma das Minhas)
-      _markLostRaces();
-
-      // v716: curar providerId corrompido por aceite tardio (pré-v714)
-      _healProviderIdFromProof();
-      
-      // v622: Reconciliar taxas da plataforma que ficaram para trás
-      await _reconcilePlatformFees();
-      
-      // v133: Renovar invoices para ordens liquidadas (provider side)
-      await _renewInvoicesForLiquidatedAsProvider();
-      
-      // v253: AUTO-REPAIR: Tambem reparar no sync do usuario
-      // v259: Timeout global no auto-repair para nao travar sync
-      try {
-        await _autoRepairMissingOrderEvents(
-          allPendingOrders: <Order>[],
-          userOrders: nostrOrders,
-          providerOrders: <Order>[],
-        ).timeout(const Duration(seconds: 30), onTimeout: () {
-          broLog('v259: AUTO-REPAIR timeout (30s) no user sync - continuando');
-        });
-      } catch (e) {
-        broLog('v259: AUTO-REPAIR exception no user sync: $e');
-      }
-      
-      // v257/v259: Corrigir ordens com userPubkey corrompido (com timeout)
-      try {
-        await _fixCorruptedUserPubkeys().timeout(const Duration(seconds: 20), onTimeout: () {
-          broLog('v259: _fixCorruptedUserPubkeys timeout (20s) no user sync');
-        });
-      } catch (e) {
-        broLog('v259: _fixCorruptedUserPubkeys exception: $e');
-      }
-      
-      // v437: Re-publicar ordens pending que falharam na publicação inicial
-      try {
-        await _republishUnpublishedPendingOrders().timeout(
-          const Duration(seconds: 30),
-          onTimeout: () {
-            broLog('⏱️ _republishUnpublishedPendingOrders timeout (30s)');
-          },
-        );
-      } catch (e) {
-        broLog('⚠️ _republishUnpublishedPendingOrders exception: $e');
-      }
-      
-      // v436: Re-publicar confirmações de ordens completed que não chegaram ao relay
-      // Caso o pagamento Lightning tenha sido feito mas o publish Nostr falhou,
-      // essa etapa garante que o provedor receba a notificação no próximo sync
-      try {
-        await _republishUnconfirmedCompletions().timeout(
-          const Duration(seconds: 15),
-          onTimeout: () {
-            broLog('⏱️ _republishUnconfirmedCompletions timeout (15s)');
-          },
-        );
-      } catch (e) {
-        broLog('⚠️ _republishUnconfirmedCompletions exception: $e');
-      }
-      
-      // v437: Responder a nudges do provider (re-publicar completed se existir localmente)
-      try {
-        await _handleIncomingRepublishRequests().timeout(
-          const Duration(seconds: 15),
-          onTimeout: () {
-            broLog('⏱️ _handleIncomingRepublishRequests timeout (15s)');
-          },
-        );
-      } catch (e) {
-        broLog('⚠️ _handleIncomingRepublishRequests exception: $e');
-      }
-      
-      // v437: Provider auto-nudge — pedir republish para ordens presas
-      try {
-        await _autoNudgeStuckOrders().timeout(
-          const Duration(seconds: 15),
-          onTimeout: () {
-            broLog('⏱️ _autoNudgeStuckOrders timeout (15s)');
-          },
-        );
-      } catch (e) {
-        broLog('⚠️ _autoNudgeStuckOrders exception: $e');
-      }
-
-      // v582: Provider auto-nudge para billCode AUSENTE. Distinto do nudge
-      // de awaiting_confirmation: aqui o provedor acabou de aceitar e ainda
-      // não recebeu o billCode encriptado (status=accepted, billCode vazio).
-      // Sem isso, se o accept_relay push falhar, o provedor fica preso em
-      // "Obtendo dados de pagamento..." indefinidamente.
-      try {
-        await _autoNudgeMissingBillCode().timeout(
-          const Duration(seconds: 10),
-          onTimeout: () => broLog('⏱️ _autoNudgeMissingBillCode timeout (10s)'),
-        );
-      } catch (e) {
-        broLog('⚠️ _autoNudgeMissingBillCode exception: $e');
-      }
-      
       // Ordenar por data (mais recente primeiro)
       _orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       
       // SEGURAN�?�?�A CR�?TICA: Salvar apenas ordens do usu�?¡rio atual!
       // Isso evita que ordens de outros usu�?¡rios sejam persistidas localmente
+      // Mudanças de billcode/autopays posteriores ao save cedo também são
+      // persistidas e notificadas; o timestamp/expectations já foram tratados.
       _debouncedSave();
-      _lastUserSyncTime = DateTime.now();
-      if (!_hasCompletedInitialSync) {
-        _hasCompletedInitialSync = true;
-      }
-      // v552: limpar expectations cujo target ja foi alcancado pelo relay
-      _reconcileSyncExpectations();
       _throttledNotify();
       
     } catch (e) {
     } finally {
       _finishUserSync(generation);
+      // Histórico/repairs/nudges começam somente depois do save cedo e não
+      // seguram o Future urgente nem o próximo passe de status.
+      if (urgentStatusSaved) _scheduleUserMaintenance(nostrOrders);
     }
 
     // v521: authoritative ghost-order cleanup runs AFTER every sync, not only on login.
     // Fire-and-forget so it doesn't block the UI.
-    if (_currentUserPubkey != null && _currentUserPubkey!.isNotEmpty) {
+    if (!_disposed && _currentUserPubkey != null && _currentUserPubkey!.isNotEmpty) {
       final me = _currentUserPubkey!;
       unawaited(_removeGhostsAgainstNostr(me));
+    }
+  }
+
+  void _completeUrgentUserSync() {
+    if (_disposed) return;
+    _lastUserSyncTime = syncClockOverride();
+    _hasCompletedInitialSync = true;
+    // v552: expectations são reconciliadas assim que o status é aplicado,
+    // sem esperar billcode/autopays ou a manutenção.
+    _reconcileSyncExpectations();
+    urgentCompletionOverride?.call();
+  }
+
+  void _scheduleUserMaintenance(List<Order> nostrOrders) {
+    if (_disposed) return;
+    _userMaintenanceGeneration++;
+    _userMaintenanceOrders = List<Order>.from(nostrOrders);
+    if (_userMaintenanceInFlight != null) {
+      _userMaintenanceQueued = true;
+      return;
+    }
+    _userMaintenanceQueued = false;
+    late final Future<void> shared;
+    final run = Future<void>.microtask(_runUserMaintenanceLoop);
+    shared = run.whenComplete(() {
+      if (identical(_userMaintenanceInFlight, shared)) {
+        _userMaintenanceInFlight = null;
+      }
+    });
+    _userMaintenanceInFlight = shared;
+    unawaited(shared.catchError((e) {
+      broLog('⚠️ user maintenance falhou (não bloqueia): $e');
+    }));
+  }
+
+  Future<void> _runUserMaintenanceLoop() async {
+    do {
+      _userMaintenanceQueued = false;
+      if (_disposed) return;
+      if (_isSyncingUser || _userSyncQueued) {
+        _userMaintenanceQueued = true;
+        await syncDelayOverride(const Duration(milliseconds: 50));
+        continue;
+      }
+      final generation = _userMaintenanceGeneration;
+      final nostrOrders = _userMaintenanceOrders;
+      try {
+        final runner = maintenanceSyncRunnerOverride;
+        if (runner != null) {
+          await runner(() => _runUserMaintenance(nostrOrders, generation));
+        } else {
+          await _runUserMaintenance(nostrOrders, generation);
+        }
+      } catch (e) {
+        if (!_userMaintenanceQueued || _disposed) rethrow;
+        broLog('⚠️ user maintenance superada falhou; executando pendente: $e');
+      }
+    } while (_userMaintenanceQueued && !_disposed);
+  }
+
+  Future<void> _runUserMaintenance(
+      List<Order> nostrOrders, int generation) async {
+    if (_disposed || generation != _userMaintenanceGeneration) return;
+    // v699/v716: cura local de histórico, sem rede e sem atrasar dinheiro.
+    _markLostRaces();
+    _healProviderIdFromProof();
+
+    try {
+      await _reconcilePlatformFees();
+    } catch (e) {
+      broLog('⚠️ maintenance: _reconcilePlatformFees falhou: $e');
+    }
+    try {
+      await _renewInvoicesForLiquidatedAsProvider();
+    } catch (e) {
+      broLog('⚠️ maintenance: _renewInvoices falhou: $e');
+    }
+    try {
+      await _autoRepairMissingOrderEvents(
+        allPendingOrders: <Order>[],
+        userOrders: nostrOrders,
+        providerOrders: <Order>[],
+      ).timeout(const Duration(seconds: 30), onTimeout: () {
+        broLog('v259: AUTO-REPAIR timeout (30s) no user sync - continuando');
+      });
+    } catch (e) {
+      broLog('v259: AUTO-REPAIR exception no user sync: $e');
+    }
+    try {
+      await _fixCorruptedUserPubkeys().timeout(const Duration(seconds: 20), onTimeout: () {
+        broLog('v259: _fixCorruptedUserPubkeys timeout (20s) no user sync');
+      });
+    } catch (e) {
+      broLog('v259: _fixCorruptedUserPubkeys exception: $e');
+    }
+    try {
+      await _republishUnpublishedPendingOrders().timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          broLog('⏱️ _republishUnpublishedPendingOrders timeout (30s)');
+        },
+      );
+    } catch (e) {
+      broLog('⚠️ _republishUnpublishedPendingOrders exception: $e');
+    }
+    try {
+      await _republishUnconfirmedCompletions().timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          broLog('⏱️ _republishUnconfirmedCompletions timeout (15s)');
+        },
+      );
+    } catch (e) {
+      broLog('⚠️ _republishUnconfirmedCompletions exception: $e');
+    }
+    try {
+      await _handleIncomingRepublishRequests().timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          broLog('⏱️ _handleIncomingRepublishRequests timeout (15s)');
+        },
+      );
+    } catch (e) {
+      broLog('⚠️ _handleIncomingRepublishRequests exception: $e');
+    }
+    try {
+      await _autoNudgeStuckOrders().timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          broLog('⏱️ _autoNudgeStuckOrders timeout (15s)');
+        },
+      );
+    } catch (e) {
+      broLog('⚠️ _autoNudgeStuckOrders exception: $e');
+    }
+    try {
+      await _autoNudgeMissingBillCode().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => broLog('⏱️ _autoNudgeMissingBillCode timeout (10s)'),
+      );
+    } catch (e) {
+      broLog('⚠️ _autoNudgeMissingBillCode exception: $e');
+    }
+
+    // Não persiste uma cauda que ficou para trás de um novo passe urgente.
+    // A manutenção pendente usará o snapshot mais recente.
+    if (_disposed ||
+        generation != _userMaintenanceGeneration ||
+        _isSyncingUser ||
+        _userSyncQueued) {
+      _userMaintenanceQueued = true;
+      return;
+    }
+    try {
+      final save = maintenanceSaveOverride;
+      if (save != null) {
+        await save();
+      } else {
+        await _saveOnlyUserOrders();
+      }
+    } catch (e) {
+      broLog('⚠️ maintenance: save falhou (não bloqueia): $e');
+    }
+    if (_disposed || generation != _userMaintenanceGeneration) return;
+    final notify = maintenanceNotifyOverride;
+    if (notify != null) {
+      notify();
+    } else {
+      _throttledNotify();
     }
   }
 
@@ -7383,7 +7514,7 @@ class OrderProvider with ChangeNotifier {
   /// is already triggered by OrderRealtimeService.onOrderEvent (wired in
   /// main.dart Builder) and by foreground polling.
   void markSyncing(String orderId, String expectedStatus) {
-    if (orderId.isEmpty || expectedStatus.isEmpty) return;
+    if (_disposed || orderId.isEmpty || expectedStatus.isEmpty) return;
 
     // If the order is already at or past the expected status, no need to
     // signal syncing — the relay already delivered (or local state is
@@ -7436,7 +7567,7 @@ class OrderProvider with ChangeNotifier {
   /// the spinner from disappearing mid-flight on slow relay deliveries
   /// (e.g. pending -> accepted -> awaiting_confirmation can take >20s).
   void _reconcileSyncExpectations() {
-    if (_syncExpectations.isEmpty) return;
+    if (_disposed || _syncExpectations.isEmpty) return;
     final toClear = <String>[];
     _syncExpectations.forEach((orderId, exp) {
       final order = getOrderById(orderId);
@@ -7491,6 +7622,10 @@ class OrderProvider with ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    _userMaintenanceGeneration++;
+    _userMaintenanceQueued = false;
+    _notifyPending = false;
     // v552: cancel sync expectation timers to prevent leaks.
     for (final exp in _syncExpectations.values) {
       exp.timer?.cancel();

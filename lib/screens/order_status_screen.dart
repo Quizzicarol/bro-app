@@ -29,6 +29,79 @@ import 'package:flutter/services.dart';
 import '../widgets/dispute_chat.dart';
 import '../utils/image_compress.dart';
 
+@visibleForTesting
+class ProofFetchCoordinator {
+  ProofFetchCoordinator({DateTime Function()? clock})
+      : _clock = clock ?? DateTime.now;
+
+  final DateTime Function() _clock;
+  Future<void>? _inFlight;
+  DateTime? _notBefore;
+  String? _proofHint;
+  int _failures = 0;
+  bool _disposed = false;
+
+  bool get isFetching => _inFlight != null;
+
+  void invalidate() {
+    _notBefore = null;
+    _failures = 0;
+  }
+
+  void noteProofHint(String? hint) {
+    if (hint == null || hint.isEmpty) return;
+    if (_proofHint != hint) {
+      _proofHint = hint;
+      invalidate();
+    }
+  }
+
+  Future<void> fetch(
+    Future<bool> Function() operation, {
+    bool force = false,
+  }) {
+    if (_disposed) return Future.value();
+    if (force) invalidate();
+    final inFlight = _inFlight;
+    if (inFlight != null) return inFlight;
+    final notBefore = _notBefore;
+    if (notBefore != null && _clock().isBefore(notBefore)) {
+      return Future.value();
+    }
+
+    late final Future<void> shared;
+    shared = _run(operation).whenComplete(() {
+      if (identical(_inFlight, shared)) _inFlight = null;
+    });
+    _inFlight = shared;
+    return shared;
+  }
+
+  Future<void> _run(Future<bool> Function() operation) async {
+    try {
+      final found = await operation();
+      if (_disposed) return;
+      if (found) {
+        invalidate();
+        return;
+      }
+      _failures = 0;
+      _notBefore = _clock().add(const Duration(seconds: 30));
+    } catch (_) {
+      if (_disposed) return;
+      _failures++;
+      final seconds = 30 * (1 << (_failures - 1).clamp(0, 2));
+      _notBefore = _clock().add(Duration(seconds: seconds));
+      rethrow;
+    }
+  }
+
+  void dispose() {
+    _disposed = true;
+    _notBefore = null;
+  }
+}
+
 /// Tela exibida após pagamento confirmado
 /// Mostra status da ordem e aguarda provedor aceitar
 class OrderStatusScreen extends StatefulWidget {
@@ -80,6 +153,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   // v615: indica que estamos buscando o comprovante direto do relay (fetch
   // de até 15s). Usado para mostrar o spinner "Carregando comprovante".
   bool _fetchingProofDirectly = false;
+  final ProofFetchCoordinator _proofFetch = ProofFetchCoordinator();
   
   // Dados da disputa para exibição no relatório
   String? _disputeReason;
@@ -137,6 +211,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     _countdownTimer?.cancel();
     _paymentCheckTimer?.cancel();
     _orderProvider?.removeListener(_onProviderUpdated);
+    _proofFetch.dispose();
     super.dispose();
   }
 
@@ -156,6 +231,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     
     final orderMap = order.toJson();
     final newStatus = order.status;
+    final metadata = order.metadata;
+    final proofHint = metadata?['proofImage_nip44'] as String? ??
+        metadata?['proofImage'] as String? ??
+        metadata?['proofReceivedAt']?.toString() ??
+        metadata?['receipt_submitted_at']?.toString();
+    _proofFetch.noteProofHint(proofHint);
     
     // Atualizar dados na tela se houver mudança
     final statusChanged = newStatus != _currentStatus;
@@ -228,24 +309,17 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     return newIndex > currentIndex;
   }
 
-  Future<void> _loadOrderDetails() async {
+  Future<void> _loadOrderDetails({bool forceProofRefresh = false}) async {
     try {
       Map<String, dynamic>? order;
       
-      // v490: SEMPRE sincronizar com Nostr para buscar proof/status mais recentes
-      // Sem isso, proof de 65KB pode não ter chegado no sync automático inicial
+      // Renderiza dados locais imediatamente; o sync segue em background e o
+      // listener atualiza a tela quando os eventos chegarem.
       if (mounted) {
-        try {
-          final orderProvider = Provider.of<OrderProvider>(context, listen: false);
-          await orderProvider.syncOrdersFromNostr(force: true).timeout(
-            const Duration(seconds: 8),
-            onTimeout: () {
-              broLog('⏱️ Sync timeout no _loadOrderDetails, continuando com dados locais');
-            },
-          );
-        } catch (e) {
+        final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+        unawaited(orderProvider.syncOrdersFromNostr(force: true).catchError((e) {
           broLog('⚠️ Sync falhou no _loadOrderDetails: $e');
-        }
+        }));
       }
       
       // v450: Buscar do OrderProvider PRIMEIRO (memória, mais recente)
@@ -307,7 +381,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         final proofImg = metadata?['proofImage'] as String?;
         final hasValidProof = proofImg != null && proofImg.isNotEmpty && !proofImg.startsWith('[encrypted:');
         if (!hasValidProof && (bestStatus == 'accepted' || bestStatus == 'awaiting_confirmation' || bestStatus == 'completed' || bestStatus == 'liquidated')) {
-          _fetchProofDirectly();
+          _fetchProofDirectly(force: forceProofRefresh);
         }
         
         // Auto-pagamento de ordens liquidadas é feito pelo OrderProvider no sync
@@ -330,9 +404,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   
   /// v490: Busca proof diretamente dos relays quando sync normal não trouxe
   /// Isso acontece com proofs grandes (~65KB) que podem causar timeout no sync batch
-  Future<void> _fetchProofDirectly() async {
-    if (!mounted) return;
-    if (_fetchingProofDirectly) return; // evitar fetch concorrente
+  Future<void> _fetchProofDirectly({bool force = false}) {
+    if (!mounted) return Future.value();
+    return _proofFetch.fetch(_fetchProofDirectlyOnce, force: force).catchError((_) {});
+  }
+
+  Future<bool> _fetchProofDirectlyOnce() async {
+    if (!mounted) return false;
     setState(() => _fetchingProofDirectly = true);
     try {
       final orderProvider = Provider.of<OrderProvider>(context, listen: false);
@@ -353,15 +431,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       
       if (proof != null && proof.isNotEmpty && !encrypted && mounted) {
         broLog('✅ [PROOF] Comprovante obtido diretamente do relay (${proof.length} chars)');
-        
-        // Salvar no cache persistente e no OrderProvider
         orderProvider.cacheProofImage(widget.orderId, proof);
         orderProvider.updateOrderMetadataLocal(widget.orderId, {
           'proofImage': proof,
           'paymentProof': proof,
         });
-        
-        // Forçar rebuild da tela
         if (mounted) {
           setState(() {
             if (_orderDetails != null) {
@@ -374,11 +448,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             }
           });
         }
-      } else {
-        broLog('⚠️ [PROOF] Fetch direto não retornou proof válido (proof=${proof?.length}, encrypted=$encrypted)');
+        return true;
       }
+      broLog('⚠️ [PROOF] Fetch direto não retornou proof válido (proof=${proof?.length}, encrypted=$encrypted)');
+      return false;
     } catch (e) {
       broLog('⚠️ [PROOF] Erro ao buscar proof diretamente: $e');
+      rethrow;
     } finally {
       if (mounted) setState(() => _fetchingProofDirectly = false);
     }
@@ -1681,7 +1757,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       ),
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: _loadOrderDetails,
+          onRefresh: () => _loadOrderDetails(forceProofRefresh: true),
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),

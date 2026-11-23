@@ -111,34 +111,39 @@ void main() {
     });
 
     test('(e) provider orders: snapshot renderiza imediato com relays mortos <2s', () async {
-      NostrOrderService.relaysOverride = List<String>.from(deadRelays);
-      NostrOrderService.applyRelaysOverride();
-      NostrOrderService.apiGetOverride = (path) async {
-        if (path.contains('provider=')) {
-          return {
-            'success': true,
-            'orders': [snapshotOrder('flow-e-1')],
-          };
-        }
-        return {'success': true, 'orders': <dynamic>[]};
-      };
+      try {
+        NostrOrderService.relaysOverride = List<String>.from(deadRelays);
+        NostrOrderService.applyRelaysOverride();
+        NostrOrderService.apiGetOverride = (path) async {
+          if (path.contains('provider=')) {
+            return {
+              'success': true,
+              'orders': [snapshotOrder('flow-e-1')],
+            };
+          }
+          return {'success': true, 'orders': <dynamic>[]};
+        };
 
-      final sw = Stopwatch()..start();
-      final orders = await NostrOrderService()
-          .fetchProviderOrders('pk-provider-test', onBackgroundReconcile: () {});
-      sw.stop();
+        final sw = Stopwatch()..start();
+        final orders = await NostrOrderService()
+            .fetchProviderOrders('pk-provider-test', onBackgroundReconcile: () {});
+        sw.stop();
 
-      expect(
-        orders.map((o) => o.id).toList(),
-        contains('flow-e-1'),
-        reason: 'snapshot do provider deve conter flow-e-1; recebido=${orders.map((o) => '${o.id}:${o.status}').toList()}',
-      );
-      expect(
-        sw.elapsed,
-        lessThan(const Duration(seconds: 2)),
-        reason: 'snapshot do provider demorou ${sw.elapsedMilliseconds}ms com relays mortos',
-      );
-      broLog('⏱️ R5b teste (e): provider orders via API em ${sw.elapsedMilliseconds}ms');
+        expect(
+          orders.map((o) => o.id).toList(),
+          contains('flow-e-1'),
+          reason: 'snapshot do provider deve conter flow-e-1; recebido=${orders.map((o) => '${o.id}:${o.status}').toList()}',
+        );
+        expect(
+          sw.elapsed,
+          lessThan(const Duration(seconds: 2)),
+          reason: 'snapshot do provider demorou ${sw.elapsedMilliseconds}ms com relays mortos',
+        );
+        broLog('⏱️ R5b teste (e): provider orders via API em ${sw.elapsedMilliseconds}ms');
+      } catch (error, stackTrace) {
+        broLog('🚨 R5b teste (e) FALHOU: $error\n$stackTrace');
+        rethrow;
+      }
     });
   });
 }

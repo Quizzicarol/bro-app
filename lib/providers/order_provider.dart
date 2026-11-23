@@ -3641,6 +3641,12 @@ class OrderProvider with ChangeNotifier {
         _immediateNotify();
         return false;
       }
+      if (order.status == 'accept_expired') {
+        _error = 'O aceite expirou. Não é mais possível enviar comprovante.';
+        _isLoading = false;
+        _immediateNotify();
+        return false;
+      }
 
       // Pegar chave privada do Nostr
       final privateKey = _nostrService.privateKey;
@@ -4036,21 +4042,8 @@ class OrderProvider with ChangeNotifier {
   bool _isCanonicalLateProof(Order order, Map<String, dynamic> update) =>
       NostrOrderService.isCanonicalLateProof(order, update);
 
-  static bool hasCanonicalProofForExpiredOrder(Map<String, dynamic> order) {
-    if (order['status'] != 'accept_expired') return false;
-    final metadata = (order['metadata'] as Map?)?.cast<String, dynamic>() ?? {};
-    final plain = metadata['proofImage']?.toString();
-    final encrypted = metadata['proofImage_nip44']?.toString();
-    final hasProof = (plain != null && plain.isNotEmpty && !plain.startsWith('[encrypted:')) ||
-        (encrypted != null && encrypted.isNotEmpty) ||
-        metadata['proofReceivedAt'] != null || metadata['receipt_submitted_at'] != null;
-    if (!hasProof) return false;
-    final providerId = order['provider_id']?.toString() ??
-        order['providerId']?.toString() ?? metadata['providerId']?.toString();
-    final proofAuthor = metadata['proofImage_senderPubkey']?.toString();
-    return providerId != null && providerId.isNotEmpty &&
-        proofAuthor != null && proofAuthor.isNotEmpty && proofAuthor == providerId;
-  }
+  static bool hasCanonicalProofForExpiredOrder(Map<String, dynamic> order) =>
+      false;
 
   List<Order> _acceptExpiryCandidates(DateTime now, {Duration? window}) {
     return _orders.where((order) {
@@ -7313,7 +7306,7 @@ class OrderProvider with ChangeNotifier {
     }
     // disputed vence sobre status N�O-FINAIS
     if (newStatus == 'disputed') {
-      return currentStatus != 'disputed';
+      return currentStatus != 'disputed' && currentStatus != 'accept_expired';
     }
     
     // Ordem de progress�?£o de status (SEM cancelled - tratado separadamente acima):

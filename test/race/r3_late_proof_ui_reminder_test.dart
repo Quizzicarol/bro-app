@@ -13,16 +13,47 @@ void main() {
     expect(OrderProvider.acceptExpiryWindow, const Duration(minutes: 60));
   });
 
+  testWidgets('aviso de 1 hora fica visível junto ao billcode', (tester) async {
+    final acceptedAt = DateTime(2026, 11, 23, 7, 0);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: buildAcceptExpiryNotice(
+          acceptedAt: acceptedAt,
+          now: acceptedAt.add(const Duration(minutes: 8)),
+        ),
+      ),
+    ));
+    expect(find.textContaining('52 minutos'), findsOneWidget);
+    expect(find.textContaining('código será bloqueado'), findsOneWidget);
+    expect(find.textContaining('republicada'), findsOneWidget);
+    final text = tester.widget<Text>(find.textContaining('52 minutos'));
+    expect(text.style?.color, Colors.redAccent);
+    expect(text.style?.fontWeight, FontWeight.w700);
+  });
+
+  testWidgets('aviso expirado orienta recuperar com comprovante', (tester) async {
+    final acceptedAt = DateTime(2026, 11, 23, 7, 0);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: buildAcceptExpiryNotice(
+          acceptedAt: acceptedAt,
+          now: acceptedAt.add(const Duration(minutes: 61)),
+        ),
+      ),
+    ));
+    expect(find.textContaining('tempo para pagamento expirou'), findsOneWidget);
+    expect(find.textContaining('Não envie mais comprovante nem abra disputa'), findsOneWidget);
+  });
+
   testWidgets('billcode expirado é bloqueado na UI sem apagar prova', (tester) async {
     await tester.pumpWidget(MaterialApp(home: buildExpiredProviderPaymentBlock()));
     expect(find.textContaining('código Pix/boleto está bloqueado'), findsOneWidget);
-    expect(find.textContaining('envie ou visualize o comprovante'), findsOneWidget);
+    expect(find.textContaining('Não envie mais comprovante nem abra disputa'), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
     expect(find.byType(ElevatedButton), findsNothing);
   });
 
-  test('billcode expirado não é ação de pagamento; prova continua recuperável',
-      () {
+  test('aceite expirado não recupera por comprovante tardio', () {
     final expired = {
       'id': '4e2c858a',
       'status': 'accept_expired',
@@ -33,7 +64,7 @@ void main() {
         'proofImage_senderPubkey': '6ac7f189',
       },
     };
-    expect(OrderProvider.hasCanonicalProofForExpiredOrder(expired), isTrue);
+    expect(OrderProvider.hasCanonicalProofForExpiredOrder(expired), isFalse);
     expect(expired['status'], 'accept_expired');
     expect((expired['metadata'] as Map)['accept_expired_published'], isTrue);
   });
@@ -60,7 +91,7 @@ void main() {
       );
       expect(at20.single['key'], '4e2c858a:A:20m');
       expect(at20.single['role'], 'provider');
-      expect(at20.single['body'], contains('1h'));
+      expect(at20.single['body'], contains('40 minutos'));
       expect(at20.single['body'], isNot(contains('36h')));
 
       final at40 = service.debugDueReminders(
@@ -95,6 +126,26 @@ void main() {
           order: order('awaiting_confirmation'),
           currentPubkey: '6ac7f189',
           now: acceptedAt.add(const Duration(minutes: 59)),
+        ),
+        isEmpty,
+      );
+    });
+
+    test('expiração notifica o comprador para republicar ou cancelar', () {
+      final reminders = OrderReminderService().debugDueReminders(
+        order: order('accept_expired'),
+        currentPubkey: 'buyer',
+        now: acceptedAt.add(const Duration(minutes: 60)),
+      );
+      expect(reminders.single['key'], '4e2c858a:E:60m');
+      expect(reminders.single['role'], 'user');
+      expect(reminders.single['title'], contains('republicar ou cancelar'));
+      expect(reminders.single['body'], contains('sacar seus sats'));
+      expect(
+        OrderReminderService().debugDueReminders(
+          order: order('accept_expired'),
+          currentPubkey: '6ac7f189',
+          now: acceptedAt.add(const Duration(minutes: 60)),
         ),
         isEmpty,
       );

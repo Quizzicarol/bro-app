@@ -152,15 +152,15 @@ void main() {
     await relay.stop();
   }, timeout: const Timeout(Duration(seconds: 60)));
 
-  test('R3 4e2c858a: accept_expired posterior não descarta complete canônico', () async {
+  test('R3: complete anterior à expiração permanece aguardando confirmação', () async {
     const orderId = '4e2c858a';
     const expiredAt = 1763749572;
     const completeAt = 1763749588;
     final providerKeys = Keychain.generate();
     final buyerKeys = Keychain.generate();
     final relay = _MiniRelay([
+      _completeEvent(orderId, providerKeys, createdAt: expiredAt - 16),
       _statusEvent(orderId, buyerKeys, 'accept_expired', expiredAt, providerKeys.public),
-      _completeEvent(orderId, providerKeys, createdAt: completeAt),
     ]);
     await relay.start();
     NostrOrderService.relaysOverride = [relay.url];

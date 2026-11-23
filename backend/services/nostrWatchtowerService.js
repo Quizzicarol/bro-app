@@ -91,8 +91,9 @@ const NOTIFICATION_MAP = {
   'cancelled': { title: '❌ Ordem cancelada', body: 'A ordem foi cancelada' },
   'disputed': { title: '⚖️ Disputa aberta', body: 'Uma disputa foi aberta nesta ordem' },
   'liquidated': { title: '⚡ Auto-liquidação', body: 'A ordem foi auto-liquidada' },
-  // R3 (v816): aceite expirou 1h sem prova — alvo é o PROVEDOR (via #p tag)
-  'accept_expired': { title: '⏰ Seu aceite expirou', body: 'O tempo de 1h para pagar a ordem acabou. O cliente pode republicar ou cancelar.' },
+  // R3: aceite expirou sem pagamento — comprador decide republicar/cancelar.
+  'accept_expired': { title: '⏰ Aceite expirado', body: 'O Bro não pagou em 1 hora. Abra o app para republicar ou cancelar e sacar seus sats.' },
+  'accept_expired_provider': { title: '⏰ Seu aceite expirou', body: 'O tempo de 1h para pagar acabou. Não envie mais comprovante nem abra disputa.' },
   'new_order': { title: '📋 Nova ordem disponível!', body: 'Uma nova ordem de pagamento está disponível' },
 };
 
@@ -971,7 +972,7 @@ class NostrWatchtowerService {
             'payment_submitted': 'provider', // user paid Spark invoice → tell provider to execute bill
             'awaiting_confirmation': 'user', // provider uploaded proof → tell user to verify & release
             'completed': 'provider',         // user released escrow → tell provider
-            'accept_expired': 'provider',    // user expired acceptance → tell provider
+            'accept_expired': 'both',        // buyer republishes/cancels; provider stops
             'liquidated': 'user',            // auto-liquidation → tell user (refund)
             'cancelled': 'other',            // tell the party that didn't cancel
             'disputed': 'other',             // tell the party that didn't dispute
@@ -980,7 +981,14 @@ class NostrWatchtowerService {
           const routing = STATUS_NOTIFY[status] || 'other';
           let targetPubkey = null;
 
-          if (routing === 'user' && isValidPubkey(userPubkey)) {
+          if (routing === 'both') {
+            if (isValidPubkey(userPubkey)) {
+              await this._sendOrderPush(userPubkey, senderPubkey, 'accept_expired', orderId, shortId, 'user');
+            }
+            if (isValidPubkey(providerId)) {
+              await this._sendOrderPush(providerId, senderPubkey, 'accept_expired_provider', orderId, shortId, 'provider');
+            }
+          } else if (routing === 'user' && isValidPubkey(userPubkey)) {
             targetPubkey = userPubkey;
           } else if (routing === 'provider' && isValidPubkey(providerId)) {
             targetPubkey = providerId;

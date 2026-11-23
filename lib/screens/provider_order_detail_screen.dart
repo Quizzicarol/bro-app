@@ -32,10 +32,49 @@ Widget buildExpiredProviderPaymentBlock() => Container(
         border: Border.all(color: Colors.orange.withOpacity(0.3)),
       ),
       child: const Text(
-        'O prazo de 1 hora para novas ações de pagamento expirou. O código Pix/boleto está bloqueado. Se você já pagou, envie ou visualize o comprovante para o comprador confirmar.',
+        'O prazo de 1 hora para pagamento expirou. O código Pix/boleto está bloqueado e a ordem poderá ser republicada. Não envie mais comprovante nem abra disputa.',
         style: TextStyle(color: Colors.orange, fontSize: 13),
       ),
     );
+
+@visibleForTesting
+Widget buildAcceptExpiryNotice({DateTime? acceptedAt, DateTime? now}) {
+  final deadline = acceptedAt?.add(OrderProvider.acceptExpiryWindow);
+  final remaining = deadline == null
+      ? null
+      : deadline.difference(now ?? DateTime.now());
+  final message = remaining == null
+      ? 'Código de pagamento disponível por mais 60 minutos para enviar o comprovante. Após o tempo transcorrido, o código será bloqueado e a ordem poderá ser republicada.'
+      : remaining.isNegative
+          ? 'O tempo para pagamento expirou. O código foi bloqueado e a ordem poderá ser republicada. Não envie mais comprovante nem abra disputa.'
+          : 'Código de pagamento disponível por mais ${remaining.inMinutes} minutos para enviar o comprovante. Após o tempo transcorrido, o código será bloqueado e a ordem poderá ser republicada.';
+  return Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: Colors.orange.withOpacity(0.1),
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: Colors.orange.withOpacity(0.35)),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Icon(Icons.schedule, color: Colors.redAccent, size: 20),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            message,
+            style: const TextStyle(
+              color: Colors.redAccent,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
 
 class ProviderOrderDetailScreen extends StatefulWidget {
   final String orderId;
@@ -1052,6 +1091,10 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   }
 
   Future<void> _uploadReceipt() async {
+    if (_orderDetails?['status'] == 'accept_expired') {
+      _showError('O aceite expirou. Não é mais possível enviar comprovante nesta ordem.');
+      return;
+    }
     // Verificar se tem imagem OU código
     if (_receiptImage == null && _confirmationCodeController.text.trim().isEmpty) {
       _showError(AppLocalizations.of(context)!.t('prov_det_select_receipt'));
@@ -1535,8 +1578,6 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             _buildStatusCard(),
             const SizedBox(height: 16),
             buildExpiredProviderPaymentBlock(),
-            const SizedBox(height: 16),
-            _buildReceiptSection(),
           ]
           // ========== v806: CORRIDA EM APURAÇÃO ==========
           // O status já virou 'accepted' no sync, mas o gate da corrida
@@ -2536,6 +2577,12 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
             style: TextStyle(color: Colors.white70, fontSize: 13),
           ),
           const SizedBox(height: 16),
+          buildAcceptExpiryNotice(
+            acceptedAt: DateTime.tryParse(
+              _orderDetails?['acceptedAt']?.toString() ?? '',
+            ),
+          ),
+          const SizedBox(height: 16),
           const Divider(color: Colors.white12),
           const SizedBox(height: 16),
           
@@ -2977,6 +3024,10 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   }
 
   void _showProviderDisputeDialog() {
+    if (_orderDetails?['status'] == 'accept_expired') {
+      _showError('O aceite expirou. Não é mais possível abrir disputa nesta ordem.');
+      return;
+    }
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -3195,6 +3246,17 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
   }
 
   Future<void> _submitProviderDispute(String reason, String description) async {
+    if (_orderDetails?['status'] == 'accept_expired') {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('O aceite expirou. Não é mais possível abrir disputa nesta ordem.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+      return;
+    }
     // Mostrar loading
     showDialog(
       context: context,

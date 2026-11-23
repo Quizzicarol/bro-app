@@ -368,6 +368,12 @@ Future<void> _showNotificationForEvent(Map<String, dynamic> event, String userPu
           payload = 'payment_received:$orderId';
           importance = Importance.max;
           break;
+        case 'accept_expired':
+          title = 'Aceite expirado';
+          body = 'O Bro não pagou a ordem $shortOrderId em 1 hora. Abra o app para republicar ou cancelar e sacar seus sats.';
+          payload = 'accept_expired:$orderId';
+          importance = Importance.max;
+          break;
         case 'completed':
           title = 'Ordem Concluida!';
           body = 'Ordem $shortOrderId foi finalizada com sucesso.';

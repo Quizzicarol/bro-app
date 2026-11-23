@@ -3,7 +3,7 @@
 // Cobre os critérios de aceite do ROADMAP (seção R3):
 /// - Expira em 60min: _checkAcceptExpiry publica accept_expired e marca a ordem.
 /// - Prova aos 59min: aceite se mantém (billcode_locked trava a janela).
-/// - Prova tardia do canônico recupera para awaiting_confirmation, sem reabrir corrida.
+/// - Prova tardia não recupera: comprador republica ou cancela; provedor não disputa.
 /// - Guardas de progressão: accept_expired só nasce de accepted/processing;
 ///   sem prova, a partir dele só cancelled ou pending (republicar).
 /// - Idempotência: metadata accept_expired_published evita republicação.
@@ -318,9 +318,8 @@ void main() {
       provider.dispose();
     });
 
-    test('4e2c858a: complete 16s após accept_expired recupera prova canônica',
+    test('complete após accept_expired não recupera nem permite disputa',
         () async {
-      final expiredAt = DateTime(2026, 11, 21, 14, 26, 12);
       final proofAt = DateTime(2026, 11, 21, 14, 26, 28);
       final expired = acceptedOrder().copyWith(
         status: 'accept_expired',
@@ -339,27 +338,23 @@ void main() {
         expired,
         {orderId: update},
       );
-      expect(updated.status, 'awaiting_confirmation');
+      expect(updated.status, 'accept_expired');
       expect(updated.providerId, 'pk-provider-r3');
       expect(updated.metadata?['accept_expired_published'], isTrue);
-      expect(updated.metadata?['proofReceivedAt'], proofAt.toIso8601String());
-      expect(updated.metadata?['providerInvoice'], 'lnbc-provider-invoice');
-      expect(updated.metadata?['billcode_locked_to'], 'pk-provider-r3');
-      expect(expiredAt.difference(acceptedAt).inMinutes, greaterThan(0));
 
       final provider = OrderProvider();
       provider.debugSetCurrentUserPubkeyForR5c('pk-user-r3');
       provider.debugSeedOrdersForR5c([expired]);
       provider.debugApplyUserStatusUpdateForR3(orderId, update);
       final recovered = provider.getOrderById(orderId)!;
-      expect(recovered.status, 'awaiting_confirmation');
+      expect(recovered.status, 'accept_expired');
       expect(recovered.providerId, 'pk-provider-r3');
-      expect(recovered.metadata?['accept_expired_published'], isTrue);
-      expect(recovered.metadata?['billcode_locked_to'], 'pk-provider-r3');
       expect(provider.debugTerminalRepublishAttemptsForR3, 0);
-      expect(await provider.republicarOrderExpirada(orderId), isFalse);
-      expect(await provider.cancelOrder(orderId), isFalse);
-      expect(recovered.status, 'awaiting_confirmation');
+      expect(
+        NostrOrderService.isStatusProgressionPublic('disputed', 'accept_expired'),
+        isFalse,
+      );
+      expect(await provider.completeOrderAsProvider(orderId, 'late-proof'), isFalse);
       provider.dispose();
     });
 
@@ -403,7 +398,7 @@ void main() {
         'proofImage_senderPubkey': 'pk-provider-r3',
       });
       expect(OrderProvider.hasCanonicalProofForExpiredOrder(withProof.toJson()),
-          isTrue);
+          isFalse);
       final wrongAuthor = withProof.copyWith(metadata: {
         ...?withProof.metadata,
         'proofImage_senderPubkey': 'pk-attacker',

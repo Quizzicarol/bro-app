@@ -130,6 +130,13 @@ class OrderReminderService {
       scenario = 'A';
       targetRole = 'provider';
       if (providerId != currentPubkey) return result; // so notifica o provedor
+    } else if (status == 'accept_expired') {
+      anchorIso = (order['acceptedAt'] as String?) ??
+          (metadata['acceptedAt'] as String?) ??
+          (metadata['accepted_at'] as String?);
+      scenario = 'E';
+      targetRole = 'user';
+      if (userPubkey != currentPubkey) return result;
     } else if (status == 'awaiting_confirmation') {
       // Cenario B: usuario precisa confirmar
       anchorIso = (metadata['receipt_submitted_at'] as String?) ??
@@ -166,6 +173,20 @@ class OrderReminderService {
           targetRole: targetRole,
         ));
       }
+      return result;
+    }
+
+    if (scenario == 'E') {
+      if (elapsed < _acceptDeadline) return result;
+      final key = '$orderId:E:60m';
+      if (alreadySent.contains(key)) return result;
+      result.add(_Reminder(
+        key: key,
+        orderId: orderId,
+        scenario: 'E',
+        milestoneMin: 60,
+        targetRole: targetRole,
+      ));
       return result;
     }
 
@@ -211,6 +232,7 @@ class OrderReminderService {
   }
 
   String _buildTitle(_Reminder r) {
+    if (r.scenario == 'E') return '⏰ Aceite expirado: republicar ou cancelar';
     if (r.scenario == 'A') {
       return r.milestoneMin == 20
           ? '⏰ Faltam 40min para pagar e enviar o comprovante'
@@ -222,9 +244,12 @@ class OrderReminderService {
   }
 
   String _buildBody(_Reminder r, String shortId) {
+    if (r.scenario == 'E') {
+      return 'O Bro não pagou a ordem $shortId em 1 hora. Abra o app para republicar ou cancelar e sacar seus sats.';
+    }
     if (r.scenario == 'A') {
       final minutesLeft = 60 - r.milestoneMin;
-      return 'Pague a conta e envie o comprovante da ordem $shortId. Restam ${minutesLeft}min da janela de 1h.';
+      return 'Código de pagamento da ordem $shortId disponível por mais ${minutesLeft} minutos para enviar o comprovante. Depois ele será bloqueado e a ordem poderá ser republicada.';
     }
     final hoursLeft = 36 - (r.milestoneMin ~/ 60);
     if (r.milestoneMin == 35 * 60) {

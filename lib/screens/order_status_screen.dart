@@ -28,6 +28,7 @@ import 'package:bro_app/services/log_utils.dart';
 import 'package:flutter/services.dart';
 import '../widgets/dispute_chat.dart';
 import '../utils/image_compress.dart';
+import 'provider_order_detail_screen.dart' show buildAcceptExpiryNotice;
 
 @visibleForTesting
 class ProofFetchCoordinator {
@@ -1785,6 +1786,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 if (_currentStatus == 'confirmed' || _currentStatus == 'payment_received') ...[
                   _buildCancelButton(),
                 ],
+                if (_currentStatus == 'accept_expired') ...[
+                  _buildExpiredOrderActions(),
+                  const SizedBox(height: 10),
+                ],
                 if (_currentStatus == 'awaiting_confirmation') ...[
                   _buildConfirmPaymentButton(),
                   const SizedBox(height: 10),
@@ -2122,6 +2127,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           'subtitle': l.t('order_cancelled_subtitle'),
           'color': Colors.red,
         };
+      case 'accept_expired':
+        return {
+          'icon': Icons.timer_off,
+          'title': 'Aceite expirado',
+          'subtitle': 'O Bro não pagou dentro de 1 hora. Republicar a ordem ou cancelar e sacar seus sats.',
+          'color': Colors.redAccent,
+        };
       case 'disputed':
         // v233: Se há resolução, mostrar como resolvida
         if (_disputeResolution != null) {
@@ -2213,6 +2225,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             if (billCode.isNotEmpty) ...[
               const SizedBox(height: 12),
               _buildDetailRowWrap(l.t('order_detail_code'), billCode),
+            ],
+            if (_currentStatus == 'accepted' || _currentStatus == 'accept_expired') ...[
+              const SizedBox(height: 16),
+              buildAcceptExpiryNotice(
+                acceptedAt: fullOrder?.acceptedAt ??
+                    DateTime.tryParse(_orderDetails?['acceptedAt']?.toString() ?? ''),
+              ),
             ],
             const SizedBox(height: 16),
             Divider(height: 1, color: Colors.grey.withOpacity(0.15)),
@@ -4389,6 +4408,66 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   // REMOVIDO: _buildVerifyPaymentButton - não deve existir no fluxo Bro
   // O usuário não paga a ordem, ele RESERVA garantia. O Bro é quem paga a conta.
+
+  Widget _buildExpiredOrderActions() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ElevatedButton.icon(
+          onPressed: _republishExpiredOrder,
+          icon: const Icon(Icons.refresh),
+          label: const Text('Republicar ordem'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blue,
+            foregroundColor: Colors.white,
+          ),
+        ),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: _cancelExpiredOrder,
+          icon: const Icon(Icons.cancel),
+          label: const Text('Cancelar e sacar'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.redAccent,
+            side: const BorderSide(color: Colors.redAccent),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _republishExpiredOrder() async {
+    final provider = context.read<OrderProvider>();
+    final success = await provider.republicarOrderExpirada(widget.orderId);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(success
+            ? 'Ordem republicada. Aguardando novo Bro.'
+            : 'Não foi possível republicar. Tente novamente.'),
+        backgroundColor: success ? Colors.green : Colors.redAccent,
+      ),
+    );
+    if (success) setState(() => _currentStatus = 'pending');
+  }
+
+  Future<void> _cancelExpiredOrder() async {
+    final provider = context.read<OrderProvider>();
+    final success = await provider.updateOrderStatus(
+      orderId: widget.orderId,
+      status: 'cancelled',
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(success
+            ? 'Ordem cancelada. Seus sats permanecem na carteira.'
+            : 'Não foi possível cancelar. Tente novamente.'),
+        backgroundColor: success ? Colors.green : Colors.redAccent,
+      ),
+    );
+    if (success) setState(() => _currentStatus = 'cancelled');
+  }
 
   Widget _buildCancelButton() {
     final l = AppLocalizations.of(context)!;

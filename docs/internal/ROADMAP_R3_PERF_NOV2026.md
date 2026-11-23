@@ -36,11 +36,15 @@ Comportamento implementado na integração:
 
 - Aviso ao provedor sobre o prazo de 1 hora e lembretes em 20/40 minutos,
   com deduplicação.
-- Após `accept_expired`, o billcode deixa de ser acionável, mas o comprovante
-  continua acessível.
-- Prova tardia somente do provedor canônico recupera para
-  `awaiting_confirmation`; não reabre a corrida nem troca `providerId`.
-- Republicar/cancelar somente quando não existe prova canônica válida.
+- Após `accept_expired`, o billcode é bloqueado. O provedor **não pode mais
+  enviar comprovante nem abrir disputa**; comprovante tardio não recupera a
+  ordem nem alimenta mediação.
+- O comprador vê **Aceite expirado** e pode republicar ou cancelar/sacar,
+  tanto na lista quanto nos detalhes da ordem.
+- O aviso junto ao billcode informa os minutos restantes em vermelho; as
+  telas educacionais explicam o prazo de 1 hora e a nova disponibilização.
+- Lembretes ao provedor em 20/40 minutos e notificação de expiração para
+  comprador e provedor, inclusive em background/watchtower.
 - `completed` e `cancelled` permanecem terminais; eventos posteriores sem
   prova não podem apagar a prova, a invoice ou regredir o estado.
 
@@ -63,6 +67,9 @@ Evidências:
   **121/121 testes**. Revisão independente final: sem novos achados.
 - APK final com janela de 60 minutos instalado no USB com dados preservados
   em 22/11/2026, `1.0.134+827`.
+- Revisão funcional da dona em 23/11/2026: aviso junto ao billcode corrigido;
+  regra de expiração alterada para encerrar o aceite sem recuperação tardia.
+  Gate focado **39/39** e suíte `test/race` **124/124**.
 
 Pendências antes de publicar/mergear:
 

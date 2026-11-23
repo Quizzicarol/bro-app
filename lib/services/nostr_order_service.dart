@@ -156,16 +156,10 @@ class NostrOrderService {
         (encrypted != null && encrypted.isNotEmpty);
   }
 
-  /// Uma prova tardia só recupera o aceite expirado se o evento assinante for
-  /// o provedor canônico. O providerId do conteúdo não é prova de autoria.
-  static bool isCanonicalLateProof(Order order, Map<String, dynamic> update) {
-    if (order.status != 'accept_expired' || !_hasProofPayload(update)) return false;
-    final canonicalProvider = order.providerId;
-    final proofAuthor = update['proofAuthorPubkey']?.toString() ??
-        update['eventAuthorPubkey']?.toString();
-    return canonicalProvider != null && canonicalProvider.isNotEmpty &&
-        proofAuthor == canonicalProvider;
-  }
+  /// Aceite expirado é terminal para o provedor: comprovante tardio não
+  /// recupera a ordem nem abre caminho para confirmação ou mediação.
+  static bool isCanonicalLateProof(Order order, Map<String, dynamic> update) =>
+      false;
 
   @visibleForTesting
   static Map<String, Map<String, dynamic>> selectOrderUpdatesForUser(
@@ -278,15 +272,10 @@ class NostrOrderService {
         final eventPubkey = event['pubkey'] as String?;
         final canonicalProvider = canonicalProviders[orderId];
         final hasProof = _hasProofPayload(content);
-        final isCanonicalLateProof = eventKind == kindBroComplete &&
-            newStatus == 'awaiting_confirmation' && hasProof &&
-            canonicalProvider != null && eventPubkey == canonicalProvider;
-        final recoversExpired = existingStatus == 'accept_expired' &&
-            isCanonicalLateProof;
+        final isCanonicalLateProof = false;
+        final recoversExpired = false;
         final expiredCannotOverrideProof = newStatus == 'accept_expired' &&
-            existingStatus == 'awaiting_confirmation' &&
-            existingUpdate?['proofAuthorPubkey'] == canonicalProvider &&
-            _hasProofPayload(existingUpdate!);
+            existingStatus == 'awaiting_confirmation';
 
         if (expiredCannotOverrideProof) continue;
         if (newStatus == 'disputed' && existingStatus == 'cancelled' && !isNewer) {
@@ -307,9 +296,7 @@ class NostrOrderService {
 
         final previousUpdate = updates[orderId];
         final accum = proofAccumulator[orderId];
-        final providerId = isCanonicalLateProof
-            ? canonicalProvider
-            : content['providerId'] ?? eventPubkey ?? previousUpdate?['providerId'];
+        final providerId = content['providerId'] ?? previousUpdate?['providerId'] ?? eventPubkey;
         updates[orderId] = {
           'orderId': orderId,
           'status': newStatus,
@@ -365,8 +352,8 @@ class NostrOrderService {
     if (finalStatuses.contains(currentStatus)) {
       return false;
     }
-    // disputed vence sobre status NÃO-FINAIS (abertura de disputa durante fluxo ativo)
-    if (newStatus == 'disputed') return true;
+    // Aceite expirado não abre disputa; o comprador republica ou cancela.
+    if (newStatus == 'disputed') return currentStatus != 'accept_expired';
     // Progressão linear
     const statusOrder = [
       'draft', 'pending', 'payment_received', 'accepted', 'processing',

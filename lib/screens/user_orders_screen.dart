@@ -1623,7 +1623,6 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
     final orderCurrency = (order['currency'] as String?)?.toUpperCase() ?? 'BRL';
     final orderCurSym = orderCurrency == 'BRL' ? r'R$' : orderCurrency;
 
-    final hasRecoveredProof = OrderProvider.hasCanonicalProofForExpiredOrder(order);
     final statusInfo = _getStatusInfo(status, metadata: {
       ...?metadata,
       'providerId': order['provider_id'],
@@ -1770,23 +1769,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                   ),
                 ),
               ],
-              if (hasRecoveredProof) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.purple.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.purple.withOpacity(0.3)),
-                  ),
-                  child: const Text(
-                    'Comprovante do Bro recuperado. Abra a ordem e confirme o recebimento do Pix; não republique nem cancele.',
-                    style: TextStyle(color: Colors.purple, fontSize: 13),
-                  ),
-                ),
-              ],
-              // R3: sem prova canônica, aceite expirado pode ser republicado/cancelado.
-              if (status == 'accept_expired' && !hasRecoveredProof) ...[
+              if (status == 'accept_expired') ...[
                 const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -1946,17 +1929,6 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
           'icon': Icons.gavel,
         };
       case 'accept_expired':
-        if (OrderProvider.hasCanonicalProofForExpiredOrder({
-          'status': status,
-          'metadata': metadata,
-          'providerId': metadata?['providerId'],
-        })) {
-          return {
-            'label': 'Confirmar Recebimento',
-            'color': Colors.purple,
-            'icon': Icons.payment,
-          };
-        }
         return {
           'label': 'Aceite Expirado ⏰',
           'color': Colors.orange,

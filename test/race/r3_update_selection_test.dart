@@ -42,11 +42,19 @@ Map<String, dynamic> accept({
       },
     );
 
-Map<String, dynamic> expired({int createdAt = expiredAt}) => event(
+Map<String, dynamic> expired({
+  int createdAt = expiredAt,
+  String providerId = canonical,
+}) =>
+    event(
       kind: 30080,
       author: buyer,
       createdAt: createdAt,
-      content: {'type': 'bro_order_update', 'status': 'accept_expired'},
+      content: {
+        'type': 'bro_order_update',
+        'status': 'accept_expired',
+        'providerId': providerId,
+      },
     );
 
 Map<String, dynamic> complete({
@@ -90,18 +98,19 @@ Map<String, dynamic> select(List<Map<String, dynamic>> events) =>
     )[orderId]!;
 
 void main() {
-  test('4e2c858a: complete anterior supera accept_expired posterior', () {
+  test('complete anterior à expiração permanece; tardio não recupera', () {
+    final beforeExpiry = select([accept(), complete(), expired()]);
+    expect(beforeExpiry['status'], 'awaiting_confirmation');
+    expect(beforeExpiry['providerId'], canonical);
+    expect(beforeExpiry['proofImage'], 'proof-image');
+
     for (final events in [
       [expired(), complete(), accept()],
-      [accept(), complete(), expired()],
+      [accept(), expired(), complete()],
     ]) {
       final update = select(events);
-      expect(update['status'], 'awaiting_confirmation');
+      expect(update['status'], 'accept_expired');
       expect(update['providerId'], canonical);
-      expect(update['proofAuthorPubkey'], canonical);
-      expect(update['proofImage'], 'proof-image');
-      expect(update['proofImage_nip44'], 'encrypted-proof');
-      expect(update['providerInvoice'], 'provider-invoice');
     }
   });
 
@@ -127,40 +136,25 @@ void main() {
     }
   });
 
-  test('4e2c858a: eventos sem prova não apagam recuperação nem regridem completed', () {
-    final recovered = select([
-      expired(),
-      complete(),
+  test('eventos sem prova não apagam prova anterior nem regridem completed', () {
+    final completed = select([
       accept(),
+      complete(),
       status('completed', createdAt: completeAt + 10),
       status('awaiting_confirmation', createdAt: completeAt + 20),
+      expired(createdAt: completeAt + 30),
     ]);
 
-    expect(recovered['status'], 'completed');
-    expect(recovered['providerId'], canonical);
-    expect(recovered['proofAuthorPubkey'], canonical);
-    expect(recovered['proofImage'], 'proof-image');
-    expect(recovered['proofImage_nip44'], 'encrypted-proof');
-    expect(recovered['providerInvoice'], 'provider-invoice');
-
-    final completedWithoutProofFirst = select([
-      status('completed', createdAt: completeAt + 10),
-      expired(),
-      complete(),
-      status('awaiting_confirmation', createdAt: completeAt + 20),
-      accept(),
-    ]);
-
-    expect(completedWithoutProofFirst['status'], 'completed');
-    expect(completedWithoutProofFirst['providerId'], canonical);
-    expect(completedWithoutProofFirst['proofAuthorPubkey'], canonical);
-    expect(completedWithoutProofFirst['proofImage'], 'proof-image');
-    expect(completedWithoutProofFirst['proofImage_nip44'], 'encrypted-proof');
-    expect(completedWithoutProofFirst['providerInvoice'], 'provider-invoice');
-    expect(completedWithoutProofFirst['completedAt'], '2026-11-21T14:26:28.000');
+    expect(completed['status'], 'completed');
+    expect(completed['providerId'], canonical);
+    expect(completed['proofAuthorPubkey'], canonical);
+    expect(completed['proofImage'], 'proof-image');
+    expect(completed['proofImage_nip44'], 'encrypted-proof');
+    expect(completed['providerInvoice'], 'provider-invoice');
+    expect(completed['completedAt'], '2026-11-21T14:26:28.000');
   });
 
-  test('aceite canônico usa acceptedAt imutável, não a ordem de iteração', () {
+  test('aceite canônico é determinístico e prova tardia não recupera', () {
     final older = accept(
       author: 'provider-older',
       createdAt: expiredAt - 100,
@@ -172,13 +166,12 @@ void main() {
       acceptedAt: '2026-11-21T14:25:00.000',
     );
     for (final events in [
-      [older, newer, expired(), complete(author: 'provider-older')],
-      [newer, older, expired(), complete(author: 'provider-older')],
+      [older, newer, expired(providerId: 'provider-older'), complete(author: 'provider-older')],
+      [newer, older, expired(providerId: 'provider-older'), complete(author: 'provider-older')],
     ]) {
       final update = select(events);
-      expect(update['status'], 'awaiting_confirmation');
+      expect(update['status'], 'accept_expired');
       expect(update['providerId'], 'provider-older');
-      expect(update['proofAuthorPubkey'], 'provider-older');
     }
   });
 
@@ -196,10 +189,10 @@ void main() {
     final update = select([
       genuine,
       wrongClock,
-      expired(),
+      expired(providerId: 'provider-genuine'),
       complete(author: 'provider-genuine'),
     ]);
-    expect(update['status'], 'awaiting_confirmation');
+    expect(update['status'], 'accept_expired');
     expect(update['providerId'], 'provider-genuine');
   });
 

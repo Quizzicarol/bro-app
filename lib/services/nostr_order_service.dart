@@ -3366,6 +3366,9 @@ class NostrOrderService {
   ///
   /// R5b: API-first — snapshot HTTP renderiza imediato; relay reconcilia em
   /// background (aditivo). API vazia/falha → fallback relay síncrono intacto.
+  @visibleForTesting
+  Future<void>? pendingOrdersReconcileInFlight;
+
   Future<List<Order>> fetchPendingOrders(
       {void Function()? onBackgroundReconcile}) async {
     // PASSO 0: Garantir que blocklist local está carregada
@@ -3379,8 +3382,14 @@ class NostrOrderService {
       final snapshotOrders = _buildPendingOrdersFromSnapshot(snapshot);
       broLog(
           '⏱️ R5b: pending orders renderizadas via API em ${sw.elapsedMilliseconds}ms (${snapshotOrders.length} ordens)');
-      unawaited(_reconcilePendingOrdersInBackground(
-          onBackgroundReconcile: onBackgroundReconcile));
+      final reconcile = _reconcilePendingOrdersInBackground(
+          onBackgroundReconcile: onBackgroundReconcile);
+      pendingOrdersReconcileInFlight = reconcile;
+      unawaited(reconcile.whenComplete(() {
+        if (identical(pendingOrdersReconcileInFlight, reconcile)) {
+          pendingOrdersReconcileInFlight = null;
+        }
+      }));
       return snapshotOrders;
     }
     broLog(

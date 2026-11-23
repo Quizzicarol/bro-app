@@ -31,7 +31,8 @@ void main() {
         'acceptedAt': null,
       };
 
-  tearDown(() {
+  tearDown(() async {
+    await NostrOrderService().pendingOrdersReconcileInFlight;
     NostrOrderService.apiGetOverride = null;
     NostrOrderService.relaysOverride = null;
     NostrOrderService.applyRelaysOverride();

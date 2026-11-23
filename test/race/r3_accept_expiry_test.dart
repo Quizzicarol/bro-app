@@ -420,6 +420,11 @@ void main() {
         providerId: 'pk-provider-r3',
         status: 'pending',
         acceptedAt: acceptedAt,
+        metadata: {
+          'republishedAt': acceptedAt
+              .add(const Duration(minutes: 30))
+              .toIso8601String(),
+        },
       );
       final update = {
         'status': 'accept_expired',
@@ -496,6 +501,77 @@ void main() {
       expect(current.status, 'pending');
       expect(current.providerId, isNull);
       expect(current.acceptedAt, isNull);
+      provider.dispose();
+    });
+
+    test('novo aceite após republishedAt atualiza provedor e libera nova rodada', () {
+      final republishedAt = DateTime.now().subtract(const Duration(minutes: 5));
+      final pending = _order(
+        'new-round-provider',
+        userPubkey: 'pk-user-r3',
+        status: 'pending',
+        metadata: {
+          'republishedAt': republishedAt.toIso8601String(),
+          'lostRace': true,
+          'lostRaceTo': 'pk-old-provider',
+          'accept_expired_published': true,
+        },
+      );
+      final acceptedAt = republishedAt.add(const Duration(minutes: 2));
+      final provider = OrderProvider();
+      provider.debugSetCurrentUserPubkeyForR5c('pk-user-r3');
+      provider.debugSeedOrdersForR5c([pending]);
+      provider.debugApplyUserStatusUpdateForR3(pending.id, {
+        'status': 'accepted',
+        'providerId': '6b79131b',
+        'eventAuthorPubkey': '6b79131b',
+        'acceptedAt': acceptedAt.toIso8601String(),
+        'created_at': acceptedAt.millisecondsSinceEpoch ~/ 1000,
+      });
+      final current = provider.getOrderById(pending.id)!;
+      expect(current.status, 'accepted');
+      expect(current.providerId, '6b79131b');
+      expect(current.acceptedAt, acceptedAt);
+      expect(current.metadata?['lostRace'], isFalse);
+      expect(current.metadata?['lostRaceTo'], isNull);
+      expect(current.metadata?['accept_expired_published'], isFalse);
+      provider.dispose();
+    });
+
+    test('ordem nova sem republishedAt nunca usa recuperação de rodada antiga', () {
+      final fresh = _order(
+        '90800cdf',
+        userPubkey: 'pk-user-r3',
+        providerId: 'pk-provider-r3',
+        status: 'pending',
+        acceptedAt: DateTime.now().subtract(const Duration(minutes: 4)),
+      );
+      expect(
+        NostrOrderService.canRecoverExpiredAccept(fresh.toJson(), {
+          'status': 'accept_expired',
+          'providerId': 'pk-provider-r3',
+        }),
+        isFalse,
+      );
+    });
+
+    test('aceite anterior à republicação não expira nova rodada', () {
+      final republishedAt = DateTime.now().subtract(const Duration(minutes: 4));
+      final staleAccepted = _order(
+        'new-round-not-expired',
+        userPubkey: 'pk-user-r3',
+        providerId: 'pk-provider-r3',
+        status: 'accepted',
+        acceptedAt: DateTime.now().subtract(const Duration(hours: 2)),
+        metadata: {'republishedAt': republishedAt.toIso8601String()},
+      );
+      final provider = OrderProvider();
+      provider.debugSetCurrentUserPubkeyForR5c('pk-user-r3');
+      provider.debugSeedOrdersForR5c([staleAccepted]);
+      expect(
+        provider.debugAcceptExpiryCandidatesForR3(now: DateTime.now()),
+        isEmpty,
+      );
       provider.dispose();
     });
 

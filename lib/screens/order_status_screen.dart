@@ -2415,6 +2415,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 acceptedAt: fullOrder?.acceptedAt ??
                     DateTime.tryParse(
                         _orderDetails?['acceptedAt']?.toString() ?? ''),
+                republishedAt: DateTime.tryParse(
+                  fullOrder?.metadata?['republishedAt']?.toString() ??
+                      (_orderDetails?['metadata'] as Map?)?['republishedAt']
+                          ?.toString() ??
+                      '',
+                ),
               ),
             ],
             const SizedBox(height: 16),

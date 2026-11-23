@@ -199,11 +199,13 @@ class NostrOrderService {
         .contains(order['status'])) {
       return false;
     }
+    final metadata = order['metadata'];
+    if (metadata is! Map || metadata['republishedAt'] == null) return false;
     final providerId = order['providerId']?.toString();
     final updateProviderId = update['providerId']?.toString();
     if (providerId == null || providerId.isEmpty) return false;
-    if (updateProviderId != null &&
-        updateProviderId.isNotEmpty &&
+    if (updateProviderId == null ||
+        updateProviderId.isEmpty ||
         updateProviderId != providerId) {
       return false;
     }
@@ -212,19 +214,16 @@ class NostrOrderService {
         DateTime.now().difference(acceptedAt) <= const Duration(hours: 1)) {
       return false;
     }
-    final metadata = order['metadata'];
-    if (metadata is Map) {
-      const proofKeys = [
-        'proofImage',
-        'paymentProof',
-        'proofImage_nip44',
-        'proofReceivedAt',
-        'receipt_submitted_at',
-      ];
-      if (proofKeys
-          .any((key) => metadata[key]?.toString().isNotEmpty == true)) {
-        return false;
-      }
+    const proofKeys = [
+      'proofImage',
+      'paymentProof',
+      'proofImage_nip44',
+      'proofReceivedAt',
+      'receipt_submitted_at',
+    ];
+    if (proofKeys
+        .any((key) => metadata[key]?.toString().isNotEmpty == true)) {
+      return false;
     }
     return update['proofImage'] == null && update['proofImage_nip44'] == null;
   }
@@ -355,17 +354,13 @@ class NostrOrderService {
         if (republishedAt != null &&
             newStatus != 'pending' &&
             newStatus != 'cancelled' &&
-            createdAt <=
-                republishedAt.millisecondsSinceEpoch ~/ 1000 +
-                    _republishGraceSeconds) {
+            createdAt < republishedAt.millisecondsSinceEpoch ~/ 1000) {
           continue;
         }
         if (existingRepublishedAt != null &&
             newStatus != 'pending' &&
             newStatus != 'cancelled' &&
-            createdAt <=
-                existingRepublishedAt.millisecondsSinceEpoch ~/ 1000 +
-                    _republishGraceSeconds) {
+            createdAt < existingRepublishedAt.millisecondsSinceEpoch ~/ 1000) {
           continue;
         }
         if (existingStatus == 'completed' ||
@@ -1293,6 +1288,38 @@ class NostrOrderService {
   /// (evidência R3, sem NIP-09) e envenenava v697 (ordem republicada invisível
   /// na Disponíveis), v802/v575 (pré/pós-check do aceite), v804, a entrega
   /// canônica do billCode (v438) e o background relay (v725).
+  Future<int?> _fetchRepublishTimestampFromUpdates(String orderId) async {
+    final allRelays = <String>[..._relays, ..._fallbackRelays];
+    final results = await Future.wait(
+      allRelays.map((relay) => _fetchFromRelay(
+            relay,
+            kinds: [kindBroPaymentProof],
+            tags: {'#r': [orderId]},
+            limit: 20,
+          ).timeout(const Duration(seconds: 4),
+              onTimeout: () => <Map<String, dynamic>>[]).catchError(
+              (_) => <Map<String, dynamic>>[])),
+    );
+    int? latest;
+    for (final events in results) {
+      for (final event in events) {
+        try {
+          final content = event['parsedContent'] ?? jsonDecode(event['content']);
+          if (content['orderId'] != orderId ||
+              content['status'] != 'pending' ||
+              content['republishedAt'] == null) {
+            continue;
+          }
+          final createdAt = event['created_at'] as int?;
+          if (createdAt != null && (latest == null || createdAt > latest)) {
+            latest = createdAt;
+          }
+        } catch (_) {}
+      }
+    }
+    return latest;
+  }
+
   Future<int?> fetchLatestRepublishTimestamp(String orderId,
       {Duration perRelayTimeout = const Duration(seconds: 4)}) async {
     final cached = _republishTsCache[orderId];
@@ -1339,8 +1366,11 @@ class NostrOrderService {
         }
       }
       result = latestTs;
+      if (result == null) {
+        result = await _fetchRepublishTimestampFromUpdates(orderId);
+      }
     } catch (_) {
-      result = null; // fail-open
+      result = await _fetchRepublishTimestampFromUpdates(orderId);
     }
     if (_republishTsCache.length > 200) _republishTsCache.clear();
     _republishTsCache[orderId] = {
@@ -4331,8 +4361,7 @@ class NostrOrderService {
         newStatus != 'pending' &&
         newStatus != 'cancelled' &&
         eventCreatedAt != null &&
-        eventCreatedAt <=
-            localRepublishedAt.millisecondsSinceEpoch ~/ 1000 + 120) {
+        eventCreatedAt < localRepublishedAt.millisecondsSinceEpoch ~/ 1000) {
       return order;
     }
     final acceptedAt = isRepublishedRound

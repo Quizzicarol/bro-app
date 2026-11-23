@@ -4431,6 +4431,16 @@ class OrderProvider with ChangeNotifier {
       final acceptedAt = order.acceptedAt;
       if (acceptedAt == null) return false;
       if (order.metadata?['accept_expired_published'] == true) return false;
+      if (order.metadata?['republishedAt'] != null) {
+        final republishedAt = DateTime.tryParse(
+          order.metadata!['republishedAt'].toString(),
+        );
+        // Um aceite novo precisa ser posterior à republicação. Nunca usar o
+        // acceptedAt da rodada anterior para expirar a rodada atual.
+        if (republishedAt == null || !acceptedAt.isAfter(republishedAt)) {
+          return false;
+        }
+      }
       return now.difference(acceptedAt) > (window ?? acceptExpiryWindow);
     }).toList();
   }
@@ -4465,8 +4475,7 @@ class OrderProvider with ChangeNotifier {
         newStatus != 'pending' &&
         newStatus != 'cancelled' &&
         updateCreatedAt != null &&
-        updateCreatedAt <=
-            localRepublishedAt.millisecondsSinceEpoch ~/ 1000 + 120) {
+        updateCreatedAt < localRepublishedAt.millisecondsSinceEpoch ~/ 1000) {
       return false;
     }
     final newProviderId = isRepublishedRound
@@ -4474,6 +4483,10 @@ class OrderProvider with ChangeNotifier {
         : existing.status == 'accept_expired'
             ? existing.providerId
             : update['providerId'] as String?;
+    final isNewRoundAccept = newStatus == 'accepted' &&
+        localRepublishedAt != null &&
+        updateCreatedAt != null &&
+        updateCreatedAt >= localRepublishedAt.millisecondsSinceEpoch ~/ 1000;
     final isLateProofRecovery = newStatus == 'awaiting_confirmation' &&
         _isCanonicalLateProof(existing, update);
     final isExpiredRecovery = NostrOrderService.canRecoverExpiredAccept(
@@ -4513,6 +4526,7 @@ class OrderProvider with ChangeNotifier {
         final isFirstFill =
             existing.providerId == null || existing.providerId!.isEmpty;
         final authoritative = isFirstFill ||
+            isNewRoundAccept ||
             hasProof ||
             (author != null && author == existing.userPubkey) ||
             (author != null && author == existing.providerId) ||
@@ -4667,11 +4681,26 @@ class OrderProvider with ChangeNotifier {
         'republishedAt': update['republishedAt'],
       };
     }
+    if (isNewRoundAccept) {
+      updatedMetadata = {
+        ...?updatedMetadata,
+        'lostRace': false,
+        'raceWon': true,
+        'raceChecked': true,
+        'accept_expired_published': false,
+      };
+      updatedMetadata.remove('lostRaceTo');
+    }
 
     final acceptedAt = isRepublishedRound
         ? null
-        : existing.acceptedAt ??
-            DateTime.tryParse(update['acceptedAt']?.toString() ?? '');
+        : isNewRoundAccept
+            ? DateTime.tryParse(update['acceptedAt']?.toString() ?? '') ??
+                (updateCreatedAt != null
+                    ? DateTime.fromMillisecondsSinceEpoch(updateCreatedAt * 1000)
+                    : existing.acceptedAt)
+            : existing.acceptedAt ??
+                DateTime.tryParse(update['acceptedAt']?.toString() ?? '');
     _orders[existingIndex] = existing.copyWith(
       status: isStatusAdvancing ? statusToUse : existing.status,
       providerId: isRepublishedRound

@@ -31,6 +31,37 @@ void main() {
     expect(text.style?.fontWeight, FontWeight.w700);
   });
 
+  testWidgets('ordem nova de 4 minutos não mostra código expirado', (tester) async {
+    final acceptedAt = DateTime.now().subtract(const Duration(minutes: 4));
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: buildAcceptExpiryNotice(
+          acceptedAt: acceptedAt,
+          now: DateTime.now(),
+        ),
+      ),
+    ));
+    expect(find.textContaining('56 minutos'), findsOneWidget);
+    expect(find.textContaining('tempo para pagamento expirou'), findsNothing);
+    expect(find.textContaining('código foi bloqueado'), findsNothing);
+  });
+
+  testWidgets('aceite anterior à republicação não contamina aviso da nova rodada',
+      (tester) async {
+    final republishedAt = DateTime.now().subtract(const Duration(minutes: 4));
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: buildAcceptExpiryNotice(
+          acceptedAt: DateTime.now().subtract(const Duration(hours: 2)),
+          republishedAt: republishedAt,
+          now: DateTime.now(),
+        ),
+      ),
+    ));
+    expect(find.textContaining('60 minutos'), findsOneWidget);
+    expect(find.textContaining('tempo para pagamento expirou'), findsNothing);
+  });
+
   testWidgets('aviso expirado orienta recuperar com comprovante', (tester) async {
     final acceptedAt = DateTime(2026, 11, 23, 7, 0);
     await tester.pumpWidget(MaterialApp(

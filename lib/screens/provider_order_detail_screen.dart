@@ -38,8 +38,16 @@ Widget buildExpiredProviderPaymentBlock() => Container(
     );
 
 @visibleForTesting
-Widget buildAcceptExpiryNotice({DateTime? acceptedAt, DateTime? now}) {
-  final deadline = acceptedAt?.add(OrderProvider.acceptExpiryWindow);
+Widget buildAcceptExpiryNotice({
+  DateTime? acceptedAt,
+  DateTime? republishedAt,
+  DateTime? now,
+}) {
+  final validAcceptedAt = acceptedAt != null &&
+          (republishedAt == null || acceptedAt.isAfter(republishedAt))
+      ? acceptedAt
+      : null;
+  final deadline = validAcceptedAt?.add(OrderProvider.acceptExpiryWindow);
   final remaining = deadline == null
       ? null
       : deadline.difference(now ?? DateTime.now());
@@ -2580,6 +2588,11 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           buildAcceptExpiryNotice(
             acceptedAt: DateTime.tryParse(
               _orderDetails?['acceptedAt']?.toString() ?? '',
+            ),
+            republishedAt: DateTime.tryParse(
+              (_orderDetails?['metadata'] as Map?)?['republishedAt']
+                      ?.toString() ??
+                  '',
             ),
           ),
           const SizedBox(height: 16),

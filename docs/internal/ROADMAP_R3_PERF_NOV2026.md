@@ -94,6 +94,13 @@ Reparo funcional solicitado em 23/11/2026 após inspeção do USB:
   respondeu `unauthorized` para `bro-api`. É necessário usar uma credencial
   autorizada ou publicar somente após a revisão/merge aprovado pela dona.
   Não declarar o watchtower como implantado antes disso.
+- **Regressão 90800cdf contida na 838:** uma ordem nova de 4 minutos foi
+  marcada como expirada e recebeu notificações contraditórias. A recuperação
+  de instalações antigas agora exige `republishedAt` da mesma rodada, mesmo
+  provedor, aceite >1h e ausência de prova. Ordem sem esse marco nunca entra
+  na recuperação. O aviso visual ignora `acceptedAt` anterior à republicação;
+  o novo aceite usa timestamp >= `republishedAt`, atualiza provedor/acceptedAt
+  e limpa `lostRace`. Testes específicos incluídos; suíte race **136/136**.
 
 Pendências antes de publicar/mergear:
 

@@ -3,9 +3,9 @@
 // Cobre os critérios de aceite do ROADMAP (seção R3):
 /// - Expira em 60min: _checkAcceptExpiry publica accept_expired e marca a ordem.
 /// - Prova aos 59min: aceite se mantém (billcode_locked trava a janela).
-/// - Prova aos 61min: NÃO ressuscita — accept_expired não volta a accepted.
+/// - Prova tardia do canônico recupera para awaiting_confirmation, sem reabrir corrida.
 /// - Guardas de progressão: accept_expired só nasce de accepted/processing;
-///   a partir dele só cancelled ou pending (republicar).
+///   sem prova, a partir dele só cancelled ou pending (republicar).
 /// - Idempotência: metadata accept_expired_published evita republicação.
 ///
 /// Sem rede real: relays mortos; publicação falha é o caminho testado
@@ -57,26 +57,70 @@ void main() {
   });
 
   group('R3 - guardas de progressão (service + provider)', () {
-    test('accept_expired só é progressão válida a partir de accepted/processing', () {
+    test(
+        'accept_expired só é progressão válida a partir de accepted/processing',
+        () {
       // Válido
-      expect(NostrOrderService.isStatusProgressionPublic('accept_expired', 'accepted'), isTrue);
-      expect(NostrOrderService.isStatusProgressionPublic('accept_expired', 'processing'), isTrue);
+      expect(
+          NostrOrderService.isStatusProgressionPublic(
+              'accept_expired', 'accepted'),
+          isTrue);
+      expect(
+          NostrOrderService.isStatusProgressionPublic(
+              'accept_expired', 'processing'),
+          isTrue);
       // Inválido: nunca depois de prova enviada ou além
-      expect(NostrOrderService.isStatusProgressionPublic('accept_expired', 'awaiting_confirmation'), isFalse);
-      expect(NostrOrderService.isStatusProgressionPublic('accept_expired', 'completed'), isFalse);
-      expect(NostrOrderService.isStatusProgressionPublic('accept_expired', 'liquidated'), isFalse);
-      expect(NostrOrderService.isStatusProgressionPublic('accept_expired', 'disputed'), isFalse);
-      expect(NostrOrderService.isStatusProgressionPublic('accept_expired', 'cancelled'), isFalse);
-      expect(NostrOrderService.isStatusProgressionPublic('accept_expired', 'pending'), isFalse);
+      expect(
+          NostrOrderService.isStatusProgressionPublic(
+              'accept_expired', 'awaiting_confirmation'),
+          isFalse);
+      expect(
+          NostrOrderService.isStatusProgressionPublic(
+              'accept_expired', 'completed'),
+          isFalse);
+      expect(
+          NostrOrderService.isStatusProgressionPublic(
+              'accept_expired', 'liquidated'),
+          isFalse);
+      expect(
+          NostrOrderService.isStatusProgressionPublic(
+              'accept_expired', 'disputed'),
+          isFalse);
+      expect(
+          NostrOrderService.isStatusProgressionPublic(
+              'accept_expired', 'cancelled'),
+          isFalse);
+      expect(
+          NostrOrderService.isStatusProgressionPublic(
+              'accept_expired', 'pending'),
+          isFalse);
     });
 
-    test('a partir de accept_expired só cancelled ou pending (republicar)', () {
-      expect(NostrOrderService.isStatusProgressionPublic('cancelled', 'accept_expired'), isTrue);
-      expect(NostrOrderService.isStatusProgressionPublic('pending', 'accept_expired'), isTrue);
-      // Nada mais passa
-      expect(NostrOrderService.isStatusProgressionPublic('accepted', 'accept_expired'), isFalse);
-      expect(NostrOrderService.isStatusProgressionPublic('completed', 'accept_expired'), isFalse);
-      expect(NostrOrderService.isStatusProgressionPublic('disputed', 'accept_expired'), isFalse);
+    test('accept_expired não avança sem validar prova canônica', () {
+      expect(
+          NostrOrderService.isStatusProgressionPublic(
+              'cancelled', 'accept_expired'),
+          isTrue);
+      expect(
+          NostrOrderService.isStatusProgressionPublic(
+              'pending', 'accept_expired'),
+          isTrue);
+      expect(
+          NostrOrderService.isStatusProgressionPublic(
+              'awaiting_confirmation', 'accept_expired'),
+          isFalse);
+      expect(
+          NostrOrderService.isStatusProgressionPublic(
+              'accepted', 'accept_expired'),
+          isFalse);
+      expect(
+          NostrOrderService.isStatusProgressionPublic(
+              'completed', 'accept_expired'),
+          isFalse);
+      expect(
+          NostrOrderService.isStatusProgressionPublic(
+              'disputed', 'accept_expired'),
+          isFalse);
     });
   });
 
@@ -101,7 +145,9 @@ void main() {
           'created_at': createdAt ?? acceptedAt.millisecondsSinceEpoch ~/ 1000,
         };
 
-    test('kind30079 sem prova não grava timestamps de prova e preserva acceptedAt', () {
+    test(
+        'kind30079 sem prova não grava timestamps de prova e preserva acceptedAt',
+        () {
       final updated = NostrOrderService().debugApplyStatusUpdateForR3(
         acceptedOrder(),
         {orderId: acceptUpdate()},
@@ -167,8 +213,10 @@ void main() {
       });
       expect(provider.getOrderById(orderId)?.acceptedAt, acceptedAt,
           reason: 'republish não pode renovar a referência do aceite');
-      expect(provider.getOrderById(orderId)?.metadata?['proofReceivedAt'], isNull);
-      expect(provider.getOrderById(orderId)?.metadata?['receipt_submitted_at'], isNull);
+      expect(
+          provider.getOrderById(orderId)?.metadata?['proofReceivedAt'], isNull);
+      expect(provider.getOrderById(orderId)?.metadata?['receipt_submitted_at'],
+          isNull);
       expect(
         provider.debugAcceptExpiryCandidatesForR3(now: afterWindow),
         contains(orderId),
@@ -176,7 +224,9 @@ void main() {
       provider.dispose();
     });
 
-    test('complete com prova não é candidato e mantém âncora de auto-liquidação', () {
+    test(
+        'complete com prova não é candidato e mantém âncora de auto-liquidação',
+        () {
       final proofAt = acceptedAt.add(const Duration(minutes: 1));
       final updated = NostrOrderService().debugApplyStatusUpdateForR3(
         acceptedOrder(),
@@ -193,12 +243,14 @@ void main() {
       expect(updated.status, 'awaiting_confirmation');
       expect(updated.acceptedAt, acceptedAt);
       expect(updated.metadata?['proofReceivedAt'], proofAt.toIso8601String());
-      expect(updated.metadata?['receipt_submitted_at'], proofAt.toIso8601String());
+      expect(
+          updated.metadata?['receipt_submitted_at'], proofAt.toIso8601String());
 
       final provider = OrderProvider();
       provider.debugSetCurrentUserPubkeyForR5c('pk-user-r3');
       provider.debugSeedOrdersForR5c([updated]);
-      expect(provider.debugAcceptExpiryCandidatesForR3(now: afterWindow), isEmpty);
+      expect(
+          provider.debugAcceptExpiryCandidatesForR3(now: afterWindow), isEmpty);
       provider.dispose();
     });
 
@@ -220,11 +272,13 @@ void main() {
       expect(updated.metadata?['billcode_locked'], isTrue);
       expect(updated.metadata?['proofReceivedAt'], isNotNull);
       expect(updated.metadata?['receipt_submitted_at'], isNotNull);
-      expect(provider.debugAcceptExpiryCandidatesForR3(now: afterWindow), isEmpty);
+      expect(
+          provider.debugAcceptExpiryCandidatesForR3(now: afterWindow), isEmpty);
       provider.dispose();
     });
 
-    test('invoice/billcode sem prova não criam lock nem timestamps no sync', () {
+    test('invoice/billcode sem prova não criam lock nem timestamps no sync',
+        () {
       final provider = OrderProvider();
       provider.debugSetCurrentUserPubkeyForR5c('pk-user-r3');
       provider.debugSeedOrdersForR5c([acceptedOrder()]);
@@ -264,30 +318,129 @@ void main() {
       provider.dispose();
     });
 
-    test('prova tardia não ressuscita accept_expired', () {
+    test('4e2c858a: complete 16s após accept_expired recupera prova canônica',
+        () async {
+      final expiredAt = DateTime(2026, 11, 21, 14, 26, 12);
+      final proofAt = DateTime(2026, 11, 21, 14, 26, 28);
       final expired = acceptedOrder().copyWith(
         status: 'accept_expired',
         metadata: {'accept_expired_published': true},
       );
+      final update = {
+        ...acceptUpdate(createdAt: proofAt.millisecondsSinceEpoch ~/ 1000),
+        'status': 'awaiting_confirmation',
+        'proofImage': 'late-proof',
+        'proofImage_nip44': 'encrypted-proof',
+        'providerInvoice': 'lnbc-provider-invoice',
+        'proofAuthorPubkey': 'pk-provider-r3',
+      };
+
       final updated = NostrOrderService().debugApplyStatusUpdateForR3(
         expired,
-        {
-          orderId: {
-            ...acceptUpdate(),
-            'status': 'awaiting_confirmation',
-            'proofImage': 'late-proof',
-          },
-        },
+        {orderId: update},
       );
+      expect(updated.status, 'awaiting_confirmation');
+      expect(updated.providerId, 'pk-provider-r3');
+      expect(updated.metadata?['accept_expired_published'], isTrue);
+      expect(updated.metadata?['proofReceivedAt'], proofAt.toIso8601String());
+      expect(updated.metadata?['providerInvoice'], 'lnbc-provider-invoice');
+      expect(updated.metadata?['billcode_locked_to'], 'pk-provider-r3');
+      expect(expiredAt.difference(acceptedAt).inMinutes, greaterThan(0));
 
+      final provider = OrderProvider();
+      provider.debugSetCurrentUserPubkeyForR5c('pk-user-r3');
+      provider.debugSeedOrdersForR5c([expired]);
+      provider.debugApplyUserStatusUpdateForR3(orderId, update);
+      final recovered = provider.getOrderById(orderId)!;
+      expect(recovered.status, 'awaiting_confirmation');
+      expect(recovered.providerId, 'pk-provider-r3');
+      expect(recovered.metadata?['accept_expired_published'], isTrue);
+      expect(recovered.metadata?['billcode_locked_to'], 'pk-provider-r3');
+      expect(provider.debugTerminalRepublishAttemptsForR3, 0);
+      expect(await provider.republicarOrderExpirada(orderId), isFalse);
+      expect(await provider.cancelOrder(orderId), isFalse);
+      expect(recovered.status, 'awaiting_confirmation');
+      provider.dispose();
+    });
+
+    test('prova de outro autor não recupera nem troca providerId', () async {
+      final expired = acceptedOrder().copyWith(
+        status: 'accept_expired',
+        metadata: {'accept_expired_published': true},
+      );
+      final update = {
+        ...acceptUpdate(),
+        'status': 'awaiting_confirmation',
+        'providerId': 'pk-attacker',
+        'eventAuthorPubkey': 'pk-attacker',
+        'proofAuthorPubkey': 'pk-attacker',
+        'proofImage': 'wrong-author-proof',
+      };
+      final updated = NostrOrderService().debugApplyStatusUpdateForR3(
+        expired,
+        {orderId: update},
+      );
       expect(updated.status, 'accept_expired');
-      expect(updated.acceptedAt, acceptedAt);
-      expect(NostrOrderService.isStatusProgressionPublic('accepted', 'accept_expired'), isFalse);
+      expect(updated.providerId, 'pk-provider-r3');
+
+      final provider = OrderProvider();
+      provider.debugSetCurrentUserPubkeyForR5c('pk-user-r3');
+      provider.debugSeedOrdersForR5c([expired]);
+      provider.debugApplyUserStatusUpdateForR3(orderId, update);
+      expect(provider.getOrderById(orderId)?.status, 'accept_expired');
+      expect(provider.getOrderById(orderId)?.providerId, 'pk-provider-r3');
+      expect(await provider.republicarOrderExpirada(orderId), isFalse);
+      expect(provider.getOrderById(orderId)?.status, 'accept_expired');
+      provider.dispose();
+    });
+
+    test('sem prova canônica, UI só oferece republicar/cancelar', () {
+      final expired = acceptedOrder().copyWith(status: 'accept_expired');
+      expect(OrderProvider.hasCanonicalProofForExpiredOrder(expired.toJson()),
+          isFalse);
+      final withProof = expired.copyWith(metadata: {
+        'proofImage_nip44': 'proof',
+        'proofImage_senderPubkey': 'pk-provider-r3',
+      });
+      expect(OrderProvider.hasCanonicalProofForExpiredOrder(withProof.toJson()),
+          isTrue);
+      final wrongAuthor = withProof.copyWith(metadata: {
+        ...?withProof.metadata,
+        'proofImage_senderPubkey': 'pk-attacker',
+      });
+      expect(
+          OrderProvider.hasCanonicalProofForExpiredOrder(wrongAuthor.toJson()),
+          isFalse);
+    });
+  });
+
+  group('R3 - nova rodada após expiração', () {
+    test('copyWith limpa provedor e aceite somente quando solicitado', () {
+      final acceptedAt = DateTime(2026, 11, 21, 12, 48, 1);
+      final expired = _order(
+        'expired-order',
+        providerId: 'pk-provider-r3',
+        status: 'accept_expired',
+        acceptedAt: acceptedAt,
+      );
+      final pending = expired.copyWith(
+        status: 'pending',
+        clearProviderId: true,
+        clearAcceptedAt: true,
+      );
+      expect(pending.providerId, isNull);
+      expect(pending.acceptedAt, isNull);
+      expect(pending.status, 'pending');
+
+      final preserved = expired.copyWith(status: 'pending');
+      expect(preserved.providerId, 'pk-provider-r3');
+      expect(preserved.acceptedAt, acceptedAt);
     });
   });
 
   group('R3 - corrida prova vs prazo de 1h', () {
-    test('(a) prova aos 59min mantém o aceite (billcode_locked trava a janela)', () async {
+    test('(a) prova aos 59min mantém o aceite (billcode_locked trava a janela)',
+        () async {
       NostrOrderService.relaysOverride = List<String>.from(deadRelays);
       NostrOrderService.applyRelaysOverride();
 
@@ -307,14 +460,21 @@ void main() {
       expect(order.metadata?['proofImage'], isNotEmpty);
     });
 
-    test('(b) prova aos 61min não ressuscita: accept_expired não volta a accepted', () {
+    test('(b) prova tardia não volta a accepted nem reabre corrida', () {
       // Guarda de progressão: accepted NÃO é progressão válida a partir de
       // accept_expired — nem um accept re-publicado ressuscita a ordem.
-      expect(NostrOrderService.isStatusProgressionPublic('accepted', 'accept_expired'), isFalse);
-      expect(NostrOrderService.isStatusProgressionPublic('processing', 'accept_expired'), isFalse);
+      expect(
+          NostrOrderService.isStatusProgressionPublic(
+              'accepted', 'accept_expired'),
+          isFalse);
+      expect(
+          NostrOrderService.isStatusProgressionPublic(
+              'processing', 'accept_expired'),
+          isFalse);
     });
 
-    test('(c) ordem sem prova e acceptedAt > 1h é candidata à expiração', () async {
+    test('(c) ordem sem prova e acceptedAt > 1h é candidata à expiração',
+        () async {
       NostrOrderService.relaysOverride = List<String>.from(deadRelays);
       NostrOrderService.applyRelaysOverride();
 
@@ -337,7 +497,8 @@ void main() {
       );
     });
 
-    test('(d) idempotência: accept_expired_published exclui da re-expiração', () async {
+    test('(d) idempotência: accept_expired_published exclui da re-expiração',
+        () async {
       NostrOrderService.relaysOverride = List<String>.from(deadRelays);
       NostrOrderService.applyRelaysOverride();
 

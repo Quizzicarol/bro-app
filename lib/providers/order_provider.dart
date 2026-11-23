@@ -510,6 +510,9 @@ class OrderProvider with ChangeNotifier {
   }
 
   @visibleForTesting
+  int debugTerminalRepublishAttemptsForR3 = 0;
+
+  @visibleForTesting
   Future<void> Function({bool force})? userSyncRunnerOverride;
 
   @visibleForTesting
@@ -1517,6 +1520,10 @@ class OrderProvider with ChangeNotifier {
     // R3 (v816): aceite expirado também pode ser cancelado pelo dono
     // (cancelar e sacar os sats). pending segue a regra original.
     if (order.status != 'pending' && order.status != 'accept_expired') {
+      return false;
+    }
+    if (order.status == 'accept_expired' &&
+        hasCanonicalProofForExpiredOrder(order.toJson())) {
       return false;
     }
     
@@ -2807,6 +2814,7 @@ class OrderProvider with ChangeNotifier {
   static const int _terminalRepublishCooldownMinutes = 1;
 
   Future<void> _republishOrderEventWithTerminalStatus(Order order, String newStatus) async {
+    debugTerminalRepublishAttemptsForR3++;
     // So re-publicar para status terminal-ish
     const terminalStatuses = ['accepted', 'awaiting_confirmation', 'completed', 'cancelled', 'liquidated', 'disputed'];
     if (!terminalStatuses.contains(newStatus)) return;
@@ -2974,7 +2982,15 @@ class OrderProvider with ChangeNotifier {
         final cancelCurrentStatus = existingCancelOrder?.status ?? '';
         // R3 (v816): a partir de accept_expired o cancel é autorizado mesmo
         // com aceite na rede — o aceite expirou, o dono saca os sats.
-        final cancelExpired = cancelCurrentStatus == 'accept_expired';
+        final cancelExpired = cancelCurrentStatus == 'accept_expired' &&
+            existingCancelOrder != null &&
+            !hasCanonicalProofForExpiredOrder(existingCancelOrder.toJson());
+        if (cancelCurrentStatus == 'accept_expired' && !cancelExpired) {
+          broLog('⛔ BLOQUEADO: cancel com prova do provedor canônico');
+          _isLoading = false;
+          _immediateNotify();
+          return false;
+        }
         if (!cancelExpired && !(cancelCurrentStatus.isEmpty || cancelCurrentStatus == 'draft' || cancelCurrentStatus == 'pending')) {
           broLog('⛔ BLOQUEADO: cancelled em status "$cancelCurrentStatus" (v708)');
           _isLoading = false;
@@ -4007,9 +4023,33 @@ class OrderProvider with ChangeNotifier {
     final hasEncryptedProof = encryptedProof != null && encryptedProof.isNotEmpty;
     final hasProofTimestamp = metadata['proofReceivedAt'] != null ||
         metadata['receipt_submitted_at'] != null;
-    // Compatibilidade com registros antigos, cujos timestamps eram a única
-    // evidência persistida. Novos aceites não recebem mais esses campos.
-    return hasPlainProof || hasEncryptedProof || hasProofTimestamp;
+    if (!hasPlainProof && !hasEncryptedProof && !hasProofTimestamp) return false;
+    final proofAuthor = metadata['proofImage_senderPubkey']?.toString();
+    if (order.status == 'accept_expired') {
+      return proofAuthor != null && proofAuthor.isNotEmpty && proofAuthor == order.providerId;
+    }
+    // Registros antigos sem autor continuam compatíveis durante o aceite;
+    // quando a autoria é conhecida, prova de terceiro não trava a janela.
+    return proofAuthor == null || proofAuthor.isEmpty || proofAuthor == order.providerId;
+  }
+
+  bool _isCanonicalLateProof(Order order, Map<String, dynamic> update) =>
+      NostrOrderService.isCanonicalLateProof(order, update);
+
+  static bool hasCanonicalProofForExpiredOrder(Map<String, dynamic> order) {
+    if (order['status'] != 'accept_expired') return false;
+    final metadata = (order['metadata'] as Map?)?.cast<String, dynamic>() ?? {};
+    final plain = metadata['proofImage']?.toString();
+    final encrypted = metadata['proofImage_nip44']?.toString();
+    final hasProof = (plain != null && plain.isNotEmpty && !plain.startsWith('[encrypted:')) ||
+        (encrypted != null && encrypted.isNotEmpty) ||
+        metadata['proofReceivedAt'] != null || metadata['receipt_submitted_at'] != null;
+    if (!hasProof) return false;
+    final providerId = order['provider_id']?.toString() ??
+        order['providerId']?.toString() ?? metadata['providerId']?.toString();
+    final proofAuthor = metadata['proofImage_senderPubkey']?.toString();
+    return providerId != null && providerId.isNotEmpty &&
+        proofAuthor != null && proofAuthor.isNotEmpty && proofAuthor == providerId;
   }
 
   List<Order> _acceptExpiryCandidates(DateTime now, {Duration? window}) {
@@ -4030,7 +4070,11 @@ class OrderProvider with ChangeNotifier {
     final existing = _orders[existingIndex];
     final newStatus = update['status'] as String?;
     if (newStatus == null) return false;
-    final newProviderId = update['providerId'] as String?;
+    final newProviderId = existing.status == 'accept_expired'
+        ? existing.providerId
+        : update['providerId'] as String?;
+    final isLateProofRecovery = newStatus == 'awaiting_confirmation' &&
+        _isCanonicalLateProof(existing, update);
     const protectedStatuses = ['completed', 'cancelled', 'liquidated'];
     if (protectedStatuses.contains(existing.status) &&
         !_isStatusMoreRecent(newStatus, existing.status)) {
@@ -4084,7 +4128,7 @@ class OrderProvider with ChangeNotifier {
         broLog('syncOrdersFromNostr: permitido completed de disputed (resolução de disputa)');
       }
     }
-    if (_isStatusMoreRecent(statusToUse, existing.status)) needsUpdate = true;
+    if (isLateProofRecovery || _isStatusMoreRecent(statusToUse, existing.status)) needsUpdate = true;
 
     if (!needsUpdate) {
       final hasProofData = update['proofImage'] != null ||
@@ -4103,7 +4147,8 @@ class OrderProvider with ChangeNotifier {
     }
     if (!needsUpdate) return false;
 
-    final isStatusAdvancing = _isStatusMoreRecent(statusToUse, existing.status);
+    final isStatusAdvancing = isLateProofRecovery ||
+        _isStatusMoreRecent(statusToUse, existing.status);
     final wasDisputeResolution = existing.status == 'disputed' &&
         (statusToUse == 'completed' || statusToUse == 'cancelled') &&
         isStatusAdvancing;
@@ -4120,8 +4165,8 @@ class OrderProvider with ChangeNotifier {
         update['providerInvoice'] != null ||
         update['proofImage_nip44'] != null) {
       final proofImageNip44 = update['proofImage_nip44'] as String?;
-      final senderPubkey = update['eventAuthorPubkey'] as String? ??
-          update['providerId'] as String?;
+      final senderPubkey = update['proofAuthorPubkey'] as String? ??
+          update['eventAuthorPubkey'] as String? ?? update['providerId'] as String?;
       String? decryptedProofImage;
       if (proofImageNip44 != null && proofImageNip44.isNotEmpty) {
         final privateKey = _nostrService.privateKey;
@@ -4171,11 +4216,15 @@ class OrderProvider with ChangeNotifier {
           'receipt_submitted_at':
               existing.metadata?['receipt_submitted_at'] ?? proofTimeIso,
       };
-      final lockAuthor = update['eventAuthorPubkey'] as String? ?? newProviderId ?? '';
-      if (hasProofEvidence &&
-          lockAuthor.isNotEmpty &&
+      final lockAuthor = update['proofAuthorPubkey'] as String? ??
+          update['eventAuthorPubkey'] as String? ?? newProviderId ?? '';
+      if (isLateProofRecovery) {
+        updatedMetadata['lateProofRecoveredAt'] = DateTime.now().toIso8601String();
+      }
+      if (hasProofEvidence && lockAuthor.isNotEmpty &&
+          (isLateProofRecovery || lockAuthor == existing.providerId) &&
           (existing.status == 'accepted' ||
-              existing.status == 'awaiting_confirmation')) {
+              existing.status == 'awaiting_confirmation' || isLateProofRecovery)) {
         updatedMetadata['billcode_locked'] = true;
         updatedMetadata['billcode_locked_to'] = lockAuthor;
         updatedMetadata['billcode_locked_at'] = DateTime.now().toIso8601String();
@@ -4201,7 +4250,7 @@ class OrderProvider with ChangeNotifier {
       cacheProofImage(existing.id, proof);
     }
     if (!isStatusAdvancing) _immediateNotify();
-    if (isStatusAdvancing) {
+    if (isStatusAdvancing && !isLateProofRecovery) {
       _republishOrderEventWithTerminalStatus(_orders[existingIndex], statusToUse);
     }
     return true;
@@ -4291,6 +4340,10 @@ class OrderProvider with ChangeNotifier {
     final order = _orders[index];
     if (order.status != 'accept_expired') return false;
     if (order.userPubkey != _currentUserPubkey) return false;
+    if (_hasRealProofForAcceptExpiry(order)) {
+      broLog('[Republicar] BLOQUEADO: ${orderId.substring(0, 8)} tem prova do provedor canônico');
+      return false;
+    }
 
     final privateKey = _nostrService.privateKey;
     if (privateKey == null) return false;
@@ -4302,6 +4355,8 @@ class OrderProvider with ChangeNotifier {
         order: order,
         newStatus: 'pending',
         providerId: null,
+        clearProviderId: true,
+        clearAcceptedAt: true,
       );
       if (newEventId == null || newEventId.isEmpty) {
         broLog('[Republicar] falha ao republicar ${orderId.substring(0, 8)}');
@@ -4310,8 +4365,8 @@ class OrderProvider with ChangeNotifier {
       _orders[index] = order.copyWith(
         status: 'pending',
         eventId: newEventId,
-        providerId: null,
-        acceptedAt: null,
+        clearProviderId: true,
+        clearAcceptedAt: true,
         metadata: {...?order.metadata, 'accept_expired_published': true},
       );
       await _saveOrders();

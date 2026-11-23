@@ -22,6 +22,21 @@ import '../widgets/dispute_chat.dart';
 import '../utils/image_compress.dart';
 /// Tela de detalhes da ordem para o provedor
 /// Mostra dados de pagamento (PIX/boleto) e permite aceitar e enviar comprovante
+@visibleForTesting
+Widget buildExpiredProviderPaymentBlock() => Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.orange.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.withOpacity(0.3)),
+      ),
+      child: const Text(
+        'O prazo de 1 hora para novas ações de pagamento expirou. O código Pix/boleto está bloqueado. Se você já pagou, envie ou visualize o comprovante para o comprador confirmar.',
+        style: TextStyle(color: Colors.orange, fontSize: 13),
+      ),
+    );
+
 class ProviderOrderDetailScreen extends StatefulWidget {
   final String orderId;
   final String providerId;
@@ -1370,6 +1385,7 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     final isCompleted = status == 'completed' || status == 'liquidated';
     final isAwaitingConfirmation = status == 'awaiting_confirmation';
     final isAccepted = status == 'accepted';
+    final isAcceptExpired = status == 'accept_expired';
     final isPending = status == 'pending' || status == 'payment_received';
 
     return SingleChildScrollView(
@@ -1508,6 +1524,18 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
               ),
               const SizedBox(height: 16),
             ],
+            _buildReceiptSection(),
+          ]
+          // ========== R3: ACEITE EXPIRADO ==========
+          // O billcode deixa de ser uma nova ação de pagamento. O comprovante
+          // já produzido permanece disponível para envio/recuperação.
+          else if (isAcceptExpired && _lostRace != true) ...[
+            _buildAmountCard(amount, providerFee),
+            const SizedBox(height: 16),
+            _buildStatusCard(),
+            const SizedBox(height: 16),
+            buildExpiredProviderPaymentBlock(),
+            const SizedBox(height: 16),
             _buildReceiptSection(),
           ]
           // ========== v806: CORRIDA EM APURAÇÃO ==========
@@ -2400,6 +2428,13 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
           'icon': Icons.paid_outlined,
           'color': Colors.green,
         };
+      case 'accept_expired':
+        return {
+          'title': 'Aceite expirado',
+          'description': 'Novas ações de pagamento estão bloqueadas; uma prova já existente ainda pode ser enviada.',
+          'icon': Icons.timer_off,
+          'color': Colors.orange,
+        };
       case 'payment_submitted':
       case 'awaiting_confirmation':
         return {
@@ -2625,6 +2660,14 @@ class _ProviderOrderDetailScreenState extends State<ProviderOrderDetailScreen> {
     
     return Column(
       children: [
+        const Padding(
+          padding: EdgeInsets.only(bottom: 12),
+          child: Text(
+            'Ao aceitar, você terá 1 hora para pagar a conta e enviar o comprovante.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.orange, fontSize: 13),
+          ),
+        ),
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(

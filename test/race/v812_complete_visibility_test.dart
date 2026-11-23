@@ -66,7 +66,11 @@ class _MiniRelay {
   Future<void> stop() async => _server?.close(force: true);
 }
 
-Map<String, dynamic> _completeEvent(String orderId, Keychain providerKeys) {
+Map<String, dynamic> _completeEvent(
+  String orderId,
+  Keychain providerKeys, {
+  int? createdAt,
+}) {
   // v803 valida assinatura (verify:true) — o evento precisa ser assinado DE
   // VERDADE, senão é rejeitado no caminho (como em produção).
   final ev = Event.from(
@@ -87,9 +91,33 @@ Map<String, dynamic> _completeEvent(String orderId, Keychain providerKeys) {
       'completedAt': DateTime.now().toIso8601String(),
     }),
     privkey: providerKeys.private,
+    createdAt: createdAt ?? DateTime.now().millisecondsSinceEpoch ~/ 1000,
   );
   return ev.toJson();
 }
+
+Map<String, dynamic> _statusEvent(
+  String orderId,
+  Keychain keys,
+  String status,
+  int createdAt,
+  String providerId,
+) =>
+    Event.from(
+      kind: 30080,
+      tags: [
+        ['r', orderId],
+        ['p', providerId],
+      ],
+      content: jsonEncode({
+        'type': 'bro_order_update',
+        'orderId': orderId,
+        'providerId': providerId,
+        'status': status,
+      }),
+      privkey: keys.private,
+      createdAt: createdAt,
+    ).toJson();
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -121,6 +149,32 @@ void main() {
     expect(u['providerInvoice'], 'lnbc100n1fake');
     broLog('⏱️ v812: complete sem #p encontrado via #d em ${sw.elapsedMilliseconds}ms');
 
+    await relay.stop();
+  }, timeout: const Timeout(Duration(seconds: 60)));
+
+  test('R3 4e2c858a: accept_expired posterior não descarta complete canônico', () async {
+    const orderId = '4e2c858a';
+    const expiredAt = 1763749572;
+    const completeAt = 1763749588;
+    final providerKeys = Keychain.generate();
+    final buyerKeys = Keychain.generate();
+    final relay = _MiniRelay([
+      _statusEvent(orderId, buyerKeys, 'accept_expired', expiredAt, providerKeys.public),
+      _completeEvent(orderId, providerKeys, createdAt: completeAt),
+    ]);
+    await relay.start();
+    NostrOrderService.relaysOverride = [relay.url];
+    NostrOrderService.applyRelaysOverride();
+
+    final updates = await NostrOrderService().fetchOrderUpdatesForUser(
+      buyerKeys.public,
+      orderIds: const [orderId],
+    );
+    final update = updates[orderId]!;
+    expect(update['status'], 'awaiting_confirmation');
+    expect(update['providerId'], providerKeys.public);
+    expect(update['proofAuthorPubkey'], providerKeys.public);
+    expect(update['proofImage'], 'raw_base64_da_prova');
     await relay.stop();
   }, timeout: const Timeout(Duration(seconds: 60)));
 

@@ -11,9 +11,11 @@ congelada; rollback tag antes de cada merge.
 | Branch | Conteúdo | Estado |
 |---|---|---|
 | `main` | 822 = pacote v820 (bugfix puro) | produção/testers externos |
-| `test/v816` | R3 (expiração de aceite) sobre base 822 + knob de teste | em teste no USB (janela 2min) |
+| `test/v816` | R3 (expiração de aceite) sobre base 822 + knob de teste | substituído pela integração abaixo |
 | `test/v823` | certificação de entrega (preimage + recibo + verificador) | em teste no USB (825) |
-| `test/perf-ui` | (a criar) performance de UI | — |
+| `test/perf-ui` | cache da Home e reconciliação única | publicado em `a985eb1` |
+| `test/perf-sync` | sync coalescido, fases e proof-fetch limitado | publicado em `3252f16` |
+| `test/r3-perf-integration` | R3 + PERF + recuperação tardia | `96c140a` + alterações locais em validação |
 
 ## Trilha 1 — Certificação de entrega (v823) — MAIS CURTA
 
@@ -27,11 +29,54 @@ mecanismo; revisar só o follow-up das fendas).
 
 ## Trilha 2 — R3 (expiração de aceite 1h)
 
-1. Agora: ciclo curto no USB com a janela de 2min (knob). Quantas vezes a
-   dona quiser — idempotência, republicação, cancelamento.
-2. Depois: build com a janela real de 60min e o teste longo.
-3. Revisão cruzada final → proposta de merge. Só entra no main quando a dona
-   disser.
+**Regra obrigatória:** produção e os próximos testes usam **60 minutos**. O
+ciclo de 2 minutos foi rejeitado pela dona e não deve ser repetido.
+
+Comportamento implementado na integração:
+
+- Aviso ao provedor sobre o prazo de 1 hora e lembretes em 20/40 minutos,
+  com deduplicação.
+- Após `accept_expired`, o billcode deixa de ser acionável, mas o comprovante
+  continua acessível.
+- Prova tardia somente do provedor canônico recupera para
+  `awaiting_confirmation`; não reabre a corrida nem troca `providerId`.
+- Republicar/cancelar somente quando não existe prova canônica válida.
+- `completed` e `cancelled` permanecem terminais; eventos posteriores sem
+  prova não podem apagar a prova, a invoice ou regredir o estado.
+
+Evidências:
+
+- Recuperação da ordem real `4e2c858a` e confirmação manual pela dona.
+- Regressão da sequência completa em `r3_update_selection_test.dart`:
+  `accept_expired` → complete canônico → `completed` sem prova →
+  `awaiting_confirmation` sem prova, nas duas ordens de chegada.
+- O teste detectou e a correção passou a preservar `providerInvoice` quando
+  `completed` sem prova chega antes do complete canônico.
+- Gate focado após a correção: **31/31 testes**.
+- Revisão independente encontrou quatro problemas, todos corrigidos e cobertos:
+  limpeza explícita de `providerId`/`acceptedAt` na nova rodada; aceite
+  canônico por `acceptedAt` imutável com clamp de relógio e desempate;
+  preservação do `completedAt` da prova; e `cancelled → disputed` somente
+  quando mais recente.
+- Gate focado após essas correções e o bloqueio de disputa antiga sobre
+  cancelamento mais recente: **36/36 testes**; suíte `test/race` final:
+  **121/121 testes**. Revisão independente final: sem novos achados.
+- APK final com janela de 60 minutos instalado no USB com dados preservados
+  em 22/11/2026, `1.0.134+827`.
+
+Pendências antes de publicar/mergear:
+
+1. Confirmação final da revisão independente e suíte completa. O smoke test
+   `widget_test.dart` tem timeout preexistente também em `96c140a`, não
+   introduzido por esta trilha.
+2. Validar no aparelho a janela real de 60 minutos, lembretes, bloqueio do
+   billcode, filtro de aceites antigos e republicação apenas sem prova.
+3. Implantar o roteamento `accept_expired` do watchtower após revisão.
+4. Não declarar recebimento Lightning de `4e2c858a` sem payment hash,
+   preimage ou recibo correspondente. A confirmação manual e `proof=true`
+   comprovam a recuperação do fluxo, não a liquidação.
+5. BRIX claim/fee permanece em trilha separada (`test/brix-claim-fee`), com
+   requisitos em `PROMPT_BRIX_CLAIM_FEE.md`; não foi implementado aqui.
 
 QA/execução de testes: **Nemotron 3.5 Lightning**. Revisão de corrida/estado:
 **Nemotron 3 Ultra**. Decisão de merge: dona + assento do integrador.

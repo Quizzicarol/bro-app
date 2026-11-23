@@ -149,6 +149,187 @@ class NostrOrderService {
   static bool isStatusProgressionPublic(String newStatus, String currentStatus) =>
       _isStatusProgression(newStatus, currentStatus);
 
+  static bool _hasProofPayload(Map<String, dynamic> update) {
+    final plain = update['proofImage']?.toString();
+    final encrypted = update['proofImage_nip44']?.toString();
+    return (plain != null && plain.isNotEmpty && !plain.startsWith('[encrypted:')) ||
+        (encrypted != null && encrypted.isNotEmpty);
+  }
+
+  /// Uma prova tardia só recupera o aceite expirado se o evento assinante for
+  /// o provedor canônico. O providerId do conteúdo não é prova de autoria.
+  static bool isCanonicalLateProof(Order order, Map<String, dynamic> update) {
+    if (order.status != 'accept_expired' || !_hasProofPayload(update)) return false;
+    final canonicalProvider = order.providerId;
+    final proofAuthor = update['proofAuthorPubkey']?.toString() ??
+        update['eventAuthorPubkey']?.toString();
+    return canonicalProvider != null && canonicalProvider.isNotEmpty &&
+        proofAuthor == canonicalProvider;
+  }
+
+  @visibleForTesting
+  static Map<String, Map<String, dynamic>> selectOrderUpdatesForUser(
+    Iterable<Map<String, dynamic>> events, {
+    Set<String>? activeOrderIdSet,
+    String? userPubkey,
+  }) {
+    final updates = <String, Map<String, dynamic>>{};
+    final proofAccumulator = <String, Map<String, dynamic>>{};
+    final canonicalProviders = <String, String>{};
+    final canonicalAcceptSortKeys = <String, int>{};
+    final parsedEvents = <Map<String, dynamic>>[];
+
+    for (final event in events) {
+      try {
+        final content = event['parsedContent'] ?? jsonDecode(event['content']);
+        if (content is! Map) continue;
+        final orderId = content['orderId'] as String?;
+        if (orderId == null || orderId.isEmpty) continue;
+        if (activeOrderIdSet != null && !activeOrderIdSet.contains(orderId)) continue;
+        final eventKind = event['kind'] as int?;
+        final eventPubkey = event['pubkey'] as String?;
+        final contentProviderId = content['providerId'] as String?;
+        if ((eventKind == kindBroAccept || eventKind == kindBroComplete) &&
+            contentProviderId != null && eventPubkey != null &&
+            eventPubkey != contentProviderId) {
+          continue;
+        }
+        final parsed = Map<String, dynamic>.from(event);
+        parsed['parsedContent'] = content;
+        parsedEvents.add(parsed);
+
+        // O aceite assinado identifica o canônico; accept_expired preserva
+        // essa referência sem permitir que outro autor a substitua.
+        if (eventKind == kindBroAccept && eventPubkey != null && eventPubkey.isNotEmpty) {
+          final relayTimestamp = event['created_at'] as int? ?? 0;
+          var sortKey = relayTimestamp;
+          final acceptedAt = DateTime.tryParse(content['acceptedAt']?.toString() ?? '');
+          if (acceptedAt != null) {
+            final acceptedTimestamp = (acceptedAt.millisecondsSinceEpoch / 1000).round();
+            sortKey = (acceptedTimestamp - relayTimestamp).abs() > 300
+                ? relayTimestamp
+                : acceptedTimestamp;
+          }
+          final previousKey = canonicalAcceptSortKeys[orderId];
+          final previousProvider = canonicalProviders[orderId];
+          if (previousKey == null || sortKey < previousKey ||
+              (sortKey == previousKey && eventPubkey.compareTo(previousProvider!) < 0)) {
+            canonicalAcceptSortKeys[orderId] = sortKey;
+            canonicalProviders[orderId] = eventPubkey;
+          }
+        } else if (eventKind == kindBroPaymentProof &&
+            content['status'] == 'accept_expired') {
+          final expiredProvider = contentProviderId ?? canonicalProviders[orderId];
+          if (expiredProvider != null && expiredProvider.isNotEmpty) {
+            canonicalProviders.putIfAbsent(orderId, () => expiredProvider);
+          }
+        }
+
+        final proofImage = content['proofImage'] as String?;
+        final proofImageNip44 = content['proofImage_nip44'] as String?;
+        if (proofImage != null || proofImageNip44 != null) {
+          proofAccumulator.putIfAbsent(orderId, () => {
+            'proofImage': proofImage,
+            'proofImage_nip44': proofImageNip44,
+            'encryption': content['encryption'] as String?,
+            'providerInvoice': content['providerInvoice'] as String?,
+            'completedAt': content['completedAt'] as String?,
+            'eventAuthorPubkey': eventPubkey,
+          });
+        }
+      } catch (_) {}
+    }
+
+    for (final event in parsedEvents) {
+      try {
+        final content = event['parsedContent'] as Map<String, dynamic>;
+        final orderId = content['orderId'] as String;
+        final eventKind = event['kind'] as int?;
+        final createdAt = event['created_at'] as int? ?? 0;
+        final contentType = content['type'] as String?;
+        if (contentType == 'bro_admin_reimbursement') continue;
+        if (contentType == 'bro_republish_request') continue;
+        if (contentType == 'bro_dispute_resolution' &&
+            content['adminPubkey'] == userPubkey) continue;
+
+        String newStatus;
+        if (eventKind == kindBroAccept) {
+          newStatus = 'accepted';
+        } else if (eventKind == kindBroComplete) {
+          newStatus = 'awaiting_confirmation';
+        } else if (eventKind == kindBroPaymentProof) {
+          final contentStatus = content['status'] as String?;
+          if (contentStatus == null || contentStatus.isEmpty) continue;
+          newStatus = contentStatus;
+        } else {
+          continue;
+        }
+
+        final existingUpdate = updates[orderId];
+        final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
+        final existingStatus = existingUpdate?['status'] as String?;
+        if (existingStatus == 'completed' ||
+            (existingStatus == 'cancelled' && newStatus != 'disputed')) {
+          continue;
+        }
+        final isNewer = existingUpdate == null || createdAt > existingCreatedAt;
+        final isValidProgression = existingStatus != null &&
+            _isStatusProgression(newStatus, existingStatus);
+        final eventPubkey = event['pubkey'] as String?;
+        final canonicalProvider = canonicalProviders[orderId];
+        final hasProof = _hasProofPayload(content);
+        final isCanonicalLateProof = eventKind == kindBroComplete &&
+            newStatus == 'awaiting_confirmation' && hasProof &&
+            canonicalProvider != null && eventPubkey == canonicalProvider;
+        final recoversExpired = existingStatus == 'accept_expired' &&
+            isCanonicalLateProof;
+        final expiredCannotOverrideProof = newStatus == 'accept_expired' &&
+            existingStatus == 'awaiting_confirmation' &&
+            existingUpdate?['proofAuthorPubkey'] == canonicalProvider &&
+            _hasProofPayload(existingUpdate!);
+
+        if (expiredCannotOverrideProof) continue;
+        if (newStatus == 'disputed' && existingStatus == 'cancelled' && !isNewer) {
+          continue;
+        }
+        if (newStatus == 'disputed' && existingStatus == 'cancelled' && isNewer) {
+          // A mediação pode ser aberta depois do cancelamento.
+        } else if (newStatus == 'cancelled' && isNewer) {
+          // Mantém a seleção explícita de cancelamento do fluxo anterior.
+        } else if (isNewer) {
+          if (existingStatus != null && !isValidProgression && !recoversExpired) {
+            continue;
+          }
+        } else if (!isValidProgression && !recoversExpired) {
+          continue;
+        }
+        if (existingStatus == 'completed' && newStatus == 'disputed') continue;
+
+        final previousUpdate = updates[orderId];
+        final accum = proofAccumulator[orderId];
+        final providerId = isCanonicalLateProof
+            ? canonicalProvider
+            : content['providerId'] ?? eventPubkey ?? previousUpdate?['providerId'];
+        updates[orderId] = {
+          'orderId': orderId,
+          'status': newStatus,
+          'eventKind': eventKind,
+          'providerId': providerId,
+          'acceptedAt': content['acceptedAt'] ?? previousUpdate?['acceptedAt'],
+          'proofImage': content['proofImage'] ?? previousUpdate?['proofImage'] ?? accum?['proofImage'],
+          'proofImage_nip44': content['proofImage_nip44'] ?? previousUpdate?['proofImage_nip44'] ?? accum?['proofImage_nip44'],
+          'encryption': content['encryption'] ?? previousUpdate?['encryption'] ?? accum?['encryption'],
+          'providerInvoice': content['providerInvoice'] ?? previousUpdate?['providerInvoice'] ?? accum?['providerInvoice'],
+          'completedAt': content['completedAt'] ?? previousUpdate?['completedAt'] ?? accum?['completedAt'],
+          'eventAuthorPubkey': eventPubkey ?? previousUpdate?['eventAuthorPubkey'] ?? accum?['eventAuthorPubkey'],
+          'proofAuthorPubkey': accum?['eventAuthorPubkey'] ?? previousUpdate?['proofAuthorPubkey'],
+          'created_at': createdAt,
+        };
+      } catch (_) {}
+    }
+    return updates;
+  }
+
   /// Helper: Verifica se newStatus é progressão válida em relação a currentStatus
   /// Mesma lógica de _isStatusMoreRecent do OrderProvider, mas local
   /// REGRA DE OURO: Status NUNCA regride. cancelled/completed/liquidated/disputed são terminais.
@@ -2262,6 +2443,8 @@ class NostrOrderService {
     required Order order,
     required String newStatus,
     String? providerId,
+    bool clearProviderId = false,
+    bool clearAcceptedAt = false,
   }) async {
     try {
       final keychain = Keychain(privateKey);
@@ -2294,11 +2477,13 @@ class NostrOrderService {
         // v629 FIX: nunca gravar providerId == dono da ordem (keychain.public).
         // Um providerId self-referencial faz TODO Bro achar que a ordem já foi
         // aceita e bloqueia a aceitação. providerId válido = pubkey do provedor.
-        'providerId': (providerId ?? order.providerId) == keychain.public
+        'providerId': clearProviderId
             ? null
-            : (providerId ?? order.providerId),
+            : ((providerId ?? order.providerId) == keychain.public
+                ? null
+                : (providerId ?? order.providerId)),
         'createdAt': order.createdAt.toIso8601String(),
-        if (order.acceptedAt != null)
+        if (!clearAcceptedAt && order.acceptedAt != null)
           'acceptedAt': order.acceptedAt!.toIso8601String(),
         'updatedAt': DateTime.now().toIso8601String(),
       });
@@ -3112,6 +3297,8 @@ class NostrOrderService {
             'proofAuthorPubkey': (proofImage != null || proofImageNip44 != null)
                 ? event['pubkey'] as String?
                 : existingUpdate?['proofAuthorPubkey'],
+            'proofImage': proofImage ?? existingUpdate?['proofImage'],
+            'proofImage_nip44': proofImageNip44 ?? existingUpdate?['proofImage_nip44'],
             'created_at': createdAt,
           };
         }
@@ -3638,6 +3825,8 @@ class NostrOrderService {
     // pagou). Quem comprovou = quem recebe (regra v713) — a exibição segue a
     // mesma verdade.
     String? resolveProviderId() {
+      // R3: prova tardia nunca reabre a corrida nem troca o canônico.
+      if (order.status == 'accept_expired') return order.providerId;
       // v718: o autor DA PROVA manda — explícito do mapa de updates (o evento
       // mais novo pode ser republish de outro autor; o acumulador guarda
       // quem publicou o comprovante de verdade).
@@ -3725,7 +3914,10 @@ class NostrOrderService {
       // CORREÇÃO v1.0.129: NUNCA regredir status
       // Se o status atual é mais avançado que o novo, manter o atual
       // Mas ainda atualizar metadata (proofImage, etc)
-      final isProgression = _isStatusProgression(newStatus, order.status);
+      final isLateProofRecovery = newStatus == 'awaiting_confirmation' &&
+          isCanonicalLateProof(order, update);
+      final isProgression = isLateProofRecovery ||
+          _isStatusProgression(newStatus, order.status);
       final statusToApply = isProgression ? newStatus : order.status;
       
       // Mesclar metadata existente com novos dados do comprovante
@@ -3745,6 +3937,12 @@ class NostrOrderService {
       final hasProofEvidence =
           (proofImage != null && proofImage.isNotEmpty) ||
           (proofImageNip44 != null && proofImageNip44.isNotEmpty);
+      if (isLateProofRecovery) {
+        updatedMetadata['lateProofRecoveredAt'] = DateTime.now().toIso8601String();
+        updatedMetadata['billcode_locked'] = true;
+        updatedMetadata['billcode_locked_to'] = order.providerId;
+        updatedMetadata['billcode_locked_at'] ??= DateTime.now().toIso8601String();
+      }
       if (hasProofEvidence) {
         // Estes campos são a âncora da prova e da auto-liquidação de 36h.
         // Um created_at isolado (aceite, billcode ou republish) não é prova.
@@ -4126,167 +4324,29 @@ class NostrOrderService {
     }
 
     broLog('🔍 fetchOrderUpdatesForUser: ${allEvents.length} eventos (parallel relays v806)');
-    
-    // v406: CORREÇÃO DEFINITIVA — Acumular proof de TODOS os eventos por orderId
-    // antes de processar. Garante que proof do kind 30081 (provider complete) NUNCA
-    // se perde mesmo quando kind 30080 (user completed, sem proof) é processado primeiro.
-    final proofAccumulator = <String, Map<String, dynamic>>{};
+
     for (final event in allEvents) {
       try {
         final content = event['parsedContent'] ?? jsonDecode(event['content']);
+        if (content['type'] != 'bro_republish_request') continue;
         final orderId = content['orderId'] as String?;
-        if (orderId == null) continue;
-        final proofImage = content['proofImage'] as String?;
-        final proofImageNip44 = content['proofImage_nip44'] as String?;
-        if (proofImage != null || proofImageNip44 != null) {
-          if (!proofAccumulator.containsKey(orderId)) {
-            proofAccumulator[orderId] = {
-              'proofImage': proofImage,
-              'proofImage_nip44': proofImageNip44,
-              'encryption': content['encryption'] as String?,
-              'eventAuthorPubkey': event['pubkey'] as String?,
-            };
-          }
-        }
+        if (orderId == null ||
+            (activeOrderIdSet != null && !activeOrderIdSet.contains(orderId))) continue;
+        _pendingRepublishRequests.add(orderId);
+        final reqAuthor = event['pubkey']?.toString();
+        if (reqAuthor != null) _pendingRepublishRequestAuthors[orderId] = reqAuthor;
       } catch (_) {}
     }
-    
-    // Processar todos os eventos
-    for (final event in allEvents) {
-          try {
-            final content = event['parsedContent'] ?? jsonDecode(event['content']);
-            final orderId = content['orderId'] as String?;
-            final eventKind = event['kind'] as int?;
-            final createdAt = event['created_at'] as int? ?? 0;
-            
-            if (orderId == null) continue;
-            
-            // PERFORMANCE v1.0.129+218: Ignorar eventos de ordens que não estão na lista ativa
-            // Isso filtra eventos de ordens já terminais (completed/cancelled/liquidated)
-            if (activeOrderIdSet != null && !activeOrderIdSet.contains(orderId)) continue;
-            
-            // CORREÇÃO v1.0.129: Ignorar eventos de resolução de disputa publicados pelo PRÓPRIO
-            // usuário (quando ele é o mediador). Estes eventos não devem criar/atualizar ordens
-            // na lista do mediador, pois ele não é parte da transação.
-            final contentType = content['type'] as String?;
-            // CORREÇÃO v348: Ignorar eventos de reembolso do admin completamente
-            // bro_admin_reimbursement NÃO é status update — não deve afetar lista de ordens
-            if (contentType == 'bro_admin_reimbursement') continue;
-            // v437: Detectar pedidos de republish do provider
-            // Provider publica bro_republish_request quando ordem está presa em awaiting_confirmation
-            // Customer re-publica o completed se existir localmente
-            if (contentType == 'bro_republish_request') {
-              if (orderId != null) {
-                _pendingRepublishRequests.add(orderId);
-                final reqAuthor = event['pubkey']?.toString();
-                if (reqAuthor != null) _pendingRepublishRequestAuthors[orderId] = reqAuthor; // v774
-                broLog('📩 fetchOrderUpdatesForUser: bro_republish_request recebido para ${orderId.substring(0, 8)}');
-              }
-              continue;
-            }
-            if (contentType == 'bro_dispute_resolution') {
-              // Se este usuário é o mediador (adminPubkey == userPubkey),
-              // ignorar o evento para não poluir a lista do mediador
-              final adminPubkey = content['adminPubkey'] as String?;
-              if (adminPubkey == userPubkey) continue;
-              // Se o usuário é uma das PARTES da disputa, processar normalmente
-              // (o status da resolução é relevante para eles)
-            }
-            
-            // SEGURANÇA: Validar papel baseado no tipo de evento
-            final eventPubkey = event['pubkey'] as String?;
-            final contentProviderId = content['providerId'] as String?;
-            
-            // Para eventos de accept/complete (do Bro): pubkey deve ser o providerId
-            // Para eventos kind 30080: aceitar do PRÓPRIO USUÁRIO ou de OUTRA PARTE se tagged #p
-            if (eventKind == kindBroAccept || eventKind == kindBroComplete) {
-              // Apenas provedor pode aceitar/completar
-              if (contentProviderId != null && eventPubkey != null &&
-                  eventPubkey != contentProviderId) {
-                continue;
-              }
-            } else if (eventKind == kindBroPaymentProof) {
-              // Aceitar eventos kind 30080 se:
-              // 1. Publicado pelo próprio usuário (nosso update)
-              // 2. OU publicado pela outra parte E contém orderId válido (disputa/update direcionado)
-              // A validação de orderId é feita abaixo (content['orderId'])
-              // Não filtrar mais por pubkey - confiar na assinatura verificada pelo relay
-            }
-            
-            // Determinar o novo status baseado no tipo de evento
-            String newStatus;
-            if (eventKind == kindBroAccept) {
-              newStatus = 'accepted';
-            } else if (eventKind == kindBroComplete) {
-              newStatus = 'awaiting_confirmation';
-            } else if (eventKind == kindBroPaymentProof) {
-              final contentStatus = content['status'] as String?;
-              if (contentStatus != null && contentStatus.isNotEmpty) {
-                newStatus = contentStatus;
-              } else {
-                continue;
-              }
-            } else {
-              continue;
-            }
-            
-            // Verificar se este evento deve atualizar o existente
-            final existingUpdate = updates[orderId];
-            final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
-            final existingStatus = existingUpdate?['status'] as String?;
-            
-            // CORREÇÃO CRÍTICA: Considerar tanto timestamp quanto progressão de status
-            // Antes, eventos com createdAt menor eram IGNORADOS mesmo sendo progressão válida
-            // Isso causava 'disputed' (kind 30080) ser rejeitado quando kind 30081
-            // tinha timestamp mais recente (publicado por outra parte)
-            final isNewer = existingUpdate == null || createdAt > existingCreatedAt;
-            final isValidProgression = existingStatus != null && _isStatusProgression(newStatus, existingStatus);
-            
-            if (isNewer) {
-              // Evento mais recente: aceitar se não regredir
-              if (existingStatus != null && !_isStatusProgression(newStatus, existingStatus)) {
-                continue; // Não regredir
-              }
-            } else if (isValidProgression) {
-              // Evento mais antigo MAS progressão válida de status
-              // CORREÇÃO v349: Se o update existente é resolução (completed/cancelled),
-              // NUNCA permitir que evento 'disputed' mais antigo o sobrescreva
-              if ((existingStatus == 'completed' || existingStatus == 'cancelled') && 
-                  newStatus == 'disputed') {
-                continue; // Resolução é final
-              }
-            } else {
-              continue; // Evento antigo e não é progressão - ignorar
-            }
-            
-            // v404: Preservar dados do comprovante quando evento mais recente não tem
-            // Kind 30080 (completed pelo usuário) NÃO tem proofImage, mas Kind 30081 (do provedor) TEM
-            // v406: Usar proofAccumulator como fallback DEFINITIVO
-            final previousUpdate = updates[orderId];
-            final accum = proofAccumulator[orderId];
-            updates[orderId] = {
-              'orderId': orderId,
-              'status': newStatus,
-              'eventKind': eventKind,
-              'providerId': content['providerId'] ?? event['pubkey'] ?? previousUpdate?['providerId'],
-              'acceptedAt': content['acceptedAt'] ?? previousUpdate?['acceptedAt'],
-              'proofImage': content['proofImage'] ?? previousUpdate?['proofImage'] ?? accum?['proofImage'],
-              'proofImage_nip44': content['proofImage_nip44'] ?? previousUpdate?['proofImage_nip44'] ?? accum?['proofImage_nip44'],
-              'encryption': content['encryption'] ?? previousUpdate?['encryption'] ?? accum?['encryption'],
-              // v812: a invoice do provedor também entra no mapa — sem ela o
-              // autopay/fluxo de pagamento não acha a invoice mesmo com o
-              // complete visível (buraco irmão do #p vazio).
-              'providerInvoice': content['providerInvoice'] ?? previousUpdate?['providerInvoice'],
-              'eventAuthorPubkey': event['pubkey'] as String? ?? previousUpdate?['eventAuthorPubkey'] as String? ?? accum?['eventAuthorPubkey'] as String?,
-              'created_at': createdAt,
-            };
-          } catch (e) {
-          }
-    }
 
-    broLog('🔍 fetchOrderUpdatesForUser: ${updates.length} updates encontrados');
+    updates.addAll(selectOrderUpdatesForUser(
+      allEvents,
+      activeOrderIdSet: activeOrderIdSet,
+      userPubkey: userPubkey,
+    ));
+
+    broLog('fetchOrderUpdatesForUser: ${updates.length} updates encontrados');
     for (final entry in updates.entries) {
-      broLog('   📋 ${entry.key.substring(0, 8)}: status=${entry.value['status']}, kind=${entry.value['eventKind']}, proof=${entry.value['proofImage'] != null || entry.value['proofImage_nip44'] != null}');
+      broLog('   ${entry.key.substring(0, 8)}: status=${entry.value['status']}, kind=${entry.value['eventKind']}, proof=${entry.value['proofImage'] != null || entry.value['proofImage_nip44'] != null}');
     }
     return updates;
   }

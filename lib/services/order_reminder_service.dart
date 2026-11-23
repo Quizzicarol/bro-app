@@ -1,17 +1,12 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:bro_app/services/log_utils.dart';
 import 'package:bro_app/services/notification_service.dart';
 
-/// Envia lembretes progressivos quando uma ordem esta proxima do prazo de 36h.
-///
-/// Cenario A (status=accepted): provedor aceitou mas nao subiu comprovante.
-///   Anchor: acceptedAt — remind the PROVIDER.
-/// Cenario B (status=awaiting_confirmation): comprovante enviado mas usuario
-///   nao confirmou. Anchor: receipt_submitted_at — remind the USER.
-///
-/// Milestones: 24h, 30h e 35h (1h antes do deadline).
+/// Lembretes R3: provedor aos 20/40min para pagar e enviar comprovante em 1h.
+/// Apos a prova, o comprador recebe os lembretes de confirmacao de 36h.
 /// Cada lembrete eh disparado apenas UMA vez por ordem/milestone/cenario via
 /// persistencia em SharedPreferences.
 class OrderReminderService {
@@ -20,9 +15,28 @@ class OrderReminderService {
   OrderReminderService._internal();
 
   static const String _sentKey = 'bro_reminders_sent';
-  static const Duration _deadline = Duration(hours: 36);
-  // Milestones em horas (em ordem crescente). A ultima eh 1h antes do deadline.
-  static const List<int> _milestonesH = [24, 30, 35];
+  static const Duration _acceptDeadline = Duration(hours: 1);
+  static const Duration _confirmationDeadline = Duration(hours: 36);
+  static const List<int> _acceptMilestonesMin = [20, 40];
+  static const List<int> _confirmationMilestonesH = [24, 30, 35];
+
+  @visibleForTesting
+  List<Map<String, String>> debugDueReminders({
+    required Map<String, dynamic> order,
+    required String currentPubkey,
+    required DateTime now,
+    Set<String> alreadySent = const {},
+  }) => _computeDueReminders(
+    order: order,
+    currentPubkey: currentPubkey,
+    now: now,
+    alreadySent: alreadySent,
+  ).map((r) => {
+    'key': r.key,
+    'role': r.targetRole,
+    'title': _buildTitle(r),
+    'body': _buildBody(r, order['id'].toString()),
+  }).toList();
 
   final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
   bool _initDone = false;
@@ -138,19 +152,34 @@ class OrderReminderService {
     }
 
     final elapsed = now.difference(anchor);
-    // Se ja passou do deadline, nao mandamos lembrete (auto-liquidacao assume)
-    if (elapsed >= _deadline) return result;
+    if (scenario == 'A') {
+      if (elapsed >= _acceptDeadline) return result;
+      for (final minutes in _acceptMilestonesMin) {
+        if (elapsed.inMinutes < minutes) continue;
+        final key = '$orderId:A:${minutes}m';
+        if (alreadySent.contains(key)) continue;
+        result.add(_Reminder(
+          key: key,
+          orderId: orderId,
+          scenario: 'A',
+          milestoneMin: minutes,
+          targetRole: targetRole,
+        ));
+      }
+      return result;
+    }
 
-    for (final h in _milestonesH) {
-      if (elapsed.inHours < h) continue; // ainda nao chegou nesse milestone
-      final key = '$orderId:$scenario:${h}h';
+    if (elapsed >= _confirmationDeadline) return result;
+    for (final hours in _confirmationMilestonesH) {
+      if (elapsed.inHours < hours) continue;
+      final key = '$orderId:B:${hours}h';
       if (alreadySent.contains(key)) continue;
       result.add(_Reminder(
         key: key,
         orderId: orderId,
-        scenario: scenario,
-        milestoneH: h,
-        targetRole: targetRole!,
+        scenario: 'B',
+        milestoneMin: hours * 60,
+        targetRole: targetRole,
       ));
     }
     return result;
@@ -162,10 +191,9 @@ class OrderReminderService {
       final shortId = r.orderId.length >= 8
           ? r.orderId.substring(0, 8)
           : r.orderId;
-      final hoursLeft = 36 - r.milestoneH;
       final title = _buildTitle(r);
-      final body = _buildBody(r, shortId, hoursLeft);
-      final payload = 'reminder:${r.scenario}:${r.milestoneH}h:${r.orderId}';
+      final body = _buildBody(r, shortId);
+      final payload = 'reminder:${r.scenario}:${r.milestoneMin}m:${r.orderId}';
 
       // Reusa o dedup global do NotificationService para que os papeis
       // (foreground/background) nao dupliquem a mesma notificacao.
@@ -183,21 +211,23 @@ class OrderReminderService {
   }
 
   String _buildTitle(_Reminder r) {
-    if (r.milestoneH == 35) return '🚨 Prazo final em 1h!';
-    if (r.milestoneH == 30) return '⏳ Faltam 6h para o prazo';
-    return '⏰ Faltam 12h para o prazo';
+    if (r.scenario == 'A') {
+      return r.milestoneMin == 20
+          ? '⏰ Faltam 40min para pagar e enviar o comprovante'
+          : '🚨 Faltam 20min para pagar e enviar o comprovante';
+    }
+    if (r.milestoneMin == 35 * 60) return '🚨 Prazo final em 1h!';
+    if (r.milestoneMin == 30 * 60) return '⏳ Faltam 6h para confirmar';
+    return '⏰ Faltam 12h para confirmar';
   }
 
-  String _buildBody(_Reminder r, String shortId, int hoursLeft) {
-    // Cenario A: provedor — pague a conta e envie o comprovante
+  String _buildBody(_Reminder r, String shortId) {
     if (r.scenario == 'A') {
-      if (r.milestoneH == 35) {
-        return 'Pague a conta e envie o comprovante na ordem $shortId em 1h para evitar cancelamento e perda da garantia.';
-      }
-      return 'Pague a conta e envie o comprovante da ordem $shortId. Faltam ${hoursLeft}h.';
+      final minutesLeft = 60 - r.milestoneMin;
+      return 'Pague a conta e envie o comprovante da ordem $shortId. Restam ${minutesLeft}min da janela de 1h.';
     }
-    // Cenario B: usuario — confirme o pagamento
-    if (r.milestoneH == 35) {
+    final hoursLeft = 36 - (r.milestoneMin ~/ 60);
+    if (r.milestoneMin == 35 * 60) {
       return 'Confirme o comprovante da ordem $shortId em 1h ou ela sera auto-liquidada a favor do Bro.';
     }
     return 'Confirme o comprovante da ordem $shortId. Faltam ${hoursLeft}h.';
@@ -208,14 +238,14 @@ class _Reminder {
   final String key;
   final String orderId;
   final String scenario;
-  final int milestoneH;
+  final int milestoneMin;
   final String targetRole;
 
   _Reminder({
     required this.key,
     required this.orderId,
     required this.scenario,
-    required this.milestoneH,
+    required this.milestoneMin,
     required this.targetRole,
   });
 }

@@ -32,12 +32,12 @@ void main() {
   });
 
   testWidgets('ordem nova de 4 minutos não mostra código expirado', (tester) async {
-    final acceptedAt = DateTime.now().subtract(const Duration(minutes: 4));
+    final acceptedAt = DateTime(2026, 11, 23, 7, 0);
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: buildAcceptExpiryNotice(
           acceptedAt: acceptedAt,
-          now: DateTime.now(),
+          now: acceptedAt.add(const Duration(minutes: 4)),
         ),
       ),
     ));

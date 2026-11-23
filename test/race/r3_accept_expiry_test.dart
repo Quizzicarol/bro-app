@@ -351,10 +351,12 @@ void main() {
       expect(recovered.providerId, 'pk-provider-r3');
       expect(provider.debugTerminalRepublishAttemptsForR3, 0);
       expect(
-        NostrOrderService.isStatusProgressionPublic('disputed', 'accept_expired'),
+        NostrOrderService.isStatusProgressionPublic(
+            'disputed', 'accept_expired'),
         isFalse,
       );
-      expect(await provider.completeOrderAsProvider(orderId, 'late-proof'), isFalse);
+      expect(await provider.completeOrderAsProvider(orderId, 'late-proof'),
+          isFalse);
       provider.dispose();
     });
 
@@ -410,6 +412,119 @@ void main() {
   });
 
   group('R3 - nova rodada após expiração', () {
+    test('pending local desatualizado recupera expiração sem prova', () {
+      final acceptedAt = DateTime.now().subtract(const Duration(hours: 2));
+      final stale = _order(
+        'stale-pending',
+        userPubkey: 'pk-user-r3',
+        providerId: 'pk-provider-r3',
+        status: 'pending',
+        acceptedAt: acceptedAt,
+      );
+      final update = {
+        'status': 'accept_expired',
+        'providerId': 'pk-provider-r3',
+        'eventAuthorPubkey': 'pk-user-r3',
+        'created_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      };
+      expect(
+        NostrOrderService.canRecoverExpiredAccept(stale.toJson(), update),
+        isTrue,
+      );
+      final provider = OrderProvider();
+      provider.debugSetCurrentUserPubkeyForR5c('pk-user-r3');
+      provider.debugSeedOrdersForR5c([stale]);
+      provider.debugApplyUserStatusUpdateForR3(stale.id, update);
+      expect(provider.getOrderById(stale.id)?.status, 'accept_expired');
+      provider.dispose();
+    });
+
+    test('nova rodada pending não volta a expirada nem mantém aceite antigo',
+        () {
+      final expired = _order(
+        'republished-round',
+        userPubkey: 'pk-user-r3',
+        providerId: 'pk-provider-r3',
+        status: 'accept_expired',
+        acceptedAt: DateTime.now().subtract(const Duration(hours: 2)),
+      );
+      final provider = OrderProvider();
+      provider.debugSetCurrentUserPubkeyForR5c('pk-user-r3');
+      provider.debugSeedOrdersForR5c([expired]);
+      provider.debugApplyUserStatusUpdateForR3(expired.id, {
+        'status': 'pending',
+        'providerId': null,
+        'eventAuthorPubkey': 'pk-user-r3',
+        'republishedAt': DateTime.now().toIso8601String(),
+        'created_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      });
+      final pending = provider.getOrderById(expired.id)!;
+      expect(pending.status, 'pending');
+      expect(pending.providerId, isNull);
+      expect(pending.acceptedAt, isNull);
+      expect(
+        NostrOrderService.canRecoverExpiredAccept(pending.toJson(), {
+          'status': 'accept_expired',
+          'providerId': 'pk-provider-r3',
+        }),
+        isFalse,
+      );
+      provider.dispose();
+    });
+
+    test('sync local rejeita aceite anterior ao republishedAt', () {
+      final republishedAt = DateTime.now().subtract(const Duration(minutes: 1));
+      final pending = _order(
+        'republished-stale-accept',
+        userPubkey: 'pk-user-r3',
+        status: 'pending',
+        metadata: {'republishedAt': republishedAt.toIso8601String()},
+      );
+      final provider = OrderProvider();
+      provider.debugSetCurrentUserPubkeyForR5c('pk-user-r3');
+      provider.debugSeedOrdersForR5c([pending]);
+      provider.debugApplyUserStatusUpdateForR3(pending.id, {
+        'status': 'accepted',
+        'providerId': 'pk-provider-r3',
+        'eventAuthorPubkey': 'pk-provider-r3',
+        'acceptedAt': DateTime.now()
+            .subtract(const Duration(hours: 2))
+            .toIso8601String(),
+        'created_at': republishedAt.millisecondsSinceEpoch ~/ 1000 - 3600,
+      });
+      final current = provider.getOrderById(pending.id)!;
+      expect(current.status, 'pending');
+      expect(current.providerId, isNull);
+      expect(current.acceptedAt, isNull);
+      provider.dispose();
+    });
+
+    test('pending sem aceite antigo ou com prova não é curado como expirado',
+        () {
+      final fresh = _order(
+        'fresh-pending',
+        userPubkey: 'pk-user-r3',
+        providerId: 'pk-provider-r3',
+        status: 'pending',
+      );
+      final update = {
+        'status': 'accept_expired',
+        'providerId': 'pk-provider-r3',
+      };
+      expect(
+        NostrOrderService.canRecoverExpiredAccept(fresh.toJson(), update),
+        isFalse,
+      );
+      final withProof = fresh.copyWith(
+        acceptedAt: DateTime.now().subtract(const Duration(hours: 2)),
+        metadata: {'proofImage_nip44': 'proof'},
+      );
+      expect(
+        NostrOrderService.canRecoverExpiredAccept(withProof.toJson(), update),
+        isFalse,
+      );
+    });
+
     test('copyWith limpa provedor e aceite somente quando solicitado', () {
       final acceptedAt = DateTime(2026, 11, 21, 12, 48, 1);
       final expired = _order(

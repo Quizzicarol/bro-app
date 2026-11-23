@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:bro_app/services/log_utils.dart';
@@ -53,32 +53,34 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
   /// Usa o método autoReconcileWithBreezPayments do OrderProvider que verifica:
   /// 1. Pagamentos RECEBIDOS → ordens pending → payment_received
   /// 2. Pagamentos ENVIADOS → ordens awaiting_confirmation → completed
-  Future<void> _autoReconcileOrders(OrderProvider orderProvider, BreezProvider breezProvider) async {
+  Future<void> _autoReconcileOrders(
+      OrderProvider orderProvider, BreezProvider breezProvider) async {
     try {
       broLog('🔄 Iniciando reconciliação automática de ordens...');
-      
+
       // Buscar todos os pagamentos da carteira (recebidos E enviados)
       final payments = await breezProvider.getAllPayments();
-      
+
       if (payments.isEmpty) {
         broLog('📭 Nenhum pagamento na carteira para reconciliar');
         return;
       }
-      
+
       // Usar o novo método completo de reconciliação
-      final result = await orderProvider.autoReconcileWithBreezPayments(payments);
-      
+      final result =
+          await orderProvider.autoReconcileWithBreezPayments(payments);
+
       final pendingReconciled = result['pendingReconciled'] ?? 0;
       final completedReconciled = result['completedReconciled'] ?? 0;
-      
+
       if (pendingReconciled > 0 || completedReconciled > 0) {
-        broLog('🎉 Reconciliação concluída: $pendingReconciled pending→paid, $completedReconciled awaiting→completed');
+        broLog(
+            '🎉 Reconciliação concluída: $pendingReconciled pending→paid, $completedReconciled awaiting→completed');
         // Recarregar ordens para refletir mudanças
         await orderProvider.fetchOrders();
       } else {
         broLog('✅ Nenhuma ordem precisou ser reconciliada');
       }
-      
     } catch (e) {
       broLog('⚠️ Erro na reconciliação automática: $e');
     }
@@ -87,7 +89,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
   /// Carrega ordens e tenta reconciliar automaticamente pagamentos recebidos
   Future<void> _loadOrdersWithAutoReconcile() async {
     if (!mounted) return;
-    
+
     setState(() {
       _isLoading = true;
       _isSyncingNostr = true;
@@ -97,53 +99,61 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
     try {
       final orderProvider = Provider.of<OrderProvider>(context, listen: false);
       final breezProvider = Provider.of<BreezProvider>(context, listen: false);
-      
+
       // SEGURANÇA CRÍTICA: Garantir que NÃO estamos em modo provedor
       // Isso previne vazamento de dados se o exitProviderMode falhou
       if (orderProvider.isProviderMode) {
-        broLog('⚠️ [MINHAS TROCAS] Detectado modo provedor ativo! Forçando reset...');
+        broLog(
+            '⚠️ [MINHAS TROCAS] Detectado modo provedor ativo! Forçando reset...');
         orderProvider.exitProviderMode();
       }
-      
+
       // Sincronizar com Nostr primeiro (SEMPRE com forProvider: false)
       await orderProvider.fetchOrders();
-      
+
       if (mounted) {
         setState(() {
           _isSyncingNostr = false;
         });
       }
-      
+
       // RECONCILIAÇÃO AUTOMÁTICA COMPLETA
       if (breezProvider.isInitialized) {
         await _autoReconcileOrders(orderProvider, breezProvider);
       }
-      
-      broLog('📱 OrderProvider tem ${orderProvider.orders.length} ordens no total');
-      
+
+      broLog(
+          '📱 OrderProvider tem ${orderProvider.orders.length} ordens no total');
+
       // SEGURANÇA: Usar getter específico para ordens que EU CRIEI
       // Isso evita vazamento de ordens aceitas como provedor
       final currentUserPubkey = widget.userId;
-      broLog('🔐 Carregando ordens CRIADAS pelo usuário: ${_safeSubstring(currentUserPubkey, 8)}...');
-      
+      broLog(
+          '🔐 Carregando ordens CRIADAS pelo usuário: ${_safeSubstring(currentUserPubkey, 8)}...');
+
       // CORREÇÃO VAZAMENTO: Usar myCreatedOrders em vez de orders
       // orders inclui ordens aceitas como provedor, myCreatedOrders não!
       final localOrders = orderProvider.myCreatedOrders
-        .map((order) => {
-          'id': order.id,
-          'status': order.status,
-          'amount_brl': order.amount,
-          'currency': order.currency,
-          'amount_sats': (order.btcAmount * 100000000).toInt(),
-          'created_at': order.createdAt.toIso8601String(),
-          'expires_at': order.createdAt.add(const Duration(hours: 24)).toIso8601String(),
-          'payment_type': order.billType == 'electricity' || order.billType == 'water' || order.billType == 'internet' 
-            ? order.billType 
-            : 'pix',
-          'provider_id': order.providerId,
-          'metadata': order.metadata,
-        }).toList();
-      
+          .map((order) => {
+                'id': order.id,
+                'status': order.status,
+                'amount_brl': order.amount,
+                'currency': order.currency,
+                'amount_sats': (order.btcAmount * 100000000).toInt(),
+                'created_at': order.createdAt.toIso8601String(),
+                'expires_at': order.createdAt
+                    .add(const Duration(hours: 24))
+                    .toIso8601String(),
+                'payment_type': order.billType == 'electricity' ||
+                        order.billType == 'water' ||
+                        order.billType == 'internet'
+                    ? order.billType
+                    : 'pix',
+                'provider_id': order.providerId,
+                'metadata': order.metadata,
+              })
+          .toList();
+
       if (mounted) {
         setState(() {
           _orders = localOrders;
@@ -151,7 +161,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
         });
       }
       broLog('📱 ${_orders.length} ordens carregadas');
-      
+
       // v390: Verificar resoluções de disputas pendentes em background
       _checkDisputeResolutions(orderProvider);
     } catch (e) {
@@ -171,15 +181,17 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
         .where((o) => o.status == 'disputed')
         .toList();
     if (disputedOrders.isEmpty) return;
-    
+
     broLog('⚖️ Verificando resolução de ${disputedOrders.length} disputas...');
     final nostrService = NostrOrderService();
-    
+
     for (final order in disputedOrders) {
       try {
         final resolution = await nostrService.fetchDisputeResolution(order.id);
         if (resolution != null) {
-          final newStatus = resolution['resolution'] == 'resolved_user' ? 'cancelled' : 'completed';
+          final newStatus = resolution['resolution'] == 'resolved_user'
+              ? 'cancelled'
+              : 'completed';
           final updatedMetadata = {
             ...?order.metadata,
             'wasDisputed': true,
@@ -190,30 +202,36 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
             status: newStatus,
             metadata: updatedMetadata,
           );
-          broLog('⚖️ Disputa ${order.id.substring(0, 8)} resolvida → $newStatus');
+          broLog(
+              '⚖️ Disputa ${order.id.substring(0, 8)} resolvida → $newStatus');
         }
       } catch (e) {
         broLog('⚠️ Erro ao verificar disputa ${order.id.substring(0, 8)}: $e');
       }
     }
-    
+
     // Recarregar UI se houve atualizações
     if (mounted && disputedOrders.isNotEmpty) {
       final updatedOrders = orderProvider.myCreatedOrders
           .map((order) => {
-            'id': order.id,
-            'status': order.status,
-            'amount_brl': order.amount,
-            'currency': order.currency,
-            'amount_sats': (order.btcAmount * 100000000).toInt(),
-            'created_at': order.createdAt.toIso8601String(),
-            'expires_at': order.createdAt.add(const Duration(hours: 24)).toIso8601String(),
-            'payment_type': order.billType == 'electricity' || order.billType == 'water' || order.billType == 'internet'
-                ? order.billType
-                : 'pix',
-            'provider_id': order.providerId,
-            'metadata': order.metadata,
-          }).toList();
+                'id': order.id,
+                'status': order.status,
+                'amount_brl': order.amount,
+                'currency': order.currency,
+                'amount_sats': (order.btcAmount * 100000000).toInt(),
+                'created_at': order.createdAt.toIso8601String(),
+                'expires_at': order.createdAt
+                    .add(const Duration(hours: 24))
+                    .toIso8601String(),
+                'payment_type': order.billType == 'electricity' ||
+                        order.billType == 'water' ||
+                        order.billType == 'internet'
+                    ? order.billType
+                    : 'pix',
+                'provider_id': order.providerId,
+                'metadata': order.metadata,
+              })
+          .toList();
       setState(() => _orders = updatedOrders);
     }
   }
@@ -224,7 +242,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
   /// RECONCILIAÇÃO FORÇADA - Verifica TODOS os pagamentos e atualiza TODAS as ordens
   Future<void> _forceReconcileAllOrders() async {
     if (!mounted) return;
-    
+
     // Mostrar loading
     showDialog(
       context: context,
@@ -239,11 +257,11 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
         ),
       ),
     );
-    
+
     try {
       final breezProvider = context.read<BreezProvider>();
       final orderProvider = context.read<OrderProvider>();
-      
+
       if (!breezProvider.isInitialized) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -254,10 +272,10 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
         );
         return;
       }
-      
+
       // Buscar TODOS os pagamentos do Breez
       final payments = await breezProvider.getAllPayments();
-      
+
       if (payments.isEmpty) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -268,14 +286,14 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
         );
         return;
       }
-      
+
       // Usar reconciliação FORÇADA
       final result = await orderProvider.forceReconcileAllOrders(payments);
-      
+
       Navigator.pop(context);
-      
+
       final updated = result['updated'] ?? 0;
-      
+
       if (updated > 0) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -314,7 +332,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
   Future<void> _showPaymentDiagnostic() async {
     final breezProvider = context.read<BreezProvider>();
     final orderProvider = context.read<OrderProvider>();
-    
+
     if (!breezProvider.isInitialized) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -324,7 +342,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
       );
       return;
     }
-    
+
     // Mostrar loading
     showDialog(
       context: context,
@@ -335,33 +353,36 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
           children: [
             CircularProgressIndicator(color: Colors.blue),
             SizedBox(width: 20),
-            Text('Analisando carteira e ordens...', style: TextStyle(color: Colors.white)),
+            Text('Analisando carteira e ordens...',
+                style: TextStyle(color: Colors.white)),
           ],
         ),
       ),
     );
-    
+
     try {
       // Buscar saldo
       final balanceInfo = await breezProvider.getBalance();
       final balanceSats = balanceInfo['balance'] ?? '0';
-      
+
       // Buscar todos os pagamentos da carteira
       final payments = await breezProvider.getAllPayments();
-      
+
       // Buscar todas as ordens
       await orderProvider.fetchOrders();
       final orders = orderProvider.orders;
-      
+
       // Fechar loading
       if (mounted) Navigator.pop(context);
-      
+
       // Criar relatório
-      final paymentsReceived = payments.where((p) => 
-        p['status'] == 'PaymentStatus.completed' && 
-        (p['direction'] == 'RECEBIDO' || p['type']?.toString().contains('receive') == true)
-      ).toList();
-      
+      final paymentsReceived = payments
+          .where((p) =>
+              p['status'] == 'PaymentStatus.completed' &&
+              (p['direction'] == 'RECEBIDO' ||
+                  p['type']?.toString().contains('receive') == true))
+          .toList();
+
       // Mapear paymentHashes da carteira
       final walletHashes = <String>{};
       for (var p in paymentsReceived) {
@@ -370,27 +391,32 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
           walletHashes.add(hash);
         }
       }
-      
+
       // Analisar ordens
-      final ordersWithHash = orders.where((o) => o.paymentHash != null && o.paymentHash!.isNotEmpty).toList();
+      final ordersWithHash = orders
+          .where((o) => o.paymentHash != null && o.paymentHash!.isNotEmpty)
+          .toList();
       final ordersPaid = <String>[];
       final ordersNotPaid = <String>[];
-      
+
       for (var order in ordersWithHash) {
         if (walletHashes.contains(order.paymentHash)) {
-          ordersPaid.add('${order.id} - R\$ ${order.amount.toStringAsFixed(2)} (${order.status})');
+          ordersPaid.add(
+              '${order.id} - R\$ ${order.amount.toStringAsFixed(2)} (${order.status})');
         } else {
-          ordersNotPaid.add('${order.id} - R\$ ${order.amount.toStringAsFixed(2)} (${order.status})');
+          ordersNotPaid.add(
+              '${order.id} - R\$ ${order.amount.toStringAsFixed(2)} (${order.status})');
         }
       }
-      
+
       // Mostrar diálogo com resultado
       if (mounted) {
         showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
             backgroundColor: const Color(0xFF1E1E1E),
-            title: const Text('🔍 Diagnóstico de Pagamentos', style: TextStyle(color: Colors.white)),
+            title: const Text('🔍 Diagnóstico de Pagamentos',
+                style: TextStyle(color: Colors.white)),
             content: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -405,58 +431,71 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.account_balance_wallet, color: Colors.blue),
+                        const Icon(Icons.account_balance_wallet,
+                            color: Colors.blue),
                         const SizedBox(width: 8),
                         Text(
                           'Saldo: $balanceSats sats',
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                          style: const TextStyle(
+                              color: Colors.white, fontWeight: FontWeight.bold),
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(height: 16),
-                  
+
                   // Pagamentos na carteira
                   Text(
                     '💰 Pagamentos recebidos: ${paymentsReceived.length}',
-                    style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                        color: Colors.green, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 8),
-                  
+
                   // Ordens
                   Text(
                     '📋 Ordens com invoice: ${ordersWithHash.length}',
                     style: const TextStyle(color: Colors.white70),
                   ),
                   const SizedBox(height: 16),
-                  
+
                   // Ordens PAGAS
                   if (ordersPaid.isNotEmpty) ...[
                     const Text(
                       '✅ ORDENS PAGAS (confirmado na carteira):',
-                      style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12),
+                      style: TextStyle(
+                          color: Colors.green,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12),
                     ),
                     const SizedBox(height: 4),
                     ...ordersPaid.map((o) => Padding(
-                      padding: const EdgeInsets.only(left: 8, bottom: 4),
-                      child: Text(o, style: const TextStyle(color: Colors.green, fontSize: 11)),
-                    )),
+                          padding: const EdgeInsets.only(left: 8, bottom: 4),
+                          child: Text(o,
+                              style: const TextStyle(
+                                  color: Colors.green, fontSize: 11)),
+                        )),
                     const SizedBox(height: 12),
                   ],
-                  
+
                   // Ordens NÃO PAGAS
                   if (ordersNotPaid.isNotEmpty) ...[
                     const Text(
                       '❌ ORDENS NÃO PAGAS (não encontrado na carteira):',
-                      style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12),
+                      style: TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12),
                     ),
                     const SizedBox(height: 4),
                     ...ordersNotPaid.map((o) => Padding(
-                      padding: const EdgeInsets.only(left: 8, bottom: 4),
-                      child: Text(o, style: const TextStyle(color: Colors.red, fontSize: 11)),
-                    )),
+                          padding: const EdgeInsets.only(left: 8, bottom: 4),
+                          child: Text(o,
+                              style: const TextStyle(
+                                  color: Colors.red, fontSize: 11)),
+                        )),
                   ],
-                  
+
                   if (ordersPaid.isEmpty && ordersNotPaid.isEmpty)
                     const Text(
                       'Nenhuma ordem com invoice encontrada',
@@ -492,11 +531,22 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
       // Ativas: pending, payment_received, confirmed, accepted, awaiting_confirmation, disputed
       return _orders.where((order) {
         final status = order['status'] as String;
-        return ['pending', 'payment_received', 'confirmed', 'accepted', 'awaiting_confirmation', 'disputed', 'accept_expired'].contains(status);
+        return [
+          'pending',
+          'payment_received',
+          'confirmed',
+          'accepted',
+          'awaiting_confirmation',
+          'disputed',
+          'accept_expired'
+        ].contains(status);
       }).toList();
     } else if (_filterStatus == 'completed') {
       // Completadas (inclui resolvidas por mediação)
-      return _orders.where((order) => order['status'] == 'completed' || order['status'] == 'liquidated').toList();
+      return _orders
+          .where((order) =>
+              order['status'] == 'completed' || order['status'] == 'liquidated')
+          .toList();
     } else if (_filterStatus == 'cancelled') {
       // Canceladas
       return _orders.where((order) => order['status'] == 'cancelled').toList();
@@ -573,18 +623,19 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
 
     if (confirm == true) {
       bool success = false;
-      
+
       // SEMPRE usar OrderProvider para atualizar status (inclui Nostr)
       // Isso garante que o cancelamento seja publicado nos relays para outros usuários verem
       try {
-        final orderProvider = Provider.of<OrderProvider>(context, listen: false);
-        
+        final orderProvider =
+            Provider.of<OrderProvider>(context, listen: false);
+
         // Atualizar via OrderProvider que publica no Nostr automaticamente
         success = await orderProvider.updateOrderStatus(
           orderId: orderId,
           status: 'cancelled',
         );
-        
+
         if (success) {
           broLog('✅ Ordem $orderId cancelada e publicada no Nostr');
         }
@@ -821,7 +872,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
     bool isSending = false;
     bool isResolvingLnAddress = false;
     String? resolveError;
-    
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -884,7 +935,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                   ],
                 ),
                 const SizedBox(height: 20),
-                
+
                 // Mostrar valor se disponível
                 if (amountSats != null && amountSats > 0) ...[
                   Container(
@@ -896,7 +947,8 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.account_balance_wallet, color: Colors.green, size: 20),
+                        const Icon(Icons.account_balance_wallet,
+                            color: Colors.green, size: 20),
                         const SizedBox(width: 10),
                         Text(
                           'Valor a sacar: $amountSats sats',
@@ -911,7 +963,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                   ),
                   const SizedBox(height: 16),
                 ],
-                
+
                 // Campo de invoice
                 TextField(
                   controller: invoiceController,
@@ -939,24 +991,27 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                
+
                 // Botões Colar e Escanear lado a lado
                 Row(
                   children: [
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: isSending ? null : () async {
-                          final data = await Clipboard.getData('text/plain');
-                          if (data?.text != null) {
-                            invoiceController.text = data!.text!.trim();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('✅ Colado!'),
-                                duration: Duration(seconds: 1),
-                              ),
-                            );
-                          }
-                        },
+                        onPressed: isSending
+                            ? null
+                            : () async {
+                                final data =
+                                    await Clipboard.getData('text/plain');
+                                if (data?.text != null) {
+                                  invoiceController.text = data!.text!.trim();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('✅ Colado!'),
+                                      duration: Duration(seconds: 1),
+                                    ),
+                                  );
+                                }
+                              },
                         icon: const Icon(Icons.paste, size: 18),
                         label: const Text('Colar'),
                         style: OutlinedButton.styleFrom(
@@ -972,13 +1027,16 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: isSending ? null : () async {
-                          Navigator.pop(context);
-                          final scannedInvoice = await _showQRScanner();
-                          if (scannedInvoice != null && scannedInvoice.isNotEmpty) {
-                            _showWithdrawWithInvoice(scannedInvoice);
-                          }
-                        },
+                        onPressed: isSending
+                            ? null
+                            : () async {
+                                Navigator.pop(context);
+                                final scannedInvoice = await _showQRScanner();
+                                if (scannedInvoice != null &&
+                                    scannedInvoice.isNotEmpty) {
+                                  _showWithdrawWithInvoice(scannedInvoice);
+                                }
+                              },
                         icon: const Icon(Icons.qr_code_scanner, size: 18),
                         label: const Text('Escanear'),
                         style: OutlinedButton.styleFrom(
@@ -994,77 +1052,84 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                   ],
                 ),
                 const SizedBox(height: 16),
-                
+
                 // Botão Enviar
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: (isSending || isResolvingLnAddress) ? null : () async {
-                      final input = invoiceController.text.trim();
-                      if (input.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Cole ou escaneie uma invoice ou Lightning Address'),
-                            backgroundColor: Colors.orange,
-                          ),
-                        );
-                        return;
-                      }
-                      
-                      setModalState(() {
-                        resolveError = null;
-                      });
-                      
-                      // Verificar se é um Lightning Address ou LNURL
-                      if (LnAddressService.isLightningAddress(input) || 
-                          LnAddressService.isLnurl(input)) {
-                        // Precisa ter valor para LN Address/LNURL
-                        if (amountSats == null || amountSats <= 0) {
-                          setModalState(() {
-                            resolveError = 'Para Lightning Address/LNURL, o valor precisa ser conhecido';
-                          });
-                          return;
-                        }
-                        
-                        setModalState(() => isResolvingLnAddress = true);
-                        
-                        // Resolver LN Address/LNURL para invoice
-                        final lnService = LnAddressService();
-                        final result = await lnService.getInvoice(
-                          lnAddress: input,
-                          amountSats: amountSats,
-                          comment: 'Saque Bro App',
-                        );
-                        
-                        if (result['success'] != true) {
-                          setModalState(() {
-                            isResolvingLnAddress = false;
-                            resolveError = result['error'] ?? 'Erro ao resolver destino';
-                          });
-                          return;
-                        }
-                        
-                        final invoice = result['invoice'] as String;
-                        setModalState(() {
-                          isResolvingLnAddress = false;
-                          isSending = true;
-                        });
-                        await _sendPayment(invoice, context, setModalState);
-                        return;
-                      }
-                      
-                      // É uma invoice BOLT11
-                      if (!input.toLowerCase().startsWith('lnbc') && 
-                          !input.toLowerCase().startsWith('lntb')) {
-                        setModalState(() {
-                          resolveError = 'Destino inválido. Use invoice (lnbc...), LNURL ou user@wallet.com';
-                        });
-                        return;
-                      }
-                      
-                      setModalState(() => isSending = true);
-                      await _sendPayment(input, context, setModalState);
-                    },
+                    onPressed: (isSending || isResolvingLnAddress)
+                        ? null
+                        : () async {
+                            final input = invoiceController.text.trim();
+                            if (input.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                      'Cole ou escaneie uma invoice ou Lightning Address'),
+                                  backgroundColor: Colors.orange,
+                                ),
+                              );
+                              return;
+                            }
+
+                            setModalState(() {
+                              resolveError = null;
+                            });
+
+                            // Verificar se é um Lightning Address ou LNURL
+                            if (LnAddressService.isLightningAddress(input) ||
+                                LnAddressService.isLnurl(input)) {
+                              // Precisa ter valor para LN Address/LNURL
+                              if (amountSats == null || amountSats <= 0) {
+                                setModalState(() {
+                                  resolveError =
+                                      'Para Lightning Address/LNURL, o valor precisa ser conhecido';
+                                });
+                                return;
+                              }
+
+                              setModalState(() => isResolvingLnAddress = true);
+
+                              // Resolver LN Address/LNURL para invoice
+                              final lnService = LnAddressService();
+                              final result = await lnService.getInvoice(
+                                lnAddress: input,
+                                amountSats: amountSats,
+                                comment: 'Saque Bro App',
+                              );
+
+                              if (result['success'] != true) {
+                                setModalState(() {
+                                  isResolvingLnAddress = false;
+                                  resolveError = result['error'] ??
+                                      'Erro ao resolver destino';
+                                });
+                                return;
+                              }
+
+                              final invoice = result['invoice'] as String;
+                              setModalState(() {
+                                isResolvingLnAddress = false;
+                                isSending = true;
+                              });
+                              await _sendPayment(
+                                  invoice, context, setModalState);
+                              return;
+                            }
+
+                            // É uma invoice BOLT11
+                            if (!input.toLowerCase().startsWith('lnbc') &&
+                                !input.toLowerCase().startsWith('lntb')) {
+                              setModalState(() {
+                                resolveError =
+                                    'Destino inválido. Use invoice (lnbc...), LNURL ou user@wallet.com';
+                              });
+                              return;
+                            }
+
+                            setModalState(() => isSending = true);
+                            await _sendPayment(input, context, setModalState);
+                          },
                     icon: (isSending || isResolvingLnAddress)
                         ? const SizedBox(
                             width: 20,
@@ -1075,8 +1140,8 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                             ),
                           )
                         : const Icon(Icons.bolt),
-                    label: Text(isResolvingLnAddress 
-                        ? 'Resolvendo...' 
+                    label: Text(isResolvingLnAddress
+                        ? 'Resolvendo...'
                         : (isSending ? 'Enviando...' : 'Enviar Sats')),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange,
@@ -1100,7 +1165,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
   void _showWithdrawWithInvoice(String invoice) {
     final invoiceController = TextEditingController(text: invoice);
     bool isSending = false;
-    
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1131,7 +1196,8 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                         color: Colors.green.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: const Icon(Icons.check_circle, color: Colors.green),
+                      child:
+                          const Icon(Icons.check_circle, color: Colors.green),
                     ),
                     const SizedBox(width: 12),
                     const Expanded(
@@ -1163,7 +1229,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                   ],
                 ),
                 const SizedBox(height: 20),
-                
+
                 // Invoice preview
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -1202,16 +1268,18 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                
+
                 // Botão Enviar
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: isSending ? null : () async {
-                      setModalState(() => isSending = true);
-                      await _sendPayment(invoice, context, setModalState);
-                    },
-                    icon: isSending 
+                    onPressed: isSending
+                        ? null
+                        : () async {
+                            setModalState(() => isSending = true);
+                            await _sendPayment(invoice, context, setModalState);
+                          },
+                    icon: isSending
                         ? const SizedBox(
                             width: 20,
                             height: 20,
@@ -1221,7 +1289,8 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                             ),
                           )
                         : const Icon(Icons.bolt),
-                    label: Text(isSending ? 'Enviando...' : 'Confirmar e Enviar'),
+                    label:
+                        Text(isSending ? 'Enviando...' : 'Confirmar e Enviar'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
                       foregroundColor: Colors.white,
@@ -1241,11 +1310,12 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
   }
 
   // ==================== ENVIAR PAGAMENTO ====================
-  Future<void> _sendPayment(String invoice, BuildContext dialogContext, StateSetter setModalState) async {
+  Future<void> _sendPayment(String invoice, BuildContext dialogContext,
+      StateSetter setModalState) async {
     try {
       final breezProvider = Provider.of<BreezProvider>(context, listen: false);
       final result = await breezProvider.payInvoice(invoice);
-      
+
       if (result != null && result['success'] == true) {
         if (dialogContext.mounted) {
           Navigator.pop(dialogContext);
@@ -1286,7 +1356,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
   // ==================== QR SCANNER ====================
   Future<String?> _showQRScanner() async {
     String? scannedCode;
-    
+
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1307,7 +1377,8 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.qr_code_scanner, color: Colors.green, size: 28),
+                  const Icon(Icons.qr_code_scanner,
+                      color: Colors.green, size: 28),
                   const SizedBox(width: 12),
                   const Expanded(
                     child: Column(
@@ -1338,21 +1409,21 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                 ],
               ),
             ),
-            
+
             // Scanner
             Expanded(
               child: MobileScanner(
                 onDetect: (capture) {
                   final List<Barcode> barcodes = capture.barcodes;
                   broLog('📷 QR Scanner detectou ${barcodes.length} códigos');
-                  
+
                   for (final barcode in barcodes) {
                     final code = barcode.rawValue;
                     broLog('📷 Código raw: $code');
-                    
+
                     if (code != null && code.isNotEmpty) {
                       String cleaned = code.trim();
-                      
+
                       // Remover prefixos comuns de URI
                       final lowerCleaned = cleaned.toLowerCase();
                       if (lowerCleaned.startsWith('lightning:')) {
@@ -1362,16 +1433,16 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                       } else if (lowerCleaned.startsWith('lnurl:')) {
                         cleaned = cleaned.substring(6);
                       }
-                      
+
                       // Remover parâmetros de query string se houver
                       if (cleaned.contains('?')) {
                         cleaned = cleaned.split('?')[0];
                       }
-                      
+
                       broLog('📷 Código após limpeza: $cleaned');
-                      
+
                       // BOLT11 Invoice
-                      if (cleaned.toLowerCase().startsWith('lnbc') || 
+                      if (cleaned.toLowerCase().startsWith('lnbc') ||
                           cleaned.toLowerCase().startsWith('lntb') ||
                           cleaned.toLowerCase().startsWith('lnurl')) {
                         scannedCode = cleaned;
@@ -1379,22 +1450,25 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                         Navigator.pop(context);
                         return;
                       }
-                      
+
                       // Lightning Address (user@domain.com)
                       if (cleaned.contains('@') && cleaned.contains('.')) {
-                        final cleanedAddress = LnAddressService.cleanAddress(cleaned);
-                        if (LnAddressService.isLightningAddress(cleanedAddress)) {
+                        final cleanedAddress =
+                            LnAddressService.cleanAddress(cleaned);
+                        if (LnAddressService.isLightningAddress(
+                            cleanedAddress)) {
                           scannedCode = cleanedAddress;
                           broLog('✅ LN Address detectado: $scannedCode');
                           Navigator.pop(context);
                           return;
                         }
                       }
-                      
+
                       // Se não reconheceu mas tem conteúdo, aceitar mesmo assim
                       if (cleaned.length > 10) {
                         scannedCode = cleaned;
-                        broLog('⚠️ Código não reconhecido, aceitando: $scannedCode');
+                        broLog(
+                            '⚠️ Código não reconhecido, aceitando: $scannedCode');
                         Navigator.pop(context);
                         return;
                       }
@@ -1403,7 +1477,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                 },
               ),
             ),
-            
+
             // Instruções
             Container(
               padding: const EdgeInsets.all(20),
@@ -1427,14 +1501,14 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
         ),
       ),
     );
-    
+
     return scannedCode;
   }
 
   @override
   Widget build(BuildContext context) {
     final filteredOrders = _getFilteredOrders();
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Minhas Ordens'),
@@ -1463,7 +1537,15 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                   child: _buildFilterChip(
                     'Ativas',
                     'active',
-                    _orders.where((o) => ['pending', 'payment_received', 'confirmed', 'accepted', 'awaiting_confirmation'].contains(o['status'])).length,
+                    _orders
+                        .where((o) => [
+                              'pending',
+                              'payment_received',
+                              'confirmed',
+                              'accepted',
+                              'awaiting_confirmation'
+                            ].contains(o['status']))
+                        .length,
                   ),
                 ),
                 const SizedBox(width: 6),
@@ -1495,17 +1577,19 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                         const CircularProgressIndicator(color: Colors.blue),
                         const SizedBox(height: 16),
                         Text(
-                          _isSyncingNostr 
+                          _isSyncingNostr
                               ? '🔄 Sincronizando com Nostr...'
                               : 'Carregando ordens...',
-                          style: const TextStyle(color: Colors.white70, fontSize: 14),
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 14),
                         ),
                         if (_isSyncingNostr)
                           const Padding(
                             padding: EdgeInsets.only(top: 8),
                             child: Text(
                               'Buscando em múltiplos relays',
-                              style: TextStyle(color: Colors.white38, fontSize: 12),
+                              style: TextStyle(
+                                  color: Colors.white38, fontSize: 12),
                             ),
                           ),
                       ],
@@ -1516,7 +1600,8 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                            const Icon(Icons.error_outline,
+                                size: 64, color: Colors.red),
                             const SizedBox(height: 16),
                             Text(_error!, textAlign: TextAlign.center),
                             const SizedBox(height: 24),
@@ -1532,7 +1617,8 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.inbox, size: 64, color: Colors.grey[400]),
+                                Icon(Icons.inbox,
+                                    size: 64, color: Colors.grey[400]),
                                 const SizedBox(height: 16),
                                 Text(
                                   _getEmptyMessage(),
@@ -1620,7 +1706,8 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
     final expiresAt = DateTime.parse(order['expires_at'] as String);
     final paymentType = order['payment_type'] as String? ?? 'pix';
     final metadata = order['metadata'] as Map<String, dynamic>?;
-    final orderCurrency = (order['currency'] as String?)?.toUpperCase() ?? 'BRL';
+    final orderCurrency =
+        (order['currency'] as String?)?.toUpperCase() ?? 'BRL';
     final orderCurSym = orderCurrency == 'BRL' ? r'R$' : orderCurrency;
 
     final statusInfo = _getStatusInfo(status, metadata: {
@@ -1699,7 +1786,9 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                       children: [
                         // v552: spinner inline quando uma transicao foi
                         // anunciada via FCM mas o relay ainda nao confirmou.
-                        if (context.watch<OrderProvider>().isSyncing(orderId)) ...[
+                        if (context
+                            .watch<OrderProvider>()
+                            .isSyncing(orderId)) ...[
                           const SizedBox(
                             width: 10,
                             height: 10,
@@ -1784,7 +1873,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                       SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'O Bro não pagou em 1h. Republicar a ordem ou cancelar e sacar seus sats?',
+                          'O prazo do Bro terminou sem comprovante. Ele não pode mais enviar comprovante nem abrir disputa. Republicar para um novo Bro ou cancelar e sacar?',
                           style: TextStyle(color: Colors.orange, fontSize: 13),
                         ),
                       ),
@@ -1832,7 +1921,8 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.info_outline, color: Colors.blue, size: 20),
+                      const Icon(Icons.info_outline,
+                          color: Colors.blue, size: 20),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
@@ -1850,7 +1940,8 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: () => _showWithdrawToLightning(amountSats: order['amount_sats'] as int?),
+                    onPressed: () => _showWithdrawToLightning(
+                        amountSats: order['amount_sats'] as int?),
                     icon: const Icon(Icons.send, size: 18),
                     label: const Text('Sacar Sats'),
                     style: ElevatedButton.styleFrom(
@@ -1867,7 +1958,8 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
     );
   }
 
-  Map<String, dynamic> _getStatusInfo(String status, {Map<String, dynamic>? metadata}) {
+  Map<String, dynamic> _getStatusInfo(String status,
+      {Map<String, dynamic>? metadata}) {
     // v390: Check if dispute was resolved via mediation
     final wasDisputed = metadata?['wasDisputed'] == true;
     final disputeResolved = metadata?['disputeResolvedAt'] != null;
@@ -1930,7 +2022,7 @@ class _UserOrdersScreenState extends State<UserOrdersScreen> {
         };
       case 'accept_expired':
         return {
-          'label': 'Aceite Expirado ⏰',
+          'label': 'Aguardando republicação ⏰',
           'color': Colors.orange,
           'icon': Icons.timer_off,
         };

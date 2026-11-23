@@ -79,14 +79,17 @@ Map<String, dynamic> complete({
 Map<String, dynamic> status(
   String value, {
   int createdAt = completeAt + 20,
+  Map<String, dynamic>? extraContent,
 }) =>
     event(
       kind: 30080,
       author: buyer,
       createdAt: createdAt,
       content: {
-        'type': value == 'disputed' ? 'bro_dispute_resolution' : 'bro_order_update',
+        'type':
+            value == 'disputed' ? 'bro_dispute_resolution' : 'bro_order_update',
         'status': value,
+        ...?extraContent,
       },
     );
 
@@ -136,7 +139,8 @@ void main() {
     }
   });
 
-  test('eventos sem prova não apagam prova anterior nem regridem completed', () {
+  test('eventos sem prova não apagam prova anterior nem regridem completed',
+      () {
     final completed = select([
       accept(),
       complete(),
@@ -166,8 +170,18 @@ void main() {
       acceptedAt: '2026-11-21T14:25:00.000',
     );
     for (final events in [
-      [older, newer, expired(providerId: 'provider-older'), complete(author: 'provider-older')],
-      [newer, older, expired(providerId: 'provider-older'), complete(author: 'provider-older')],
+      [
+        older,
+        newer,
+        expired(providerId: 'provider-older'),
+        complete(author: 'provider-older')
+      ],
+      [
+        newer,
+        older,
+        expired(providerId: 'provider-older'),
+        complete(author: 'provider-older')
+      ],
     ]) {
       final update = select(events);
       expect(update['status'], 'accept_expired');
@@ -213,5 +227,66 @@ void main() {
       status('cancelled', createdAt: completeAt + 20),
     ]);
     expect(update['status'], 'cancelled');
+  });
+
+  test('republicação posterior vence expiração antiga em qualquer ordem', () {
+    final republished = status(
+      'pending',
+      createdAt: expiredAt + 60,
+      extraContent: {
+        'providerId': null,
+        'republishedAt': DateTime.fromMillisecondsSinceEpoch(
+          (expiredAt + 60) * 1000,
+        ).toIso8601String(),
+      },
+    );
+    for (final events in [
+      [accept(), expired(), republished],
+      [republished, expired(), accept()],
+    ]) {
+      final update = select(events);
+      expect(update['status'], 'pending', reason: update.toString());
+      expect(update['providerId'], isNull);
+      expect(update['acceptedAt'], isNull);
+      expect(update['republishedAt'], isNotNull);
+    }
+  });
+
+  test('aceite antigo não transforma nova rodada em Bro encontrado', () {
+    final republished = status(
+      'pending',
+      createdAt: expiredAt + 60,
+      extraContent: {
+        'providerId': null,
+        'republishedAt': DateTime.fromMillisecondsSinceEpoch(
+          (expiredAt + 60) * 1000,
+        ).toIso8601String(),
+      },
+    );
+    for (final events in [
+      [accept(), expired(), republished],
+      [republished, expired(), accept()],
+    ]) {
+      final update = select(events);
+      expect(update['status'], 'pending', reason: update.toString());
+      expect(update['providerId'], isNull);
+      expect(update['acceptedAt'], isNull);
+    }
+  });
+
+  test('republicação não apaga comprovante anterior à expiração', () {
+    final republished = status(
+      'pending',
+      createdAt: completeAt + 60,
+      extraContent: {
+        'providerId': null,
+        'republishedAt': DateTime.fromMillisecondsSinceEpoch(
+          (completeAt + 60) * 1000,
+        ).toIso8601String(),
+      },
+    );
+    final update = select([accept(), complete(), republished]);
+    expect(update['status'], 'awaiting_confirmation');
+    expect(update['proofImage'], 'proof-image');
   });
 }

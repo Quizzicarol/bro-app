@@ -1556,6 +1556,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return t.t('home_status_cancelled');
       case 'disputed':
         return t.t('home_status_in_dispute');
+      case 'accept_expired':
+        return 'Aguardando republicação';
       case 'failed':
         return t.t('home_status_failed');
       default:

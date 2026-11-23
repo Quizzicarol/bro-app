@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -17,7 +17,7 @@ import 'nip44_service.dart';
 import '../utils/image_compress.dart';
 
 /// Serviço para publicar e buscar ordens via Nostr Relays
-/// 
+///
 /// Kinds usados:
 /// - 30078: Ordem de pagamento (replaceable event)
 /// - 30079: Aceite de ordem pelo provedor
@@ -54,7 +54,7 @@ class NostrOrderService {
 
   // Chave privada para descriptografia (configurada pelo order_provider)
   String? _decryptionKey;
-  
+
   // PERFORMANCE: Cache de _fetchAllOrderStatusUpdates com TTL de 15s
   // O Completer lock já previne chamadas paralelas, então TTL curto é seguro
   // e garante dados mais frescos entre polls (45s)
@@ -72,13 +72,18 @@ class NostrOrderService {
   // v437: Republish requests recebidos durante fetchOrderUpdatesForUser
   // Provider publica bro_republish_request → customer detecta no sync
   final List<String> _pendingRepublishRequests = [];
-  List<String> get pendingRepublishRequests => List.unmodifiable(_pendingRepublishRequests);
+  List<String> get pendingRepublishRequests =>
+      List.unmodifiable(_pendingRepublishRequests);
   // v774 (auditoria M2): autor de cada request — sem ele, QUALQUER pubkey
   // podia disparar re-envio de billcode (spam + vazamento de timing). O
   // handler só re-envia se o autor for o provedor da ordem.
   final Map<String, String> _pendingRepublishRequestAuthors = {};
-  Map<String, String> get pendingRepublishRequestAuthors => Map.unmodifiable(_pendingRepublishRequestAuthors);
-  void clearRepublishRequests() { _pendingRepublishRequests.clear(); _pendingRepublishRequestAuthors.clear(); }
+  Map<String, String> get pendingRepublishRequestAuthors =>
+      Map.unmodifiable(_pendingRepublishRequestAuthors);
+  void clearRepublishRequests() {
+    _pendingRepublishRequests.clear();
+    _pendingRepublishRequestAuthors.clear();
+  }
 
   /// v811 Fix 3: remove apenas os pedidos já processados (o provider processa
   /// no máximo 2 por ciclo para caber no timeout externo de 15s; o resto fica
@@ -111,7 +116,8 @@ class NostrOrderService {
       final list = prefs.getStringList(_blockedOrdersKey) ?? [];
       _blockedOrderIds = list.toSet();
       _blockedOrdersLoaded = true;
-      broLog('🚫 Blocklist carregada: ${_blockedOrderIds.length} ordens bloqueadas');
+      broLog(
+          '🚫 Blocklist carregada: ${_blockedOrderIds.length} ordens bloqueadas');
     } catch (e) {
       broLog('⚠️ Erro ao carregar blocklist: $e');
       _blockedOrdersLoaded = true;
@@ -124,12 +130,16 @@ class NostrOrderService {
     final newIds = orderIds.difference(_blockedOrderIds);
     if (newIds.isEmpty) return;
     _blockedOrderIds.addAll(newIds);
-    broLog('🚫 Blocklist: +${newIds.length} ordens (total: ${_blockedOrderIds.length})');
+    broLog(
+        '🚫 Blocklist: +${newIds.length} ordens (total: ${_blockedOrderIds.length})');
     try {
       final prefs = await SharedPreferences.getInstance();
       // Manter apenas últimas 2000 entradas para não crescer infinitamente
       if (_blockedOrderIds.length > 2000) {
-        _blockedOrderIds = _blockedOrderIds.toList().sublist(_blockedOrderIds.length - 2000).toSet();
+        _blockedOrderIds = _blockedOrderIds
+            .toList()
+            .sublist(_blockedOrderIds.length - 2000)
+            .toSet();
       }
       await prefs.setStringList(_blockedOrdersKey, _blockedOrderIds.toList());
     } catch (e) {
@@ -138,7 +148,20 @@ class NostrOrderService {
   }
 
   /// v437: Público para que OrderProvider possa bloquear ordens canceladas localmente
-  Future<void> addToBlocklistPublic(Set<String> orderIds) => _addToBlocklist(orderIds);
+  Future<void> addToBlocklistPublic(Set<String> orderIds) =>
+      _addToBlocklist(orderIds);
+
+  Future<void> _removeFromBlocklist(Set<String> orderIds) async {
+    final removed = _blockedOrderIds.intersection(orderIds);
+    if (removed.isEmpty) return;
+    _blockedOrderIds.removeAll(removed);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_blockedOrdersKey, _blockedOrderIds.toList());
+    } catch (e) {
+      broLog('⚠️ Erro ao atualizar blocklist na republicação: $e');
+    }
+  }
 
   /// v794: Consulta read-only da blocklist (sem carregar do disco).
   /// Usada pelo OrderProvider no early-return de sync vazio para filtrar
@@ -146,13 +169,16 @@ class NostrOrderService {
   bool isOrderBlocklisted(String orderId) => _blockedOrderIds.contains(orderId);
 
   /// R3 (v816): exposição read-only para testes de corrida.
-  static bool isStatusProgressionPublic(String newStatus, String currentStatus) =>
+  static bool isStatusProgressionPublic(
+          String newStatus, String currentStatus) =>
       _isStatusProgression(newStatus, currentStatus);
 
   static bool _hasProofPayload(Map<String, dynamic> update) {
     final plain = update['proofImage']?.toString();
     final encrypted = update['proofImage_nip44']?.toString();
-    return (plain != null && plain.isNotEmpty && !plain.startsWith('[encrypted:')) ||
+    return (plain != null &&
+            plain.isNotEmpty &&
+            !plain.startsWith('[encrypted:')) ||
         (encrypted != null && encrypted.isNotEmpty);
   }
 
@@ -160,6 +186,48 @@ class NostrOrderService {
   /// recupera a ordem nem abre caminho para confirmação ou mediação.
   static bool isCanonicalLateProof(Order order, Map<String, dynamic> update) =>
       false;
+
+  /// Recupera instalações que ficaram em pending embora o aceite antigo já
+  /// tenha expirado no relay. Uma ordem republicada não tem acceptedAt e,
+  /// portanto, nunca entra neste caminho.
+  static bool canRecoverExpiredAccept(
+    Map<String, dynamic> order,
+    Map<String, dynamic> update,
+  ) {
+    if (update['status'] != 'accept_expired') return false;
+    if (!['pending', 'payment_received', 'confirmed']
+        .contains(order['status'])) {
+      return false;
+    }
+    final providerId = order['providerId']?.toString();
+    final updateProviderId = update['providerId']?.toString();
+    if (providerId == null || providerId.isEmpty) return false;
+    if (updateProviderId != null &&
+        updateProviderId.isNotEmpty &&
+        updateProviderId != providerId) {
+      return false;
+    }
+    final acceptedAt = DateTime.tryParse(order['acceptedAt']?.toString() ?? '');
+    if (acceptedAt == null ||
+        DateTime.now().difference(acceptedAt) <= const Duration(hours: 1)) {
+      return false;
+    }
+    final metadata = order['metadata'];
+    if (metadata is Map) {
+      const proofKeys = [
+        'proofImage',
+        'paymentProof',
+        'proofImage_nip44',
+        'proofReceivedAt',
+        'receipt_submitted_at',
+      ];
+      if (proofKeys
+          .any((key) => metadata[key]?.toString().isNotEmpty == true)) {
+        return false;
+      }
+    }
+    return update['proofImage'] == null && update['proofImage_nip44'] == null;
+  }
 
   @visibleForTesting
   static Map<String, Map<String, dynamic>> selectOrderUpdatesForUser(
@@ -179,12 +247,14 @@ class NostrOrderService {
         if (content is! Map) continue;
         final orderId = content['orderId'] as String?;
         if (orderId == null || orderId.isEmpty) continue;
-        if (activeOrderIdSet != null && !activeOrderIdSet.contains(orderId)) continue;
+        if (activeOrderIdSet != null && !activeOrderIdSet.contains(orderId))
+          continue;
         final eventKind = event['kind'] as int?;
         final eventPubkey = event['pubkey'] as String?;
         final contentProviderId = content['providerId'] as String?;
         if ((eventKind == kindBroAccept || eventKind == kindBroComplete) &&
-            contentProviderId != null && eventPubkey != null &&
+            contentProviderId != null &&
+            eventPubkey != null &&
             eventPubkey != contentProviderId) {
           continue;
         }
@@ -194,26 +264,33 @@ class NostrOrderService {
 
         // O aceite assinado identifica o canônico; accept_expired preserva
         // essa referência sem permitir que outro autor a substitua.
-        if (eventKind == kindBroAccept && eventPubkey != null && eventPubkey.isNotEmpty) {
+        if (eventKind == kindBroAccept &&
+            eventPubkey != null &&
+            eventPubkey.isNotEmpty) {
           final relayTimestamp = event['created_at'] as int? ?? 0;
           var sortKey = relayTimestamp;
-          final acceptedAt = DateTime.tryParse(content['acceptedAt']?.toString() ?? '');
+          final acceptedAt =
+              DateTime.tryParse(content['acceptedAt']?.toString() ?? '');
           if (acceptedAt != null) {
-            final acceptedTimestamp = (acceptedAt.millisecondsSinceEpoch / 1000).round();
+            final acceptedTimestamp =
+                (acceptedAt.millisecondsSinceEpoch / 1000).round();
             sortKey = (acceptedTimestamp - relayTimestamp).abs() > 300
                 ? relayTimestamp
                 : acceptedTimestamp;
           }
           final previousKey = canonicalAcceptSortKeys[orderId];
           final previousProvider = canonicalProviders[orderId];
-          if (previousKey == null || sortKey < previousKey ||
-              (sortKey == previousKey && eventPubkey.compareTo(previousProvider!) < 0)) {
+          if (previousKey == null ||
+              sortKey < previousKey ||
+              (sortKey == previousKey &&
+                  eventPubkey.compareTo(previousProvider!) < 0)) {
             canonicalAcceptSortKeys[orderId] = sortKey;
             canonicalProviders[orderId] = eventPubkey;
           }
         } else if (eventKind == kindBroPaymentProof &&
             content['status'] == 'accept_expired') {
-          final expiredProvider = contentProviderId ?? canonicalProviders[orderId];
+          final expiredProvider =
+              contentProviderId ?? canonicalProviders[orderId];
           if (expiredProvider != null && expiredProvider.isNotEmpty) {
             canonicalProviders.putIfAbsent(orderId, () => expiredProvider);
           }
@@ -222,14 +299,16 @@ class NostrOrderService {
         final proofImage = content['proofImage'] as String?;
         final proofImageNip44 = content['proofImage_nip44'] as String?;
         if (proofImage != null || proofImageNip44 != null) {
-          proofAccumulator.putIfAbsent(orderId, () => {
-            'proofImage': proofImage,
-            'proofImage_nip44': proofImageNip44,
-            'encryption': content['encryption'] as String?,
-            'providerInvoice': content['providerInvoice'] as String?,
-            'completedAt': content['completedAt'] as String?,
-            'eventAuthorPubkey': eventPubkey,
-          });
+          proofAccumulator.putIfAbsent(
+              orderId,
+              () => {
+                    'proofImage': proofImage,
+                    'proofImage_nip44': proofImageNip44,
+                    'encryption': content['encryption'] as String?,
+                    'providerInvoice': content['providerInvoice'] as String?,
+                    'completedAt': content['completedAt'] as String?,
+                    'eventAuthorPubkey': eventPubkey,
+                  });
         }
       } catch (_) {}
     }
@@ -262,6 +341,33 @@ class NostrOrderService {
         final existingUpdate = updates[orderId];
         final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
         final existingStatus = existingUpdate?['status'] as String?;
+        final republishedAt = DateTime.tryParse(
+          content['republishedAt']?.toString() ?? '',
+        );
+        final existingRepublishedAt = DateTime.tryParse(
+          existingUpdate?['republishedAt']?.toString() ?? '',
+        );
+        if (newStatus == 'accept_expired' &&
+            existingStatus == 'pending' &&
+            existingRepublishedAt == null) {
+          continue;
+        }
+        if (republishedAt != null &&
+            newStatus != 'pending' &&
+            newStatus != 'cancelled' &&
+            createdAt <=
+                republishedAt.millisecondsSinceEpoch ~/ 1000 +
+                    _republishGraceSeconds) {
+          continue;
+        }
+        if (existingRepublishedAt != null &&
+            newStatus != 'pending' &&
+            newStatus != 'cancelled' &&
+            createdAt <=
+                existingRepublishedAt.millisecondsSinceEpoch ~/ 1000 +
+                    _republishGraceSeconds) {
+          continue;
+        }
         if (existingStatus == 'completed' ||
             (existingStatus == 'cancelled' && newStatus != 'disputed')) {
           continue;
@@ -276,17 +382,31 @@ class NostrOrderService {
         final recoversExpired = false;
         final expiredCannotOverrideProof = newStatus == 'accept_expired' &&
             existingStatus == 'awaiting_confirmation';
+        final expiredCannotOverrideRepublish = newStatus == 'accept_expired' &&
+            existingStatus == 'pending' &&
+            existingUpdate?['republishedAt'] != null;
+        final republishCannotOverrideProof = newStatus == 'pending' &&
+            content['republishedAt'] != null &&
+            existingStatus == 'awaiting_confirmation';
 
-        if (expiredCannotOverrideProof) continue;
-        if (newStatus == 'disputed' && existingStatus == 'cancelled' && !isNewer) {
+        if (expiredCannotOverrideProof ||
+            expiredCannotOverrideRepublish ||
+            republishCannotOverrideProof) continue;
+        if (newStatus == 'disputed' &&
+            existingStatus == 'cancelled' &&
+            !isNewer) {
           continue;
         }
-        if (newStatus == 'disputed' && existingStatus == 'cancelled' && isNewer) {
+        if (newStatus == 'disputed' &&
+            existingStatus == 'cancelled' &&
+            isNewer) {
           // A mediação pode ser aberta depois do cancelamento.
         } else if (newStatus == 'cancelled' && isNewer) {
           // Mantém a seleção explícita de cancelamento do fluxo anterior.
         } else if (isNewer) {
-          if (existingStatus != null && !isValidProgression && !recoversExpired) {
+          if (existingStatus != null &&
+              !isValidProgression &&
+              !recoversExpired) {
             continue;
           }
         } else if (!isValidProgression && !recoversExpired) {
@@ -296,20 +416,41 @@ class NostrOrderService {
 
         final previousUpdate = updates[orderId];
         final accum = proofAccumulator[orderId];
-        final providerId = content['providerId'] ?? previousUpdate?['providerId'] ?? eventPubkey;
+        final providerId = newStatus == 'pending' && republishedAt != null
+            ? null
+            : content['providerId'] ??
+                previousUpdate?['providerId'] ??
+                eventPubkey;
         updates[orderId] = {
           'orderId': orderId,
           'status': newStatus,
           'eventKind': eventKind,
           'providerId': providerId,
-          'acceptedAt': content['acceptedAt'] ?? previousUpdate?['acceptedAt'],
-          'proofImage': content['proofImage'] ?? previousUpdate?['proofImage'] ?? accum?['proofImage'],
-          'proofImage_nip44': content['proofImage_nip44'] ?? previousUpdate?['proofImage_nip44'] ?? accum?['proofImage_nip44'],
-          'encryption': content['encryption'] ?? previousUpdate?['encryption'] ?? accum?['encryption'],
-          'providerInvoice': content['providerInvoice'] ?? previousUpdate?['providerInvoice'] ?? accum?['providerInvoice'],
-          'completedAt': content['completedAt'] ?? previousUpdate?['completedAt'] ?? accum?['completedAt'],
-          'eventAuthorPubkey': eventPubkey ?? previousUpdate?['eventAuthorPubkey'] ?? accum?['eventAuthorPubkey'],
-          'proofAuthorPubkey': accum?['eventAuthorPubkey'] ?? previousUpdate?['proofAuthorPubkey'],
+          'acceptedAt': newStatus == 'pending' && republishedAt != null
+              ? null
+              : content['acceptedAt'] ?? previousUpdate?['acceptedAt'],
+          'republishedAt':
+              content['republishedAt'] ?? previousUpdate?['republishedAt'],
+          'proofImage': content['proofImage'] ??
+              previousUpdate?['proofImage'] ??
+              accum?['proofImage'],
+          'proofImage_nip44': content['proofImage_nip44'] ??
+              previousUpdate?['proofImage_nip44'] ??
+              accum?['proofImage_nip44'],
+          'encryption': content['encryption'] ??
+              previousUpdate?['encryption'] ??
+              accum?['encryption'],
+          'providerInvoice': content['providerInvoice'] ??
+              previousUpdate?['providerInvoice'] ??
+              accum?['providerInvoice'],
+          'completedAt': content['completedAt'] ??
+              previousUpdate?['completedAt'] ??
+              accum?['completedAt'],
+          'eventAuthorPubkey': eventPubkey ??
+              previousUpdate?['eventAuthorPubkey'] ??
+              accum?['eventAuthorPubkey'],
+          'proofAuthorPubkey': accum?['eventAuthorPubkey'] ??
+              previousUpdate?['proofAuthorPubkey'],
           'created_at': createdAt,
         };
       } catch (_) {}
@@ -337,8 +478,8 @@ class NostrOrderService {
     if (currentStatus == 'disputed') {
       return newStatus == 'completed' || newStatus == 'cancelled';
     }
-    // R3 (v816): accept_expired só nasce de accepted/processing (aceite sem
-    // prova dentro da janela de 1h). Nunca depois de prova enviada ou além.
+    // A recuperação de pending local usa canRecoverExpiredAccept; a seleção
+    // de eventos não pode transformar uma nova rodada em expirada novamente.
     if (newStatus == 'accept_expired') {
       return currentStatus == 'accepted' || currentStatus == 'processing';
     }
@@ -356,15 +497,21 @@ class NostrOrderService {
     if (newStatus == 'disputed') return currentStatus != 'accept_expired';
     // Progressão linear
     const statusOrder = [
-      'draft', 'pending', 'payment_received', 'accepted', 'processing',
-      'awaiting_confirmation', 'completed', 'liquidated',
+      'draft',
+      'pending',
+      'payment_received',
+      'accepted',
+      'processing',
+      'awaiting_confirmation',
+      'completed',
+      'liquidated',
     ];
     final newIdx = statusOrder.indexOf(newStatus);
     final currentIdx = statusOrder.indexOf(currentStatus);
     if (newIdx == -1 || currentIdx == -1) return false;
     return newIdx > currentIdx;
   }
-  
+
   /// Configura a chave privada para descriptografia de campos NIP-44
   /// Chamado pelo OrderProvider quando as chaves estão disponíveis
   void setDecryptionKey(String? privateKey) {
@@ -372,7 +519,8 @@ class NostrOrderService {
   }
 
   /// v403: Expor descriptografia NIP-44 para uso pelo OrderProvider durante sync
-  String decryptNip44(String ciphertext, String privateKey, String senderPubkey) {
+  String decryptNip44(
+      String ciphertext, String privateKey, String senderPubkey) {
     return _nip44.decryptBetween(ciphertext, privateKey, senderPubkey);
   }
 
@@ -447,7 +595,8 @@ class NostrOrderService {
   // legítimo e devem persistir. Mantemos expiração APENAS em eventos
   // transitórios (updates/refresh/republish), que não carregam o histórico.
   static List<String> _expirationTag(int days) {
-    final unix = DateTime.now().add(Duration(days: days)).millisecondsSinceEpoch ~/ 1000;
+    final unix =
+        DateTime.now().add(Duration(days: days)).millisecondsSinceEpoch ~/ 1000;
     return ['expiration', unix.toString()];
   }
 
@@ -500,11 +649,13 @@ class NostrOrderService {
   }) async {
     try {
       final keychain = Keychain(privateKey);
-      
-      final encryptedBillCode = billCode; // v437: BRO1 encryption DESATIVADA até todos dispositivos atualizarem
+
+      final encryptedBillCode =
+          billCode; // v437: BRO1 encryption DESATIVADA até todos dispositivos atualizarem
       // TODO: Reativar quando provider-side tiver decrypt: _billCodeCrypto.encrypt(billCode)
-      broLog('📡 _publishOrderRaw: orderId=${orderId.substring(0, 8)}, billType=$billType, billCode=${billCode.isNotEmpty ? "SET" : "EMPTY"}, encrypted=DISABLED');
-      
+      broLog(
+          '📡 _publishOrderRaw: orderId=${orderId.substring(0, 8)}, billType=$billType, billCode=${billCode.isNotEmpty ? "SET" : "EMPTY"}, encrypted=DISABLED');
+
       // v575: omit plaintext billCode from kind 30078 when flag is on. The
       // accepter receives it via NIP-44 (kind 30080) after accepting. We keep
       // the billCode field present (empty string) for parser backward
@@ -519,7 +670,8 @@ class NostrOrderService {
         'userPubkey': keychain.public,
         'billType': billType,
         'billCode': publishedBillCode,
-        'billCodeProtocol': _omitPlaintextBillCode ? _billCodeProtocolNip44 : 'plaintext',
+        'billCodeProtocol':
+            _omitPlaintextBillCode ? _billCodeProtocolNip44 : 'plaintext',
         'currency': currency,
         'amount': amount,
         'btcAmount': btcAmount,
@@ -540,7 +692,10 @@ class NostrOrderService {
           ['t', broTag],
           ['t', broAppTag],
           ['t', billType],
-          ['t', 'cur:${currency.toLowerCase()}'], // v606: filtragem por moeda no relay (mesma convenção das ofertas de marketplace)
+          [
+            't',
+            'cur:${currency.toLowerCase()}'
+          ], // v606: filtragem por moeda no relay (mesma convenção das ofertas de marketplace)
           ['amount', amount.toStringAsFixed(2)],
           ['status', 'pending'],
           // vSEC-fix: NIP-40 REMOVIDO da ordem — ela É o histórico, não expira.
@@ -549,20 +704,21 @@ class NostrOrderService {
         privkey: keychain.private,
       );
 
-      
       // Publicar em todos os relays EM PARALELO
       final results = await Future.wait(
         _relays.map((relay) => _publishToRelay(relay, event).catchError((e) {
-          broLog('❌ _publishOrderRaw: relay $relay failed: $e');
-          return false;
-        })),
+              broLog('❌ _publishOrderRaw: relay $relay failed: $e');
+              return false;
+            })),
       );
       final successCount = results.where((r) => r).length;
 
-      broLog('📡 _publishOrderRaw: ${orderId.substring(0, 8)} published to $successCount/${_relays.length} relays');
+      broLog(
+          '📡 _publishOrderRaw: ${orderId.substring(0, 8)} published to $successCount/${_relays.length} relays');
       return successCount > 0 ? event.id : null;
     } catch (e) {
-      broLog('❌ _publishOrderRaw: exception for ${orderId.substring(0, 8)}: $e');
+      broLog(
+          '❌ _publishOrderRaw: exception for ${orderId.substring(0, 8)}: $e');
       return null;
     }
   }
@@ -576,32 +732,37 @@ class NostrOrderService {
     String? providerId,
     String? paymentProof,
     String? orderUserPubkey, // v240: pubkey do dono da ordem para notificação
-    Map<String, dynamic>? extraContent, // v630: campos extras (ex.: motivo/valor da disputa)
+    Map<String, dynamic>?
+        extraContent, // v630: campos extras (ex.: motivo/valor da disputa)
   }) async {
     try {
       // LOG v1.0.129+232: Alertar quando completed é publicado sem providerId
       // A proteção principal está no OrderProvider.updateOrderStatus()
-      if (newStatus == 'completed' && (providerId == null || providerId.isEmpty)) {
-        broLog('⚠️ [NostrOrderService] completed sem providerId para ${orderId.substring(0, 8)} - verificar fluxo');
+      if (newStatus == 'completed' &&
+          (providerId == null || providerId.isEmpty)) {
+        broLog(
+            '⚠️ [NostrOrderService] completed sem providerId para ${orderId.substring(0, 8)} - verificar fluxo');
       }
-      
+
       final keychain = Keychain(privateKey);
       final signerPubkey = keychain.public;
-      
+
       // v257: CORREÇÃO CRÍTICA — content.userPubkey DEVE ser o DONO da ordem (orderUserPubkey),
       // NÃO o signatário (keychain.public). Quando o PROVEDOR publica um update,
       // keychain.public é o provedor, mas userPubkey deve ser o criador da ordem.
       // Sem isso, o usuário nunca encontra o update nos relays.
-      final contentUserPubkey = (orderUserPubkey != null && orderUserPubkey.isNotEmpty)
-          ? orderUserPubkey
-          : signerPubkey; // fallback para compatibilidade
-      
+      final contentUserPubkey =
+          (orderUserPubkey != null && orderUserPubkey.isNotEmpty)
+              ? orderUserPubkey
+              : signerPubkey; // fallback para compatibilidade
+
       final content = jsonEncode({
         'type': 'bro_order_update',
         'orderId': orderId,
         'status': newStatus,
         'providerId': providerId,
-        'userPubkey': contentUserPubkey, // v257: pubkey do DONO da ordem (não do signatário)
+        'userPubkey':
+            contentUserPubkey, // v257: pubkey do DONO da ordem (não do signatário)
         'publishedBy': signerPubkey, // v257: quem publicou este update
         'paymentProof': paymentProof,
         'updatedAt': DateTime.now().toIso8601String(),
@@ -614,20 +775,29 @@ class NostrOrderService {
       // Isso permite que tanto Bro quanto Usuário publiquem updates independentes
       // NOTA: Removida tag 'e' pois orderId é UUID, não event ID hex de 64 chars
       final tags = [
-        ['d', '${orderId}_${signerPubkey.substring(0, 8)}_update'], // Tag única por usuário
+        [
+          'd',
+          '${orderId}_${signerPubkey.substring(0, 8)}_update'
+        ], // Tag única por usuário
         ['t', broTag],
         ['t', 'bro-update'],
         ['t', 'status-$newStatus'], // Tag pesquisável por status
-        ['r', orderId], // CRÍTICO: Tag 'r' (reference) para busca por orderId nos relays
-        ['orderId', orderId], // Tag customizada (não filtrável por relays, só para leitura)
+        [
+          'r',
+          orderId
+        ], // CRÍTICO: Tag 'r' (reference) para busca por orderId nos relays
+        [
+          'orderId',
+          orderId
+        ], // Tag customizada (não filtrável por relays, só para leitura)
         _expirationTag(30), // v580: NIP-40 — status updates expire in 30d
       ];
-      
+
       // v257: CORREÇÃO CRÍTICA — Garantir que AMBAS as partes (provedor E usuário)
       // recebam tags #p para descobrir este evento nos relays.
       // Coletar todas as pubkeys únicas que precisam ser tagueadas
       final pTagSet = <String>{};
-      
+
       // Tag do provedor — para que o provedor encontre o update
       if (providerId != null && providerId.isNotEmpty) {
         pTagSet.add(providerId);
@@ -640,11 +810,12 @@ class NostrOrderService {
       if (pTagSet.isEmpty) {
         pTagSet.add(signerPubkey);
       }
-      
+
       for (final pk in pTagSet) {
         tags.add(['p', pk]);
       }
-      broLog('📤 updateOrderStatus: orderId=${orderId.substring(0, 8)} status=$newStatus pTags=${pTagSet.map((p) => p.substring(0, 8)).toList()}');
+      broLog(
+          '📤 updateOrderStatus: orderId=${orderId.substring(0, 8)} status=$newStatus pTags=${pTagSet.map((p) => p.substring(0, 8)).toList()}');
 
       // IMPORTANTE: Usa kindBroPaymentProof (30080) para não substituir o evento original!
       final event = Event.from(
@@ -670,18 +841,29 @@ class NostrOrderService {
       );
 
       final successCount = results.where((r) => r).length;
-      broLog('📤 updateOrderStatus: publicado em $successCount/${_relays.length} relays (orderId=${orderId.substring(0, 8)}, status=$newStatus)');
-      
+      broLog(
+          '📤 updateOrderStatus: publicado em $successCount/${_relays.length} relays (orderId=${orderId.substring(0, 8)}, status=$newStatus)');
+
       // Adicionar à blocklist se status é terminal
       if (successCount > 0) {
-        const terminalStatuses = ['accepted', 'awaiting_confirmation', 'completed', 'cancelled', 'liquidated', 'disputed', 'accept_expired'];
+        const terminalStatuses = [
+          'accepted',
+          'awaiting_confirmation',
+          'completed',
+          'cancelled',
+          'liquidated',
+          'disputed',
+          'accept_expired'
+        ];
         if (terminalStatuses.contains(newStatus)) {
           _addToBlocklist({orderId});
-          _statusUpdatesCache = null;
-          _statusUpdatesCacheTime = null;
+        } else if (newStatus == 'pending') {
+          await _removeFromBlocklist({orderId});
         }
+        _statusUpdatesCache = null;
+        _statusUpdatesCacheTime = null;
       }
-      
+
       return successCount > 0;
     } catch (e) {
       broLog('❌ updateOrderStatus EXCEPTION: $e');
@@ -737,7 +919,8 @@ class NostrOrderService {
       );
 
       final successCount = results.where((r) => r).length;
-      broLog('📤 publishRepublishRequest: orderId=${orderId.substring(0, 8)} → $successCount/${_relays.length} relays');
+      broLog(
+          '📤 publishRepublishRequest: orderId=${orderId.substring(0, 8)} → $successCount/${_relays.length} relays');
       return successCount > 0;
     } catch (e) {
       broLog('❌ publishRepublishRequest EXCEPTION: $e');
@@ -761,7 +944,8 @@ class NostrOrderService {
       final signerPubkey = keychain.public;
 
       // NIP-44 ECDH: only the provider can decrypt
-      final encryptedBillCode = _nip44.encryptBetween(billCode, privateKey, providerPubkey);
+      final encryptedBillCode =
+          _nip44.encryptBetween(billCode, privateKey, providerPubkey);
 
       final content = jsonEncode({
         'type': 'bro_billcode_encrypted',
@@ -803,11 +987,13 @@ class NostrOrderService {
       );
 
       final successCount = results.where((r) => r).length;
-      broLog('🔐 publishEncryptedBillCode: orderId=${orderId.substring(0, 8)} → $successCount/${_relays.length} relays (nip44, provider=${providerPubkey.substring(0, 8)})');
+      broLog(
+          '🔐 publishEncryptedBillCode: orderId=${orderId.substring(0, 8)} → $successCount/${_relays.length} relays (nip44, provider=${providerPubkey.substring(0, 8)})');
       // v688: canal redundante — além dos relays, deposita o blob cifrado no
       // backend, que acorda o provedor via FCM silencioso. Se os relays
       // falharem no aparelho do comprador, o código ainda chega (72d248d8).
-      unawaited(_postBillcodeFallback(orderId, providerPubkey, signerPubkey, encryptedBillCode));
+      unawaited(_postBillcodeFallback(
+          orderId, providerPubkey, signerPubkey, encryptedBillCode));
       return successCount > 0;
     } catch (e) {
       broLog('❌ publishEncryptedBillCode EXCEPTION: $e');
@@ -816,7 +1002,8 @@ class NostrOrderService {
   }
 
   /// v688: POST do blob NIP-44 pro canal redundante do backend. Nunca lança.
-  Future<void> _postBillcodeFallback(String orderId, String providerPubkey, String senderPubkey, String blob) async {
+  Future<void> _postBillcodeFallback(String orderId, String providerPubkey,
+      String senderPubkey, String blob) async {
     final body = {
       'orderId': orderId,
       'providerPubkey': providerPubkey,
@@ -842,8 +1029,10 @@ class NostrOrderService {
           method: 'POST',
           body: body,
         );
-        final resp = await dio.post('/billcode-fallback', data: body, options: Options(headers: headers));
-        broLog('📦 billcode fallback POST: ${resp.statusCode} pushed=${resp.data?['pushed']}');
+        final resp = await dio.post('/billcode-fallback',
+            data: body, options: Options(headers: headers));
+        broLog(
+            '📦 billcode fallback POST: ${resp.statusCode} pushed=${resp.data?['pushed']}');
         if (resp.statusCode == 200) return;
       } catch (e) {
         broLog('⚠️ billcode fallback POST tentativa $attempt/3 falhou: $e');
@@ -866,7 +1055,8 @@ class NostrOrderService {
         url: '${AppConfig.defaultBackendUrl}/billcode-fallback/$orderId',
         method: 'GET',
       );
-      final resp = await dio.get('/billcode-fallback/$orderId', options: Options(headers: headers));
+      final resp = await dio.get('/billcode-fallback/$orderId',
+          options: Options(headers: headers));
       if (resp.statusCode == 200 && resp.data?['ok'] == true) {
         return {
           'blob': resp.data['blob'] as String,
@@ -889,7 +1079,9 @@ class NostrOrderService {
   /// all racing with a 5s per-relay timeout. Cross-relay dedup via seenIds
   /// guarantees no duplicates. The 15s status-update cache + Completer lock
   /// (added in v126/v129) prevents the WebSocket fan-out that hurt before.
-  Future<List<Map<String, dynamic>>> _fetchProviderOrdersRaw(String providerPubkey, {Set<String>? skipOrderIds}) async {
+  Future<List<Map<String, dynamic>>> _fetchProviderOrdersRaw(
+      String providerPubkey,
+      {Set<String>? skipOrderIds}) async {
     final orders = <Map<String, dynamic>>[];
     final seenIds = <String>{};
     final orderIdsFromAccepts = <String>{};
@@ -901,17 +1093,30 @@ class NostrOrderService {
           // 1. Ordens com tag #p do provedor
           // v695: timeout 5s→3s — relay morto não segura a lista (os outros
           // já responderam; o merge cobre a redundância).
-          _fetchFromRelay(relay, kinds: [kindBroOrder], tags: {'#p': [providerPubkey]}, limit: 100)
-            .timeout(const Duration(seconds: 3), onTimeout: () => <Map<String, dynamic>>[])
-            .catchError((_) => <Map<String, dynamic>>[]),
+          _fetchFromRelay(relay,
+                  kinds: [kindBroOrder],
+                  tags: {
+                    '#p': [providerPubkey]
+                  },
+                  limit: 100)
+              .timeout(const Duration(seconds: 3),
+                  onTimeout: () => <Map<String, dynamic>>[])
+              .catchError((_) => <Map<String, dynamic>>[]),
           // 2. Eventos de aceitação/update/complete publicados por este provedor + disputas tagueadas
-          _fetchFromRelay(relay, kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete], authors: [providerPubkey], limit: 200)
-            .timeout(const Duration(seconds: 3), onTimeout: () => <Map<String, dynamic>>[])
-            .catchError((_) => <Map<String, dynamic>>[]),
+          _fetchFromRelay(relay,
+                  kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete],
+                  authors: [providerPubkey],
+                  limit: 200)
+              .timeout(const Duration(seconds: 3),
+                  onTimeout: () => <Map<String, dynamic>>[])
+              .catchError((_) => <Map<String, dynamic>>[]),
         ]);
         return results;
       } catch (_) {
-        return <List<Map<String, dynamic>>>[<Map<String, dynamic>>[], <Map<String, dynamic>>[]];
+        return <List<Map<String, dynamic>>>[
+          <Map<String, dynamic>>[],
+          <Map<String, dynamic>>[]
+        ];
       }
     }).toList();
 
@@ -931,37 +1136,43 @@ class NostrOrderService {
       // 2. Extrair orderIds dos eventos de aceitação/update
       for (final event in relayResults[1]) {
         try {
-          final content = event['parsedContent'] ?? jsonDecode(event['content']);
+          final content =
+              event['parsedContent'] ?? jsonDecode(event['content']);
           final eventType = content['type'] as String?;
           // v519: WHITELIST — only events that prove THIS pubkey is the real provider of the
           // order should contribute. This blocks ghost orders from dispute resolutions,
           // admin reimbursements, mediator messages, evidence, etc., which are authored by
           // admin but don't mean admin is the provider.
           const providerEventTypes = {'bro_accept', 'bro_complete'};
-          final bool isProviderEvidence = providerEventTypes.contains(eventType) ||
-              (eventType == 'bro_order_update' &&
-                  (content['providerId'] as String?) == providerPubkey);
+          final bool isProviderEvidence =
+              providerEventTypes.contains(eventType) ||
+                  (eventType == 'bro_order_update' &&
+                      (content['providerId'] as String?) == providerPubkey);
           if (!isProviderEvidence) continue;
           final orderId = content['orderId'] as String?;
           if (orderId != null) orderIdsFromAccepts.add(orderId);
         } catch (_) {}
       }
     }
-    
+
     // Buscar ordens originais pelos IDs dos eventos de aceitação
     if (orderIdsFromAccepts.isNotEmpty) {
       // vSEC-fix: pular ordens TERMINAIS já em cache local — não re-buscar no
       // relay (evita lentidão e dependência de evento que o relay pode ter podado).
-      final missingIds = orderIdsFromAccepts.where((id) =>
-        !seenIds.contains(id) && !(skipOrderIds?.contains(id) ?? false)).toList();
-      
+      final missingIds = orderIdsFromAccepts
+          .where((id) =>
+              !seenIds.contains(id) && !(skipOrderIds?.contains(id) ?? false))
+          .toList();
+
       if (missingIds.isNotEmpty) {
         // Buscar em lotes de 5 (reduced from 10)
-        final acceptsCache = <String, List<String>>{}; // v774: 1 fetch por ordem por sync
+        final acceptsCache =
+            <String, List<String>>{}; // v774: 1 fetch por ordem por sync
         for (int i = 0; i < missingIds.length; i += 5) {
           final batch = missingIds.skip(i).take(5).toList();
           final batchResults = await Future.wait(
-            batch.map((orderId) => fetchOrderFromNostr(orderId).catchError((_) => null)),
+            batch.map((orderId) =>
+                fetchOrderFromNostr(orderId).catchError((_) => null)),
           );
 
           for (int j = 0; j < batchResults.length; j++) {
@@ -976,16 +1187,20 @@ class NostrOrderService {
               // Fail-closed: sem dados de aceites → pula (re-tenta no próximo
               // sync); canônico ≠ eu → pula (sou perdedor).
               final oid = batch[j];
-              final accepts = acceptsCache.putIfAbsent(oid, () => <String>[]).isNotEmpty
-                  ? acceptsCache[oid]!
-                  : (acceptsCache[oid] = await fetchAllAcceptsForOrder(oid)
-                      .timeout(const Duration(seconds: 10), onTimeout: () => <String>[]));
+              final accepts =
+                  acceptsCache.putIfAbsent(oid, () => <String>[]).isNotEmpty
+                      ? acceptsCache[oid]!
+                      : (acceptsCache[oid] = await fetchAllAcceptsForOrder(oid)
+                          .timeout(const Duration(seconds: 10),
+                              onTimeout: () => <String>[]));
               if (accepts.isEmpty) {
-                broLog('🛡️ v774: $oid sem aceites verificáveis — NÃO recuperando como minha (retry no próximo sync)');
+                broLog(
+                    '🛡️ v774: $oid sem aceites verificáveis — NÃO recuperando como minha (retry no próximo sync)');
                 continue;
               }
               if (accepts.first != providerPubkey) {
-                broLog('🏁 v774: $oid — canônico é ${accepts.first.substring(0, 8)}, não eu. Corrida perdida, ordem não é minha.');
+                broLog(
+                    '🏁 v774: $oid — canônico é ${accepts.first.substring(0, 8)}, não eu. Corrida perdida, ordem não é minha.');
                 continue;
               }
               orderData['providerId'] = providerPubkey;
@@ -1007,7 +1222,8 @@ class NostrOrderService {
   /// v569: Parallel relay fetch (was sequential w/ break-on-first). Sequential
   /// pattern could miss orderIds that exist only on relays 2/3, leading to
   /// false-positive ghost purges. Parallel + merge fixes that.
-  Future<Set<String>> fetchAcceptedOrderIdsForProvider(String providerPubkey) async {
+  Future<Set<String>> fetchAcceptedOrderIdsForProvider(
+      String providerPubkey) async {
     final acceptedIds = <String>{};
     final relayTasks = _relays.take(3).map((relay) {
       return _fetchFromRelay(
@@ -1015,19 +1231,23 @@ class NostrOrderService {
         kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete],
         authors: [providerPubkey],
         limit: 300,
-      ).timeout(const Duration(seconds: 5), onTimeout: () => <Map<String, dynamic>>[])
-       .catchError((_) => <Map<String, dynamic>>[]);
+      )
+          .timeout(const Duration(seconds: 5),
+              onTimeout: () => <Map<String, dynamic>>[])
+          .catchError((_) => <Map<String, dynamic>>[]);
     }).toList();
     final perRelay = await Future.wait(relayTasks);
     for (final events in perRelay) {
       for (final event in events) {
         try {
-          final content = event['parsedContent'] ?? jsonDecode(event['content']);
+          final content =
+              event['parsedContent'] ?? jsonDecode(event['content']);
           final eventType = content['type'] as String?;
           const providerEventTypes = {'bro_accept', 'bro_complete'};
-          final bool isProviderEvidence = providerEventTypes.contains(eventType) ||
-              (eventType == 'bro_order_update' &&
-                  (content['providerId'] as String?) == providerPubkey);
+          final bool isProviderEvidence =
+              providerEventTypes.contains(eventType) ||
+                  (eventType == 'bro_order_update' &&
+                      (content['providerId'] as String?) == providerPubkey);
           if (!isProviderEvidence) continue;
           final orderId = content['orderId'] as String?;
           if (orderId != null) acceptedIds.add(orderId);
@@ -1045,7 +1265,8 @@ class NostrOrderService {
   /// v808: override de teste para fetchAllAcceptsForOrder (cura do lostRace
   /// envenenado sem rede real). Null em produção.
   @visibleForTesting
-  static Future<List<String>> Function(String orderId)? fetchAllAcceptsForOrderOverride;
+  static Future<List<String>> Function(String orderId)?
+      fetchAllAcceptsForOrderOverride;
 
   /// v819: cache do timestamp de republicação por ordem (TTL curto) — v697,
   /// v802, v575 e a entrega do billCode consultam a mesma ordem em sequência;
@@ -1072,7 +1293,8 @@ class NostrOrderService {
   /// (evidência R3, sem NIP-09) e envenenava v697 (ordem republicada invisível
   /// na Disponíveis), v802/v575 (pré/pós-check do aceite), v804, a entrega
   /// canônica do billCode (v438) e o background relay (v725).
-  Future<int?> fetchLatestRepublishTimestamp(String orderId, {Duration perRelayTimeout = const Duration(seconds: 4)}) async {
+  Future<int?> fetchLatestRepublishTimestamp(String orderId,
+      {Duration perRelayTimeout = const Duration(seconds: 4)}) async {
     final cached = _republishTsCache[orderId];
     if (cached != null) {
       if (DateTime.now().millisecondsSinceEpoch < (cached['expiry'] as int)) {
@@ -1085,23 +1307,29 @@ class NostrOrderService {
       final allRelays = <String>[..._relays, ..._fallbackRelays];
       final results = await Future.wait(
         allRelays.map((relay) => _fetchFromRelay(
-          relay,
-          kinds: [kindBroOrder],
-          tags: {'#d': [orderId]},
-          limit: 5,
-        ).timeout(perRelayTimeout, onTimeout: () => <Map<String, dynamic>>[])
-         .catchError((_) => <Map<String, dynamic>>[])),
+              relay,
+              kinds: [kindBroOrder],
+              tags: {
+                '#d': [orderId]
+              },
+              limit: 5,
+            )
+                .timeout(perRelayTimeout,
+                    onTimeout: () => <Map<String, dynamic>>[])
+                .catchError((_) => <Map<String, dynamic>>[])),
       );
       int? latestTs;
       for (final events in results) {
         for (final event in events) {
           try {
-            final content = event['parsedContent'] ?? jsonDecode(event['content']);
+            final content =
+                event['parsedContent'] ?? jsonDecode(event['content']);
             if (content['orderId'] != orderId) continue;
             if (content['type'] != 'bro_order') continue;
             // Sem updatedAt = evento de criação original → não é republicação.
             if (content['updatedAt'] == null) continue;
-            final status = (content['status'] as String?) ?? _getStatusFromTags(event['tags']);
+            final status = (content['status'] as String?) ??
+                _getStatusFromTags(event['tags']);
             // Só republicação que REABRE a ordem invalida aceites antigos.
             if (status != 'pending' && status != 'accept_expired') continue;
             final createdAt = event['created_at'] as int?;
@@ -1117,7 +1345,8 @@ class NostrOrderService {
     if (_republishTsCache.length > 200) _republishTsCache.clear();
     _republishTsCache[orderId] = {
       'ts': result,
-      'expiry': DateTime.now().millisecondsSinceEpoch + _republishTsCacheTtlSeconds * 1000,
+      'expiry': DateTime.now().millisecondsSinceEpoch +
+          _republishTsCacheTtlSeconds * 1000,
     };
     return result;
   }
@@ -1152,7 +1381,9 @@ class NostrOrderService {
           final events = await _fetchFromRelay(
             relay,
             kinds: [kindBroAccept],
-            tags: {'#d': ['${orderId}_accept']},
+            tags: {
+              '#d': ['${orderId}_accept']
+            },
             limit: 20,
           ).timeout(const Duration(seconds: 8));
           return (events: events, ok: true);
@@ -1165,7 +1396,8 @@ class NostrOrderService {
     for (final answer in results) {
       for (final event in answer.events) {
         try {
-          final content = event['parsedContent'] ?? jsonDecode(event['content']);
+          final content =
+              event['parsedContent'] ?? jsonDecode(event['content']);
           if (content['orderId'] != orderId) continue;
           if (content['type'] != 'bro_accept') continue;
           final pubkey = event['pubkey'] as String?;
@@ -1193,11 +1425,13 @@ class NostrOrderService {
               sortKey = ((aaTs - createdAt).abs() > 300) ? createdAt : aaTs;
             }
           }
-          accepts.add({'pubkey': pubkey, 'created_at': sortKey, 'relay_ts': createdAt});
+          accepts.add(
+              {'pubkey': pubkey, 'created_at': sortKey, 'relay_ts': createdAt});
         } catch (_) {}
       }
     }
-    accepts.sort((a, b) => (a['created_at'] as int).compareTo(b['created_at'] as int));
+    accepts.sort(
+        (a, b) => (a['created_at'] as int).compareTo(b['created_at'] as int));
     // v819: descartar aceites ANTERIORES à última republicação que reabriu a
     // ordem (R3: aceite expirou 1h, dono republicou como pending). O aceite
     // velho fica nos relays para sempre e envenenava v697/v802/v575/v438/v725.
@@ -1211,10 +1445,11 @@ class NostrOrderService {
         final cutoff = republishTs - _republishGraceSeconds;
         final before = accepts.length;
         accepts.removeWhere((e) =>
-          (e['created_at'] as int) < cutoff &&
-          ((e['relay_ts'] as int?) ?? (e['created_at'] as int)) < cutoff);
+            (e['created_at'] as int) < cutoff &&
+            ((e['relay_ts'] as int?) ?? (e['created_at'] as int)) < cutoff);
         if (accepts.length < before) {
-          broLog('v819: ${before - accepts.length} aceite(s) anterior(es) à republicação de ${orderId.substring(0, 8)} ignorado(s)');
+          broLog(
+              'v819: ${before - accepts.length} aceite(s) anterior(es) à republicação de ${orderId.substring(0, 8)} ignorado(s)');
         }
       }
     } catch (_) {}
@@ -1224,27 +1459,34 @@ class NostrOrderService {
   /// v702: mesma ordenação canônica (acceptedAt imutável), mas devolvendo os
   /// timestamps — a entrega do billCode precisa saber a IDADE do aceite mais
   /// novo pra respeitar a janela de propagação entre relays antes de decidir.
-  Future<List<Map<String, dynamic>>> fetchAllAcceptsWithTimes(String orderId) async {
+  Future<List<Map<String, dynamic>>> fetchAllAcceptsWithTimes(
+      String orderId) async {
     final pubkeys = await fetchAllAcceptsForOrder(orderId);
     if (pubkeys.isEmpty) return [];
     // refaz o fetch completo pra pegar os timestamps (barato: relays quentes)
     final allRelays = <String>[..._relays, ..._fallbackRelays];
     final results = await Future.wait(
       allRelays.map((relay) => _fetchFromRelay(
-        relay,
-        kinds: [kindBroAccept],
-        tags: {'#d': ['${orderId}_accept']},
-        limit: 20,
-      ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[])
-       .catchError((_) => <Map<String, dynamic>>[])),
+            relay,
+            kinds: [kindBroAccept],
+            tags: {
+              '#d': ['${orderId}_accept']
+            },
+            limit: 20,
+          )
+              .timeout(const Duration(seconds: 8),
+                  onTimeout: () => <Map<String, dynamic>>[])
+              .catchError((_) => <Map<String, dynamic>>[])),
     );
     final out = <Map<String, dynamic>>[];
     final seen = <String>{};
     for (final events in results) {
       for (final event in events) {
         try {
-          final content = event['parsedContent'] ?? jsonDecode(event['content']);
-          if (content['orderId'] != orderId || content['type'] != 'bro_accept') continue;
+          final content =
+              event['parsedContent'] ?? jsonDecode(event['content']);
+          if (content['orderId'] != orderId || content['type'] != 'bro_accept')
+            continue;
           final pk = event['pubkey'] as String?;
           if (pk == null || !seen.add(pk)) continue;
           int ts = event['created_at'] as int? ?? 0;
@@ -1257,11 +1499,16 @@ class NostrOrderService {
               ts = ((aaTs - ts).abs() > 300) ? ts : aaTs;
             }
           }
-          out.add({'pubkey': pk, 'acceptedAt': ts, 'relay_ts': event['created_at'] as int? ?? ts});
+          out.add({
+            'pubkey': pk,
+            'acceptedAt': ts,
+            'relay_ts': event['created_at'] as int? ?? ts
+          });
         } catch (_) {}
       }
     }
-    out.sort((a, b) => (a['acceptedAt'] as int).compareTo(b['acceptedAt'] as int));
+    out.sort(
+        (a, b) => (a['acceptedAt'] as int).compareTo(b['acceptedAt'] as int));
     // v819: mesmo filtro de aceites anteriores à republicação (R3) — o caller
     // (janela de propagação v702) não pode considerar o aceite expirado.
     // Mantém se QUALQUER timestamp passar do corte (relay_ts protege aceite
@@ -1272,10 +1519,11 @@ class NostrOrderService {
         final cutoff = republishTs - _republishGraceSeconds;
         final before = out.length;
         out.removeWhere((e) =>
-          (e['acceptedAt'] as int) < cutoff &&
-          ((e['relay_ts'] as int?) ?? (e['acceptedAt'] as int)) < cutoff);
+            (e['acceptedAt'] as int) < cutoff &&
+            ((e['relay_ts'] as int?) ?? (e['acceptedAt'] as int)) < cutoff);
         if (out.length < before) {
-          broLog('v819: ${before - out.length} aceite(s) anterior(es) à republicação de ${orderId.substring(0, 8)} ignorado(s) (com timestamps)');
+          broLog(
+              'v819: ${before - out.length} aceite(s) anterior(es) à republicação de ${orderId.substring(0, 8)} ignorado(s) (com timestamps)');
         }
       }
     } catch (_) {}
@@ -1307,10 +1555,12 @@ class NostrOrderService {
         privkey: keychain.private,
       );
       final results = await Future.wait(
-        _relays.map((relay) => _publishToRelay(relay, deletionEvent).catchError((_) => false)),
+        _relays.map((relay) =>
+            _publishToRelay(relay, deletionEvent).catchError((_) => false)),
       );
       final ok = results.where((r) => r).length;
-      broLog('🗑️ deleteAcceptEvent: ordem ${orderId.substring(0, 8)} — delete em $ok/${_relays.length} relays');
+      broLog(
+          '🗑️ deleteAcceptEvent: ordem ${orderId.substring(0, 8)} — delete em $ok/${_relays.length} relays');
       return ok > 0;
     } catch (e) {
       broLog('❌ deleteAcceptEvent EXCEPTION: $e');
@@ -1318,37 +1568,48 @@ class NostrOrderService {
     }
   }
 
-    /// R5 (12/11): snapshot HTTP do watchtower (lista <500ms, relays em background).
-  Future<List<Map<String, dynamic>>> _fetchProviderOrdersFromApi(String providerPubkey) async {
+  /// R5 (12/11): snapshot HTTP do watchtower (lista <500ms, relays em background).
+  Future<List<Map<String, dynamic>>> _fetchProviderOrdersFromApi(
+      String providerPubkey) async {
     try {
       // v803: timeout curto (6s) SÓ nesta chamada — DNS intermitente não pode
       // segurar o render da lista pelo timeout global de 20s do Dio.
       final resp = apiGetOverride != null
-          ? await apiGetOverride!('/watchtower/available-orders?provider=' + providerPubkey)
+          ? await apiGetOverride!(
+              '/watchtower/available-orders?provider=' + providerPubkey)
           : await ApiService().get(
               '/watchtower/available-orders?provider=' + providerPubkey,
-              options: Options(sendTimeout: const Duration(seconds: 6), receiveTimeout: const Duration(seconds: 6)),
+              options: Options(
+                  sendTimeout: const Duration(seconds: 6),
+                  receiveTimeout: const Duration(seconds: 6)),
             );
       if (resp != null && resp['orders'] is List) {
         final raw = (resp['orders'] as List).cast<Map<dynamic, dynamic>>();
-        return raw.map<Map<String, dynamic>>((r) => {
-          'id': r['id'],
-          'amount': r['amountBrl'],
-          'amount_brl': r['amountBrl'],
-          'btcAmount': (r['amountSats'] is int) ? (r['amountSats'] as int) / 1e8 : null,
-          'amount_sats': r['amountSats'],
-          'status': r['status'],
-          'createdAt': DateTime.fromMillisecondsSinceEpoch((r['createdAt'] as int) * 1000).toIso8601String(),
-          'created_at': r['createdAt'],
-          'acceptedAt': r['acceptedAt'],
-          'providerId': providerPubkey,
-          'userPubkey': '',
-          'billCode': '',
-          'type': 'watchtower_snapshot',
-          // R5c: resultado da corrida (perdedor agora aparece na lista).
-          if (r['raceWon'] is bool) 'raceWon': r['raceWon'],
-          if (r['acceptsCount'] is int) 'acceptsCount': r['acceptsCount'],
-        }).toList();
+        return raw
+            .map<Map<String, dynamic>>((r) => {
+                  'id': r['id'],
+                  'amount': r['amountBrl'],
+                  'amount_brl': r['amountBrl'],
+                  'btcAmount': (r['amountSats'] is int)
+                      ? (r['amountSats'] as int) / 1e8
+                      : null,
+                  'amount_sats': r['amountSats'],
+                  'status': r['status'],
+                  'createdAt': DateTime.fromMillisecondsSinceEpoch(
+                          (r['createdAt'] as int) * 1000)
+                      .toIso8601String(),
+                  'created_at': r['createdAt'],
+                  'acceptedAt': r['acceptedAt'],
+                  'providerId': providerPubkey,
+                  'userPubkey': '',
+                  'billCode': '',
+                  'type': 'watchtower_snapshot',
+                  // R5c: resultado da corrida (perdedor agora aparece na lista).
+                  if (r['raceWon'] is bool) 'raceWon': r['raceWon'],
+                  if (r['acceptsCount'] is int)
+                    'acceptsCount': r['acceptsCount'],
+                })
+            .toList();
       }
     } catch (_) {}
     return const [];
@@ -1363,29 +1624,37 @@ class NostrOrderService {
           ? await apiGetOverride!('/watchtower/available-orders')
           : await ApiService().get(
               '/watchtower/available-orders',
-              options: Options(sendTimeout: const Duration(seconds: 6), receiveTimeout: const Duration(seconds: 6)),
+              options: Options(
+                  sendTimeout: const Duration(seconds: 6),
+                  receiveTimeout: const Duration(seconds: 6)),
             );
       if (resp != null && resp['orders'] is List) {
         final raw = (resp['orders'] as List).cast<Map<dynamic, dynamic>>();
-        return raw.map<Map<String, dynamic>>((r) => {
-          'id': r['id'],
-          'amount': r['amountBrl'],
-          'amount_brl': r['amountBrl'],
-          'btcAmount': (r['amountSats'] is int) ? (r['amountSats'] as int) / 1e8 : null,
-          'amount_sats': r['amountSats'],
-          'status': 'pending',
-          'createdAt': DateTime.fromMillisecondsSinceEpoch((r['createdAt'] as int) * 1000).toIso8601String(),
-          'created_at': r['createdAt'],
-          'userPubkey': '',
-          'billCode': '',
-          'type': 'watchtower_snapshot',
-        }).toList();
+        return raw
+            .map<Map<String, dynamic>>((r) => {
+                  'id': r['id'],
+                  'amount': r['amountBrl'],
+                  'amount_brl': r['amountBrl'],
+                  'btcAmount': (r['amountSats'] is int)
+                      ? (r['amountSats'] as int) / 1e8
+                      : null,
+                  'amount_sats': r['amountSats'],
+                  'status': 'pending',
+                  'createdAt': DateTime.fromMillisecondsSinceEpoch(
+                          (r['createdAt'] as int) * 1000)
+                      .toIso8601String(),
+                  'created_at': r['createdAt'],
+                  'userPubkey': '',
+                  'billCode': '',
+                  'type': 'watchtower_snapshot',
+                })
+            .toList();
       }
     } catch (_) {}
     return const [];
   }
 
-/// Busca ordens aceitas por um provedor e retorna como List<Order>
+  /// Busca ordens aceitas por um provedor e retorna como List<Order>
   /// CORREÇÃO: Agora também busca eventos de UPDATE para obter status correto
   ///
   /// vSEC-fix (cache inteligente): [skipOrderIds] = ordens TERMINAIS que já
@@ -1394,30 +1663,41 @@ class NostrOrderService {
   /// fique lento (dezenas de fetchOrderFromNostr p/ ordens antigas) E evita
   /// perder o histórico quando o relay já podou o evento. Ordens NOVAS/ativas
   /// continuam sendo buscadas normalmente (nada se perde).
-  Future<List<Order>> fetchProviderOrders(String providerPubkey, {Set<String>? skipOrderIds, void Function()? onBackgroundReconcile}) async {
+  Future<List<Order>> fetchProviderOrders(String providerPubkey,
+      {Set<String>? skipOrderIds,
+      void Function()? onBackgroundReconcile}) async {
     // R5b: snapshot HTTP do watchtower primeiro (lista em <500ms, relays em background).
     final sw = Stopwatch()..start();
     final snapshot = await _fetchProviderOrdersFromApi(providerPubkey);
     if (snapshot.isNotEmpty) {
       // Caminho feliz: monta a lista SÓ do snapshot e retorna imediato.
-      final orders = _buildProviderOrdersFromRaw(snapshot, providerPubkey, const {});
-      broLog('⏱️ R5b: provider orders renderizadas via API em ${sw.elapsedMilliseconds}ms (${orders.length} ordens)');
+      final orders =
+          _buildProviderOrdersFromRaw(snapshot, providerPubkey, const {});
+      broLog(
+          '⏱️ R5b: provider orders renderizadas via API em ${sw.elapsedMilliseconds}ms (${orders.length} ordens)');
       // Relay fan-out em background reconcilia (aditivo) e avisa o provider.
-      unawaited(_reconcileProviderOrdersInBackground(providerPubkey, skipOrderIds: skipOrderIds, onBackgroundReconcile: onBackgroundReconcile));
+      unawaited(_reconcileProviderOrdersInBackground(providerPubkey,
+          skipOrderIds: skipOrderIds,
+          onBackgroundReconcile: onBackgroundReconcile));
       return orders;
     }
     // Fallback: API vazia/falhou → fluxo relay antigo (bloqueante), intacto.
-    final rawOrders = List<Map<String, dynamic>>.from(await _fetchProviderOrdersRaw(providerPubkey, skipOrderIds: skipOrderIds));
+    final rawOrders = List<Map<String, dynamic>>.from(
+        await _fetchProviderOrdersRaw(providerPubkey,
+            skipOrderIds: skipOrderIds));
     // CORREÇÃO CRÍTICA: Buscar eventos de UPDATE para obter status correto
     // Sem isso, ordens completed apareciam como "pending" ou "accepted"
     final statusUpdates = await _fetchAllOrderStatusUpdates();
-    final orders = _buildProviderOrdersFromRaw(rawOrders, providerPubkey, statusUpdates);
-    broLog('⏱️ R5b: provider orders via relay fallback em ${sw.elapsedMilliseconds}ms (${orders.length} ordens)');
+    final orders =
+        _buildProviderOrdersFromRaw(rawOrders, providerPubkey, statusUpdates);
+    broLog(
+        '⏱️ R5b: provider orders via relay fallback em ${sw.elapsedMilliseconds}ms (${orders.length} ordens)');
     return orders;
   }
 
   /// R5b: monta List<Order> a partir de raw maps (snapshot e/ou relay).
-  List<Order> _buildProviderOrdersFromRaw(List<Map<String, dynamic>> rawOrders, String providerPubkey, Map<String, Map<String, dynamic>> statusUpdates) {
+  List<Order> _buildProviderOrdersFromRaw(List<Map<String, dynamic>> rawOrders,
+      String providerPubkey, Map<String, Map<String, dynamic>> statusUpdates) {
     final orders = <Order>[];
     for (final raw in rawOrders) {
       final rawId = raw['id']?.toString() ?? '';
@@ -1446,9 +1726,10 @@ class NostrOrderService {
             // CORREÇÃO v1.0.129: Usar timestamp Nostr como fallback em vez de DateTime.now()
             // DateTime.now() fazia TODAS as ordens sem createdAt ficarem com a mesma data (do sync)
             createdAt: DateTime.tryParse(raw['createdAt']?.toString() ?? '') ??
-                       (raw['created_at'] != null
-                         ? DateTime.fromMillisecondsSinceEpoch((raw['created_at'] as int) * 1000)
-                         : DateTime.now()),
+                (raw['created_at'] != null
+                    ? DateTime.fromMillisecondsSinceEpoch(
+                        (raw['created_at'] as int) * 1000)
+                    : DateTime.now()),
             // R5c: resultado da corrida vindo do snapshot do watchtower.
             // lostRace alinhado com a chave v699 já usada pelo app.
             // v807: defesa em profundidade — não setar lostRace se o status
@@ -1456,22 +1737,25 @@ class NostrOrderService {
             metadata: (raw['raceWon'] is bool)
                 ? <String, dynamic>{
                     'raceWon': raw['raceWon'],
-                    if (raw['acceptsCount'] is int) 'acceptsCount': raw['acceptsCount'],
+                    if (raw['acceptsCount'] is int)
+                      'acceptsCount': raw['acceptsCount'],
                     if (raw['raceWon'] == false &&
-                        !const ['completed', 'cancelled', 'liquidated', 'disputed']
-                            .contains(raw['status']?.toString()))
+                        !const [
+                          'completed',
+                          'cancelled',
+                          'liquidated',
+                          'disputed'
+                        ].contains(raw['status']?.toString()))
                       'lostRace': true,
                   }
                 : null,
           );
-        } catch (e) {
-        }
+        } catch (e) {}
       } else {
         // É um evento Nostr, usar eventToOrder
         order = eventToOrder(raw);
         if (order != null) {
-        } else {
-        }
+        } else {}
       }
 
       if (order != null) {
@@ -1489,7 +1773,8 @@ class NostrOrderService {
 
         // CORREÇÃO CRÍTICA: Aplicar status atualizado dos eventos de UPDATE
         // Isso garante que ordens completed/awaiting_confirmation apareçam com status correto
-        order = _applyStatusUpdate(order, statusUpdates, userPrivateKey: _decryptionKey);
+        order = _applyStatusUpdate(order, statusUpdates,
+            userPrivateKey: _decryptionKey);
 
         orders.add(order);
       }
@@ -1500,15 +1785,20 @@ class NostrOrderService {
   /// R5b: reconcile em background — relay fan-out + status updates, merge
   /// ADITIVO (relay pode adicionar ordem que o servidor escondeu; nunca remove),
   /// depois avisa o provider via callback.
-  Future<void> _reconcileProviderOrdersInBackground(String providerPubkey, {Set<String>? skipOrderIds, void Function()? onBackgroundReconcile}) async {
+  Future<void> _reconcileProviderOrdersInBackground(String providerPubkey,
+      {Set<String>? skipOrderIds,
+      void Function()? onBackgroundReconcile}) async {
     try {
-      final relayOrders = await _fetchProviderOrdersRaw(providerPubkey, skipOrderIds: skipOrderIds);
+      final relayOrders = await _fetchProviderOrdersRaw(providerPubkey,
+          skipOrderIds: skipOrderIds);
       final statusUpdates = await _fetchAllOrderStatusUpdates();
-      final relayBuilt = _buildProviderOrdersFromRaw(relayOrders, providerPubkey, statusUpdates);
+      final relayBuilt = _buildProviderOrdersFromRaw(
+          relayOrders, providerPubkey, statusUpdates);
       _lastRelayReconcileResult = relayBuilt;
       onBackgroundReconcile?.call();
     } catch (e) {
-      broLog('⚠️ R5b: reconcile provider em background falhou (não bloqueia): $e');
+      broLog(
+          '⚠️ R5b: reconcile provider em background falhou (não bloqueia): $e');
     }
   }
 
@@ -1525,7 +1815,8 @@ class NostrOrderService {
     Map<String, List<String>>? tags,
     int limit = 50,
   }) async {
-    return _fetchFromRelay(relayUrl, kinds: kinds, authors: authors, tags: tags, limit: limit);
+    return _fetchFromRelay(relayUrl,
+        kinds: kinds, authors: authors, tags: tags, limit: limit);
   }
 
   /// Publica evento em um relay específico
@@ -1536,11 +1827,10 @@ class NostrOrderService {
     Timer? timeout;
 
     try {
-      
       // Criar conexão WebSocket
       final uri = Uri.parse(relayUrl);
       channel = WebSocketChannel.connect(uri);
-      
+
       // Aguardar conexão estar pronta
       // NOTA: Em iOS, channel.ready pode não funcionar bem, então usamos try/catch
       try {
@@ -1554,8 +1844,7 @@ class NostrOrderService {
         // Se channel.ready falhar, dar um pequeno delay e tentar assim mesmo
         await Future.delayed(const Duration(milliseconds: 500));
       }
-      
-      
+
       // Timeout de 15 segundos para resposta (aumentado de 8 para melhor confiabilidade)
       timeout = Timer(const Duration(seconds: 15), () {
         if (!completer.isCompleted) {
@@ -1595,7 +1884,8 @@ class NostrOrderService {
       // Enviar evento
       final eventJson = ['EVENT', event.toJson()];
       final payload = jsonEncode(eventJson);
-      broLog('📡 _publishToRelay $relayUrl: sending ${(payload.length / 1024).toStringAsFixed(0)}KB event');
+      broLog(
+          '📡 _publishToRelay $relayUrl: sending ${(payload.length / 1024).toStringAsFixed(0)}KB event');
       channel.sink.add(payload);
 
       return await completer.future;
@@ -1615,9 +1905,9 @@ class NostrOrderService {
         // com a mensagem já publicada nos relays bons (caso real: msg de
         // mediação da disputa 2706f28d "travada" em 18/10).
         await channel?.sink.close().timeout(
-          const Duration(seconds: 3),
-          onTimeout: () {},
-        );
+              const Duration(seconds: 3),
+              onTimeout: () {},
+            );
       } catch (_) {}
     }
   }
@@ -1639,7 +1929,7 @@ class NostrOrderService {
       since: null,
     );
   }
-  
+
   /// Busca eventos de um relay com suporte a 'since' timestamp
   /// CRÍTICO para sincronização entre dispositivos - o 'since' permite
   /// que relays retornem apenas eventos recentes, melhorando consistência
@@ -1674,7 +1964,9 @@ class NostrOrderService {
         timeout = Timer(const Duration(seconds: 8), () {
           if (!completer.isCompleted) {
             completer.complete(events);
-            try { ch.sink.close(); } catch (_) {}
+            try {
+              ch.sink.close();
+            } catch (_) {}
           }
         });
 
@@ -1690,7 +1982,8 @@ class NostrOrderService {
                 try {
                   Event.fromJson(eventData, verify: true);
                 } catch (e) {
-                  broLog('⚠️ REJEITADO evento com assinatura inválida: ${eventData['id']?.toString().substring(0, 8) ?? '?'} - $e');
+                  broLog(
+                      '⚠️ REJEITADO evento com assinatura inválida: ${eventData['id']?.toString().substring(0, 8) ?? '?'} - $e');
                   return;
                 }
 
@@ -1744,8 +2037,12 @@ class NostrOrderService {
         if (!zoneCompleter.isCompleted) zoneCompleter.complete(events);
       } finally {
         timeout?.cancel();
-        try { channel?.sink.add(jsonEncode(['CLOSE', subscriptionId])); } catch (_) {}
-        try { channel?.sink.close(); } catch (_) {}
+        try {
+          channel?.sink.add(jsonEncode(['CLOSE', subscriptionId]));
+        } catch (_) {}
+        try {
+          channel?.sink.close();
+        } catch (_) {}
       }
     }, (error, stack) {
       // Capturar erros de zona (WebSocket DNS, 502, etc.) silenciosamente
@@ -1764,19 +2061,19 @@ class NostrOrderService {
   Order? eventToOrder(Map<String, dynamic> event) {
     try {
       final rawContent = event['content'];
-      
+
       final content = event['parsedContent'] ?? jsonDecode(rawContent ?? '{}');
-      
+
       // Verificar se é um evento de update (não tem dados completos)
       final eventType = content['type'] as String?;
       if (eventType == 'bro_order_update') {
         return null; // Updates são tratados separadamente
       }
-      
+
       // Log para debug
       final amount = (content['amount'] as num?)?.toDouble() ?? 0;
       final orderId = content['orderId'] ?? event['id'];
-      
+
       // Se amount é 0, tentar pegar das tags
       double finalAmount = amount;
       if (finalAmount == 0) {
@@ -1790,12 +2087,12 @@ class NostrOrderService {
           }
         }
       }
-      
+
       // VALIDAÇÃO CRÍTICA: Não aceitar ordens com amount=0
       if (finalAmount == 0) {
         return null;
       }
-      
+
       // CRÍTICO: Determinar o userPubkey correto
       // event.pubkey é AUTORITATIVO (assinatura Nostr verificada antes em _fetchFromRelay)
       // content.userPubkey é texto livre — pode ser spoofado.
@@ -1820,7 +2117,7 @@ class NostrOrderService {
 
       // Em ambos os casos válidos (campo presente == signer, ou ausente/legado), o dono é o signer
       final String originalUserPubkey = eventPubkey;
-      
+
       return Order(
         id: orderId,
         eventId: event['id'],
@@ -1837,8 +2134,9 @@ class NostrOrderService {
         status: content['status'] ?? _getStatusFromTags(event['tags']),
         providerId: content['providerId'],
         acceptedAt: DateTime.tryParse(content['acceptedAt']?.toString() ?? ''),
-        createdAt: DateTime.tryParse(content['createdAt'] ?? '') ?? 
-                   DateTime.fromMillisecondsSinceEpoch((event['created_at'] ?? 0) * 1000),
+        createdAt: DateTime.tryParse(content['createdAt'] ?? '') ??
+            DateTime.fromMillisecondsSinceEpoch(
+                (event['created_at'] ?? 0) * 1000),
       );
     } catch (e) {
       return null;
@@ -1858,22 +2156,23 @@ class NostrOrderService {
   /// Busca uma ordem específica do Nostr pelo ID
   /// Usa o evento MAIS RECENTE entre todos os relays
   Future<Map<String, dynamic>?> fetchOrderFromNostr(String orderId) async {
-    
     // Buscar em todos os relays em paralelo
     var results = await Future.wait(
-      _relays.take(3).map((relay) => _fetchOrderFromRelay(relay, orderId).catchError((_) => null)),
+      _relays.take(3).map((relay) =>
+          _fetchOrderFromRelay(relay, orderId).catchError((_) => null)),
     );
-    
+
     // v681: se os 3 primeiros falharem (damus 503, nos.lol morto etc), tentar
     // o resto + fallbacks antes de desistir — caso real: cobrança de mediação
     // não achava uma ordem que existia no primal/apexcord.
     if (results.every((r) => r == null)) {
       final extra = <String>[..._relays.skip(3), ..._fallbackRelays];
       results = await Future.wait(
-        extra.map((relay) => _fetchOrderFromRelay(relay, orderId).catchError((_) => null)),
+        extra.map((relay) =>
+            _fetchOrderFromRelay(relay, orderId).catchError((_) => null)),
       );
     }
-    
+
     // Usar o resultado MAIS RECENTE (maior created_at)
     Map<String, dynamic>? newest;
     int newestTimestamp = 0;
@@ -1885,16 +2184,17 @@ class NostrOrderService {
         newestTimestamp = ts;
       }
     }
-    
+
     if (newest != null) {
       final billCode = newest['billCode'] as String? ?? '';
-      broLog('🔍 [FETCH] fetchOrderFromNostr: ${results.where((r) => r != null).length} relays responderam, '
+      broLog(
+          '🔍 [FETCH] fetchOrderFromNostr: ${results.where((r) => r != null).length} relays responderam, '
           'usando evento ts=$newestTimestamp, billCode=${billCode.isNotEmpty ? "OK(${billCode.length}ch)" : "VAZIO"}');
     }
-    
+
     return newest;
   }
-  
+
   /// v681: resolve um PREFIXO de orderId (ex: "e32e493e") para o ID completo
   /// varrendo ordens recentes em TODOS os relays + fallbacks. Retorna o
   /// próprio input se já parecer completo, ou null se não achar.
@@ -1908,9 +2208,12 @@ class NostrOrderService {
           return await _fetchFromRelay(
             relay,
             kinds: [kindBroOrder],
-            tags: {'#t': ['bro-order']},
+            tags: {
+              '#t': ['bro-order']
+            },
             limit: 300,
-          ).timeout(const Duration(seconds: 10), onTimeout: () => <Map<String, dynamic>>[]);
+          ).timeout(const Duration(seconds: 10),
+              onTimeout: () => <Map<String, dynamic>>[]);
         } catch (_) {
           return <Map<String, dynamic>>[];
         }
@@ -1933,18 +2236,30 @@ class NostrOrderService {
   }
 
   /// Helper: Busca ordem de um relay específico
-  Future<Map<String, dynamic>?> _fetchOrderFromRelay(String relay, String orderId) async {
+  Future<Map<String, dynamic>?> _fetchOrderFromRelay(
+      String relay, String orderId) async {
     try {
       // Buscar em paralelo: d-tag e t-tag simultaneamente
       final results = await Future.wait([
-        _fetchFromRelay(relay, kinds: [kindBroOrder], tags: {'#d': [orderId]}, limit: 5),
-        _fetchFromRelay(relay, kinds: [kindBroOrder], tags: {'#t': [orderId]}, limit: 5),
+        _fetchFromRelay(relay,
+            kinds: [kindBroOrder],
+            tags: {
+              '#d': [orderId]
+            },
+            limit: 5),
+        _fetchFromRelay(relay,
+            kinds: [kindBroOrder],
+            tags: {
+              '#t': [orderId]
+            },
+            limit: 5),
       ]);
-      
+
       // Combinar resultados e ordenar por timestamp DECRESCENTE (mais recente primeiro)
       final allEvents = [...results[0], ...results[1]];
-      allEvents.sort((a, b) => ((b['created_at'] as int?) ?? 0).compareTo((a['created_at'] as int?) ?? 0));
-      
+      allEvents.sort((a, b) => ((b['created_at'] as int?) ?? 0)
+          .compareTo((a['created_at'] as int?) ?? 0));
+
       // Deduplicar por event id
       final seenIds = <String>{};
       allEvents.removeWhere((e) {
@@ -1953,13 +2268,14 @@ class NostrOrderService {
         seenIds.add(id);
         return false;
       });
-      
+
       // Verificar se algum evento tem o orderId no content — PREFERIR O MAIS RECENTE
       for (final event in allEvents) {
         try {
-          final content = event['parsedContent'] ?? jsonDecode(event['content']);
+          final content =
+              event['parsedContent'] ?? jsonDecode(event['content']);
           final eventOrderId = content['orderId'] as String?;
-          
+
           if (eventOrderId == orderId) {
             // v565 SECURITY: signer (event.pubkey, assinatura verificada) é autoritativo.
             // Se content.userPubkey existe e diverge do signer, é spoofing — pular.
@@ -1969,7 +2285,8 @@ class NostrOrderService {
             if (claimedUserPubkey != null &&
                 claimedUserPubkey.isNotEmpty &&
                 claimedUserPubkey != eventPubkey) {
-              broLog('🚫 [SECURITY] _fetchOrderFromRelay: spoofed kind 30078 ignorado — '
+              broLog(
+                  '🚫 [SECURITY] _fetchOrderFromRelay: spoofed kind 30078 ignorado — '
                   'signer=${eventPubkey.substring(0, 8)} claim=${claimedUserPubkey.substring(0, 8)}');
               continue;
             }
@@ -1996,14 +2313,15 @@ class NostrOrderService {
           }
         } catch (_) {}
       }
-      
+
       // v744 (auditoria B5): fallback "usar o mais recente" REMOVIDO — se
       // nenhum evento bate o orderId pedido, a ordem NÃO está neste relay.
       // Aceitar evento de OUTRA ordem podia levar provedor a pagar conta
       // errada. Se o relay respondeu lixo, retornamos null (leitura degrada
       // graciosamente — outros relays ainda são consultados pelo caller).
       if (allEvents.isNotEmpty) {
-        broLog('⚠️ _fetchOrderFromRelay: relay retornou ${allEvents.length} evento(s) sem match de orderId — ignorando (B5)');
+        broLog(
+            '⚠️ _fetchOrderFromRelay: relay retornou ${allEvents.length} evento(s) sem match de orderId — ignorando (B5)');
       }
       if (false) {
         final event = allEvents.first; // unreachable — mantido p/ diff mínimo
@@ -2015,12 +2333,13 @@ class NostrOrderService {
         if (claimedUserPubkey != null &&
             claimedUserPubkey.isNotEmpty &&
             claimedUserPubkey != eventPubkey) {
-          broLog('🚫 [SECURITY] _fetchOrderFromRelay fallback: spoofed kind 30078 ignorado — '
+          broLog(
+              '🚫 [SECURITY] _fetchOrderFromRelay fallback: spoofed kind 30078 ignorado — '
               'signer=${eventPubkey.substring(0, 8)} claim=${claimedUserPubkey.substring(0, 8)}');
           return null;
         }
         final String fallbackUserPubkey = eventPubkey;
-        
+
         return {
           'id': content['orderId'] ?? orderId,
           'eventId': event['id'],
@@ -2041,10 +2360,10 @@ class NostrOrderService {
         };
       }
     } catch (e) {}
-    
+
     return null;
   }
-  
+
   /// Wrapper público: retorna o status mais recente de uma ordem no Nostr
   /// (kind 30080/30081). Usado pelo admin para detectar disputas cujas ordens
   /// já chegaram a um estado terminal (completed/cancelled/liquidated) sem que
@@ -2057,15 +2376,25 @@ class NostrOrderService {
   Future<String?> _fetchLatestOrderStatus(String orderId) async {
     String? latestStatus;
     int latestTimestamp = 0;
-    
+
     // PERFORMANCE: Buscar em todos os relays EM PARALELO
     final relayResults = await Future.wait(
       _relays.take(3).map((relay) async {
         try {
           // Buscar ambas estratégias em paralelo dentro do relay
           final fetches = await Future.wait([
-            _fetchFromRelay(relay, kinds: [kindBroPaymentProof, kindBroComplete], tags: {'#orderId': [orderId]}, limit: 20),
-            _fetchFromRelay(relay, kinds: [kindBroPaymentProof, kindBroComplete], tags: {'#t': [orderId]}, limit: 20),
+            _fetchFromRelay(relay,
+                kinds: [kindBroPaymentProof, kindBroComplete],
+                tags: {
+                  '#orderId': [orderId]
+                },
+                limit: 20),
+            _fetchFromRelay(relay,
+                kinds: [kindBroPaymentProof, kindBroComplete],
+                tags: {
+                  '#t': [orderId]
+                },
+                limit: 20),
           ]);
           return [...fetches[0], ...fetches[1]];
         } catch (e) {
@@ -2073,18 +2402,19 @@ class NostrOrderService {
         }
       }),
     );
-    
+
     // Processar todos os resultados
     for (final events in relayResults) {
       for (final event in events) {
         try {
-          final content = event['parsedContent'] ?? jsonDecode(event['content']);
+          final content =
+              event['parsedContent'] ?? jsonDecode(event['content']);
           final eventOrderId = content['orderId'] as String?;
-          
+
           if (eventOrderId == orderId) {
             final eventTimestamp = event['created_at'] as int? ?? 0;
             final eventStatus = content['status'] as String?;
-            
+
             if (eventStatus != null && eventTimestamp > latestTimestamp) {
               latestTimestamp = eventTimestamp;
               latestStatus = eventStatus;
@@ -2093,13 +2423,14 @@ class NostrOrderService {
         } catch (_) {}
       }
     }
-    
+
     return latestStatus;
   }
 
   /// Busca o evento COMPLETE de uma ordem para obter o providerInvoice
   /// Retorna um Map com os dados do evento COMPLETE incluindo providerInvoice
-  Future<Map<String, dynamic>?> fetchOrderCompleteEvent(String orderId, {String? excludeAuthorPubkey}) async {
+  Future<Map<String, dynamic>?> fetchOrderCompleteEvent(String orderId,
+      {String? excludeAuthorPubkey}) async {
     // v768: excludeAuthorPubkey — ignora eventos assinados por ESTA pubkey.
     // Caso real 09/11 (7b7542f8): o app do COMPRADOR republicou um
     // invoice_refresh assinado por ELE MESMO (providerId=self corrompido),
@@ -2107,7 +2438,7 @@ class NostrOrderService {
     // bloqueou o pagamento LEGÍTIMO. Um complete/refresh assinado pelo
     // comprador NUNCA é prova do provedor — o autor é quem assina, não o
     // campo providerId (auto-declarado e corruptível).
-    
+
     // v584: ANTES buscava só em `_relays.take(3)`. Isso causou o bug do
     // leandrogehlen (order 92a2fdeb): o complete só foi aceito por 1 relay
     // (damus.io) por causa do tamanho (88KB). Se o cliente não conseguia
@@ -2120,28 +2451,45 @@ class NostrOrderService {
         try {
           // Buscar todas estratégias em paralelo (complete + invoice_refresh)
           final fetches = await Future.wait([
-            _fetchFromRelay(relay, kinds: [kindBroComplete], tags: {'#orderId': [orderId]}, limit: 5),
-            _fetchFromRelay(relay, kinds: [kindBroComplete], tags: {'#d': ['${orderId}_complete']}, limit: 5),
-            _fetchFromRelay(relay, kinds: [kindBroComplete], tags: {'#d': ['${orderId}_invoice_refresh']}, limit: 5),
+            _fetchFromRelay(relay,
+                kinds: [kindBroComplete],
+                tags: {
+                  '#orderId': [orderId]
+                },
+                limit: 5),
+            _fetchFromRelay(relay,
+                kinds: [kindBroComplete],
+                tags: {
+                  '#d': ['${orderId}_complete']
+                },
+                limit: 5),
+            _fetchFromRelay(relay,
+                kinds: [kindBroComplete],
+                tags: {
+                  '#d': ['${orderId}_invoice_refresh']
+                },
+                limit: 5),
           ]);
-          
+
           final allEvents = [...fetches[0], ...fetches[1], ...fetches[2]];
-          
+
           // v133: Preferir invoice_refresh (mais recente) sobre complete
           Map<String, dynamic>? bestResult;
           int bestTimestamp = 0;
-          
+
           for (final event in allEvents) {
             try {
               // v768: pular evento auto-assinado (republish do comprador)
-              if (excludeAuthorPubkey != null && event['pubkey'] == excludeAuthorPubkey) continue;
-              final content = event['parsedContent'] ?? jsonDecode(event['content']);
+              if (excludeAuthorPubkey != null &&
+                  event['pubkey'] == excludeAuthorPubkey) continue;
+              final content =
+                  event['parsedContent'] ?? jsonDecode(event['content']);
               final eventOrderId = content['orderId'] as String?;
-              
+
               if (eventOrderId == orderId) {
                 final invoice = content['providerInvoice'] as String?;
                 if (invoice == null || invoice.isEmpty) continue;
-                
+
                 final ts = event['created_at'] as int? ?? 0;
                 if (ts >= bestTimestamp) {
                   bestTimestamp = ts;
@@ -2156,13 +2504,13 @@ class NostrOrderService {
               }
             } catch (_) {}
           }
-          
+
           return bestResult;
         } catch (e) {}
         return null;
       }),
     );
-    
+
     // v519: Escolher entre todos os relays o evento com maior timestamp.
     // O bug antigo (pick-first-non-null) fazia Carol pegar uma invoice antiga
     // de um relay enquanto o invoice_refresh mais novo estava em outro relay.
@@ -2177,7 +2525,7 @@ class NostrOrderService {
       }
     }
     best?.remove('_ts');
-    
+
     return best;
   }
 
@@ -2191,15 +2539,26 @@ class NostrOrderService {
       allRelays.map((relay) async {
         try {
           final fetches = await Future.wait([
-            _fetchFromRelay(relay, kinds: [kindBroComplete], tags: {'#orderId': [orderId]}, limit: 10),
-            _fetchFromRelay(relay, kinds: [kindBroComplete], tags: {'#d': ['${orderId}_complete']}, limit: 10),
+            _fetchFromRelay(relay,
+                kinds: [kindBroComplete],
+                tags: {
+                  '#orderId': [orderId]
+                },
+                limit: 10),
+            _fetchFromRelay(relay,
+                kinds: [kindBroComplete],
+                tags: {
+                  '#d': ['${orderId}_complete']
+                },
+                limit: 10),
           ]);
           Map<String, dynamic>? best;
           int bestTs = 0;
           for (final event in [...fetches[0], ...fetches[1]]) {
             try {
               if (!_isEventSignatureValid(event)) continue;
-              final content = event['parsedContent'] ?? jsonDecode(event['content']);
+              final content =
+                  event['parsedContent'] ?? jsonDecode(event['content']);
               if (content['type'] != 'bro_complete') continue;
               if (content['orderId'] != orderId) continue;
               final enc = content['proofImage_nip44'] as String?;
@@ -2229,34 +2588,33 @@ class NostrOrderService {
       }),
     );
     // v781 (H1): detectar provas CONFLITANTES - 2+ participantes distintos
-        // da corrida provaram pagamento pra mesma ordem. Devolve a mais nova
-        // (compatibilidade) + flag 'conflict' pro caller decidir pausar.
-        final distinctSenders = <String>{
-          for (final ev in results)
-            if (ev != null) ev['pubkey'] as String,
-        };
-        for (final ev in results) {
-          if (ev == null) continue;
-          final content = ev['parsedContent'] ?? jsonDecode(ev['content']);
-          final encOut = content['proofImage_nip44'] as String?;
-          final plainOut = content['proofImage'] as String?;
-          return {
-            if (encOut != null && encOut.isNotEmpty)
-              'proofImage_nip44': encOut,
-            // v820a: plaintext quando nao ha nip44 (ver filtro acima)
-            if ((encOut == null || encOut.isEmpty) &&
-                plainOut != null &&
-                plainOut.isNotEmpty &&
-                !plainOut.startsWith('[encrypted:'))
-              'proofImage_plain': plainOut,
-            'senderPubkey': ev['pubkey'] as String,
-            if (distinctSenders.length > 1) 'conflict': distinctSenders.join(','),
-            if (content['providerInvoice'] != null)
-              'providerInvoice': content['providerInvoice'] as String,
-          };
-        }
-        return null;
-      }
+    // da corrida provaram pagamento pra mesma ordem. Devolve a mais nova
+    // (compatibilidade) + flag 'conflict' pro caller decidir pausar.
+    final distinctSenders = <String>{
+      for (final ev in results)
+        if (ev != null) ev['pubkey'] as String,
+    };
+    for (final ev in results) {
+      if (ev == null) continue;
+      final content = ev['parsedContent'] ?? jsonDecode(ev['content']);
+      final encOut = content['proofImage_nip44'] as String?;
+      final plainOut = content['proofImage'] as String?;
+      return {
+        if (encOut != null && encOut.isNotEmpty) 'proofImage_nip44': encOut,
+        // v820a: plaintext quando nao ha nip44 (ver filtro acima)
+        if ((encOut == null || encOut.isEmpty) &&
+            plainOut != null &&
+            plainOut.isNotEmpty &&
+            !plainOut.startsWith('[encrypted:'))
+          'proofImage_plain': plainOut,
+        'senderPubkey': ev['pubkey'] as String,
+        if (distinctSenders.length > 1) 'conflict': distinctSenders.join(','),
+        if (content['providerInvoice'] != null)
+          'providerInvoice': content['providerInvoice'] as String,
+      };
+    }
+    return null;
+  }
 
   /// v723: prova + invoice de QUEM PROVOU. Se o evento da prova não tem
   /// invoice, busca o invoice_refresh MAIS RECENTE assinado pelo MESMO autor
@@ -2275,9 +2633,12 @@ class NostrOrderService {
           final events = await _fetchFromRelay(
             relay,
             kinds: [kindBroComplete],
-            tags: {'#d': ['${orderId}_invoice_refresh']},
+            tags: {
+              '#d': ['${orderId}_invoice_refresh']
+            },
             limit: 10,
-          ).timeout(const Duration(seconds: 6), onTimeout: () => <Map<String, dynamic>>[]);
+          ).timeout(const Duration(seconds: 6),
+              onTimeout: () => <Map<String, dynamic>>[]);
           Map<String, dynamic>? best;
           var bestTs = 0;
           for (final ev in events) {
@@ -2286,7 +2647,10 @@ class NostrOrderService {
               final content = ev['parsedContent'] ?? jsonDecode(ev['content']);
               if (content['type'] != 'bro_invoice_refresh') continue;
               final ts = ev['created_at'] as int? ?? 0;
-              if (ts >= bestTs) { bestTs = ts; best = ev; }
+              if (ts >= bestTs) {
+                bestTs = ts;
+                best = ev;
+              }
             } catch (_) {}
           }
           return best;
@@ -2298,7 +2662,10 @@ class NostrOrderService {
         if (ev == null) continue;
         final content = ev['parsedContent'] ?? jsonDecode(ev['content']);
         final inv = content['providerInvoice'] as String?;
-        if (inv != null && inv.isNotEmpty) { invoice = inv; break; }
+        if (inv != null && inv.isNotEmpty) {
+          invoice = inv;
+          break;
+        }
       }
     }
     return {
@@ -2316,18 +2683,23 @@ class NostrOrderService {
     final allRelays = <String>[..._relays, ..._fallbackRelays];
     final results = await Future.wait(
       allRelays.map((relay) => _fetchFromRelay(
-        relay,
-        kinds: [kindBroOrder],
-        tags: {'#d': [orderId]},
-        limit: 5,
-      ).timeout(const Duration(seconds: 5), onTimeout: () => <Map<String, dynamic>>[])
-       .catchError((_) => <Map<String, dynamic>>[])),
+            relay,
+            kinds: [kindBroOrder],
+            tags: {
+              '#d': [orderId]
+            },
+            limit: 5,
+          )
+              .timeout(const Duration(seconds: 5),
+                  onTimeout: () => <Map<String, dynamic>>[])
+              .catchError((_) => <Map<String, dynamic>>[])),
     );
     final hex64 = RegExp(r'^[0-9a-f]{64}$');
     for (final events in results) {
       for (final event in events) {
         try {
-          final content = event['parsedContent'] ?? jsonDecode(event['content']);
+          final content =
+              event['parsedContent'] ?? jsonDecode(event['content']);
           if (content['orderId'] != orderId) continue;
           if (content['type'] != 'bro_order') continue;
           final pk = content['userPubkey'] as String?;
@@ -2377,7 +2749,10 @@ class NostrOrderService {
 
       broLog('[InvoiceRefresh] Publicando invoice refresh para $orderId');
 
-      final futures = _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)).toList();
+      final futures = _relays
+          .map(
+              (relay) => _publishToRelay(relay, event).catchError((_) => false))
+          .toList();
 
       int successCount = 0;
       for (final future in futures) {
@@ -2387,7 +2762,8 @@ class NostrOrderService {
         } catch (_) {}
       }
 
-      broLog('[InvoiceRefresh] Publicado em $successCount/${_relays.length} relays');
+      broLog(
+          '[InvoiceRefresh] Publicado em $successCount/${_relays.length} relays');
       return successCount > 0;
     } catch (e) {
       broLog('[InvoiceRefresh] Erro ao publicar: $e');
@@ -2434,11 +2810,18 @@ class NostrOrderService {
     bool clearAcceptedAt = false,
   }) async {
     try {
+      if (order.metadata?['republishedAt'] != null &&
+          (newStatus == 'accepted' || newStatus == 'accept_expired')) {
+        broLog(
+            'R3: republish $newStatus bloqueado após nova rodada de ${order.id.substring(0, 8)}');
+        return null;
+      }
       final keychain = Keychain(privateKey);
 
       // Só o dono da ordem pode re-publicar (assinatura deve bater)
       if (order.userPubkey != null && order.userPubkey != keychain.public) {
-        broLog('v261: republishOrderWithStatus: SKIP - não sou o dono da ordem');
+        broLog(
+            'v261: republishOrderWithStatus: SKIP - não sou o dono da ordem');
         return null;
       }
 
@@ -2453,7 +2836,8 @@ class NostrOrderService {
         // v575: omit plaintext on republish too. Buyer always has the billCode
         // locally; the accepter gets it via NIP-44 (kind 30080).
         'billCode': _omitPlaintextBillCode ? '' : order.billCode,
-        'billCodeProtocol': _omitPlaintextBillCode ? _billCodeProtocolNip44 : 'plaintext',
+        'billCodeProtocol':
+            _omitPlaintextBillCode ? _billCodeProtocolNip44 : 'plaintext',
         'amount': order.amount,
         'btcAmount': order.btcAmount,
         'btcPrice': order.btcPrice,
@@ -2491,10 +2875,17 @@ class NostrOrderService {
       );
 
       final results = await Future.wait(
-        _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
+        _relays.map(
+            (relay) => _publishToRelay(relay, event).catchError((_) => false)),
       );
       final successCount = results.where((r) => r).length;
-      broLog('v261: republishOrderWithStatus: ${order.id.substring(0, 8)} -> $newStatus ($successCount/${_relays.length} relays)');
+      broLog(
+          'v261: republishOrderWithStatus: ${order.id.substring(0, 8)} -> $newStatus ($successCount/${_relays.length} relays)');
+      if (successCount > 0 && newStatus == 'pending') {
+        await _removeFromBlocklist({order.id});
+        _statusUpdatesCache = null;
+        _statusUpdatesCacheTime = null;
+      }
       // v663: retornar o event.id para o caller gravar — senão a ordem ficava
       // sem eventId e era republicada em loop (flood nos relays).
       return successCount > 0 ? event.id : null;
@@ -2510,15 +2901,15 @@ class NostrOrderService {
     required String providerPrivateKey,
   }) async {
     try {
-      
       final keychain = Keychain(providerPrivateKey);
-      
+
       final content = jsonEncode({
         'type': 'bro_accept',
         'orderId': order.id,
         'orderEventId': order.eventId,
         'providerId': keychain.public,
-        'userPubkey': order.userPubkey ?? '', // v512: Include for watchtower routing
+        'userPubkey':
+            order.userPubkey ?? '', // v512: Include for watchtower routing
         'acceptedAt': DateTime.now().toIso8601String(),
       });
 
@@ -2538,7 +2929,6 @@ class NostrOrderService {
       if (order.eventId != null && order.eventId!.length == 64) {
         tags.insert(1, ['e', order.eventId!]);
       }
-      
 
       final event = Event.from(
         kind: kindBroAccept,
@@ -2547,10 +2937,12 @@ class NostrOrderService {
         privkey: keychain.private,
       );
 
-      
       // Publicar em paralelo - retornar assim que pelo menos 1 relay aceitar
       // Não esperar todos os relays (evita timeout quando um relay é lento)
-      final futures = _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)).toList();
+      final futures = _relays
+          .map(
+              (relay) => _publishToRelay(relay, event).catchError((_) => false))
+          .toList();
 
       // v802: esperar por ORDEM DE CONCLUSÃO, não pela ordem da lista. Antes o
       // loop fazia `await futures[i]` em sequência — se o relay 0 (apexcord)
@@ -2560,7 +2952,11 @@ class NostrOrderService {
       final pending = List<Future<bool>>.from(futures);
       while (pending.isNotEmpty && !anySuccess) {
         final done = await Future.any(pending.map((f) async {
-          try { return MapEntry(f, await f); } catch (_) { return MapEntry(f, false); }
+          try {
+            return MapEntry(f, await f);
+          } catch (_) {
+            return MapEntry(f, false);
+          }
         }));
         if (done.value) anySuccess = true;
         pending.remove(done.key);
@@ -2589,20 +2985,23 @@ class NostrOrderService {
   }
 
   /// Provider completa uma ordem (com prova de pagamento)
-  /// NOTA: A prova é enviada em base64. Para privacidade total, 
+  /// NOTA: A prova é enviada em base64. Para privacidade total,
   /// considerar implementar NIP-17 (Gift Wraps) ou enviar via DM separado
   Future<bool> completeOrderOnNostr({
     required Order order,
     required String providerPrivateKey,
     required String proofImageBase64,
-    String? providerInvoice, // Invoice Lightning para o provedor receber pagamento
+    String?
+        providerInvoice, // Invoice Lightning para o provedor receber pagamento
     String? e2eId, // v236: E2E ID do PIX para validação cruzada
   }) async {
     try {
       // v337: Validar tamanho da imagem (máximo 500KB em base64)
-      final imageSizeBytes = proofImageBase64.length * 3 ~/ 4; // base64 → bytes approx
+      final imageSizeBytes =
+          proofImageBase64.length * 3 ~/ 4; // base64 → bytes approx
       if (imageSizeBytes > 500 * 1024) {
-        broLog('❌ Comprovante muito grande: ${(imageSizeBytes / 1024).toStringAsFixed(0)}KB (máx 500KB)');
+        broLog(
+            '❌ Comprovante muito grande: ${(imageSizeBytes / 1024).toStringAsFixed(0)}KB (máx 500KB)');
         return false;
       }
 
@@ -2621,7 +3020,8 @@ class NostrOrderService {
               .timeout(const Duration(seconds: 6), onTimeout: () => null);
           if (fetched != null && fetched.isNotEmpty) {
             effectiveUserPubkey = fetched;
-            broLog('🔑 v820b: userPubkey resolvido do 30078 (${fetched.substring(0, 8)}...) — prova vai cifrada e endereçada');
+            broLog(
+                '🔑 v820b: userPubkey resolvido do 30078 (${fetched.substring(0, 8)}...) — prova vai cifrada e endereçada');
           }
         } catch (_) {}
       }
@@ -2637,7 +3037,8 @@ class NostrOrderService {
             keychain.private,
             effectiveUserPubkey,
           );
-          broLog('🔐 proofImage criptografado com NIP-44 para usuário (${encryptedProofImage.length} chars)');
+          broLog(
+              '🔐 proofImage criptografado com NIP-44 para usuário (${encryptedProofImage.length} chars)');
         }
         // Criptografar para o admin/mediador (para disputas)
         if (AppConfig.adminPubkey.isNotEmpty) {
@@ -2646,7 +3047,8 @@ class NostrOrderService {
             keychain.private,
             AppConfig.adminPubkey,
           );
-          broLog('🔐 proofImage criptografado com NIP-44 para admin (${encryptedProofImageAdmin.length} chars)');
+          broLog(
+              '🔐 proofImage criptografado com NIP-44 para admin (${encryptedProofImageAdmin.length} chars)');
         }
         // Self-encrypt para que o provedor possa rever seu próprio comprovante
         encryptedProofImageProvider = _nip44.encryptToSelf(
@@ -2654,21 +3056,24 @@ class NostrOrderService {
           keychain.private,
           keychain.public,
         );
-        broLog('🔐 proofImage criptografado com NIP-44 para provedor/self (${encryptedProofImageProvider.length} chars)');
+        broLog(
+            '🔐 proofImage criptografado com NIP-44 para provedor/self (${encryptedProofImageProvider.length} chars)');
       } catch (e) {
-        broLog('⚠️ Falha ao criptografar proofImage: $e — enviando em plaintext');
+        broLog(
+            '⚠️ Falha ao criptografar proofImage: $e — enviando em plaintext');
       }
-      
+
       final contentMap = {
         'type': 'bro_complete',
         'orderId': order.id,
         'orderEventId': order.eventId,
         'providerId': keychain.public,
-        'userPubkey': effectiveUserPubkey ?? '', // v512: Include for watchtower routing
+        'userPubkey':
+            effectiveUserPubkey ?? '', // v512: Include for watchtower routing
         'recipientPubkey': effectiveUserPubkey, // Para quem é destinado
         'completedAt': DateTime.now().toIso8601String(),
       };
-      
+
       // Adicionar proofImage (criptografado ou plaintext como fallback)
       // SECURITY v444: Only include user-encrypted copy in main event.
       // Admin and provider copies are omitted to keep event under relay size limits.
@@ -2676,22 +3081,23 @@ class NostrOrderService {
       // Admin copy can be re-encrypted on demand during disputes.
       if (encryptedProofImage != null) {
         contentMap['proofImage_nip44'] = encryptedProofImage;
-        contentMap['proofImage'] = '[encrypted:nip44v2]'; // Marcador para clientes antigos
+        contentMap['proofImage'] =
+            '[encrypted:nip44v2]'; // Marcador para clientes antigos
         contentMap['encryption'] = 'nip44v2';
       } else {
         contentMap['proofImage'] = proofImageBase64;
       }
-      
+
       // Incluir invoice do provedor se fornecido
       if (providerInvoice != null && providerInvoice.isNotEmpty) {
         contentMap['providerInvoice'] = providerInvoice;
       }
-      
+
       // v236: Incluir E2E ID do PIX se fornecido
       if (e2eId != null && e2eId.isNotEmpty) {
         contentMap['e2eId'] = e2eId;
       }
-      
+
       final content = jsonEncode(contentMap);
 
       // Construir tags - só incluir 'e' se tivermos eventId válido (64 chars hex)
@@ -2717,7 +3123,6 @@ class NostrOrderService {
         privkey: keychain.private,
       );
 
-      
       // Publicar em paralelo - retornar assim que pelo menos 1 relay aceitar.
       // v563: usar Completer para destravar IMEDIATAMENTE no primeiro `true`,
       // sem esperar relays lentos. Antes, `await futures[0]` bloqueava 15s
@@ -2774,7 +3179,9 @@ class NostrOrderService {
       // Era exatamente o bug do leandrogehlen (order 92a2fdeb): complete só
       // aceito em 1 de 6 relays; cliente em outros relays nunca viu o invoice
       // e nunca disparou autopay.
-      if (anySuccess && providerInvoice != null && providerInvoice.isNotEmpty &&
+      if (anySuccess &&
+          providerInvoice != null &&
+          providerInvoice.isNotEmpty &&
           (order.userPubkey ?? '').isNotEmpty) {
         unawaited(
           publishInvoiceRefresh(
@@ -2827,7 +3234,9 @@ class NostrOrderService {
             final events = await _fetchFromRelay(
               relay,
               kinds: [kindBroComplete],
-              tags: {'#d': [dTag]},
+              tags: {
+                '#d': [dTag]
+              },
               limit: 1,
             ).timeout(const Duration(seconds: 8), onTimeout: () => []);
             if (events.isNotEmpty) {
@@ -2840,13 +3249,15 @@ class NostrOrderService {
         }
       }
 
-      broLog('[v811] complete ${order.id.substring(0, 8)} visível em $visible/${_relays.length} relays (${visibleRelays.join(", ")})');
+      broLog(
+          '[v811] complete ${order.id.substring(0, 8)} visível em $visible/${_relays.length} relays (${visibleRelays.join(", ")})');
 
       if (visible >= 2) return; // quórum OK
 
       final attempts = (_completeRetryAttempts[order.id] ?? 0) + 1;
       if (attempts > _completeMaxRetries) {
-        broLog('[v811] complete ${order.id.substring(0, 8)}: esgotou $_completeMaxRetries retries (visível em $visible relays). Desistindo.');
+        broLog(
+            '[v811] complete ${order.id.substring(0, 8)}: esgotou $_completeMaxRetries retries (visível em $visible relays). Desistindo.');
         _completeRetryAttempts.remove(order.id);
         return;
       }
@@ -2854,7 +3265,8 @@ class NostrOrderService {
 
       // Backoff progressivo: 15s, 30s, 60s, 120s, 240s
       final delay = Duration(seconds: 15 * (1 << (attempts - 1)));
-      broLog('[v811] complete ${order.id.substring(0, 8)}: visível em só $visible relays — retry $attempts/$_completeMaxRetries em ${delay.inSeconds}s.');
+      broLog(
+          '[v811] complete ${order.id.substring(0, 8)}: visível em só $visible relays — retry $attempts/$_completeMaxRetries em ${delay.inSeconds}s.');
       await Future.delayed(delay);
 
       // Re-publicar o mesmo evento (replaceable — mesmo d tag substitui)
@@ -2874,7 +3286,8 @@ class NostrOrderService {
         );
       }
     } catch (e) {
-      broLog('[v811] erro na verificação de visibilidade do complete ${order.id.substring(0, 8)}: $e');
+      broLog(
+          '[v811] erro na verificação de visibilidade do complete ${order.id.substring(0, 8)}: $e');
     }
   }
 
@@ -2908,7 +3321,8 @@ class NostrOrderService {
       }
       return await completer.future;
     } catch (e) {
-      broLog('[v811] erro re-publicando complete ${order.id.substring(0, 8)}: $e');
+      broLog(
+          '[v811] erro re-publicando complete ${order.id.substring(0, 8)}: $e');
       return false;
     }
   }
@@ -2922,8 +3336,8 @@ class NostrOrderService {
   ///
   /// R5b: API-first — snapshot HTTP renderiza imediato; relay reconcilia em
   /// background (aditivo). API vazia/falha → fallback relay síncrono intacto.
-  Future<List<Order>> fetchPendingOrders({void Function()? onBackgroundReconcile}) async {
-
+  Future<List<Order>> fetchPendingOrders(
+      {void Function()? onBackgroundReconcile}) async {
     // PASSO 0: Garantir que blocklist local está carregada
     await _loadBlockedOrders();
 
@@ -2933,11 +3347,14 @@ class NostrOrderService {
     final snapshot = await _fetchAvailableOrdersFromApi();
     if (snapshot.isNotEmpty) {
       final snapshotOrders = _buildPendingOrdersFromSnapshot(snapshot);
-      broLog('⏱️ R5b: pending orders renderizadas via API em ${sw.elapsedMilliseconds}ms (${snapshotOrders.length} ordens)');
-      unawaited(_reconcilePendingOrdersInBackground(onBackgroundReconcile: onBackgroundReconcile));
+      broLog(
+          '⏱️ R5b: pending orders renderizadas via API em ${sw.elapsedMilliseconds}ms (${snapshotOrders.length} ordens)');
+      unawaited(_reconcilePendingOrdersInBackground(
+          onBackgroundReconcile: onBackgroundReconcile));
       return snapshotOrders;
     }
-    broLog('⏱️ R5b: API vazia/falhou → fallback relay (${sw.elapsedMilliseconds}ms)');
+    broLog(
+        '⏱️ R5b: API vazia/falhou → fallback relay (${sw.elapsedMilliseconds}ms)');
 
     final relayOrders = await _fetchPendingOrdersViaRelayPipeline();
     return relayOrders;
@@ -2945,7 +3362,8 @@ class NostrOrderService {
 
   /// R5b: monta List<Order> do snapshot HTTP (render imediato). Aplica
   /// blocklist e filtro de expiração 7 dias; status vem do próprio snapshot.
-  List<Order> _buildPendingOrdersFromSnapshot(List<Map<String, dynamic>> snapshot) {
+  List<Order> _buildPendingOrdersFromSnapshot(
+      List<Map<String, dynamic>> snapshot) {
     final now = DateTime.now();
     final orders = <Order>[];
     for (final raw in snapshot) {
@@ -2953,19 +3371,25 @@ class NostrOrderService {
       if (id.isEmpty || _blockedOrderIds.contains(id)) continue;
       final createdAt = DateTime.tryParse(raw['createdAt']?.toString() ?? '') ??
           (raw['created_at'] != null
-              ? DateTime.fromMillisecondsSinceEpoch((raw['created_at'] as int) * 1000)
+              ? DateTime.fromMillisecondsSinceEpoch(
+                  (raw['created_at'] as int) * 1000)
               : now);
       // Mesmo filtro de expiração do pipeline de relay (7 dias).
       if (now.difference(createdAt) > const Duration(days: 7)) continue;
-      final amountBrl = (raw['amount'] as num?)?.toDouble() ?? (raw['amount_brl'] as num?)?.toDouble() ?? 0;
-      final amountSats = (raw['amount_sats'] as num?)?.toInt() ?? ((raw['btcAmount'] as num?)?.toDouble() ?? 0 * 1e8).round();
+      final amountBrl = (raw['amount'] as num?)?.toDouble() ??
+          (raw['amount_brl'] as num?)?.toDouble() ??
+          0;
+      final amountSats = (raw['amount_sats'] as num?)?.toInt() ??
+          ((raw['btcAmount'] as num?)?.toDouble() ?? 0 * 1e8).round();
       orders.add(Order(
         id: id,
         billType: 'pix',
         billCode: raw['billCode']?.toString() ?? '',
         amount: amountBrl,
         btcAmount: amountSats / 1e8,
-        btcPrice: amountBrl > 0 && amountSats > 0 ? amountBrl / (amountSats / 1e8) : 0,
+        btcPrice: amountBrl > 0 && amountSats > 0
+            ? amountBrl / (amountSats / 1e8)
+            : 0,
         providerFee: 0,
         platformFee: 0,
         total: amountBrl,
@@ -2981,13 +3405,15 @@ class NostrOrderService {
   /// R5b: reconcile em background — roda o pipeline de relay completo
   /// (mesmo do fallback), faz merge ADITIVO (ordem que só existe no relay
   /// entra; snapshot nunca censura) e avisa o provider via callback.
-  Future<void> _reconcilePendingOrdersInBackground({void Function()? onBackgroundReconcile}) async {
+  Future<void> _reconcilePendingOrdersInBackground(
+      {void Function()? onBackgroundReconcile}) async {
     try {
       final relayOrders = await _fetchPendingOrdersViaRelayPipeline();
       _lastRelayReconcileResult = relayOrders;
       onBackgroundReconcile?.call();
     } catch (e) {
-      broLog('⚠️ R5b: reconcile pending em background falhou (não bloqueia): $e');
+      broLog(
+          '⚠️ R5b: reconcile pending em background falhou (não bloqueia): $e');
     }
   }
 
@@ -2996,7 +3422,7 @@ class NostrOrderService {
   Future<List<Order>> _fetchPendingOrdersViaRelayPipeline() async {
     final rawOrders = await _fetchPendingOrdersRaw();
     broLog('📋 fetchPendingOrders: ${rawOrders.length} raw events do relay');
-    
+
     // Converter para Orders COM DEDUPLICAÇÃO por orderId
     // PERFORMANCE v226: Verificar blocklist ANTES de eventToOrder() usando tag 'd'
     // Isso evita JSON decode + construção de Order para ~94% dos eventos (que são bloqueados)
@@ -3018,7 +3444,7 @@ class NostrOrderService {
           }
         }
       }
-      
+
       // Se temos orderId da tag, verificar blocklist e dedup ANTES de eventToOrder
       if (tagOrderId != null && tagOrderId.isNotEmpty) {
         if (seenOrderIds.contains(tagOrderId)) {
@@ -3026,160 +3452,206 @@ class NostrOrderService {
           continue;
         }
         if (_blockedOrderIds.contains(tagOrderId)) {
-          seenOrderIds.add(tagOrderId);
-          blockedCount++;
-          continue;
+          final content = e['parsedContent'] ??
+              (e['content'] != null ? jsonDecode(e['content']) : null);
+          if (content is Map && content['status'] == 'pending') {
+            await _removeFromBlocklist({tagOrderId});
+          } else {
+            seenOrderIds.add(tagOrderId);
+            blockedCount++;
+            continue;
+          }
         }
       }
-      
+
       final order = eventToOrder(e);
-      if (order == null) { nullOrders++; continue; }
-      
+      if (order == null) {
+        nullOrders++;
+        continue;
+      }
+      if (order.status == 'pending' &&
+          _blockedOrderIds.contains(order.id)) {
+        await _removeFromBlocklist({order.id});
+      }
+
       // DEDUPLICAÇÃO: Só adicionar se ainda não vimos este orderId
       if (seenOrderIds.contains(order.id)) {
         continue;
       }
       seenOrderIds.add(order.id);
-      
+
       // BLOCKLIST: Verificação final (para eventos sem tag 'd')
       if (_blockedOrderIds.contains(order.id)) {
         blockedCount++;
         continue;
       }
-      
+
       // v261: DEFENSE-IN-DEPTH — Se o próprio evento 30078 já tem status terminal
       // (porque o dono re-publicou com status atualizado via republishOrderWithStatus),
       // filtrar IMEDIATAMENTE sem precisar da query de status separada.
       // Isso resolve o bug onde orders aceitas/completadas continuavam aparecendo
       // quando a query de status (kind 30079/30080/30081) falhava por timeout.
-      const terminalInEvent = ['accepted', 'awaiting_confirmation', 'completed', 'cancelled', 'liquidated', 'disputed'];
+      const terminalInEvent = [
+        'accepted',
+        'awaiting_confirmation',
+        'completed',
+        'cancelled',
+        'liquidated',
+        'disputed'
+      ];
       if (terminalInEvent.contains(order.status)) {
         _addToBlocklist({order.id});
         blockedCount++;
         continue;
       }
-      
+
       allOrders.add(order);
     }
-    
-    broLog('📋 fetchPendingOrders: ${allOrders.length} ordens válidas ($nullOrders rejeitadas, $blockedCount bloqueadas localmente, $skippedByTagCount skipped por tag)');
-    
+
+    broLog(
+        '📋 fetchPendingOrders: ${allOrders.length} ordens válidas ($nullOrders rejeitadas, $blockedCount bloqueadas localmente, $skippedByTagCount skipped por tag)');
+
     // Filtrar ordens expiradas ANTES do fetch de status (economiza queries)
     final now = DateTime.now();
     final maxOrderAge = const Duration(days: 7);
     final freshOrders = <Order>[];
     final expiredIds = <String>{};
-    
+
     for (var order in allOrders) {
       final orderAge = now.difference(order.createdAt);
       if (orderAge > maxOrderAge && (order.status == 'pending')) {
-        broLog('  ⏰ Ordem ${order.id.substring(0, 8)} expirada: ${orderAge.inDays} dias atrás');
+        broLog(
+            '  ⏰ Ordem ${order.id.substring(0, 8)} expirada: ${orderAge.inDays} dias atrás');
         expiredIds.add(order.id);
         continue;
       }
       freshOrders.add(order);
     }
-    
+
     if (expiredIds.isNotEmpty) {
       _addToBlocklist(expiredIds);
       broLog('📋 ${expiredIds.length} ordens expiradas bloqueadas');
     }
-    
+
     if (freshOrders.isEmpty) {
-      broLog('📋 fetchPendingOrders: 0 ordens disponíveis (todas expiradas/bloqueadas)');
+      broLog(
+          '📋 fetchPendingOrders: 0 ordens disponíveis (todas expiradas/bloqueadas)');
       return [];
     }
-    
+
     // PASSO 2: Buscar status via #d tag (PRIMARY - funciona em todos os relays)
     // Esta é a fonte de verdade: busca accept/complete events por #d tag
     final orderIdsToCheck = freshOrders.map((o) => o.id).toList();
-    broLog('🔍 fetchPendingOrders: buscando status de ${orderIdsToCheck.length} ordens via #d tag');
+    broLog(
+        '🔍 fetchPendingOrders: buscando status de ${orderIdsToCheck.length} ordens via #d tag');
     final statusUpdates = await _fetchTargetedStatusUpdates(orderIdsToCheck);
-    broLog('🔍 fetchPendingOrders: ${statusUpdates.length} ordens com status via #d');
-    
+    broLog(
+        '🔍 fetchPendingOrders: ${statusUpdates.length} ordens com status via #d');
+
     // PASSO 2.5: Buscar cancelamentos/updates por AUTHOR (pubkey do criador)
     // Cancelamentos são kind 30080 publicados pelo criador da ordem.
     // Os relays NÃO indexam tags #r, mas SEMPRE indexam 'authors'.
     // Coletamos pubkeys dos criadores e buscamos seus events kind 30080.
-    final ordersWithoutStatus = freshOrders.where((o) => !statusUpdates.containsKey(o.id)).toList();
+    final ordersWithoutStatus =
+        freshOrders.where((o) => !statusUpdates.containsKey(o.id)).toList();
     // PERFORMANCE v226: Só chamar _fetchStatusByAuthors se > 5 ordens sem status
     // Para poucas ordens, o _fetchTargetedStatusUpdates (#d tag) já é suficiente
     // Isso economiza 3 WebSocket conexões na maioria dos ciclos
     if (ordersWithoutStatus.length > 5) {
-      broLog('🔍 fetchPendingOrders: ${ordersWithoutStatus.length} ordens sem status - buscando por authors');
+      broLog(
+          '🔍 fetchPendingOrders: ${ordersWithoutStatus.length} ordens sem status - buscando por authors');
       final authorUpdates = await _fetchStatusByAuthors(ordersWithoutStatus);
       if (authorUpdates.isNotEmpty) {
-        broLog('🔍 fetchPendingOrders: ${authorUpdates.length} updates extras via authors!');
+        broLog(
+            '🔍 fetchPendingOrders: ${authorUpdates.length} updates extras via authors!');
         statusUpdates.addAll(authorUpdates);
       }
     } else if (ordersWithoutStatus.isNotEmpty) {
-      broLog('⚡ fetchPendingOrders: ${ordersWithoutStatus.length} ordens sem status (≤5), pulando fetchStatusByAuthors');
+      broLog(
+          '⚡ fetchPendingOrders: ${ordersWithoutStatus.length} ordens sem status (≤5), pulando fetchStatusByAuthors');
     }
-    broLog('🔍 fetchPendingOrders: ${statusUpdates.length} ordens com status total');
-    
+    broLog(
+        '🔍 fetchPendingOrders: ${statusUpdates.length} ordens com status total');
+
     // LOG DETALHADO de cada ordem
     for (var order in freshOrders) {
       final update = statusUpdates[order.id];
       final updateStatus = update?['status'] as String?;
-      broLog('  📦 Ordem ${order.id.substring(0, 8)}: status=${order.status}, update=$updateStatus, amount=${order.amount}');
+      broLog(
+          '  📦 Ordem ${order.id.substring(0, 8)}: status=${order.status}, update=$updateStatus, amount=${order.amount}');
     }
-    
+
     // PASSO 3: Salvar ordens com status terminal na blocklist local
     final newBlockedIds = <String>{};
     for (final entry in statusUpdates.entries) {
       final status = entry.value['status'] as String?;
-      if (status == 'accepted' || status == 'awaiting_confirmation' || 
-          status == 'completed' || status == 'liquidated' || 
-          status == 'cancelled' || status == 'disputed') {
+      if (status == 'accepted' ||
+          status == 'awaiting_confirmation' ||
+          status == 'completed' ||
+          status == 'liquidated' ||
+          status == 'cancelled' ||
+          status == 'disputed' ||
+          status == 'accept_expired') {
         newBlockedIds.add(entry.key);
       }
     }
     if (newBlockedIds.isNotEmpty) {
       _addToBlocklist(newBlockedIds);
     }
-    
+
     // PASSO 4: FILTRAR ordens disponíveis
     final availableOrders = <Order>[];
-    
+
     for (var order in freshOrders) {
       final update = statusUpdates[order.id];
       final updateStatus = update?['status'] as String?;
-      
+
       // Se tem update com status avançado, NÃO está disponível
-      final isUnavailable = updateStatus == 'accepted' || updateStatus == 'awaiting_confirmation' || updateStatus == 'completed' || updateStatus == 'liquidated' || updateStatus == 'cancelled' || updateStatus == 'disputed';
-      
+      final isUnavailable = updateStatus == 'accepted' ||
+          updateStatus == 'awaiting_confirmation' ||
+          updateStatus == 'completed' ||
+          updateStatus == 'liquidated' ||
+          updateStatus == 'cancelled' ||
+          updateStatus == 'disputed' ||
+          updateStatus == 'accept_expired';
+
       if (!isUnavailable) {
         availableOrders.add(order);
       } else {
-        broLog('  🚫 Ordem ${order.id.substring(0, 8)} filtrada: updateStatus=$updateStatus');
+        broLog(
+            '  🚫 Ordem ${order.id.substring(0, 8)} filtrada: updateStatus=$updateStatus');
       }
     }
-    
-    broLog('📋 fetchPendingOrders: ${availableOrders.length} ordens disponíveis após filtro');
+
+    broLog(
+        '📋 fetchPendingOrders: ${availableOrders.length} ordens disponíveis após filtro');
     return availableOrders;
   }
-  
+
   /// Re-fetch direcionado de status updates para ordens específicas
   /// Usa tags single-letter (#d e #r) que são indexadas pelos relays
   /// #d: orderId_accept / orderId_complete (para accept/complete events)
   /// #r: orderId puro (para cancellation/update events via updateOrderStatus)
   /// NOTA: Tags multi-letter como #orderId NÃO são indexadas pelos relays
-  Future<Map<String, Map<String, dynamic>>> _fetchTargetedStatusUpdates(List<String> orderIds) async {
+  Future<Map<String, Map<String, dynamic>>> _fetchTargetedStatusUpdates(
+      List<String> orderIds) async {
     final updates = <String, Map<String, dynamic>>{};
     if (orderIds.isEmpty) return updates;
-    
+
     // Dividir em batches de 15 ordens para não sobrecarregar o relay
     const batchSize = 15;
     final batches = <List<String>>[];
     for (var i = 0; i < orderIds.length; i += batchSize) {
-      batches.add(orderIds.sublist(i, i + batchSize > orderIds.length ? orderIds.length : i + batchSize));
+      batches.add(orderIds.sublist(i,
+          i + batchSize > orderIds.length ? orderIds.length : i + batchSize));
     }
-    
-    broLog('🔍 _fetchTargetedStatusUpdates: ${orderIds.length} ordens em ${batches.length} batches');
-    
+
+    broLog(
+        '🔍 _fetchTargetedStatusUpdates: ${orderIds.length} ordens em ${batches.length} batches');
+
     // Processar todos os batches
     final allEvents = <Map<String, dynamic>>[];
-    
+
     for (final batch in batches) {
       // Construir lista de #d values: orderId_accept + orderId_complete
       final dTags = <String>[];
@@ -3187,7 +3659,7 @@ class NostrOrderService {
         dTags.add('${id}_accept');
         dTags.add('${id}_complete');
       }
-      
+
       // Buscar de todos os relays em paralelo com DUAS estratégias.
       // v646: incluir fallback relays (incl. Apex cord) — antes só _relays (3
       // principais). Se o aceite não propagou para o relay que respondeu, a
@@ -3203,7 +3675,8 @@ class NostrOrderService {
               tags: {'#d': dTags},
               since: null,
               limit: batch.length * 2,
-            ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]),
+            ).timeout(const Duration(seconds: 8),
+                onTimeout: () => <Map<String, dynamic>>[]),
             // Estratégia 2: #r tag para updates/cancellations (kind 30080)
             // updateOrderStatus usa tag ['r', orderId] que é indexada como #r
             _fetchFromRelayWithSince(
@@ -3212,9 +3685,10 @@ class NostrOrderService {
               tags: {'#r': batch}, // orderId direto na tag #r
               since: null,
               limit: batch.length * 3,
-            ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]),
+            ).timeout(const Duration(seconds: 8),
+                onTimeout: () => <Map<String, dynamic>>[]),
           ]);
-          
+
           final combined = <Map<String, dynamic>>[];
           for (final eventList in results) {
             combined.addAll(eventList);
@@ -3224,7 +3698,7 @@ class NostrOrderService {
           return <Map<String, dynamic>>[];
         }
       }).toList();
-      
+
       final results = await Future.wait(relayFutures);
       final seenIds = <String>{};
       for (final relayEvents in results) {
@@ -3237,92 +3711,52 @@ class NostrOrderService {
         }
       }
     }
-    
-    broLog('🔍 _fetchTargetedStatusUpdates: ${allEvents.length} eventos encontrados');
-    
-    // Processar eventos
-    for (final event in allEvents) {
-      try {
-        final content = event['parsedContent'] ?? jsonDecode(event['content']);
-        final eventType = content['type'] as String?;
-        if (eventType != 'bro_accept' && eventType != 'bro_order_update' && eventType != 'bro_complete') continue;
-        
-        final orderId = content['orderId'] as String?;
-        if (orderId == null || !orderIds.contains(orderId)) continue;
-        
-        final createdAt = event['created_at'] as int? ?? 0;
-        final existingUpdate = updates[orderId];
-        final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
-        
-        if (existingUpdate == null || createdAt >= existingCreatedAt) {
-          String? status = content['status'] as String?;
-          final eventKind = event['kind'] as int?;
-          if (eventType == 'bro_accept' || eventKind == kindBroAccept) {
-            status = 'accepted';
-          } else if (eventType == 'bro_complete' || eventKind == kindBroComplete) {
-            status = 'awaiting_confirmation';
-          }
-          
-          final providerId = content['providerId'] as String? ?? event['pubkey'] as String?;
-          final providerInvoice = content['providerInvoice'] as String?;
-          final proofImage = content['proofImage'] as String?;
-          final proofImageNip44 = content['proofImage_nip44'] as String?;
-          final encryption = content['encryption'] as String?;
-          
-          updates[orderId] = {
-            'orderId': orderId,
-            'status': status,
-            'providerId': providerId,
-            'acceptedAt': content['acceptedAt'] as String?,
-            'eventAuthorPubkey': event['pubkey'] as String?,
-            'proofImage': proofImage,
-            'proofImage_nip44': proofImageNip44,
-            'encryption': encryption,
-            'providerInvoice': providerInvoice,
-            'completedAt': content['completedAt'],
-            // v718: se ESTE evento tem prova, o autor dele é a autoridade
-            'proofAuthorPubkey': (proofImage != null || proofImageNip44 != null)
-                ? event['pubkey'] as String?
-                : existingUpdate?['proofAuthorPubkey'],
-            'proofImage': proofImage ?? existingUpdate?['proofImage'],
-            'proofImage_nip44': proofImageNip44 ?? existingUpdate?['proofImage_nip44'],
-            'created_at': createdAt,
-          };
-        }
-      } catch (_) {}
-    }
-    
+
+    broLog(
+        '🔍 _fetchTargetedStatusUpdates: ${allEvents.length} eventos encontrados');
+
+    final selectedUpdates = selectOrderUpdatesForUser(
+      allEvents,
+      activeOrderIdSet: orderIds.toSet(),
+    );
+    updates.addAll(selectedUpdates);
+
     return updates;
   }
 
   /// Busca status updates por AUTHOR (pubkey do criador da ordem)
   /// Resolve: cancelamentos (kind 30080) publicados pelo criador não são encontráveis
   /// por #d ou #r tags, mas SEMPRE por 'authors' (filtro nativo do relay)
-  Future<Map<String, Map<String, dynamic>>> _fetchStatusByAuthors(List<Order> orders) async {
+  Future<Map<String, Map<String, dynamic>>> _fetchStatusByAuthors(
+      List<Order> orders) async {
     final updates = <String, Map<String, dynamic>>{};
     if (orders.isEmpty) return updates;
-    
+
     // Coletar pubkeys únicos dos criadores
     final pubkeys = orders
         .where((o) => o.userPubkey != null && o.userPubkey!.isNotEmpty)
         .map((o) => o.userPubkey!)
         .toSet()
         .toList();
-    
+
     if (pubkeys.isEmpty) return updates;
-    
+
     // Mapeamento orderId -> set de orderIds que queremos
     final orderIdSet = orders.map((o) => o.id).toSet();
-    
-    broLog('🔍 _fetchStatusByAuthors: buscando kind 30080 de ${pubkeys.length} authors para ${orders.length} ordens');
-    
+
+    broLog(
+        '🔍 _fetchStatusByAuthors: buscando kind 30080 de ${pubkeys.length} authors para ${orders.length} ordens');
+
     // Buscar de todos os relays em paralelo
     final allEvents = <Map<String, dynamic>>[];
     final seenIds = <String>{};
-    
+
     // Buscar desde 8 dias atrás (cobre janela de 7 dias das ordens + margem)
-    final sinceSecs = DateTime.now().subtract(const Duration(days: 8)).millisecondsSinceEpoch ~/ 1000;
-    
+    final sinceSecs = DateTime.now()
+            .subtract(const Duration(days: 8))
+            .millisecondsSinceEpoch ~/
+        1000;
+
     final relayFutures = _relays.map((relay) async {
       try {
         // Buscar events kind 30080 publicados pelos criadores das ordens
@@ -3333,13 +3767,14 @@ class NostrOrderService {
           authors: pubkeys,
           since: sinceSecs,
           limit: pubkeys.length * 50, // ~50 updates por author (margem ampla)
-        ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]);
+        ).timeout(const Duration(seconds: 8),
+            onTimeout: () => <Map<String, dynamic>>[]);
         return events;
       } catch (e) {
         return <Map<String, dynamic>>[];
       }
     }).toList();
-    
+
     final results = await Future.wait(relayFutures);
     for (final relayEvents in results) {
       for (final e in relayEvents) {
@@ -3350,32 +3785,36 @@ class NostrOrderService {
         }
       }
     }
-    
-    broLog('🔍 _fetchStatusByAuthors: ${allEvents.length} eventos de ${_relays.length} relays');
-    
+
+    broLog(
+        '🔍 _fetchStatusByAuthors: ${allEvents.length} eventos de ${_relays.length} relays');
+
     // Processar: filtrar apenas eventos relevantes para nossas ordens
     for (final event in allEvents) {
       try {
         final content = event['parsedContent'] ?? jsonDecode(event['content']);
         final eventType = content['type'] as String?;
-        if (eventType != 'bro_order_update' && eventType != 'bro_complete') continue;
-        
+        if (eventType != 'bro_order_update' && eventType != 'bro_complete')
+          continue;
+
         final orderId = content['orderId'] as String?;
         if (orderId == null || !orderIdSet.contains(orderId)) continue;
-        
+
         final status = content['status'] as String?;
         if (status == null) continue;
-        
+
         final createdAt = event['created_at'] as int? ?? 0;
         final existingUpdate = updates[orderId];
         final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
-        
+
         // cancelled SEMPRE vence
         final isCancel = status == 'cancelled';
         final existingIsCancelled = existingUpdate?['status'] == 'cancelled';
         if (existingIsCancelled) continue;
-        
-        if (existingUpdate == null || isCancel || createdAt >= existingCreatedAt) {
+
+        if (existingUpdate == null ||
+            isCancel ||
+            createdAt >= existingCreatedAt) {
           updates[orderId] = {
             'orderId': orderId,
             'status': status,
@@ -3386,7 +3825,7 @@ class NostrOrderService {
         }
       } catch (_) {}
     }
-    
+
     return updates;
   }
 
@@ -3408,10 +3847,10 @@ class NostrOrderService {
   /// INCLUI merge com eventos de UPDATE para obter status correto
   Future<List<Order>> fetchUserOrders(String pubkey) async {
     final rawOrders = await _fetchUserOrdersRaw(pubkey);
-    
+
     // Buscar eventos de UPDATE para obter status mais recente
     final statusUpdates = await _fetchAllOrderStatusUpdates();
-    
+
     // Converter para Orders e aplicar status atualizado
     // SEGURANÇA CRÍTICA: Filtrar novamente para garantir que só retorne ordens deste usuário
     // (alguns relays podem ignorar o filtro 'authors')
@@ -3426,363 +3865,424 @@ class NostrOrderService {
           }
           return true;
         })
-        .map((order) => _applyStatusUpdate(order, statusUpdates, userPrivateKey: _decryptionKey))
+        .map((order) => _applyStatusUpdate(order, statusUpdates,
+            userPrivateKey: _decryptionKey))
         .toList();
-    
+
     return orders;
   }
-  
+
   /// Busca TODOS os eventos de UPDATE de status (kind 30080, 30081)
   /// Inclui: updates de status, conclusões de ordem
   /// CRÍTICO: Busca de TODOS os relays para garantir sincronização
   /// PERFORMANCE: Resultado cacheado por 15s para evitar chamadas redundantes
-  Future<Map<String, Map<String, dynamic>>> _fetchAllOrderStatusUpdates() async {
+  Future<Map<String, Map<String, dynamic>>>
+      _fetchAllOrderStatusUpdates() async {
     // PERFORMANCE: Retornar cache se ainda válido (evita 3x chamadas idênticas por sync)
     if (_statusUpdatesCache != null && _statusUpdatesCacheTime != null) {
-      final elapsed = DateTime.now().difference(_statusUpdatesCacheTime!).inSeconds;
+      final elapsed =
+          DateTime.now().difference(_statusUpdatesCacheTime!).inSeconds;
       if (elapsed < _statusUpdatesCacheTtlSeconds) {
-        broLog('📋 _fetchAllOrderStatusUpdates: usando cache (${elapsed}s ago, ${_statusUpdatesCache!.length} updates)');
+        broLog(
+            '📋 _fetchAllOrderStatusUpdates: usando cache (${elapsed}s ago, ${_statusUpdatesCache!.length} updates)');
         return _statusUpdatesCache!;
       }
     }
-    
+
     // CORREÇÃO v1.0.129: Lock de concorrência — se já tem um fetch em andamento,
     // esperar pelo resultado ao invés de criar mais 6 conexões WebSocket
     if (_statusUpdatesFetching != null) {
-      broLog('📋 _fetchAllOrderStatusUpdates: aguardando fetch em andamento...');
+      broLog(
+          '📋 _fetchAllOrderStatusUpdates: aguardando fetch em andamento...');
       return _statusUpdatesFetching!.future;
     }
     _statusUpdatesFetching = Completer<Map<String, Map<String, dynamic>>>();
-    
+
     try {
-    final updates = <String, Map<String, dynamic>>{}; // orderId -> latest update
-    
-    
-    // v568: Query ALL relays IN PARALLEL (não mais sequencial). Antes esta
-    // operação tomava até 24s (3 relays × 8s) no pior caso, dominando a
-    // sincronização do modo provedor. Paralelizando, vai a no máx ~5s.
-    final allEvents = <Map<String, dynamic>>[];
-    final seenIds = <String>{};
-    final fourteenDaysAgo = DateTime.now().subtract(const Duration(days: 14));
-    final statusSince = (fourteenDaysAgo.millisecondsSinceEpoch / 1000).floor();
+      final updates =
+          <String, Map<String, dynamic>>{}; // orderId -> latest update
 
-    // v810: + fallback relays — o 30081 (comprovante) às vezes só existe em
-    // 1 relay; se ele não responder no ciclo, o proof se perde NAQUELE ciclo
-    // e o sintoma persiste (mesmo gap do fetchOrderUpdatesForUser v810).
-    final relayTasks = <String>[..._relays, ..._fallbackRelays].map((relay) async {
-      try {
-        final results = await Future.wait([
-          _fetchFromRelayWithSince(
-            relay,
-            kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete],
-            tags: {'#t': [broTag]},
-            since: statusSince,
-            limit: 500,
-          ).timeout(const Duration(seconds: 5), onTimeout: () => <Map<String, dynamic>>[]),
-          _fetchFromRelayWithSince(
-            relay,
-            kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete],
-            since: statusSince,
-            limit: 500,
-          ).timeout(const Duration(seconds: 5), onTimeout: () => <Map<String, dynamic>>[]),
-        ]);
-        final combined = <Map<String, dynamic>>[];
-        for (final list in results) { combined.addAll(list); }
-        return combined;
-      } catch (_) {
-        return <Map<String, dynamic>>[];
-      }
-    }).toList();
+      // v568: Query ALL relays IN PARALLEL (não mais sequencial). Antes esta
+      // operação tomava até 24s (3 relays × 8s) no pior caso, dominando a
+      // sincronização do modo provedor. Paralelizando, vai a no máx ~5s.
+      final allEvents = <Map<String, dynamic>>[];
+      final seenIds = <String>{};
+      final fourteenDaysAgo = DateTime.now().subtract(const Duration(days: 14));
+      final statusSince =
+          (fourteenDaysAgo.millisecondsSinceEpoch / 1000).floor();
 
-    final perRelay = await Future.wait(relayTasks);
-    for (final relayEvents in perRelay) {
-      for (final e in relayEvents) {
-        final id = e['id'];
-        if (id != null && !seenIds.contains(id)) {
-          seenIds.add(id);
-          allEvents.add(e);
+      // v810: + fallback relays — o 30081 (comprovante) às vezes só existe em
+      // 1 relay; se ele não responder no ciclo, o proof se perde NAQUELE ciclo
+      // e o sintoma persiste (mesmo gap do fetchOrderUpdatesForUser v810).
+      final relayTasks =
+          <String>[..._relays, ..._fallbackRelays].map((relay) async {
+        try {
+          final results = await Future.wait([
+            _fetchFromRelayWithSince(
+              relay,
+              kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete],
+              tags: {
+                '#t': [broTag]
+              },
+              since: statusSince,
+              limit: 500,
+            ).timeout(const Duration(seconds: 5),
+                onTimeout: () => <Map<String, dynamic>>[]),
+            _fetchFromRelayWithSince(
+              relay,
+              kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete],
+              since: statusSince,
+              limit: 500,
+            ).timeout(const Duration(seconds: 5),
+                onTimeout: () => <Map<String, dynamic>>[]),
+          ]);
+          final combined = <Map<String, dynamic>>[];
+          for (final list in results) {
+            combined.addAll(list);
+          }
+          return combined;
+        } catch (_) {
+          return <Map<String, dynamic>>[];
         }
-      }
-    }
+      }).toList();
 
-    broLog('📋 _fetchAllOrderStatusUpdates: ${allEvents.length} eventos (parallel relays)');
-    
-    // v406: CORREÇÃO DEFINITIVA — Acumular dados de comprovante de TODOS os eventos
-    // ANTES de processar, para que proof nunca se perca por ordem de processamento.
-    // Relays retornam eventos do mais novo ao mais antigo. Se o evento mais novo
-    // (kind 30080, completed, sem proof) é processado primeiro, o mais antigo
-    // (kind 30081, com proof) era IGNORADO pelo guard de timestamp.
-    // O acumulador garante que proof é preservado independente da ordem.
-    final proofAccumulator = <String, Map<String, dynamic>>{};
-    for (final event in allEvents) {
-      try {
-        final content = event['parsedContent'] ?? jsonDecode(event['content']);
-        final orderId = content['orderId'] as String?;
-        if (orderId == null) continue;
-        final proofImage = content['proofImage'] as String?;
-        final proofImageNip44 = content['proofImage_nip44'] as String?;
-        final providerInvoice = content['providerInvoice'] as String?;
-        if (proofImage != null || proofImageNip44 != null || providerInvoice != null) {
-          // Guardar apenas o PRIMEIRO (mais completo) conjunto de proof encontrado
-          if (!proofAccumulator.containsKey(orderId)) {
-            proofAccumulator[orderId] = {
-              'proofImage': proofImage,
-              'proofImage_nip44': proofImageNip44,
-              'encryption': content['encryption'] as String?,
-              'providerInvoice': providerInvoice,
-              'eventAuthorPubkey': event['pubkey'] as String?,
-              'completedAt': content['completedAt'] as String?,
-            };
+      final perRelay = await Future.wait(relayTasks);
+      for (final relayEvents in perRelay) {
+        for (final e in relayEvents) {
+          final id = e['id'];
+          if (id != null && !seenIds.contains(id)) {
+            seenIds.add(id);
+            allEvents.add(e);
           }
         }
-      } catch (_) {}
-    }
-    
-    // Processar todos os eventos coletados
-    for (final event in allEvents) {
-          try {
-            final content = event['parsedContent'] ?? jsonDecode(event['content']);
-            final eventType = content['type'] as String?;
-            final eventKind = event['kind'] as int?;
-            
-            // Processar eventos de accept, update, complete OU resolução de disputa
-            // CORREÇÃO v1.0.129: Incluir bro_dispute_resolution para que as partes
-            // envolvidas recebam a atualização de status da resolução do mediador
-            if (eventType != 'bro_accept' && 
-                eventType != 'bro_order_update' && 
-                eventType != 'bro_complete' &&
-                eventType != 'bro_dispute_resolution') continue;
-            
-            // CORREÇÃO v348: Ignorar eventos de reembolso do admin
-            // bro_admin_reimbursement NÃO é status update — é invoice de cobrança
-            if (eventType == 'bro_admin_reimbursement') continue;
-            
-            final orderId = content['orderId'] as String?;
-            if (orderId == null) continue;
-            
-            // CORREÇÃO v1.0.129: Para eventos de resolução de disputa,
-            // o pubkey do evento é do mediador, não do provedor/usuário.
-            // SEGURANÇA: Validar que o pubkey é do admin autorizado.
-            if (eventType == 'bro_dispute_resolution') {
-              // SEGURANÇA: Apenas o admin pode resolver disputas
-              final eventPubkey = event['pubkey'] as String?;
-              // vSEC: FAIL-CLOSED — sem adminPubkey no build, rejeitar TUDO
-              // (antes o guard virava no-op: qualquer pubkey resolvia disputa)
-              if (AppConfig.adminPubkey.isEmpty) {
-                broLog('🚨 [SECURITY] adminPubkey NÃO configurado — rejeitando TODAS as resoluções de disputa');
-                continue;
-              }
-              if (eventPubkey == null ||
-                  eventPubkey != AppConfig.adminPubkey) {
-                broLog('⚠️ REJEITADO: bro_dispute_resolution de pubkey não-admin ${eventPubkey?.substring(0, 8)}');
-                continue;
-              }
-              
-              // Extrair status da resolução
-              final resolutionStatus = content['status'] as String?;
-              if (resolutionStatus == null) continue;
-              
-              final createdAt = event['created_at'] as int? ?? 0;
-              final existingUpdate = updates[orderId];
-              final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
-              
-              if (existingUpdate == null || createdAt >= existingCreatedAt) {
-                final providerId = content['providerId'] as String?;
-                updates[orderId] = {
-                  'orderId': orderId,
-                  'status': resolutionStatus,
-                  'providerId': providerId,
-                  'eventAuthorPubkey': event['pubkey'] as String?,
-                  'created_at': createdAt,
-                };
-              }
-              continue;
+      }
+
+      broLog(
+          '📋 _fetchAllOrderStatusUpdates: ${allEvents.length} eventos (parallel relays)');
+
+      // v406: CORREÇÃO DEFINITIVA — Acumular dados de comprovante de TODOS os eventos
+      // ANTES de processar, para que proof nunca se perca por ordem de processamento.
+      // Relays retornam eventos do mais novo ao mais antigo. Se o evento mais novo
+      // (kind 30080, completed, sem proof) é processado primeiro, o mais antigo
+      // (kind 30081, com proof) era IGNORADO pelo guard de timestamp.
+      // O acumulador garante que proof é preservado independente da ordem.
+      final proofAccumulator = <String, Map<String, dynamic>>{};
+      for (final event in allEvents) {
+        try {
+          final content =
+              event['parsedContent'] ?? jsonDecode(event['content']);
+          final orderId = content['orderId'] as String?;
+          if (orderId == null) continue;
+          final proofImage = content['proofImage'] as String?;
+          final proofImageNip44 = content['proofImage_nip44'] as String?;
+          final providerInvoice = content['providerInvoice'] as String?;
+          if (proofImage != null ||
+              proofImageNip44 != null ||
+              providerInvoice != null) {
+            // Guardar apenas o PRIMEIRO (mais completo) conjunto de proof encontrado
+            if (!proofAccumulator.containsKey(orderId)) {
+              proofAccumulator[orderId] = {
+                'proofImage': proofImage,
+                'proofImage_nip44': proofImageNip44,
+                'encryption': content['encryption'] as String?,
+                'providerInvoice': providerInvoice,
+                'eventAuthorPubkey': event['pubkey'] as String?,
+                'completedAt': content['completedAt'] as String?,
+              };
             }
-            
-            // SEGURANÇA: Validar papel do pubkey do evento
-            // Após verificação de assinatura (em _fetchFromRelayWithSince),
-            // sabemos que event.pubkey é autêntico. Agora validamos o papel:
-            // - bro_accept: pubkey deve ser o providerId (quem aceita)
-            // - bro_complete: pubkey deve ser o providerId (quem completa)
-            // - bro_order_update: pubkey deve ser providerId OU userPubkey
+          }
+        } catch (_) {}
+      }
+
+      // Processar todos os eventos coletados
+      for (final event in allEvents) {
+        try {
+          final content =
+              event['parsedContent'] ?? jsonDecode(event['content']);
+          final eventType = content['type'] as String?;
+          final eventKind = event['kind'] as int?;
+
+          // Processar eventos de accept, update, complete OU resolução de disputa
+          // CORREÇÃO v1.0.129: Incluir bro_dispute_resolution para que as partes
+          // envolvidas recebam a atualização de status da resolução do mediador
+          if (eventType != 'bro_accept' &&
+              eventType != 'bro_order_update' &&
+              eventType != 'bro_complete' &&
+              eventType != 'bro_dispute_resolution') continue;
+
+          // CORREÇÃO v348: Ignorar eventos de reembolso do admin
+          // bro_admin_reimbursement NÃO é status update — é invoice de cobrança
+          if (eventType == 'bro_admin_reimbursement') continue;
+
+          final orderId = content['orderId'] as String?;
+          if (orderId == null) continue;
+
+          // CORREÇÃO v1.0.129: Para eventos de resolução de disputa,
+          // o pubkey do evento é do mediador, não do provedor/usuário.
+          // SEGURANÇA: Validar que o pubkey é do admin autorizado.
+          if (eventType == 'bro_dispute_resolution') {
+            // SEGURANÇA: Apenas o admin pode resolver disputas
             final eventPubkey = event['pubkey'] as String?;
-            final contentProviderId = content['providerId'] as String?;
-            final contentUserPubkey = content['userPubkey'] as String?;
-            
-            if (eventType == 'bro_accept' || eventType == 'bro_complete') {
-              // Apenas o provedor pode aceitar/completar
-              if (contentProviderId != null && eventPubkey != null && 
-                  eventPubkey != contentProviderId) {
-                broLog('⚠️ REJEITADO: ${eventType} de pubkey=${ eventPubkey.substring(0, 8)} mas providerId=${contentProviderId.substring(0, 8)}');
-                continue;
-              }
-            }
-            
-            // SEGURANÇA: Para status 'disputed', validar que o autor é parte da ordem
-            // Apenas userPubkey ou providerId podem abrir disputa
-            final contentStatus = content['status'] as String?;
-            if (contentStatus == 'disputed' && eventType == 'bro_order_update') {
-              final isAuthorUser = contentUserPubkey != null && eventPubkey == contentUserPubkey;
-              final isAuthorProvider = contentProviderId != null && eventPubkey == contentProviderId;
-              if (!isAuthorUser && !isAuthorProvider) {
-                broLog('⚠️ REJEITADO: disputed de pubkey não autorizado ${eventPubkey?.substring(0, 8)}');
-                continue;
-              }
-            }
-            
-            final createdAt = event['created_at'] as int? ?? 0;
-            
-            // SEGURANÇA: Rejeitar eventos com timestamp no futuro (clock skew attack)
-            final eventTime = DateTime.fromMillisecondsSinceEpoch(createdAt * 1000);
-            final now = DateTime.now();
-            if (eventTime.isAfter(now.add(const Duration(minutes: 15)))) {
-              broLog('⚠️ REJEITADO: evento com timestamp no futuro: $eventTime');
+            // vSEC: FAIL-CLOSED — sem adminPubkey no build, rejeitar TUDO
+            // (antes o guard virava no-op: qualquer pubkey resolvia disputa)
+            if (AppConfig.adminPubkey.isEmpty) {
+              broLog(
+                  '🚨 [SECURITY] adminPubkey NÃO configurado — rejeitando TODAS as resoluções de disputa');
               continue;
             }
-            
-            // Manter apenas o update mais recente para cada ordem
+            if (eventPubkey == null || eventPubkey != AppConfig.adminPubkey) {
+              broLog(
+                  '⚠️ REJEITADO: bro_dispute_resolution de pubkey não-admin ${eventPubkey?.substring(0, 8)}');
+              continue;
+            }
+
+            // Extrair status da resolução
+            final resolutionStatus = content['status'] as String?;
+            if (resolutionStatus == null) continue;
+
+            final createdAt = event['created_at'] as int? ?? 0;
             final existingUpdate = updates[orderId];
-            final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
-            
-            // CORREÇÃO: Usar >= para timestamps iguais, permitindo que status mais avançado vença
-            // Antes usava > (estritamente maior), o que fazia o primeiro evento processado ganhar
-            // em caso de empate, mesmo que tivesse status menos avançado
-            // CORREÇÃO CRÍTICA: 'cancelled' SEMPRE vence independente de timestamp
-            final isCancel = (content['status'] as String?) == 'cancelled';
-            final existingIsCancelled = existingUpdate?['status'] == 'cancelled';
-            
-            // Se existente já é cancelled, NADA pode sobrescrever
-            if (existingIsCancelled) continue;
-            
-            if (existingUpdate == null || isCancel || createdAt >= existingCreatedAt) {
-              // v438: bro_billcode_encrypted — only carries billCode_nip44, doesn't change status.
-              // Merge into existing update (or create a skeleton) so provider gets the encrypted billCode.
-              if (eventType == 'bro_billcode_encrypted') {
-                final billCodeNip44 = content['billCode_nip44'] as String?;
-                if (billCodeNip44 != null && billCodeNip44.isNotEmpty) {
-                  final prev = updates[orderId];
-                  if (prev != null) {
-                    prev['billCode_nip44'] = billCodeNip44;
-                    prev['billCode_encryption'] = 'nip44v2';
-                    prev['billCode_senderPubkey'] = event['pubkey'] as String?;
-                  } else {
-                    updates[orderId] = {
-                      'orderId': orderId,
-                      'status': null, // no status change
-                      'billCode_nip44': billCodeNip44,
-                      'billCode_encryption': 'nip44v2',
-                      'billCode_senderPubkey': event['pubkey'] as String?,
-                      'created_at': createdAt,
-                    };
-                  }
-                }
-                continue; // don't process as normal status update
-              }
+            final existingCreatedAt =
+                existingUpdate?['created_at'] as int? ?? 0;
 
-              // Determinar status baseado no tipo de evento
-              String? status = content['status'] as String?;
-              if (eventType == 'bro_accept' || eventKind == kindBroAccept) {
-                status = 'accepted';
-              } else if (eventType == 'bro_complete' || eventKind == kindBroComplete) {
-                // SEGURANÇA: bro_complete SEMPRE resulta em 'awaiting_confirmation'
-                // O provedor NÃO pode completar unilateralmente — o usuário deve confirmar manualmente
-                // Isso evita que um provedor malicioso marque ordens como completed sem o pagamento real
-                status = 'awaiting_confirmation'; // Bro pagou, aguardando confirmação do usuário
-              }
-              
-              // PROTEÇÃO: Não regredir status mais avançado
-              // CORREÇÃO CRÍTICA: 'cancelled' é estado TERMINAL - não pode ser sobrescrito
-              // por nenhum outro status (exceto 'disputed')
-              final existingStatus = existingUpdate?['status'] as String?;
-              if (existingStatus != null) {
-                // Se já está cancelado, NUNCA sobrescrever
-                if (existingStatus == 'cancelled') {
-                  continue;
-                }
-                // Se novo status é cancelled, SEMPRE sobrescrever (cancelamento é ação explícita)
-                // (não entra aqui, cai no update abaixo)
-                
-                // Progressão linear — usar lista COMPLETA de status
-                // CORREÇÃO v1.0.129: Lista incompleta causava bypass do guard
-                const statusOrder = ['draft', 'pending', 'payment_received', 'accepted', 'processing', 'awaiting_confirmation', 'completed', 'liquidated'];
-                final existingIdx = statusOrder.indexOf(existingStatus);
-                final newIdx = statusOrder.indexOf(status ?? 'pending');
-                if (existingIdx >= 0 && newIdx >= 0 && newIdx < existingIdx) {
-                  continue;
-                }
-              }
-              
-              // IMPORTANTE: Incluir proofImage do comprovante para o usuário ver
-              // Se criptografado com NIP-44, incluir versão encriptada para descriptografia posterior
-              final proofImage = content['proofImage'] as String?;
-              final proofImageNip44 = content['proofImage_nip44'] as String?;
-              final encryption = content['encryption'] as String?;
-              
-              // NOVO: Incluir providerInvoice para pagamento automático
-              final providerInvoice = content['providerInvoice'] as String?;
-
-              // v438: billCode encriptado via NIP-44 (post-acceptance)
-              final billCodeNip44 = content['billCode_nip44'] as String?;
-              
-              // providerId pode vir do content ou do pubkey do evento (para accepts)
-              final providerId = content['providerId'] as String? ?? event['pubkey'] as String?;
-              
-              // IMPORTANTE: Guardar quem publicou o evento para verificar se foi o próprio usuário
-              final eventAuthorPubkey = event['pubkey'] as String?;
-              
-              // v406: Usar proofAccumulator como fallback DEFINITIVO para proof data
-              // Isso garante que proof NUNCA se perde por ordem de processamento de eventos
-              final previousUpdate = updates[orderId];
-              final accum = proofAccumulator[orderId];
+            if (existingUpdate == null || createdAt >= existingCreatedAt) {
+              final providerId = content['providerId'] as String?;
               updates[orderId] = {
                 'orderId': orderId,
-                'status': status,
-                'providerId': providerId ?? previousUpdate?['providerId'] ?? accum?['providerId'],
-                'acceptedAt': content['acceptedAt'] ?? previousUpdate?['acceptedAt'],
-                'eventAuthorPubkey': eventAuthorPubkey ?? previousUpdate?['eventAuthorPubkey'] ?? accum?['eventAuthorPubkey'],
-                'proofImage': proofImage ?? previousUpdate?['proofImage'] ?? accum?['proofImage'],
-                'proofImage_nip44': proofImageNip44 ?? previousUpdate?['proofImage_nip44'] ?? accum?['proofImage_nip44'],
-                'encryption': encryption ?? previousUpdate?['encryption'] ?? accum?['encryption'],
-                'providerInvoice': providerInvoice ?? previousUpdate?['providerInvoice'] ?? accum?['providerInvoice'],
-                'completedAt': content['completedAt'] ?? previousUpdate?['completedAt'] ?? accum?['completedAt'],
-                'billCode_nip44': billCodeNip44 ?? previousUpdate?['billCode_nip44'] ?? accum?['billCode_nip44'],
-                // v718: o autor DA PROVA — explícito. O update mais novo pode
-                // ser um republish sem prova de OUTRO autor; sem este campo o
-                // providerId ficava poluído (caso 58ebf198: prova de 95a800b7
-                // + autor de update tardio c4bc52b5 → tela e pagamento errados).
-                'proofAuthorPubkey': accum?['eventAuthorPubkey'] ?? previousUpdate?['proofAuthorPubkey'],
+                'status': resolutionStatus,
+                'providerId': providerId,
+                'eventAuthorPubkey': event['pubkey'] as String?,
                 'created_at': createdAt,
               };
             }
-          } catch (e) {
-            // Ignorar eventos mal formatados
+            continue;
           }
+
+          // SEGURANÇA: Validar papel do pubkey do evento
+          // Após verificação de assinatura (em _fetchFromRelayWithSince),
+          // sabemos que event.pubkey é autêntico. Agora validamos o papel:
+          // - bro_accept: pubkey deve ser o providerId (quem aceita)
+          // - bro_complete: pubkey deve ser o providerId (quem completa)
+          // - bro_order_update: pubkey deve ser providerId OU userPubkey
+          final eventPubkey = event['pubkey'] as String?;
+          final contentProviderId = content['providerId'] as String?;
+          final contentUserPubkey = content['userPubkey'] as String?;
+
+          if (eventType == 'bro_accept' || eventType == 'bro_complete') {
+            // Apenas o provedor pode aceitar/completar
+            if (contentProviderId != null &&
+                eventPubkey != null &&
+                eventPubkey != contentProviderId) {
+              broLog(
+                  '⚠️ REJEITADO: ${eventType} de pubkey=${eventPubkey.substring(0, 8)} mas providerId=${contentProviderId.substring(0, 8)}');
+              continue;
+            }
+          }
+
+          // SEGURANÇA: Para status 'disputed', validar que o autor é parte da ordem
+          // Apenas userPubkey ou providerId podem abrir disputa
+          final contentStatus = content['status'] as String?;
+          if (contentStatus == 'disputed' && eventType == 'bro_order_update') {
+            final isAuthorUser =
+                contentUserPubkey != null && eventPubkey == contentUserPubkey;
+            final isAuthorProvider =
+                contentProviderId != null && eventPubkey == contentProviderId;
+            if (!isAuthorUser && !isAuthorProvider) {
+              broLog(
+                  '⚠️ REJEITADO: disputed de pubkey não autorizado ${eventPubkey?.substring(0, 8)}');
+              continue;
+            }
+          }
+
+          final createdAt = event['created_at'] as int? ?? 0;
+
+          // SEGURANÇA: Rejeitar eventos com timestamp no futuro (clock skew attack)
+          final eventTime =
+              DateTime.fromMillisecondsSinceEpoch(createdAt * 1000);
+          final now = DateTime.now();
+          if (eventTime.isAfter(now.add(const Duration(minutes: 15)))) {
+            broLog('⚠️ REJEITADO: evento com timestamp no futuro: $eventTime');
+            continue;
+          }
+
+          // Manter apenas o update mais recente para cada ordem
+          final existingUpdate = updates[orderId];
+          final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
+
+          // CORREÇÃO: Usar >= para timestamps iguais, permitindo que status mais avançado vença
+          // Antes usava > (estritamente maior), o que fazia o primeiro evento processado ganhar
+          // em caso de empate, mesmo que tivesse status menos avançado
+          // CORREÇÃO CRÍTICA: 'cancelled' SEMPRE vence independente de timestamp
+          final isCancel = (content['status'] as String?) == 'cancelled';
+          final existingIsCancelled = existingUpdate?['status'] == 'cancelled';
+
+          // Se existente já é cancelled, NADA pode sobrescrever
+          if (existingIsCancelled) continue;
+
+          if (existingUpdate == null ||
+              isCancel ||
+              createdAt >= existingCreatedAt) {
+            // v438: bro_billcode_encrypted — only carries billCode_nip44, doesn't change status.
+            // Merge into existing update (or create a skeleton) so provider gets the encrypted billCode.
+            if (eventType == 'bro_billcode_encrypted') {
+              final billCodeNip44 = content['billCode_nip44'] as String?;
+              if (billCodeNip44 != null && billCodeNip44.isNotEmpty) {
+                final prev = updates[orderId];
+                if (prev != null) {
+                  prev['billCode_nip44'] = billCodeNip44;
+                  prev['billCode_encryption'] = 'nip44v2';
+                  prev['billCode_senderPubkey'] = event['pubkey'] as String?;
+                } else {
+                  updates[orderId] = {
+                    'orderId': orderId,
+                    'status': null, // no status change
+                    'billCode_nip44': billCodeNip44,
+                    'billCode_encryption': 'nip44v2',
+                    'billCode_senderPubkey': event['pubkey'] as String?,
+                    'created_at': createdAt,
+                  };
+                }
+              }
+              continue; // don't process as normal status update
+            }
+
+            // Determinar status baseado no tipo de evento
+            String? status = content['status'] as String?;
+            if (eventType == 'bro_accept' || eventKind == kindBroAccept) {
+              status = 'accepted';
+            } else if (eventType == 'bro_complete' ||
+                eventKind == kindBroComplete) {
+              // SEGURANÇA: bro_complete SEMPRE resulta em 'awaiting_confirmation'
+              // O provedor NÃO pode completar unilateralmente — o usuário deve confirmar manualmente
+              // Isso evita que um provedor malicioso marque ordens como completed sem o pagamento real
+              status =
+                  'awaiting_confirmation'; // Bro pagou, aguardando confirmação do usuário
+            }
+
+            // PROTEÇÃO: Não regredir status mais avançado
+            // CORREÇÃO CRÍTICA: 'cancelled' é estado TERMINAL - não pode ser sobrescrito
+            // por nenhum outro status (exceto 'disputed')
+            final existingStatus = existingUpdate?['status'] as String?;
+            if (existingStatus != null) {
+              // Se já está cancelado, NUNCA sobrescrever
+              if (existingStatus == 'cancelled') {
+                continue;
+              }
+              // Se novo status é cancelled, SEMPRE sobrescrever (cancelamento é ação explícita)
+              // (não entra aqui, cai no update abaixo)
+
+              // Progressão linear — usar lista COMPLETA de status
+              // CORREÇÃO v1.0.129: Lista incompleta causava bypass do guard
+              const statusOrder = [
+                'draft',
+                'pending',
+                'payment_received',
+                'accepted',
+                'processing',
+                'awaiting_confirmation',
+                'completed',
+                'liquidated'
+              ];
+              final existingIdx = statusOrder.indexOf(existingStatus);
+              final newIdx = statusOrder.indexOf(status ?? 'pending');
+              if (existingIdx >= 0 && newIdx >= 0 && newIdx < existingIdx) {
+                continue;
+              }
+            }
+
+            // IMPORTANTE: Incluir proofImage do comprovante para o usuário ver
+            // Se criptografado com NIP-44, incluir versão encriptada para descriptografia posterior
+            final proofImage = content['proofImage'] as String?;
+            final proofImageNip44 = content['proofImage_nip44'] as String?;
+            final encryption = content['encryption'] as String?;
+
+            // NOVO: Incluir providerInvoice para pagamento automático
+            final providerInvoice = content['providerInvoice'] as String?;
+
+            // v438: billCode encriptado via NIP-44 (post-acceptance)
+            final billCodeNip44 = content['billCode_nip44'] as String?;
+
+            // providerId pode vir do content ou do pubkey do evento (para accepts)
+            final providerId =
+                content['providerId'] as String? ?? event['pubkey'] as String?;
+
+            // IMPORTANTE: Guardar quem publicou o evento para verificar se foi o próprio usuário
+            final eventAuthorPubkey = event['pubkey'] as String?;
+
+            // v406: Usar proofAccumulator como fallback DEFINITIVO para proof data
+            // Isso garante que proof NUNCA se perde por ordem de processamento de eventos
+            final previousUpdate = updates[orderId];
+            final accum = proofAccumulator[orderId];
+            updates[orderId] = {
+              'orderId': orderId,
+              'status': status,
+              'providerId': providerId ??
+                  previousUpdate?['providerId'] ??
+                  accum?['providerId'],
+              'acceptedAt':
+                  content['acceptedAt'] ?? previousUpdate?['acceptedAt'],
+              'eventAuthorPubkey': eventAuthorPubkey ??
+                  previousUpdate?['eventAuthorPubkey'] ??
+                  accum?['eventAuthorPubkey'],
+              'proofImage': proofImage ??
+                  previousUpdate?['proofImage'] ??
+                  accum?['proofImage'],
+              'proofImage_nip44': proofImageNip44 ??
+                  previousUpdate?['proofImage_nip44'] ??
+                  accum?['proofImage_nip44'],
+              'encryption': encryption ??
+                  previousUpdate?['encryption'] ??
+                  accum?['encryption'],
+              'providerInvoice': providerInvoice ??
+                  previousUpdate?['providerInvoice'] ??
+                  accum?['providerInvoice'],
+              'completedAt': content['completedAt'] ??
+                  previousUpdate?['completedAt'] ??
+                  accum?['completedAt'],
+              'billCode_nip44': billCodeNip44 ??
+                  previousUpdate?['billCode_nip44'] ??
+                  accum?['billCode_nip44'],
+              // v718: o autor DA PROVA — explícito. O update mais novo pode
+              // ser um republish sem prova de OUTRO autor; sem este campo o
+              // providerId ficava poluído (caso 58ebf198: prova de 95a800b7
+              // + autor de update tardio c4bc52b5 → tela e pagamento errados).
+              'proofAuthorPubkey': accum?['eventAuthorPubkey'] ??
+                  previousUpdate?['proofAuthorPubkey'],
+              'created_at': createdAt,
+            };
+          }
+        } catch (e) {
+          // Ignorar eventos mal formatados
         }
-    
-    broLog('📋 _fetchAllOrderStatusUpdates: ${updates.length} ordens com updates');
-    
-    // PERFORMANCE: Salvar no cache para evitar chamadas redundantes
-    _statusUpdatesCache = updates;
-    _statusUpdatesCacheTime = DateTime.now();
-    
-    // Completar o lock para liberar chamadores concorrentes
-    if (_statusUpdatesFetching != null && !_statusUpdatesFetching!.isCompleted) {
-      _statusUpdatesFetching!.complete(updates);
-    }
-    _statusUpdatesFetching = null;
-    
-    return updates;
+      }
+
+      broLog(
+          '📋 _fetchAllOrderStatusUpdates: ${updates.length} ordens com updates');
+
+      // PERFORMANCE: Salvar no cache para evitar chamadas redundantes
+      _statusUpdatesCache = updates;
+      _statusUpdatesCacheTime = DateTime.now();
+
+      // Completar o lock para liberar chamadores concorrentes
+      if (_statusUpdatesFetching != null &&
+          !_statusUpdatesFetching!.isCompleted) {
+        _statusUpdatesFetching!.complete(updates);
+      }
+      _statusUpdatesFetching = null;
+
+      return updates;
     } catch (e) {
       // Em caso de erro, liberar o lock e retornar cache ou vazio
       final fallback = _statusUpdatesCache ?? <String, Map<String, dynamic>>{};
-      if (_statusUpdatesFetching != null && !_statusUpdatesFetching!.isCompleted) {
+      if (_statusUpdatesFetching != null &&
+          !_statusUpdatesFetching!.isCompleted) {
         _statusUpdatesFetching!.complete(fallback);
       }
       _statusUpdatesFetching = null;
       return fallback;
     }
   }
-  
+
   @visibleForTesting
   Order debugApplyStatusUpdateForR3(
     Order order,
@@ -3794,24 +4294,58 @@ class NostrOrderService {
   /// Aplica o status mais recente de um update a uma ordem
   /// Aplica updates de status do Nostr a uma ordem
   /// [userPrivateKey]: Se fornecido, descriptografa proofImage NIP-44
-  Order _applyStatusUpdate(Order order, Map<String, Map<String, dynamic>> statusUpdates, {String? userPrivateKey}) {
+  Order _applyStatusUpdate(
+      Order order, Map<String, Map<String, dynamic>> statusUpdates,
+      {String? userPrivateKey}) {
     final update = statusUpdates[order.id];
     if (update == null) return order;
-    
+
     final newStatus = update['status'] as String?;
     final updateProviderId = update['providerId'] as String?;
     var proofImage = update['proofImage'] as String?;
     final proofImageNip44 = update['proofImage_nip44'] as String?;
     final encryption = update['encryption'] as String?;
     final completedAt = update['completedAt'] as String?;
-    final acceptedAt = order.acceptedAt ??
-        DateTime.tryParse(update['acceptedAt']?.toString() ?? '');
+    final eventCreatedAt = update['created_at'] as int?;
+    final isRepublishedRound =
+        newStatus == 'pending' && update['republishedAt'] != null;
+    if (isRepublishedRound &&
+        order.status == 'accepted' &&
+        order.metadata?['republishedAt'] != null) {
+      return order.copyWith(
+        status: 'pending',
+        clearProviderId: true,
+        clearAcceptedAt: true,
+        metadata: {
+          ...?order.metadata,
+          'republishedAt': update['republishedAt'],
+          'billCode_nip44_sent': false,
+          'billCode_nip44_sent_at': 0,
+        },
+      );
+    }
+    final localRepublishedAt = DateTime.tryParse(
+      order.metadata?['republishedAt']?.toString() ?? '',
+    );
+    if (localRepublishedAt != null &&
+        newStatus != 'pending' &&
+        newStatus != 'cancelled' &&
+        eventCreatedAt != null &&
+        eventCreatedAt <=
+            localRepublishedAt.millisecondsSinceEpoch ~/ 1000 + 120) {
+      return order;
+    }
+    final acceptedAt = isRepublishedRound
+        ? null
+        : order.acceptedAt ??
+            DateTime.tryParse(update['acceptedAt']?.toString() ?? '');
     // v714: providerId SÓ troca por prova de trabalho (comprovante anexado).
     // Aceites/updates tardios não roubam mais a referência (caso 58ebf198:
     // o iPhone da Carol apareceu como "provedora" da ordem que outro provedor
     // pagou). Quem comprovou = quem recebe (regra v713) — a exibição segue a
     // mesma verdade.
     String? resolveProviderId() {
+      if (isRepublishedRound) return null;
       // R3: prova tardia nunca reabre a corrida nem troca o canônico.
       if (order.status == 'accept_expired') return order.providerId;
       // v718: o autor DA PROVA manda — explícito do mapa de updates (o evento
@@ -3819,41 +4353,51 @@ class NostrOrderService {
       // quem publicou o comprovante de verdade).
       final proofAuthor = update['proofAuthorPubkey'] as String?;
       if (proofAuthor != null && proofAuthor.isNotEmpty) return proofAuthor;
-      final hasProof = (update['proofImage'] != null && (update['proofImage'] as String).isNotEmpty) ||
-          (update['proofImage_nip44'] != null && (update['proofImage_nip44'] as String).isNotEmpty);
+      final hasProof = (update['proofImage'] != null &&
+              (update['proofImage'] as String).isNotEmpty) ||
+          (update['proofImage_nip44'] != null &&
+              (update['proofImage_nip44'] as String).isNotEmpty);
       if (hasProof) {
         // autor ASSINANTE do evento com comprovante = provedor real (a
         // assinatura não mente; o campo content poderia ser forjado)
         final author = update['eventAuthorPubkey'] as String?;
         if (author != null && author.isNotEmpty) return author;
-        if (updateProviderId != null && updateProviderId.isNotEmpty) return updateProviderId;
+        if (updateProviderId != null && updateProviderId.isNotEmpty)
+          return updateProviderId;
       }
       if (order.providerId == null || order.providerId!.isEmpty) {
         return updateProviderId; // primeiro preenchimento (aceite)
       }
       return order.providerId; // já definido: não troca por update tardio
     }
+
     final providerId = resolveProviderId();
-    final eventCreatedAt = update['created_at'] as int?; // Nostr event timestamp (Unix seconds)
-    final providerInvoice = update['providerInvoice'] as String?; // CRÍTICO: Invoice do provedor
-    
+    final providerInvoice =
+        update['providerInvoice'] as String?; // CRÍTICO: Invoice do provedor
+
     // NIP-44: Descriptografar proofImage se criptografado
-    if (proofImageNip44 != null && proofImageNip44.isNotEmpty && 
-        encryption == 'nip44v2' && userPrivateKey != null) {
+    if (proofImageNip44 != null &&
+        proofImageNip44.isNotEmpty &&
+        encryption == 'nip44v2' &&
+        userPrivateKey != null) {
       final senderPubkey = update['eventAuthorPubkey'] as String? ?? providerId;
       if (senderPubkey != null) {
         try {
-          proofImage = _nip44.decryptBetween(proofImageNip44, userPrivateKey, senderPubkey);
+          proofImage = _nip44.decryptBetween(
+              proofImageNip44, userPrivateKey, senderPubkey);
           broLog('🔓 proofImage descriptografado com NIP-44');
         } catch (e) {
           // Fallback: se o usuário atual é o autor do evento (provedor),
           // usar o userPubkey da ordem como contraparte para ECDH
           if (order.userPubkey != null && order.userPubkey!.isNotEmpty) {
             try {
-              proofImage = _nip44.decryptBetween(proofImageNip44, userPrivateKey, order.userPubkey!);
-              broLog('🔓 proofImage descriptografado com NIP-44 (via order.userPubkey)');
+              proofImage = _nip44.decryptBetween(
+                  proofImageNip44, userPrivateKey, order.userPubkey!);
+              broLog(
+                  '🔓 proofImage descriptografado com NIP-44 (via order.userPubkey)');
             } catch (e2) {
-              broLog('⚠️ Falha ao descriptografar proofImage (ambas tentativas): $e / $e2');
+              broLog(
+                  '⚠️ Falha ao descriptografar proofImage (ambas tentativas): $e / $e2');
               proofImage = null;
             }
           } else {
@@ -3863,7 +4407,7 @@ class NostrOrderService {
         }
       }
     }
-    
+
     // Se proofImage é o marcador de criptografia, não usar como imagem
     if (proofImage != null && proofImage.startsWith('[encrypted:')) {
       proofImage = null;
@@ -3873,42 +4417,51 @@ class NostrOrderService {
     String? decryptedBillCode;
     final billCodeNip44 = update['billCode_nip44'] as String?;
     final billCodeEncryption = update['billCode_encryption'] as String?;
-    if (billCodeNip44 != null && billCodeNip44.isNotEmpty && userPrivateKey != null) {
-      final senderPubkey = update['billCode_senderPubkey'] as String? ?? order.userPubkey;
+    if (billCodeNip44 != null &&
+        billCodeNip44.isNotEmpty &&
+        userPrivateKey != null) {
+      final senderPubkey =
+          update['billCode_senderPubkey'] as String? ?? order.userPubkey;
       if (senderPubkey != null && senderPubkey.isNotEmpty) {
         try {
-          decryptedBillCode = _nip44.decryptBetween(billCodeNip44, userPrivateKey, senderPubkey);
-          broLog('🔐 billCode descriptografado via NIP-44 para ordem ${order.id.substring(0, 8)}');
+          decryptedBillCode = _nip44.decryptBetween(
+              billCodeNip44, userPrivateKey, senderPubkey);
+          broLog(
+              '🔐 billCode descriptografado via NIP-44 para ordem ${order.id.substring(0, 8)}');
         } catch (e) {
           broLog('⚠️ Falha ao descriptografar billCode NIP-44: $e');
         }
       }
     }
-    
+
     // NOTA: Não bloqueamos mais "completed" do provedor porque:
     // 1. O pagamento ao provedor só acontece via invoice Lightning que ele gera
     // 2. O pagamento da taxa só acontece quando o USUÁRIO confirma localmente
     // 3. O provedor marcar "completed" não causa dano financeiro
     // 4. Bloquear causa problemas de sincronização entre dispositivos
-    
+
     // v448: Aplicar metadata SEMPRE que houver update, mesmo se status não mudou.
     // CORREÇÃO: Antes, se newStatus == order.status (ex: ambos 'awaiting_confirmation'),
     // o bloco de metadata era pulado inteiramente — proofImage, providerInvoice e
     // receipt_submitted_at nunca eram aplicados. Isso causava timer travado, comprovante
     // não aparecendo e confirmação falhando.
     if (newStatus != null) {
-      
       // CORREÇÃO v1.0.129: NUNCA regredir status
       // Se o status atual é mais avançado que o novo, manter o atual
       // Mas ainda atualizar metadata (proofImage, etc)
       final isLateProofRecovery = newStatus == 'awaiting_confirmation' &&
           isCanonicalLateProof(order, update);
+      final isExpiredRecovery = canRecoverExpiredAccept(order.toJson(), update);
       final isProgression = isLateProofRecovery ||
+          isExpiredRecovery ||
           _isStatusProgression(newStatus, order.status);
       final statusToApply = isProgression ? newStatus : order.status;
-      
+
       // Mesclar metadata existente com novos dados do comprovante
       final updatedMetadata = Map<String, dynamic>.from(order.metadata ?? {});
+      if (isRepublishedRound) {
+        updatedMetadata['republishedAt'] = update['republishedAt'];
+      }
       if (proofImage != null && proofImage.isNotEmpty) {
         updatedMetadata['proofImage'] = proofImage;
         updatedMetadata['paymentProof'] = proofImage; // Compatibilidade
@@ -3918,24 +4471,28 @@ class NostrOrderService {
         updatedMetadata['proofImage_nip44'] = proofImageNip44;
         // v718: autor DA PROVA (não o do update tardio) — era a fonte da
         // poluição c4bc52b5 no caso 58ebf198
-        updatedMetadata['proofImage_senderPubkey'] = update['proofAuthorPubkey'] as String?
-            ?? update['eventAuthorPubkey'] as String? ?? providerId;
+        updatedMetadata['proofImage_senderPubkey'] =
+            update['proofAuthorPubkey'] as String? ??
+                update['eventAuthorPubkey'] as String? ??
+                providerId;
       }
-      final hasProofEvidence =
-          (proofImage != null && proofImage.isNotEmpty) ||
+      final hasProofEvidence = (proofImage != null && proofImage.isNotEmpty) ||
           (proofImageNip44 != null && proofImageNip44.isNotEmpty);
       if (isLateProofRecovery) {
-        updatedMetadata['lateProofRecoveredAt'] = DateTime.now().toIso8601String();
+        updatedMetadata['lateProofRecoveredAt'] =
+            DateTime.now().toIso8601String();
         updatedMetadata['billcode_locked'] = true;
         updatedMetadata['billcode_locked_to'] = order.providerId;
-        updatedMetadata['billcode_locked_at'] ??= DateTime.now().toIso8601String();
+        updatedMetadata['billcode_locked_at'] ??=
+            DateTime.now().toIso8601String();
       }
       if (hasProofEvidence) {
         // Estes campos são a âncora da prova e da auto-liquidação de 36h.
         // Um created_at isolado (aceite, billcode ou republish) não é prova.
         final proofTime = completedAt ??
             (eventCreatedAt != null && eventCreatedAt > 0
-                ? DateTime.fromMillisecondsSinceEpoch(eventCreatedAt * 1000).toIso8601String()
+                ? DateTime.fromMillisecondsSinceEpoch(eventCreatedAt * 1000)
+                    .toIso8601String()
                 : null);
         if (proofTime != null) {
           updatedMetadata['proofReceivedAt'] ??= proofTime;
@@ -3949,15 +4506,17 @@ class NostrOrderService {
       // v438: Preservar billCode NIP-44 para re-descriptografia futura
       if (billCodeNip44 != null && billCodeNip44.isNotEmpty) {
         updatedMetadata['billCode_nip44'] = billCodeNip44;
-        updatedMetadata['billCode_senderPubkey'] = update['billCode_senderPubkey'] as String? ?? order.userPubkey;
+        updatedMetadata['billCode_senderPubkey'] =
+            update['billCode_senderPubkey'] as String? ?? order.userPubkey;
       }
-      
+
       return Order(
         id: order.id,
         eventId: order.eventId,
         userPubkey: order.userPubkey,
         billType: order.billType,
-        billCode: decryptedBillCode ?? order.billCode, // v438: prefer NIP-44 decrypted over plaintext
+        billCode: decryptedBillCode ??
+            order.billCode, // v438: prefer NIP-44 decrypted over plaintext
         amount: order.amount,
         btcAmount: order.btcAmount,
         btcPrice: order.btcPrice,
@@ -3969,16 +4528,18 @@ class NostrOrderService {
         createdAt: order.createdAt,
         acceptedAt: acceptedAt,
         completedAt: order.completedAt,
-        metadata: updatedMetadata, // IMPORTANTE: Incluir metadata com proofImage!
+        metadata:
+            updatedMetadata, // IMPORTANTE: Incluir metadata com proofImage!
       );
     }
-    
+
     // v438: Even if no status change, apply decrypted billCode if available
     if (decryptedBillCode != null && decryptedBillCode.isNotEmpty) {
       final updatedMetadata = Map<String, dynamic>.from(order.metadata ?? {});
       if (billCodeNip44 != null) {
         updatedMetadata['billCode_nip44'] = billCodeNip44;
-        updatedMetadata['billCode_senderPubkey'] = update['billCode_senderPubkey'] as String? ?? order.userPubkey;
+        updatedMetadata['billCode_senderPubkey'] =
+            update['billCode_senderPubkey'] as String? ?? order.userPubkey;
       }
       return Order(
         id: order.id,
@@ -4000,7 +4561,7 @@ class NostrOrderService {
         metadata: updatedMetadata,
       );
     }
-    
+
     return order;
   }
 
@@ -4010,31 +4571,31 @@ class NostrOrderService {
     final orders = <Map<String, dynamic>>[];
     final seenIds = <String>{};
 
-    for (final r in _relays) {
-    }
-    
+    for (final r in _relays) {}
+
     // IMPORTANTE: Buscar ordens dos últimos 45 dias (aumentado de 14)
     // Isso garante que ordens mais antigas ainda disponíveis sejam encontradas
     // Ordens de PIX/Boleto podem demorar para serem aceitas em períodos de baixa atividade
     final fourteenDaysAgo = DateTime.now().subtract(const Duration(days: 14));
-    final sinceTimestamp = (fourteenDaysAgo.millisecondsSinceEpoch / 1000).floor();
+    final sinceTimestamp =
+        (fourteenDaysAgo.millisecondsSinceEpoch / 1000).floor();
 
     // ESTRATÉGIA: Buscar por KIND diretamente (mais confiável que tags)
     // Buscar de TODOS os relays em paralelo para maior velocidade
     final futures = <Future<List<Map<String, dynamic>>>>[];
-    
+
     for (final relay in _relays) {
       futures.add(_fetchPendingFromRelay(relay, sinceTimestamp));
     }
-    
+
     // Aguardar todas as buscas em paralelo
     final results = await Future.wait(futures, eagerError: false);
-    
+
     // Processar resultados
     int successfulRelays = 0;
     for (int i = 0; i < results.length; i++) {
       final relayOrders = results[i];
-      
+
       if (relayOrders.isNotEmpty) successfulRelays++;
       for (final order in relayOrders) {
         final id = order['id'];
@@ -4044,14 +4605,16 @@ class NostrOrderService {
         }
       }
     }
-    
+
     // v259: Se NENHUM relay principal retornou dados, tentar fallback relays
     if (orders.isEmpty && successfulRelays == 0) {
-      broLog('⚠️ fetchPendingOrdersRaw: 0 relays principais responderam, tentando fallback...');
-      final fallbackFutures = _fallbackRelays.map(
-        (relay) => _fetchPendingFromRelay(relay, sinceTimestamp)
-      ).toList();
-      final fallbackResults = await Future.wait(fallbackFutures, eagerError: false);
+      broLog(
+          '⚠️ fetchPendingOrdersRaw: 0 relays principais responderam, tentando fallback...');
+      final fallbackFutures = _fallbackRelays
+          .map((relay) => _fetchPendingFromRelay(relay, sinceTimestamp))
+          .toList();
+      final fallbackResults =
+          await Future.wait(fallbackFutures, eagerError: false);
       for (final relayOrders in fallbackResults) {
         for (final order in relayOrders) {
           final id = order['id'];
@@ -4065,17 +4628,18 @@ class NostrOrderService {
         broLog('✅ Fallback relays retornaram ${orders.length} ordens!');
       }
     }
-    
+
     return orders;
   }
-  
+
   /// Helper: Busca ordens pendentes de um relay específico
   /// ROBUSTO: Retorna lista vazia em caso de QUALQUER erro (timeout, conexão, etc)
   /// CRÍTICO: Usa tag #t: ['bro-order'] para filtrar apenas eventos do app BRO
   /// (kind 30078 é usado por muitos apps, sem a tag retorna eventos irrelevantes)
-  Future<List<Map<String, dynamic>>> _fetchPendingFromRelay(String relay, int sinceTimestamp) async {
+  Future<List<Map<String, dynamic>>> _fetchPendingFromRelay(
+      String relay, int sinceTimestamp) async {
     final orders = <Map<String, dynamic>>[];
-    
+
     try {
       // CRÍTICO: Buscar por KIND 30078 COM tag 'bro-order' para filtrar apenas ordens BRO
       // Sem esta tag, o relay retorna eventos de outros apps (double-ratchet, drss, etc)
@@ -4083,7 +4647,9 @@ class NostrOrderService {
       final relayOrders = await _fetchFromRelayWithSince(
         relay,
         kinds: [kindBroOrder],
-        tags: {'#t': [broTag]}, // CRÍTICO: Filtra apenas ordens do app BRO
+        tags: {
+          '#t': [broTag]
+        }, // CRÍTICO: Filtra apenas ordens do app BRO
         since: sinceTimestamp,
         limit: 200, // Aumentado para pegar mais ordens
       ).timeout(
@@ -4092,14 +4658,15 @@ class NostrOrderService {
           return <Map<String, dynamic>>[];
         },
       );
-      
-      
-      broLog('📡 Relay $relay: ${relayOrders.length} eventos kind 30078 retornados');
-      
+
+      broLog(
+          '📡 Relay $relay: ${relayOrders.length} eventos kind 30078 retornados');
+
       for (final order in relayOrders) {
         // Verificar se é ordem do Bro app (verificando content)
         try {
-          final content = order['parsedContent'] ?? jsonDecode(order['content'] ?? '{}');
+          final content =
+              order['parsedContent'] ?? jsonDecode(order['content'] ?? '{}');
           if (content['type'] == 'bro_order') {
             orders.add(order);
           }
@@ -4109,7 +4676,7 @@ class NostrOrderService {
     } catch (e) {
       broLog('❌ Relay $relay erro: $e');
     }
-    
+
     return orders;
   }
 
@@ -4144,10 +4711,11 @@ class NostrOrderService {
 
     return orders;
   }
-  
+
   /// Helper: Busca ordens de um usuário de um relay específico
   /// ROBUSTO: Retorna lista vazia em caso de QUALQUER erro
-  Future<List<Map<String, dynamic>>> _fetchUserOrdersFromRelay(String relay, String pubkey) async {
+  Future<List<Map<String, dynamic>>> _fetchUserOrdersFromRelay(
+      String relay, String pubkey) async {
     final orders = <Map<String, dynamic>>[];
     final seenIds = <String>{};
 
@@ -4164,7 +4732,9 @@ class NostrOrderService {
       const maxWindows = 10;
 
       for (int w = 0; w < maxWindows; w++) {
-        final untilSecs = windowUntil != null ? windowUntil.millisecondsSinceEpoch ~/ 1000 : null;
+        final untilSecs = windowUntil != null
+            ? windowUntil.millisecondsSinceEpoch ~/ 1000
+            : null;
 
         final relayOrders = await _fetchFromRelayWithSince(
           relay,
@@ -4185,7 +4755,8 @@ class NostrOrderService {
         for (final order in relayOrders) {
           // Verificar se é ordem do Bro app
           try {
-            final content = order['parsedContent'] ?? jsonDecode(order['content'] ?? '{}');
+            final content =
+                order['parsedContent'] ?? jsonDecode(order['content'] ?? '{}');
             if (content['type'] == 'bro_order') {
               final id = order['id'];
               if (id != null && !seenIds.contains(id)) {
@@ -4203,11 +4774,12 @@ class NostrOrderService {
 
         // Página cheia → pode haver mais no passado; página vazia/curta → fim.
         if (relayOrders.length < 100 || oldestCreatedAt == 0) break;
-        windowUntil = DateTime.fromMillisecondsSinceEpoch((oldestCreatedAt - 1) * 1000);
-        if (DateTime.now().difference(windowUntil).inDays > windowDays * maxWindows) break;
+        windowUntil =
+            DateTime.fromMillisecondsSinceEpoch((oldestCreatedAt - 1) * 1000);
+        if (DateTime.now().difference(windowUntil).inDays >
+            windowDays * maxWindows) break;
       }
-    } catch (e) {
-    }
+    } catch (e) {}
 
     return orders;
   }
@@ -4215,23 +4787,26 @@ class NostrOrderService {
   /// Busca eventos de aceitação e comprovante direcionados a um usuário
   /// Isso permite que o usuário veja quando um Bro aceitou sua ordem ou enviou comprovante
   /// PERFORMANCE: Busca em todos os relays EM PARALELO
-  Future<Map<String, Map<String, dynamic>>> fetchOrderUpdatesForUser(String userPubkey, {List<String>? orderIds}) async {
-    final updates = <String, Map<String, dynamic>>{}; // orderId -> latest update
-    
+  Future<Map<String, Map<String, dynamic>>> fetchOrderUpdatesForUser(
+      String userPubkey,
+      {List<String>? orderIds}) async {
+    final updates =
+        <String, Map<String, dynamic>>{}; // orderId -> latest update
+
     // PERFORMANCE v1.0.129+218: Se não há ordens ativas para buscar, retornar vazio
     // Isso evita abrir 12 conexões WebSocket desnecessárias
     if (orderIds != null && orderIds.isEmpty) {
       broLog('🔍 fetchOrderUpdatesForUser: 0 ordens ativas, pulando fetch');
       return updates;
     }
-    
+
     // Converter para Set para filtragem O(1) no processamento
     final activeOrderIdSet = orderIds?.toSet();
 
     // v507: seenIds moved outside loop for cross-relay deduplication
     final allEvents = <Map<String, dynamic>>[];
     final seenIds = <String>{};
-    
+
     // v806: PARALELO em TODOS os relays (mesmo modelo do _fetchAllOrderStatusUpdates
     // v568). Antes: _relays.take(3) SEQUENCIAL — o evento 30081 (comprovante) num
     // relay fora do take(3) ou num relay lento atrasava o status do comprador em
@@ -4242,22 +4817,34 @@ class NostrOrderService {
     // Consultar só os 5 principais deixava o comprovante invisível por MUITOS
     // ciclos quando esse relay não respondia (caso cdbd6089/ac6ae697, v809 não
     // resolveu). Mesmo modelo v646 de _fetchTargetedStatusUpdates.
-    final relayTasks = <String>[..._relays, ..._fallbackRelays].map((relay) async {
+    final relayTasks =
+        <String>[..._relays, ..._fallbackRelays].map((relay) async {
       try {
         // 2 core strategies per relay (reduced from 5)
         final strategies = <Future<List<Map<String, dynamic>>>>[
           // 1. Eventos direcionados ao usuário (accept/complete/proof)
-          _fetchFromRelay(relay, kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete], tags: {'#p': [userPubkey]}, limit: 200)
-            .catchError((_) => <Map<String, dynamic>>[]),
+          _fetchFromRelay(relay,
+                  kinds: [kindBroAccept, kindBroPaymentProof, kindBroComplete],
+                  tags: {
+                    '#p': [userPubkey]
+                  },
+                  limit: 200)
+              .catchError((_) => <Map<String, dynamic>>[]),
           // 2. Eventos do PRÓPRIO USUÁRIO (kind 30080 — status updates publicados por mim)
-          _fetchFromRelay(relay, kinds: [kindBroPaymentProof], authors: [userPubkey], limit: 100)
-            .catchError((_) => <Map<String, dynamic>>[]),
+          _fetchFromRelay(relay,
+                  kinds: [kindBroPaymentProof],
+                  authors: [userPubkey],
+                  limit: 100)
+              .catchError((_) => <Map<String, dynamic>>[]),
         ];
         // 3. Buscar por #r (orderId) para updates do provedor sem tag #p
         if (activeOrderIdSet != null && activeOrderIdSet.isNotEmpty) {
           strategies.add(
-            _fetchFromRelay(relay, kinds: [kindBroPaymentProof], tags: {'#r': activeOrderIdSet.toList()}, limit: 100)
-              .catchError((_) => <Map<String, dynamic>>[]),
+            _fetchFromRelay(relay,
+                    kinds: [kindBroPaymentProof],
+                    tags: {'#r': activeOrderIdSet.toList()},
+                    limit: 100)
+                .catchError((_) => <Map<String, dynamic>>[]),
           );
           // v812: 4. COMPLETES por #d — RAIZ do "travado em Bro encontrado" /
           // "concluída sem comprovante" (casos ac6ae697/cdbd6089, 16/11).
@@ -4267,11 +4854,14 @@ class NostrOrderService {
           // #d={id}_complete é indexado e não depende de #p nenhum.
           final ids = activeOrderIdSet.toList();
           for (var i = 0; i < ids.length; i += 15) {
-            final batch = ids.sublist(i, i + 15 > ids.length ? ids.length : i)
-                .map((id) => '${id}_complete').toList();
+            final batch = ids
+                .sublist(i, i + 15 > ids.length ? ids.length : i)
+                .map((id) => '${id}_complete')
+                .toList();
             strategies.add(
-              _fetchFromRelay(relay, kinds: [kindBroComplete], tags: {'#d': batch}, limit: 50)
-                .catchError((_) => <Map<String, dynamic>>[]),
+              _fetchFromRelay(relay,
+                      kinds: [kindBroComplete], tags: {'#d': batch}, limit: 50)
+                  .catchError((_) => <Map<String, dynamic>>[]),
             );
           }
           // v815d: ACEITES por #d — o IRMÃO do bug do complete (prova na ordem
@@ -4280,11 +4870,14 @@ class NostrOrderService {
           // presa em "aguardando Bro" mesmo aceita (o push chega, o status
           // não anda). #d={id}_accept é indexado e não depende de #p.
           for (var i = 0; i < ids.length; i += 15) {
-            final batchA = ids.sublist(i, i + 15 > ids.length ? ids.length : i)
-                .map((id) => '${id}_accept').toList();
+            final batchA = ids
+                .sublist(i, i + 15 > ids.length ? ids.length : i)
+                .map((id) => '${id}_accept')
+                .toList();
             strategies.add(
-              _fetchFromRelay(relay, kinds: [kindBroAccept], tags: {'#d': batchA}, limit: 50)
-                .catchError((_) => <Map<String, dynamic>>[]),
+              _fetchFromRelay(relay,
+                      kinds: [kindBroAccept], tags: {'#d': batchA}, limit: 50)
+                  .catchError((_) => <Map<String, dynamic>>[]),
             );
           }
         }
@@ -4310,7 +4903,8 @@ class NostrOrderService {
       }
     }
 
-    broLog('🔍 fetchOrderUpdatesForUser: ${allEvents.length} eventos (parallel relays v806)');
+    broLog(
+        '🔍 fetchOrderUpdatesForUser: ${allEvents.length} eventos (parallel relays v806)');
 
     for (final event in allEvents) {
       try {
@@ -4318,10 +4912,12 @@ class NostrOrderService {
         if (content['type'] != 'bro_republish_request') continue;
         final orderId = content['orderId'] as String?;
         if (orderId == null ||
-            (activeOrderIdSet != null && !activeOrderIdSet.contains(orderId))) continue;
+            (activeOrderIdSet != null && !activeOrderIdSet.contains(orderId)))
+          continue;
         _pendingRepublishRequests.add(orderId);
         final reqAuthor = event['pubkey']?.toString();
-        if (reqAuthor != null) _pendingRepublishRequestAuthors[orderId] = reqAuthor;
+        if (reqAuthor != null)
+          _pendingRepublishRequestAuthors[orderId] = reqAuthor;
       } catch (_) {}
     }
 
@@ -4333,24 +4929,29 @@ class NostrOrderService {
 
     broLog('fetchOrderUpdatesForUser: ${updates.length} updates encontrados');
     for (final entry in updates.entries) {
-      broLog('   ${entry.key.substring(0, 8)}: status=${entry.value['status']}, kind=${entry.value['eventKind']}, proof=${entry.value['proofImage'] != null || entry.value['proofImage_nip44'] != null}');
+      broLog(
+          '   ${entry.key.substring(0, 8)}: status=${entry.value['status']}, kind=${entry.value['eventKind']}, proof=${entry.value['proofImage'] != null || entry.value['proofImage_nip44'] != null}');
     }
     return updates;
   }
-  
+
   /// Busca eventos de update de status para ordens que o provedor aceitou
   /// v390: Sequential relay fallback — reduces WebSocket connections from 15 to 2-3
-  Future<Map<String, Map<String, dynamic>>> fetchOrderUpdatesForProvider(String providerPubkey, {List<String>? orderIds}) async {
-    final updates = <String, Map<String, dynamic>>{}; // orderId -> latest update
-    
+  Future<Map<String, Map<String, dynamic>>> fetchOrderUpdatesForProvider(
+      String providerPubkey,
+      {List<String>? orderIds}) async {
+    final updates =
+        <String, Map<String, dynamic>>{}; // orderId -> latest update
+
     // SEGURANÇA: Se não temos orderIds específicos, não buscar nada
     if (orderIds == null || orderIds.isEmpty) {
       return updates;
     }
 
     final orderIdSet = orderIds.toSet();
-    broLog('🔍 fetchOrderUpdatesForProvider: buscando updates para ${orderIds.length} ordens');
-    
+    broLog(
+        '🔍 fetchOrderUpdatesForProvider: buscando updates para ${orderIds.length} ordens');
+
     // v390: Sequential relay fallback
     int totalEvents = 0;
     for (final relay in _relays.take(3)) {
@@ -4358,23 +4959,32 @@ class NostrOrderService {
         // 2 core strategies per relay (reduced from 5)
         final results = await Future.wait([
           // 1. Updates direcionados ao provedor via #p
-          _fetchFromRelay(relay, kinds: [kindBroPaymentProof], tags: {'#p': [providerPubkey]}, limit: 100)
-            .catchError((_) => <Map<String, dynamic>>[]),
+          _fetchFromRelay(relay,
+                  kinds: [kindBroPaymentProof],
+                  tags: {
+                    '#p': [providerPubkey]
+                  },
+                  limit: 100)
+              .catchError((_) => <Map<String, dynamic>>[]),
           // 2. Updates por #r (orderId batch)
-          _fetchFromRelay(relay, kinds: [kindBroPaymentProof], tags: {'#r': orderIds}, limit: 200)
-            .catchError((_) => <Map<String, dynamic>>[]),
+          _fetchFromRelay(relay,
+                  kinds: [kindBroPaymentProof],
+                  tags: {'#r': orderIds},
+                  limit: 200)
+              .catchError((_) => <Map<String, dynamic>>[]),
         ]);
-        
+
         for (final events in results) {
           totalEvents += events.length;
           for (final event in events) {
             try {
-              final content = event['parsedContent'] ?? jsonDecode(event['content']);
+              final content =
+                  event['parsedContent'] ?? jsonDecode(event['content']);
               final eventOrderId = content['orderId'] as String?;
               final eventType = content['type'] as String?;
               final status = content['status'] as String?;
               final createdAt = event['created_at'] as int? ?? 0;
-              
+
               if (eventOrderId == null) continue;
               if (!orderIdSet.contains(eventOrderId)) continue;
 
@@ -4385,7 +4995,8 @@ class NostrOrderService {
                   final existing = updates[eventOrderId];
                   if (existing != null) {
                     existing['billCode_nip44'] = billCodeNip44;
-                    existing['billCode_senderPubkey'] = event['pubkey'] as String?;
+                    existing['billCode_senderPubkey'] =
+                        event['pubkey'] as String?;
                   } else {
                     updates[eventOrderId] = {
                       'orderId': eventOrderId,
@@ -4398,30 +5009,37 @@ class NostrOrderService {
                 }
                 continue;
               }
-              
+
               if (status == null) continue;
-              
+
               final existingUpdate = updates[eventOrderId];
-              final existingCreatedAt = existingUpdate?['created_at'] as int? ?? 0;
+              final existingCreatedAt =
+                  existingUpdate?['created_at'] as int? ?? 0;
               final existingStatus = existingUpdate?['status'] as String?;
-              
-              final isNewer = existingUpdate == null || createdAt > existingCreatedAt;
+
+              final isNewer =
+                  existingUpdate == null || createdAt > existingCreatedAt;
               if (isNewer) {
-                if (existingStatus != null && !_isStatusProgression(status, existingStatus)) continue;
+                if (existingStatus != null &&
+                    !_isStatusProgression(status, existingStatus)) continue;
               } else {
                 continue;
               }
-              
+
               // Preserve billCode_nip44 from previous update or bro_billcode_encrypted event
-              final previousBillCode = existingUpdate?['billCode_nip44'] as String?;
-              final previousSenderPubkey = existingUpdate?['billCode_senderPubkey'] as String?;
-              
+              final previousBillCode =
+                  existingUpdate?['billCode_nip44'] as String?;
+              final previousSenderPubkey =
+                  existingUpdate?['billCode_senderPubkey'] as String?;
+
               updates[eventOrderId] = {
                 'orderId': eventOrderId,
                 'status': status,
                 'created_at': createdAt,
-                if (previousBillCode != null) 'billCode_nip44': previousBillCode,
-                if (previousSenderPubkey != null) 'billCode_senderPubkey': previousSenderPubkey,
+                if (previousBillCode != null)
+                  'billCode_nip44': previousBillCode,
+                if (previousSenderPubkey != null)
+                  'billCode_senderPubkey': previousSenderPubkey,
               };
             } catch (_) {}
           }
@@ -4431,9 +5049,11 @@ class NostrOrderService {
       } catch (_) {}
     }
 
-    broLog('🔍 fetchOrderUpdatesForProvider RESULTADO: ${updates.length} updates de $totalEvents eventos');
+    broLog(
+        '🔍 fetchOrderUpdatesForProvider RESULTADO: ${updates.length} updates de $totalEvents eventos');
     for (final entry in updates.entries) {
-      broLog('   → orderId=${entry.key.substring(0, 8)} status=${entry.value['status']}');
+      broLog(
+          '   → orderId=${entry.key.substring(0, 8)} status=${entry.value['status']}');
     }
     return updates;
   }
@@ -4441,11 +5061,11 @@ class NostrOrderService {
   // ============================================
   // TIER/COLLATERAL - Persistência no Nostr
   // ============================================
-  
+
   /// Kind para dados do provedor (tier, collateral, etc)
   static const int kindBroProviderData = 30082;
   static const String providerDataTag = 'bro-provider-data';
-  
+
   /// Publica os dados do tier/collateral do provedor no Nostr
   Future<bool> publishProviderTier({
     required String privateKey,
@@ -4457,7 +5077,7 @@ class NostrOrderService {
   }) async {
     try {
       final keychain = Keychain(privateKey);
-      
+
       final content = jsonEncode({
         'type': 'bro_provider_tier',
         'version': '1.0',
@@ -4483,10 +5103,10 @@ class NostrOrderService {
         privkey: keychain.private,
       );
 
-      
       // PERFORMANCE: Publicar em todos os relays EM PARALELO
       final publishResults = await Future.wait(
-        _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
+        _relays.map(
+            (relay) => _publishToRelay(relay, event).catchError((_) => false)),
       );
       final successCount = publishResults.where((s) => s).length;
 
@@ -4498,7 +5118,6 @@ class NostrOrderService {
 
   /// Busca os dados do tier do provedor no Nostr
   Future<Map<String, dynamic>?> fetchProviderTier(String providerPubkey) async {
-    
     // PERFORMANCE: Buscar em todos os relays EM PARALELO
     final results = await Future.wait(
       _relays.map((relay) async {
@@ -4506,12 +5125,15 @@ class NostrOrderService {
           final events = await _fetchFromRelay(
             relay,
             kinds: [kindBroProviderTier],
-            tags: {'#d': ['tier_$providerPubkey']},
+            tags: {
+              '#d': ['tier_$providerPubkey']
+            },
             limit: 1,
           );
           if (events.isNotEmpty) {
             final event = events.first;
-            final content = event['parsedContent'] ?? jsonDecode(event['content']);
+            final content =
+                event['parsedContent'] ?? jsonDecode(event['content']);
             return {
               'tierId': content['tierId'],
               'tierName': content['tierName'],
@@ -4525,18 +5147,18 @@ class NostrOrderService {
         return null;
       }),
     );
-    
+
     for (final result in results) {
       if (result != null) return result;
     }
-    
+
     return null;
   }
 
   // ============================================
   // MARKETPLACE - Ofertas NIP-15 like
   // ============================================
-  
+
   static const int kindMarketplaceOffer = 30019; // NIP-15 Classifieds
   static const String marketplaceTag = 'bro-marketplace';
 
@@ -4564,7 +5186,7 @@ class NostrOrderService {
     try {
       final keychain = Keychain(privateKey);
       final offerId = const Uuid().v4();
-      
+
       final contentMap = {
         'type': 'bro_marketplace_offer',
         'version': '2.0',
@@ -4582,7 +5204,7 @@ class NostrOrderService {
         'sold': 0,
         'createdAt': DateTime.now().toIso8601String(),
       };
-      
+
       final content = jsonEncode(contentMap);
 
       final tags = [
@@ -4590,16 +5212,19 @@ class NostrOrderService {
         ['t', marketplaceTag],
         ['t', 'bro-app'],
         ['t', category],
-        ['t', 'cur:${priceCurrency.toLowerCase()}'], // v604: filtragem por moeda via relay
+        [
+          't',
+          'cur:${priceCurrency.toLowerCase()}'
+        ], // v604: filtragem por moeda via relay
         ['title', title],
         ['price', priceSats.toString(), 'sats'],
       ];
-      
+
       // Adicionar tag de site se fornecido
       if (siteUrl != null && siteUrl.isNotEmpty) {
         tags.add(['r', siteUrl]); // NIP-12 reference tag
       }
-      
+
       // Adicionar tag de localização se fornecida
       if (city != null && city.isNotEmpty) {
         tags.add(['location', city]);
@@ -4612,10 +5237,10 @@ class NostrOrderService {
         privkey: keychain.private,
       );
 
-      
       // v604: publicar apenas nos relays que respondem ao marketplace
       final publishResults = await Future.wait(
-        _marketplaceRelays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
+        _marketplaceRelays.map(
+            (relay) => _publishToRelay(relay, event).catchError((_) => false)),
       );
       final successCount = publishResults.where((s) => s).length;
 
@@ -4644,7 +5269,7 @@ class NostrOrderService {
   }) async {
     try {
       final keychain = Keychain(privateKey);
-      
+
       final contentMap = {
         'type': 'bro_marketplace_offer',
         'version': '2.0',
@@ -4662,7 +5287,7 @@ class NostrOrderService {
         'sold': newSold,
         'createdAt': DateTime.now().toIso8601String(),
       };
-      
+
       final content = jsonEncode(contentMap);
 
       final tags = [
@@ -4674,7 +5299,7 @@ class NostrOrderService {
         ['title', title],
         ['price', priceSats.toString(), 'sats'],
       ];
-      
+
       if (siteUrl != null && siteUrl.isNotEmpty) {
         tags.add(['r', siteUrl]);
       }
@@ -4690,11 +5315,13 @@ class NostrOrderService {
       );
 
       final publishResults = await Future.wait(
-        _marketplaceRelays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
+        _marketplaceRelays.map(
+            (relay) => _publishToRelay(relay, event).catchError((_) => false)),
       );
       final successCount = publishResults.where((s) => s).length;
-      
-      broLog('📦 updateMarketplaceOfferSold: offerId=${offerId.substring(0, 8)}, sold=$newSold, publicado em $successCount relays');
+
+      broLog(
+          '📦 updateMarketplaceOfferSold: offerId=${offerId.substring(0, 8)}, sold=$newSold, publicado em $successCount relays');
       return successCount > 0;
     } catch (e) {
       broLog('❌ updateMarketplaceOfferSold EXCEPTION: $e');
@@ -4710,7 +5337,7 @@ class NostrOrderService {
   }) async {
     try {
       final keychain = Keychain(privateKey);
-      
+
       // Estratégia 1: NIP-33 - Republica com mesmo d-tag mas conteúdo vazio/deletado
       // Isso substitui a oferta original no relay
       final contentMap = {
@@ -4720,7 +5347,7 @@ class NostrOrderService {
         'deleted': true,
         'deletedAt': DateTime.now().toIso8601String(),
       };
-      
+
       final replacementEvent = Event.from(
         kind: kindMarketplaceOffer,
         tags: [
@@ -4737,22 +5364,30 @@ class NostrOrderService {
       final deletionEvent = Event.from(
         kind: 5, // NIP-09 Event Deletion
         tags: [
-          ['a', '${kindMarketplaceOffer}:${keychain.public}:$offerId'], // Referência NIP-33
+          [
+            'a',
+            '${kindMarketplaceOffer}:${keychain.public}:$offerId'
+          ], // Referência NIP-33
         ],
         content: 'Oferta removida pelo vendedor',
         privkey: keychain.private,
       );
-      
+
       // v604: publicar ambos em paralelo apenas nos relays que respondem ao marketplace
       final results = await Future.wait(
-        _marketplaceRelays.expand((relay) => [
-          _publishToRelay(relay, replacementEvent).catchError((_) => false),
-          _publishToRelay(relay, deletionEvent).catchError((_) => false),
-        ]).toList(),
+        _marketplaceRelays
+            .expand((relay) => [
+                  _publishToRelay(relay, replacementEvent)
+                      .catchError((_) => false),
+                  _publishToRelay(relay, deletionEvent)
+                      .catchError((_) => false),
+                ])
+            .toList(),
       );
-      
+
       final successCount = results.where((s) => s).length;
-      broLog('🗑️ deleteMarketplaceOffer: offerId=${offerId.substring(0, 8)}, publicado em ${successCount ~/ 2}/${_marketplaceRelays.length} relays');
+      broLog(
+          '🗑️ deleteMarketplaceOffer: offerId=${offerId.substring(0, 8)}, publicado em ${successCount ~/ 2}/${_marketplaceRelays.length} relays');
       return successCount > 0;
     } catch (e) {
       broLog('❌ deleteMarketplaceOffer EXCEPTION: $e');
@@ -4765,13 +5400,15 @@ class NostrOrderService {
     final offers = <Map<String, dynamic>>[];
     final seenIds = <String>{};
 
-
     // v604: buscar apenas nos relays que respondem ao marketplace
     final relayResults = await Future.wait(
-      _marketplaceRelays.map((relay) =>
-        _fetchFromRelay(relay, kinds: [kindMarketplaceOffer], tags: {'#t': [marketplaceTag]}, limit: 50)
-          .catchError((_) => <Map<String, dynamic>>[])
-      ),
+      _marketplaceRelays.map((relay) => _fetchFromRelay(relay,
+              kinds: [kindMarketplaceOffer],
+              tags: {
+                '#t': [marketplaceTag]
+              },
+              limit: 50)
+          .catchError((_) => <Map<String, dynamic>>[])),
     );
     for (final events in relayResults) {
       for (final event in events) {
@@ -4779,7 +5416,8 @@ class NostrOrderService {
         if (!seenIds.contains(id)) {
           seenIds.add(id);
           try {
-            final content = event['parsedContent'] ?? jsonDecode(event['content']);
+            final content =
+                event['parsedContent'] ?? jsonDecode(event['content']);
             // v253: Filtrar ofertas deletadas
             if (content['deleted'] == true) continue;
             List<String> photos = [];
@@ -4800,8 +5438,11 @@ class NostrOrderService {
               'title': content['title'] ?? '',
               'description': content['description'] ?? '',
               'priceSats': content['priceSats'] ?? 0,
-              'priceCurrency': (content['priceCurrency'] as String?) ?? 'sats', // v604
-              'priceFiat': (content['priceFiat'] is num) ? (content['priceFiat'] as num).toDouble() : null, // v604
+              'priceCurrency':
+                  (content['priceCurrency'] as String?) ?? 'sats', // v604
+              'priceFiat': (content['priceFiat'] is num)
+                  ? (content['priceFiat'] as num).toDouble()
+                  : null, // v604
               'category': content['category'] ?? 'outros',
               'sellerPubkey': event['pubkey'],
               'siteUrl': siteUrl,
@@ -4822,17 +5463,21 @@ class NostrOrderService {
   }
 
   /// Busca ofertas de um usuário específico
-  Future<List<Map<String, dynamic>>> fetchUserMarketplaceOffers(String pubkey) async {
+  Future<List<Map<String, dynamic>>> fetchUserMarketplaceOffers(
+      String pubkey) async {
     final offers = <Map<String, dynamic>>[];
     final seenIds = <String>{};
 
-
     // v604: buscar apenas nos relays que respondem ao marketplace
     final relayResults = await Future.wait(
-      _marketplaceRelays.map((relay) =>
-        _fetchFromRelay(relay, kinds: [kindMarketplaceOffer], authors: [pubkey], tags: {'#t': [marketplaceTag]}, limit: 50)
-          .catchError((_) => <Map<String, dynamic>>[])
-      ),
+      _marketplaceRelays.map((relay) => _fetchFromRelay(relay,
+              kinds: [kindMarketplaceOffer],
+              authors: [pubkey],
+              tags: {
+                '#t': [marketplaceTag]
+              },
+              limit: 50)
+          .catchError((_) => <Map<String, dynamic>>[])),
     );
     for (final events in relayResults) {
       for (final event in events) {
@@ -4840,7 +5485,8 @@ class NostrOrderService {
         if (!seenIds.contains(id)) {
           seenIds.add(id);
           try {
-            final content = event['parsedContent'] ?? jsonDecode(event['content']);
+            final content =
+                event['parsedContent'] ?? jsonDecode(event['content']);
             // v253: Filtrar ofertas deletadas
             if (content['deleted'] == true) continue;
             List<String> photos = [];
@@ -4861,8 +5507,11 @@ class NostrOrderService {
               'title': content['title'] ?? '',
               'description': content['description'] ?? '',
               'priceSats': content['priceSats'] ?? 0,
-              'priceCurrency': (content['priceCurrency'] as String?) ?? 'sats', // v604
-              'priceFiat': (content['priceFiat'] is num) ? (content['priceFiat'] as num).toDouble() : null, // v604
+              'priceCurrency':
+                  (content['priceCurrency'] as String?) ?? 'sats', // v604
+              'priceFiat': (content['priceFiat'] is num)
+                  ? (content['priceFiat'] as num).toDouble()
+                  : null, // v604
               'category': content['category'] ?? 'outros',
               'sellerPubkey': event['pubkey'],
               'siteUrl': siteUrl,
@@ -4896,7 +5545,7 @@ class NostrOrderService {
   }) async {
     try {
       final keychain = Keychain(privateKey);
-      
+
       // v648: duplo aceite — notificar TODOS os provedores que aceitaram, não só
       // o que abriu a disputa. Buscar todos os aceites para incluir nas tags #p
       // (senão o provedor que PAGOU mas não abriu a disputa nunca era avisado).
@@ -4905,7 +5554,7 @@ class NostrOrderService {
         allAccepters = await fetchAllAcceptsForOrder(orderId)
             .timeout(const Duration(seconds: 8), onTimeout: () => <String>[]);
       } catch (_) {}
-      
+
       final contentMap = {
         'type': 'bro_dispute',
         'orderId': orderId,
@@ -4917,7 +5566,8 @@ class NostrOrderService {
         // DELE (a tela de admin mostrava "Aberta por: Usuário" e o registro
         // de provedores o rejeitava — disputa 2706f28d). Preferir o usuário
         // real da ordem; se desconhecido e quem abre é o provedor, omitir.
-        'userPubkey': orderDetails?['userPubkey'] ?? (openedBy == 'provider' ? null : keychain.public),
+        'userPubkey': orderDetails?['userPubkey'] ??
+            (openedBy == 'provider' ? null : keychain.public),
         'publisherPubkey': keychain.public,
         'amount_brl': orderDetails?['amount_brl'],
         'amount_sats': orderDetails?['amount_sats'],
@@ -4931,18 +5581,22 @@ class NostrOrderService {
       if (userEvidence != null && userEvidence.isNotEmpty) {
         try {
           final encryptedEvidence = _nip44.encryptBetween(
-            userEvidence, keychain.private, AppConfig.adminPubkey,
+            userEvidence,
+            keychain.private,
+            AppConfig.adminPubkey,
           );
           contentMap['user_evidence_nip44'] = encryptedEvidence;
           contentMap['user_evidence'] = '[encrypted:nip44v2]'; // Marcador
-          broLog('🔐 user_evidence criptografada com NIP-44 (${encryptedEvidence.length} chars)');
+          broLog(
+              '🔐 user_evidence criptografada com NIP-44 (${encryptedEvidence.length} chars)');
         } catch (e) {
-          broLog('⚠️ Falha ao criptografar user_evidence: $e — não incluindo imagem');
+          broLog(
+              '⚠️ Falha ao criptografar user_evidence: $e — não incluindo imagem');
           // NÃO enviar em plaintext — dados sensíveis (fotos de banco/CPF)
         }
       }
       final content = jsonEncode(contentMap);
-      
+
       // v253: Incluir #p tag do provedor para que ele descubra a disputa nos relays
       // v648: com duplo aceite, notificar TODOS os aceites (não só o que abriu).
       final providerIdFromDetails = orderDetails?['provider_id'] as String?;
@@ -4955,20 +5609,26 @@ class NostrOrderService {
       // Todos os aceites (se houver) OU o provider_id legado (se não houver).
       final toNotify = allAccepters.isNotEmpty
           ? allAccepters
-          : [if (providerIdFromDetails != null && providerIdFromDetails.isNotEmpty) providerIdFromDetails];
+          : [
+              if (providerIdFromDetails != null &&
+                  providerIdFromDetails.isNotEmpty)
+                providerIdFromDetails
+            ];
       for (final pk in toNotify) {
-        if (pk.isNotEmpty && pk != AppConfig.adminPubkey && !tags.any((t) => t.length > 1 && t[0] == 'p' && t[1] == pk)) {
+        if (pk.isNotEmpty &&
+            pk != AppConfig.adminPubkey &&
+            !tags.any((t) => t.length > 1 && t[0] == 'p' && t[1] == pk)) {
           tags.add(['p', pk]); // Notificar cada provedor que aceitou
         }
       }
-      
+
       final event = Event.from(
         kind: 1, // Nota regular - #t tags SÃO indexadas!
         tags: tags,
         content: content,
         privkey: keychain.private,
       );
-      
+
       final results = await Future.wait(
         _relays.map((relay) async {
           try {
@@ -4978,9 +5638,10 @@ class NostrOrderService {
           }
         }),
       );
-      
+
       final successCount = results.where((r) => r).length;
-      broLog('📤 publishDisputeNotification: publicado em $successCount/${_relays.length} relays');
+      broLog(
+          '📤 publishDisputeNotification: publicado em $successCount/${_relays.length} relays');
       return successCount > 0;
     } catch (e) {
       broLog('❌ publishDisputeNotification EXCEPTION: $e');
@@ -4997,7 +5658,7 @@ class NostrOrderService {
     final allEvents = <Map<String, dynamic>>[];
     final seenIds = <String>{};
     final seenOrderIds = <String>{}; // Para deduplicar por orderId
-    
+
     final results = await Future.wait(
       // v687: incluir fallback relays — a lista de disputas do admin não pode
       // sumir quando damus/nos.lol falham (caso real 72d248d8: a disputa só
@@ -5010,16 +5671,22 @@ class NostrOrderService {
             _fetchFromRelay(
               relay,
               kinds: [1],
-              tags: {'#t': ['bro-disputa']},
+              tags: {
+                '#t': ['bro-disputa']
+              },
               limit: 100,
-            ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]),
+            ).timeout(const Duration(seconds: 8),
+                onTimeout: () => <Map<String, dynamic>>[]),
             // Estratégia 2: Kind 30080 com tag status-disputed (qualquer build)
             _fetchFromRelay(
               relay,
               kinds: [kindBroPaymentProof],
-              tags: {'#t': ['status-disputed']},
+              tags: {
+                '#t': ['status-disputed']
+              },
               limit: 100,
-            ).timeout(const Duration(seconds: 8), onTimeout: () => <Map<String, dynamic>>[]),
+            ).timeout(const Duration(seconds: 8),
+                onTimeout: () => <Map<String, dynamic>>[]),
           ]);
           return [...fetches[0], ...fetches[1]];
         } catch (_) {
@@ -5027,7 +5694,7 @@ class NostrOrderService {
         }
       }),
     );
-    
+
     for (final events in results) {
       for (final e in events) {
         final id = e['id'] as String?;
@@ -5037,8 +5704,9 @@ class NostrOrderService {
         }
       }
     }
-    
-    broLog('📤 fetchDisputeNotifications: ${allEvents.length} disputas encontradas');
+
+    broLog(
+        '📤 fetchDisputeNotifications: ${allEvents.length} disputas encontradas');
     return allEvents;
   }
 
@@ -5065,38 +5733,50 @@ class NostrOrderService {
   Future<List<Map<String, dynamic>>> fetchAllDisputeResolutions() async {
     final allResolutions = <Map<String, dynamic>>[];
     final seenOrderIds = <String>{};
-    
+
     final results = await Future.wait(
       _relays.map((relay) async {
         try {
           final channel = WebSocketChannel.connect(Uri.parse(relay));
-          final subId = 'allres_${DateTime.now().millisecondsSinceEpoch % 100000}';
-          final subId2 = 'allresA_${DateTime.now().millisecondsSinceEpoch % 100000}';
+          final subId =
+              'allres_${DateTime.now().millisecondsSinceEpoch % 100000}';
+          final subId2 =
+              'allresA_${DateTime.now().millisecondsSinceEpoch % 100000}';
           final events = <Map<String, dynamic>>[];
-          
+
           // Estratégia 1: Kind 1 com bro-resolucao
           // v616: limite elevado 100->500. Com 100, resoluções antigas eram
           // truncadas, fazendo disputas resolvidas reaparecerem como abertas
           // (sobretudo em install novo, onde a persistência local está vazia).
-          channel.sink.add(jsonEncode(['REQ', subId, {
-            'kinds': [1],
-            '#t': ['bro-resolucao'],
-            'limit': 500,
-          }]));
+          channel.sink.add(jsonEncode([
+            'REQ',
+            subId,
+            {
+              'kinds': [1],
+              '#t': ['bro-resolucao'],
+              'limit': 500,
+            }
+          ]));
           // Estratégia 2: Kind 30080 (audit) com bro-resolucao (v240)
-          channel.sink.add(jsonEncode(['REQ', subId2, {
-            'kinds': [kindBroPaymentProof],
-            '#t': ['bro-resolucao'],
-            'limit': 500,
-          }]));
-          
+          channel.sink.add(jsonEncode([
+            'REQ',
+            subId2,
+            {
+              'kinds': [kindBroPaymentProof],
+              '#t': ['bro-resolucao'],
+              'limit': 500,
+            }
+          ]));
+
           int eoseCount = 0;
           await for (final msg in channel.stream.timeout(
-            const Duration(seconds: 10), onTimeout: (sink) => sink.close())) {
+              const Duration(seconds: 10),
+              onTimeout: (sink) => sink.close())) {
             final data = jsonDecode(msg.toString());
             if (data is List && data.length >= 3 && data[0] == 'EVENT') {
               final ev = data[2] as Map<String, dynamic>;
-              if (!_isEventSignatureValid(ev)) continue; // v662: rejeitar forjado
+              if (!_isEventSignatureValid(ev))
+                continue; // v662: rejeitar forjado
               events.add(ev);
             }
             if (data is List && data[0] == 'EOSE') {
@@ -5104,7 +5784,7 @@ class NostrOrderService {
               if (eoseCount >= 2) break;
             }
           }
-          
+
           channel.sink.add(jsonEncode(['CLOSE', subId]));
           channel.sink.add(jsonEncode(['CLOSE', subId2]));
           channel.sink.close();
@@ -5114,21 +5794,23 @@ class NostrOrderService {
         }
       }),
     );
-    
+
     // Deduplicar por orderId, mantendo o mais recente
     final bestByOrderId = <String, Map<String, dynamic>>{};
-    
+
     for (final events in results) {
       for (final event in events) {
         try {
-          final content = jsonDecode(event['content'] as String) as Map<String, dynamic>;
+          final content =
+              jsonDecode(event['content'] as String) as Map<String, dynamic>;
           if (content['type'] != 'bro_dispute_resolution') continue;
           final orderId = content['orderId'] as String? ?? '';
           if (orderId.isEmpty) continue;
-          
+
           final createdAt = event['created_at'] as int? ?? 0;
           final existing = bestByOrderId[orderId];
-          if (existing == null || createdAt > (existing['_createdAt'] as int? ?? 0)) {
+          if (existing == null ||
+              createdAt > (existing['_createdAt'] as int? ?? 0)) {
             bestByOrderId[orderId] = {
               ...content,
               '_createdAt': createdAt,
@@ -5138,9 +5820,10 @@ class NostrOrderService {
         } catch (_) {}
       }
     }
-    
+
     allResolutions.addAll(bestByOrderId.values);
-    broLog('📤 fetchAllDisputeResolutions: ${allResolutions.length} resoluções encontradas');
+    broLog(
+        '📤 fetchAllDisputeResolutions: ${allResolutions.length} resoluções encontradas');
     return allResolutions;
   }
 
@@ -5157,7 +5840,7 @@ class NostrOrderService {
   }) async {
     try {
       final keychain = Keychain(privateKey);
-      
+
       final content = jsonEncode({
         'type': 'bro_admin_reimbursement',
         'orderId': orderId,
@@ -5167,7 +5850,7 @@ class NostrOrderService {
         if (reason != null && reason.isNotEmpty) 'reason': reason, // v680
         'createdAt': DateTime.now().toIso8601String(),
       });
-      
+
       final tags = [
         ['d', '${orderId}_admin_reimbursement'],
         ['t', broTag],
@@ -5178,19 +5861,21 @@ class NostrOrderService {
       if (userPubkey != null && userPubkey.isNotEmpty) {
         tags.add(['p', userPubkey]);
       }
-      
+
       final event = Event.from(
         kind: kindBroPaymentProof, // kind 30080
         tags: tags,
         content: content,
         privkey: keychain.private,
       );
-      
+
       final results = await Future.wait(
-        _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
+        _relays.map(
+            (relay) => _publishToRelay(relay, event).catchError((_) => false)),
       );
       final successCount = results.where((r) => r).length;
-      broLog('📤 publishAdminReimbursementInvoice: publicado em $successCount/${_relays.length} relays');
+      broLog(
+          '📤 publishAdminReimbursementInvoice: publicado em $successCount/${_relays.length} relays');
       return successCount > 0;
     } catch (e) {
       broLog('❌ publishAdminReimbursementInvoice EXCEPTION: $e');
@@ -5229,10 +5914,12 @@ class NostrOrderService {
         privkey: keychain.private,
       );
       final results = await Future.wait(
-        _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
+        _relays.map(
+            (relay) => _publishToRelay(relay, event).catchError((_) => false)),
       );
       final ok = results.where((r) => r).isNotEmpty;
-      broLog('📤 publishAdminPaymentInvoice: ${ok ? "OK" : "falhou"} (${orderId.substring(0, 8)})');
+      broLog(
+          '📤 publishAdminPaymentInvoice: ${ok ? "OK" : "falhou"} (${orderId.substring(0, 8)})');
       return ok;
     } catch (e) {
       broLog('❌ publishAdminPaymentInvoice: $e');
@@ -5248,9 +5935,12 @@ class NostrOrderService {
         final events = await _fetchFromRelay(
           relay,
           kinds: [kindBroPaymentProof],
-          tags: {'#d': ['${orderId}_admin_payment']},
+          tags: {
+            '#d': ['${orderId}_admin_payment']
+          },
           limit: 5,
-        ).timeout(const Duration(seconds: 6), onTimeout: () => <Map<String, dynamic>>[]);
+        ).timeout(const Duration(seconds: 6),
+            onTimeout: () => <Map<String, dynamic>>[]);
         Map<String, dynamic>? best;
         var bestTs = 0;
         for (final ev in events) {
@@ -5258,7 +5948,10 @@ class NostrOrderService {
             final content = ev['parsedContent'] ?? jsonDecode(ev['content']);
             if (content['type'] != 'bro_admin_payment_invoice') continue;
             final ts = ev['created_at'] as int? ?? 0;
-            if (ts >= bestTs) { bestTs = ts; best = {...content, 'eventAuthor': ev['pubkey']}; }
+            if (ts >= bestTs) {
+              bestTs = ts;
+              best = {...content, 'eventAuthor': ev['pubkey']};
+            }
           } catch (_) {}
         }
         return best;
@@ -5266,7 +5959,9 @@ class NostrOrderService {
         return null;
       }
     }));
-    for (final r in results) { if (r != null) return r; }
+    for (final r in results) {
+      if (r != null) return r;
+    }
     return null;
   }
 
@@ -5303,10 +5998,12 @@ class NostrOrderService {
         privkey: keychain.private,
       );
       final results = await Future.wait(
-        _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
+        _relays.map(
+            (relay) => _publishToRelay(relay, event).catchError((_) => false)),
       );
       final successCount = results.where((r) => r).length;
-      broLog('📤 publishMediationChargePaid: publicado em $successCount/${_relays.length} relays');
+      broLog(
+          '📤 publishMediationChargePaid: publicado em $successCount/${_relays.length} relays');
       return successCount > 0;
     } catch (e) {
       broLog('❌ publishMediationChargePaid EXCEPTION: $e');
@@ -5323,7 +6020,9 @@ class NostrOrderService {
           final events = await _fetchFromRelay(
             relay,
             kinds: [kindBroPaymentProof],
-            tags: {'#d': ['${orderId}_admin_reimbursement']},
+            tags: {
+              '#d': ['${orderId}_admin_reimbursement']
+            },
             limit: 5,
           );
           for (final event in events) {
@@ -5336,15 +6035,19 @@ class NostrOrderService {
               final eventPubkey = event['pubkey'] as String?;
               // vSEC: FAIL-CLOSED — sem adminPubkey no build, rejeitar TUDO
               if (AppConfig.adminPubkey.isEmpty) {
-                broLog('🚨 [SECURITY] adminPubkey NÃO configurado — rejeitando TODOS os invoices de reembolso');
+                broLog(
+                    '🚨 [SECURITY] adminPubkey NÃO configurado — rejeitando TODOS os invoices de reembolso');
                 continue;
               }
               if (eventPubkey != AppConfig.adminPubkey) {
-                broLog('⚠️ REJEITADO reembolso de não-admin: ${eventPubkey?.substring(0, 8) ?? '?'} (ordem ${orderId.substring(0, 8)})');
+                broLog(
+                    '⚠️ REJEITADO reembolso de não-admin: ${eventPubkey?.substring(0, 8) ?? '?'} (ordem ${orderId.substring(0, 8)})');
                 continue;
               }
-              final content = event['parsedContent'] ?? jsonDecode(event['content']);
-              if (content['type'] == 'bro_admin_reimbursement' && content['orderId'] == orderId) {
+              final content =
+                  event['parsedContent'] ?? jsonDecode(event['content']);
+              if (content['type'] == 'bro_admin_reimbursement' &&
+                  content['orderId'] == orderId) {
                 return content['adminInvoice'] as String?;
               }
             } catch (_) {}
@@ -5363,7 +6066,8 @@ class NostrOrderService {
   /// MIM (tag #p) — usado pelo autopay de cobranças de mediação. Só eventos
   /// ASSINADOS pelo admin (AppConfig.adminPubkey, fail-closed) e com assinatura válida.
   /// Retorna o mais recente por orderId.
-  Future<List<Map<String, dynamic>>> fetchMyMediationCharges(String myPubkey) async {
+  Future<List<Map<String, dynamic>>> fetchMyMediationCharges(
+      String myPubkey) async {
     final byOrder = <String, Map<String, dynamic>>{};
     // vSEC: fail-closed — sem adminPubkey no build, nenhuma cobrança é válida
     if (AppConfig.adminPubkey.isEmpty) return [];
@@ -5373,7 +6077,10 @@ class NostrOrderService {
           return await _fetchFromRelay(
             relay,
             kinds: [kindBroPaymentProof],
-            tags: {'#p': [myPubkey], '#t': ['bro-admin-reimbursement']},
+            tags: {
+              '#p': [myPubkey],
+              '#t': ['bro-admin-reimbursement']
+            },
             limit: 50,
           );
         } catch (_) {
@@ -5386,12 +6093,17 @@ class NostrOrderService {
         try {
           if (!_isEventSignatureValid(event)) continue; // v662
           if (event['pubkey'] != AppConfig.adminPubkey) continue; // só o admin
-          final content = event['parsedContent'] ?? jsonDecode(event['content']);
+          final content =
+              event['parsedContent'] ?? jsonDecode(event['content']);
           if (content['type'] != 'bro_admin_reimbursement') continue;
           final orderId = content['orderId'] as String?;
           final invoice = content['adminInvoice'] as String?;
           final amount = (content['amountSats'] as num?)?.toInt() ?? 0;
-          if (orderId == null || orderId.isEmpty || invoice == null || invoice.isEmpty || amount <= 0) continue;
+          if (orderId == null ||
+              orderId.isEmpty ||
+              invoice == null ||
+              invoice.isEmpty ||
+              amount <= 0) continue;
           final ts = event['created_at'] as int? ?? 0;
           final existing = byOrder[orderId];
           if (existing == null || ts > (existing['_ts'] as int)) {
@@ -5432,7 +6144,8 @@ class NostrOrderService {
       }).whenComplete(() {
         done++;
         if (done == _relays.length) {
-          broLog('📤 $label publicado em $successCount/${_relays.length} relays');
+          broLog(
+              '📤 $label publicado em $successCount/${_relays.length} relays');
           if (!firstSuccess.isCompleted) firstSuccess.complete(false);
         }
       });
@@ -5450,7 +6163,8 @@ class NostrOrderService {
   }) async {
     try {
       final keychain = Keychain(privateKey);
-      broLog('📤 publishDisputeResolution START: orderId=$orderId resolution=$resolution adminPubkey=${keychain.public.substring(0, 8)}');
+      broLog(
+          '📤 publishDisputeResolution START: orderId=$orderId resolution=$resolution adminPubkey=${keychain.public.substring(0, 8)}');
 
       final content = jsonEncode({
         'type': 'bro_dispute_resolution',
@@ -5466,13 +6180,13 @@ class NostrOrderService {
         'loserPubkey': resolution == 'resolved_user' ? providerId : userPubkey,
         'loserRole': resolution == 'resolved_user' ? 'provider' : 'user',
       });
-      
+
       final tags = [
         ['t', 'bro-resolucao'],
         ['t', broTag],
         ['r', orderId],
       ];
-      
+
       // Notificar ambas as partes
       if (userPubkey != null && userPubkey.isNotEmpty) {
         tags.add(['p', userPubkey]);
@@ -5480,26 +6194,27 @@ class NostrOrderService {
       if (providerId != null && providerId.isNotEmpty) {
         tags.add(['p', providerId]);
       }
-      
+
       // v247: Tag do perdedor para busca de reincidentes
-      final loserPubkey = resolution == 'resolved_user' ? providerId : userPubkey;
+      final loserPubkey =
+          resolution == 'resolved_user' ? providerId : userPubkey;
       if (loserPubkey != null && loserPubkey.isNotEmpty) {
         tags.add(['t', 'bro-dispute-loser-$loserPubkey']);
       }
-      
+
       final event = Event.from(
         kind: 1,
         tags: tags,
         content: content,
         privkey: keychain.private,
       );
-      
+
       // v621: Resolve assim que >=1 relay confirmar (nao espera os lentos).
       final anyPublished = await _publishToAnyRelay(
         event,
         'publishDisputeResolution: kind 1 (orderId=${orderId.substring(0, 8)}, resolution=$resolution)',
       );
-      
+
       // AUDITABILIDADE: Publicar também como kind 30080 com tags de status
       // Isso permite que QUALQUER pessoa busque a resolução pela cadeia de eventos da ordem
       try {
@@ -5515,25 +6230,31 @@ class NostrOrderService {
           'resolvedAt': DateTime.now().toIso8601String(),
           'status': resolution == 'resolved_user' ? 'cancelled' : 'completed',
         });
-        
+
         final auditTags = [
           ['d', '${orderId}_resolution'],
           ['t', broTag],
           ['t', 'bro-resolucao'],
-          ['t', 'status-${resolution == 'resolved_user' ? 'cancelled' : 'completed'}'],
+          [
+            't',
+            'status-${resolution == 'resolved_user' ? 'cancelled' : 'completed'}'
+          ],
           ['r', orderId],
           ['orderId', orderId],
         ];
-        if (userPubkey != null && userPubkey.isNotEmpty) auditTags.add(['p', userPubkey]);
-        if (providerId != null && providerId.isNotEmpty) auditTags.add(['p', providerId]);
-        
+        if (userPubkey != null && userPubkey.isNotEmpty)
+          auditTags.add(['p', userPubkey]);
+        if (providerId != null && providerId.isNotEmpty)
+          auditTags.add(['p', providerId]);
+
         final auditEvent = Event.from(
-          kind: kindBroPaymentProof, // kind 30080 - na cadeia de eventos da ordem
+          kind:
+              kindBroPaymentProof, // kind 30080 - na cadeia de eventos da ordem
           tags: auditTags,
           content: auditContent,
           privkey: keychain.private,
         );
-        
+
         // v621: idem — retorna assim que >=1 relay confirmar o evento de auditoria.
         final auditPublished = await _publishToAnyRelay(
           auditEvent,
@@ -5545,7 +6266,7 @@ class NostrOrderService {
       } catch (e) {
         broLog('⚠️ Audit event (kind 30080) falhou: $e');
       }
-      
+
       return anyPublished;
     } catch (e) {
       broLog('❌ publishDisputeResolution EXCEPTION: $e');
@@ -5558,79 +6279,86 @@ class NostrOrderService {
   Future<List<Map<String, dynamic>>> fetchDisputeLosses(String pubkey) async {
     final losses = <Map<String, dynamic>>[];
     final seenOrderIds = <String>{};
-    
+
     try {
       // Buscar resoluções onde o pubkey é uma das partes
       // Estratégia 1: Buscar por tag de perdedor (v247+)
       final relayResults1 = await Future.wait(
-        _relays.take(3).map((relay) =>
-          _fetchFromRelay(relay, kinds: [1], 
-            tags: {'#t': ['bro-dispute-loser-$pubkey']}, 
-            limit: 50,
-          ).catchError((_) => <Map<String, dynamic>>[])
-        ),
+        _relays.take(3).map((relay) => _fetchFromRelay(
+              relay,
+              kinds: [1],
+              tags: {
+                '#t': ['bro-dispute-loser-$pubkey']
+              },
+              limit: 50,
+            ).catchError((_) => <Map<String, dynamic>>[])),
       );
-      
+
       // Estratégia 2: Buscar por #p tag (resoluções antigas)
       final relayResults2 = await Future.wait(
-        _relays.take(3).map((relay) =>
-          _fetchFromRelay(relay, kinds: [1], 
-            tags: {'#t': ['bro-resolucao'], '#p': [pubkey]}, 
-            limit: 50,
-          ).catchError((_) => <Map<String, dynamic>>[])
-        ),
+        _relays.take(3).map((relay) => _fetchFromRelay(
+              relay,
+              kinds: [1],
+              tags: {
+                '#t': ['bro-resolucao'],
+                '#p': [pubkey]
+              },
+              limit: 50,
+            ).catchError((_) => <Map<String, dynamic>>[])),
       );
-      
+
       final allResults = [...relayResults1, ...relayResults2];
-      
+
       for (final events in allResults) {
-          for (final event in events) {
-            try {
-              final content = event['parsedContent'] ?? jsonDecode(event['content'] ?? '{}');
-              if (content['type'] != 'bro_dispute_resolution') continue;
-              
-              final orderId = content['orderId'] as String? ?? '';
-              if (seenOrderIds.contains(orderId)) continue;
-              
-              // Verificar se este pubkey perdeu
-              final resolution = content['resolution'] as String? ?? '';
-              final loserPubkey = content['loserPubkey'] as String?;
-              final userPubkey = content['userPubkey'] as String? ?? '';
-              final providerId = content['providerId'] as String? ?? '';
-              
-              bool isLoser = false;
-              String loserRole = '';
-              
-              if (loserPubkey == pubkey) {
-                isLoser = true;
-                loserRole = content['loserRole'] ?? 'unknown';
-              } else if (resolution == 'resolved_user' && providerId == pubkey) {
-                isLoser = true;
-                loserRole = 'provider';
-              } else if (resolution == 'resolved_provider' && userPubkey == pubkey) {
-                isLoser = true;
-                loserRole = 'user';
-              }
-              
-              if (isLoser) {
-                seenOrderIds.add(orderId);
-                losses.add({
-                  'orderId': orderId,
-                  'resolution': resolution,
-                  'loserRole': loserRole,
-                  'resolvedAt': content['resolvedAt'] ?? '',
-                  'notes': content['notes'] ?? '',
-                });
-              }
-            } catch (_) {}
-          }
+        for (final event in events) {
+          try {
+            final content =
+                event['parsedContent'] ?? jsonDecode(event['content'] ?? '{}');
+            if (content['type'] != 'bro_dispute_resolution') continue;
+
+            final orderId = content['orderId'] as String? ?? '';
+            if (seenOrderIds.contains(orderId)) continue;
+
+            // Verificar se este pubkey perdeu
+            final resolution = content['resolution'] as String? ?? '';
+            final loserPubkey = content['loserPubkey'] as String?;
+            final userPubkey = content['userPubkey'] as String? ?? '';
+            final providerId = content['providerId'] as String? ?? '';
+
+            bool isLoser = false;
+            String loserRole = '';
+
+            if (loserPubkey == pubkey) {
+              isLoser = true;
+              loserRole = content['loserRole'] ?? 'unknown';
+            } else if (resolution == 'resolved_user' && providerId == pubkey) {
+              isLoser = true;
+              loserRole = 'provider';
+            } else if (resolution == 'resolved_provider' &&
+                userPubkey == pubkey) {
+              isLoser = true;
+              loserRole = 'user';
+            }
+
+            if (isLoser) {
+              seenOrderIds.add(orderId);
+              losses.add({
+                'orderId': orderId,
+                'resolution': resolution,
+                'loserRole': loserRole,
+                'resolvedAt': content['resolvedAt'] ?? '',
+                'notes': content['notes'] ?? '',
+              });
+            }
+          } catch (_) {}
         }
-      
+      }
+
       broLog('📊 fetchDisputeLosses($pubkey): ${losses.length} derrotas');
     } catch (e) {
       broLog('❌ fetchDisputeLosses EXCEPTION: $e');
     }
-    
+
     return losses;
   }
 
@@ -5647,7 +6375,7 @@ class NostrOrderService {
   }) async {
     try {
       final keychain = Keychain(privateKey);
-      
+
       final content = jsonEncode({
         'type': 'bro_mediator_message',
         'orderId': orderId,
@@ -5658,14 +6386,16 @@ class NostrOrderService {
         'providerId': providerId,
         'sentAt': DateTime.now().toIso8601String(),
       });
-      
+
       final tags = [
         ['t', 'bro-mediacao'],
         ['t', broTag],
         ['r', orderId],
       ];
-      
-      if ((target == 'user' || target == 'both') && userPubkey != null && userPubkey.isNotEmpty) {
+
+      if ((target == 'user' || target == 'both') &&
+          userPubkey != null &&
+          userPubkey.isNotEmpty) {
         tags.add(['p', userPubkey]);
       }
       // v649: com duplo aceite, marcar TODOS os provedores (allProviderIds);
@@ -5675,20 +6405,24 @@ class NostrOrderService {
           : [if (providerId != null && providerId.isNotEmpty) providerId];
       if (target == 'provider' || target == 'both') {
         for (final pk in providerTags) {
-          if (pk.isNotEmpty && !tags.any((t) => t.length > 1 && t[0] == 'p' && t[1] == pk)) {
+          if (pk.isNotEmpty &&
+              !tags.any((t) => t.length > 1 && t[0] == 'p' && t[1] == pk)) {
             tags.add(['p', pk]);
           }
         }
       }
-      
-      final event = Event.from(kind: 1, tags: tags, content: content, privkey: keychain.private);
-      
+
+      final event = Event.from(
+          kind: 1, tags: tags, content: content, privkey: keychain.private);
+
       final results = await Future.wait(
-        _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
+        _relays.map(
+            (relay) => _publishToRelay(relay, event).catchError((_) => false)),
       );
-      
+
       final successCount = results.where((r) => r).length;
-      broLog('📤 publishMediatorMessage: publicado em $successCount/${_relays.length} relays (target=$target, orderId=${orderId.substring(0, 8)})');
+      broLog(
+          '📤 publishMediatorMessage: publicado em $successCount/${_relays.length} relays (target=$target, orderId=${orderId.substring(0, 8)})');
       return successCount > 0;
     } catch (e) {
       broLog('❌ publishMediatorMessage EXCEPTION: $e');
@@ -5714,28 +6448,32 @@ class NostrOrderService {
       }
 
       final keychain = Keychain(adminPrivateKey);
-      
+
       // Criptografar mensagem usando NIP-04
       final encryptedContent = _nip04.encrypt(
         message,
         adminPrivateKey,
         recipientPubkey,
       );
-      
+
       // Criar evento kind 4 (NIP-04 DM)
       final event = Event.from(
         kind: 4,
-        tags: [['p', recipientPubkey]],
+        tags: [
+          ['p', recipientPubkey]
+        ],
         content: encryptedContent,
         privkey: keychain.private,
       );
-      
+
       final results = await Future.wait(
-        _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
+        _relays.map(
+            (relay) => _publishToRelay(relay, event).catchError((_) => false)),
       );
-      
+
       final successCount = results.where((r) => r).length;
-      broLog('📨 sendAdminNip04DM: DM enviada para ${recipientPubkey.substring(0, 16)}... '
+      broLog(
+          '📨 sendAdminNip04DM: DM enviada para ${recipientPubkey.substring(0, 16)}... '
           'em $successCount/${_relays.length} relays');
       return successCount > 0;
     } catch (e) {
@@ -5767,23 +6505,26 @@ class NostrOrderService {
         '#r': rTags,
         'limit': 5,
       };
-      
+
       Map<String, dynamic>? latestResolution;
       int latestTimestamp = 0;
-      
+
       for (final relay in _relays.take(3)) {
         try {
           final channel = WebSocketChannel.connect(Uri.parse(relay));
-          final subId = 'res_${orderId.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
-          
+          final subId =
+              'res_${orderId.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
+
           channel.sink.add(jsonEncode(['REQ', subId, filter]));
-          
-          await for (final msg in channel.stream.timeout(const Duration(seconds: 8), onTimeout: (sink) => sink.close())) {
+
+          await for (final msg in channel.stream.timeout(
+              const Duration(seconds: 8),
+              onTimeout: (sink) => sink.close())) {
             final data = jsonDecode(msg.toString());
             if (data is List && data.length >= 3 && data[0] == 'EVENT') {
               final eventData = data[2] as Map<String, dynamic>;
               final createdAt = eventData['created_at'] as int? ?? 0;
-              
+
               if (createdAt > latestTimestamp) {
                 try {
                   // SEGURANÇA: verificar a assinatura do evento (este caminho usa
@@ -5799,14 +6540,17 @@ class NostrOrderService {
                   final eventPubkey = eventData['pubkey'] as String?;
                   // vSEC: FAIL-CLOSED — sem adminPubkey no build, rejeitar TUDO
                   if (AppConfig.adminPubkey.isEmpty) {
-                    broLog('🚨 [SECURITY] adminPubkey NÃO configurado — rejeitando TODAS as resoluções de disputa');
+                    broLog(
+                        '🚨 [SECURITY] adminPubkey NÃO configurado — rejeitando TODAS as resoluções de disputa');
                     continue;
                   }
                   if (eventPubkey != AppConfig.adminPubkey) {
-                    broLog('⚠️ REJEITADO resolução de não-admin: ${eventPubkey?.substring(0, 8) ?? '?'} (ordem ${orderId.substring(0, 8)})');
+                    broLog(
+                        '⚠️ REJEITADO resolução de não-admin: ${eventPubkey?.substring(0, 8) ?? '?'} (ordem ${orderId.substring(0, 8)})');
                     continue;
                   }
-                  final contentMap = jsonDecode(eventData['content'] as String) as Map<String, dynamic>;
+                  final contentMap = jsonDecode(eventData['content'] as String)
+                      as Map<String, dynamic>;
                   if (contentMap['type'] == 'bro_dispute_resolution') {
                     latestResolution = contentMap;
                     latestTimestamp = createdAt;
@@ -5816,18 +6560,20 @@ class NostrOrderService {
             }
             if (data is List && data[0] == 'EOSE') break;
           }
-          
+
           channel.sink.add(jsonEncode(['CLOSE', subId]));
           channel.sink.close();
         } catch (_) {}
       }
-      
+
       if (latestResolution != null) {
-        broLog('✅ fetchDisputeResolution: resolução encontrada para ${orderId.substring(0, 8)} - ${latestResolution['resolution']}');
+        broLog(
+            '✅ fetchDisputeResolution: resolução encontrada para ${orderId.substring(0, 8)} - ${latestResolution['resolution']}');
       } else {
-        broLog('🔍 fetchDisputeResolution: nenhuma resolução para ${orderId.substring(0, 8)}');
+        broLog(
+            '🔍 fetchDisputeResolution: nenhuma resolução para ${orderId.substring(0, 8)}');
       }
-      
+
       return latestResolution;
     } catch (e) {
       broLog('❌ fetchDisputeResolution EXCEPTION: $e');
@@ -5837,7 +6583,8 @@ class NostrOrderService {
 
   /// Busca TODAS as mensagens de mediação de uma ordem (admin vê tudo)
   /// Diferente de fetchMediatorMessages que filtra por pubkey do destinatário
-  Future<List<Map<String, dynamic>>> fetchAllMediatorMessagesForOrder(String orderId) async {
+  Future<List<Map<String, dynamic>>> fetchAllMediatorMessagesForOrder(
+      String orderId) async {
     try {
       final filter = <String, dynamic>{
         'kinds': [1],
@@ -5845,28 +6592,32 @@ class NostrOrderService {
         '#r': [orderId],
         'limit': 50,
       };
-      
+
       final messages = <Map<String, dynamic>>[];
       // v645d: agregar TODOS os relays + fallback (antes só take(3)); dedup por
       // eventId (a checagem por sentAt+message deixava passar duplicata de
       // relays distintos quando o conteúdo diferia em campos internos).
       final seenIds = <String>{};
       final allRelays = <String>[..._relays, ..._fallbackRelays];
-      
+
       for (final relay in allRelays) {
         try {
           final channel = WebSocketChannel.connect(Uri.parse(relay));
-          final subId = 'medord_${orderId.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
-          
+          final subId =
+              'medord_${orderId.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
+
           channel.sink.add(jsonEncode(['REQ', subId, filter]));
-          
-          await for (final msg in channel.stream.timeout(const Duration(seconds: 8), onTimeout: (sink) => sink.close())) {
+
+          await for (final msg in channel.stream.timeout(
+              const Duration(seconds: 8),
+              onTimeout: (sink) => sink.close())) {
             final data = jsonDecode(msg.toString());
             if (data is List && data.length >= 3 && data[0] == 'EVENT') {
               final eventData = data[2] as Map<String, dynamic>;
               if (!_isEventSignatureValid(eventData)) continue; // v662
               try {
-                final content = jsonDecode(eventData['content'] as String) as Map<String, dynamic>;
+                final content = jsonDecode(eventData['content'] as String)
+                    as Map<String, dynamic>;
                 if (content['type'] == 'bro_mediator_message') {
                   content['eventCreatedAt'] = eventData['created_at'];
                   content['eventId'] = eventData['id'];
@@ -5880,15 +6631,17 @@ class NostrOrderService {
             }
             if (data is List && data[0] == 'EOSE') break;
           }
-          
+
           channel.sink.add(jsonEncode(['CLOSE', subId]));
           channel.sink.close();
         } catch (_) {}
       }
-      
+
       // Ordenar por data (mais antiga primeiro para exibir como chat)
-      messages.sort((a, b) => (a['eventCreatedAt'] as int? ?? 0).compareTo(b['eventCreatedAt'] as int? ?? 0));
-      broLog('📨 fetchAllMediatorMessagesForOrder: ${messages.length} mensagens para ordem ${orderId.substring(0, 8)}');
+      messages.sort((a, b) => (a['eventCreatedAt'] as int? ?? 0)
+          .compareTo(b['eventCreatedAt'] as int? ?? 0));
+      broLog(
+          '📨 fetchAllMediatorMessagesForOrder: ${messages.length} mensagens para ordem ${orderId.substring(0, 8)}');
       return messages;
     } catch (e) {
       broLog('❌ fetchAllMediatorMessagesForOrder EXCEPTION: $e');
@@ -5898,7 +6651,8 @@ class NostrOrderService {
 
   /// Busca mensagens do mediador para um usuário ou provedor específico
   /// Retorna lista de mensagens relevantes
-  Future<List<Map<String, dynamic>>> fetchMediatorMessages(String pubkey, {String? orderId}) async {
+  Future<List<Map<String, dynamic>>> fetchMediatorMessages(String pubkey,
+      {String? orderId}) async {
     try {
       final filter = <String, dynamic>{
         'kinds': [1],
@@ -5909,40 +6663,48 @@ class NostrOrderService {
       if (orderId != null) {
         filter['#r'] = [orderId];
       }
-      
+
       final messages = <Map<String, dynamic>>[];
-      
+
       for (final relay in _relays.take(3)) {
         try {
           final channel = WebSocketChannel.connect(Uri.parse(relay));
-          final subId = 'med_${pubkey.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
-          
+          final subId =
+              'med_${pubkey.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
+
           channel.sink.add(jsonEncode(['REQ', subId, filter]));
-          
-          await for (final msg in channel.stream.timeout(const Duration(seconds: 8), onTimeout: (sink) => sink.close())) {
+
+          await for (final msg in channel.stream.timeout(
+              const Duration(seconds: 8),
+              onTimeout: (sink) => sink.close())) {
             final data = jsonDecode(msg.toString());
             if (data is List && data.length >= 3 && data[0] == 'EVENT') {
               final eventData = data[2] as Map<String, dynamic>;
               if (!_isEventSignatureValid(eventData)) continue; // v662
               try {
-                final content = jsonDecode(eventData['content'] as String) as Map<String, dynamic>;
+                final content = jsonDecode(eventData['content'] as String)
+                    as Map<String, dynamic>;
                 if (content['type'] == 'bro_mediator_message') {
                   content['eventCreatedAt'] = eventData['created_at'];
-                  final existing = messages.any((m) => m['sentAt'] == content['sentAt'] && m['orderId'] == content['orderId']);
+                  final existing = messages.any((m) =>
+                      m['sentAt'] == content['sentAt'] &&
+                      m['orderId'] == content['orderId']);
                   if (!existing) messages.add(content);
                 }
               } catch (_) {}
             }
             if (data is List && data[0] == 'EOSE') break;
           }
-          
+
           channel.sink.add(jsonEncode(['CLOSE', subId]));
           channel.sink.close();
         } catch (_) {}
       }
-      
-      messages.sort((a, b) => (b['eventCreatedAt'] as int? ?? 0).compareTo(a['eventCreatedAt'] as int? ?? 0));
-      broLog('📨 fetchMediatorMessages: ${messages.length} mensagens para ${pubkey.substring(0, 8)}');
+
+      messages.sort((a, b) => (b['eventCreatedAt'] as int? ?? 0)
+          .compareTo(a['eventCreatedAt'] as int? ?? 0));
+      broLog(
+          '📨 fetchMediatorMessages: ${messages.length} mensagens para ${pubkey.substring(0, 8)}');
       return messages;
     } catch (e) {
       broLog('❌ fetchMediatorMessages EXCEPTION: $e');
@@ -5961,13 +6723,14 @@ class NostrOrderService {
   }) async {
     try {
       final keychain = Keychain(privateKey);
-      
+
       // v247: Verificar tamanho da imagem antes de enviar
       // Reduzir se muito grande para caber nos relays (limite ~64KB para evento)
       String? finalImage = imageBase64;
       if (finalImage != null && finalImage.isNotEmpty) {
         final imageBytes = finalImage.length;
-        broLog('📏 Evidência imagem: ${(imageBytes / 1024).toStringAsFixed(1)}KB base64');
+        broLog(
+            '📏 Evidência imagem: ${(imageBytes / 1024).toStringAsFixed(1)}KB base64');
         // v786 (R1): defesa em profundidade — clientes antigos (v247) enviavam
         // base64 cru que podia estourar o plaintext NIP-44 (65535 bytes) e virar
         // tela preta no receptor. A escada do helper encaixa no teto mantendo a
@@ -5977,20 +6740,24 @@ class NostrOrderService {
           try {
             final decoded = base64Decode(finalImage.split(',').last);
             final compressed = compressImageToBase64ForNip44(decoded);
-            if (compressed.isNotEmpty && compressed.length <= kNip44MaxImageBase64) {
+            if (compressed.isNotEmpty &&
+                compressed.length <= kNip44MaxImageBase64) {
               finalImage = compressed;
-              broLog('🖼️ [R1] Evidência recomprimida no gate: ${(finalImage.length / 1024).toStringAsFixed(1)}KB base64');
+              broLog(
+                  '🖼️ [R1] Evidência recomprimida no gate: ${(finalImage.length / 1024).toStringAsFixed(1)}KB base64');
             } else {
-              broLog('⚠️ [R1] Evidência acima do teto NIP-44 mesmo após compress — abortando envio da imagem');
+              broLog(
+                  '⚠️ [R1] Evidência acima do teto NIP-44 mesmo após compress — abortando envio da imagem');
               finalImage = null;
             }
           } catch (e) {
-            broLog('⚠️ [R1] Falha ao recomprimir evidência: $e — abortando envio da imagem');
+            broLog(
+                '⚠️ [R1] Falha ao recomprimir evidência: $e — abortando envio da imagem');
             finalImage = null;
           }
         }
       }
-      
+
       final contentMap = {
         'type': 'bro_dispute_evidence',
         'orderId': orderId,
@@ -6004,9 +6771,9 @@ class NostrOrderService {
       if (finalImage != null && finalImage.isNotEmpty) {
         contentMap['image'] = finalImage;
       }
-      
+
       final plainContent = jsonEncode(contentMap);
-      
+
       // 🔒 Criptografar conteúdo com NIP-44 entre remetente e admin
       // Apenas o admin (mediador) pode descriptografar as evidências
       String content;
@@ -6015,14 +6782,16 @@ class NostrOrderService {
           'encrypted': true,
           'encryption': 'nip44v2',
           'senderPubkey': keychain.public,
-          'payload': _nip44.encryptBetween(plainContent, keychain.private, AppConfig.adminPubkey),
+          'payload': _nip44.encryptBetween(
+              plainContent, keychain.private, AppConfig.adminPubkey),
         });
         broLog('🔐 Evidência criptografada com NIP-44 para admin');
       } catch (e) {
-        broLog('⚠️ Falha ao criptografar evidência: $e — abortando envio por segurança');
+        broLog(
+            '⚠️ Falha ao criptografar evidência: $e — abortando envio por segurança');
         return false; // NÃO enviar em plaintext — dados sensíveis
       }
-      
+
       final event = Event.from(
         kind: 1,
         tags: [
@@ -6034,7 +6803,7 @@ class NostrOrderService {
         content: content,
         privkey: keychain.private,
       );
-      
+
       final results = await Future.wait(
         _relays.map((relay) async {
           try {
@@ -6044,9 +6813,10 @@ class NostrOrderService {
           }
         }),
       );
-      
+
       final successCount = results.where((r) => r).length;
-      broLog('📤 publishDisputeEvidence: $senderRole enviou evidência para ordem ${orderId.substring(0, 8)}, $successCount relays');
+      broLog(
+          '📤 publishDisputeEvidence: $senderRole enviou evidência para ordem ${orderId.substring(0, 8)}, $successCount relays');
       return successCount > 0;
     } catch (e) {
       broLog('❌ publishDisputeEvidence EXCEPTION: $e');
@@ -6102,24 +6872,30 @@ class NostrOrderService {
       );
       final results = await Future.wait(
         _relays.map((relay) async {
-          try { return await _publishToRelay(relay, event); } catch (_) { return false; }
+          try {
+            return await _publishToRelay(relay, event);
+          } catch (_) {
+            return false;
+          }
         }),
       );
       final ok = results.where((r) => r).length;
-      broLog('📤 publishProofCopyForAdmin: ordem ${orderId.substring(0, 8)} → $ok/${_relays.length} relays');
+      broLog(
+          '📤 publishProofCopyForAdmin: ordem ${orderId.substring(0, 8)} → $ok/${_relays.length} relays');
       return ok > 0;
     } catch (e) {
       broLog('❌ publishProofCopyForAdmin EXCEPTION: $e');
       return false;
     }
   }
-  
+
   /// v236: Busca todas as evidências de disputa para uma ordem
   /// Retorna lista de evidências de ambas as partes, ordenadas por data
   /// Se adminPrivateKey for fornecido, tenta descriptografar conteúdo NIP-44
-  Future<List<Map<String, dynamic>>> fetchDisputeEvidence(String orderId, {String? adminPrivateKey}) async {
+  Future<List<Map<String, dynamic>>> fetchDisputeEvidence(String orderId,
+      {String? adminPrivateKey}) async {
     final evidences = <Map<String, dynamic>>[];
-    
+
     try {
       // v645d: agregar TODOS os relays + fallback (antes só take(3) e parava no
       // 1º que respondesse). Evidências ficam espalhadas (prova só no damus,
@@ -6129,16 +6905,23 @@ class NostrOrderService {
       for (final relay in allRelays) {
         try {
           final channel = WebSocketChannel.connect(Uri.parse(relay));
-          final subId = 'evid_${orderId.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
-          
-          channel.sink.add(jsonEncode(['REQ', subId, {
-            'kinds': [1],
-            '#t': ['bro-disputa-evidencia'],
-            '#r': [orderId],
-            'limit': 50,
-          }]));
-          
-          await for (final msg in channel.stream.timeout(const Duration(seconds: 8), onTimeout: (sink) => sink.close())) {
+          final subId =
+              'evid_${orderId.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
+
+          channel.sink.add(jsonEncode([
+            'REQ',
+            subId,
+            {
+              'kinds': [1],
+              '#t': ['bro-disputa-evidencia'],
+              '#r': [orderId],
+              'limit': 50,
+            }
+          ]));
+
+          await for (final msg in channel.stream.timeout(
+              const Duration(seconds: 8),
+              onTimeout: (sink) => sink.close())) {
             final data = jsonDecode(msg.toString());
             if (data is List && data.length >= 3 && data[0] == 'EVENT') {
               try {
@@ -6148,23 +6931,30 @@ class NostrOrderService {
                 final eventPubkey = eventData['pubkey'] as String? ?? '';
                 final createdAt = eventData['created_at'] as int? ?? 0;
                 final createdAtIso = createdAt > 0
-                    ? DateTime.fromMillisecondsSinceEpoch(createdAt * 1000, isUtc: true).toIso8601String()
+                    ? DateTime.fromMillisecondsSinceEpoch(createdAt * 1000,
+                            isUtc: true)
+                        .toIso8601String()
                     : '';
-                var content = jsonDecode(eventData['content'] as String) as Map<String, dynamic>;
-                
-                final isEncrypted = content['encrypted'] == true && content['encryption'] == 'nip44v2';
-                final outerSenderPubkey = content['senderPubkey'] as String? ?? eventPubkey;
-                
+                var content = jsonDecode(eventData['content'] as String)
+                    as Map<String, dynamic>;
+
+                final isEncrypted = content['encrypted'] == true &&
+                    content['encryption'] == 'nip44v2';
+                final outerSenderPubkey =
+                    content['senderPubkey'] as String? ?? eventPubkey;
+
                 // 🔓 Tentar descriptografar se o conteúdo está criptografado com NIP-44
                 if (isEncrypted) {
                   bool decrypted = false;
                   if (adminPrivateKey != null) {
                     try {
                       final payload = content['payload'] as String;
-                      final plain = _nip44.decryptBetween(payload, adminPrivateKey, outerSenderPubkey);
+                      final plain = _nip44.decryptBetween(
+                          payload, adminPrivateKey, outerSenderPubkey);
                       content = jsonDecode(plain) as Map<String, dynamic>;
                       decrypted = true;
-                      broLog('🔓 Evidência descriptografada de ${outerSenderPubkey.substring(0, 8)}');
+                      broLog(
+                          '🔓 Evidência descriptografada de ${outerSenderPubkey.substring(0, 8)}');
                     } catch (e) {
                       broLog('⚠️ Falha ao descriptografar evidência: $e');
                     }
@@ -6191,16 +6981,19 @@ class NostrOrderService {
                     content['decryptable'] = true;
                   }
                 }
-                
-                if (content['orderId'] == orderId && content['type'] == 'bro_dispute_evidence') {
+
+                if (content['orderId'] == orderId &&
+                    content['type'] == 'bro_dispute_evidence') {
                   // Evitar duplicatas por eventId
                   if (!evidences.any((e) => e['eventId'] == eventId)) {
                     content['eventId'] = eventId;
                     // Garantir sentAt/senderPubkey para ordenação e exibição
-                    content['sentAt'] = (content['sentAt'] as String?)?.isNotEmpty == true
-                        ? content['sentAt']
-                        : createdAtIso;
-                    content['senderPubkey'] = content['senderPubkey'] ?? outerSenderPubkey;
+                    content['sentAt'] =
+                        (content['sentAt'] as String?)?.isNotEmpty == true
+                            ? content['sentAt']
+                            : createdAtIso;
+                    content['senderPubkey'] =
+                        content['senderPubkey'] ?? outerSenderPubkey;
                     evidences.add(content);
                   }
                 }
@@ -6208,25 +7001,26 @@ class NostrOrderService {
             }
             if (data is List && data[0] == 'EOSE') break;
           }
-          
+
           channel.sink.add(jsonEncode(['CLOSE', subId]));
           channel.sink.close();
-          
+
           // v645d: NÃO parar ao achar evidências — continuar agregando os demais
           // relays (dedup por eventId abaixo já impede duplicata).
         } catch (e) {
           broLog('⚠️ fetchDisputeEvidence relay error: $e');
         }
       }
-      
+
       // Ordenar por data (mais antiga primeiro)
       evidences.sort((a, b) {
         final aDate = a['sentAt'] as String? ?? '';
         final bDate = b['sentAt'] as String? ?? '';
         return aDate.compareTo(bDate);
       });
-      
-      broLog('📥 fetchDisputeEvidence: ${evidences.length} evidências para ${orderId.substring(0, 8)}');
+
+      broLog(
+          '📥 fetchDisputeEvidence: ${evidences.length} evidências para ${orderId.substring(0, 8)}');
       return evidences;
     } catch (e) {
       broLog('❌ fetchDisputeEvidence EXCEPTION: $e');
@@ -6261,7 +7055,8 @@ class NostrOrderService {
         }
       }
       if (payloads.isEmpty) {
-        broLog('❌ publishDisputeChatMessage: nenhum destinatário válido/cifrável');
+        broLog(
+            '❌ publishDisputeChatMessage: nenhum destinatário válido/cifrável');
         return false;
       }
 
@@ -6285,13 +7080,16 @@ class NostrOrderService {
         tags.add(['p', rp]);
       }
 
-      final event = Event.from(kind: 1, tags: tags, content: content, privkey: keychain.private);
+      final event = Event.from(
+          kind: 1, tags: tags, content: content, privkey: keychain.private);
 
       final results = await Future.wait(
-        _relays.map((relay) => _publishToRelay(relay, event).catchError((_) => false)),
+        _relays.map(
+            (relay) => _publishToRelay(relay, event).catchError((_) => false)),
       );
       final successCount = results.where((r) => r).length;
-      broLog('📤 publishDisputeChatMessage: $senderRole → ${payloads.length} dest, $successCount/${_relays.length} relays (ordem ${orderId.substring(0, 8)})');
+      broLog(
+          '📤 publishDisputeChatMessage: $senderRole → ${payloads.length} dest, $successCount/${_relays.length} relays (ordem ${orderId.substring(0, 8)})');
       return successCount > 0;
     } catch (e) {
       broLog('❌ publishDisputeChatMessage EXCEPTION: $e');
@@ -6315,15 +7113,22 @@ class NostrOrderService {
       for (final relay in _relays.take(3)) {
         try {
           final channel = WebSocketChannel.connect(Uri.parse(relay));
-          final subId = 'dchat_${orderId.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
-          channel.sink.add(jsonEncode(['REQ', subId, {
-            'kinds': [1],
-            '#t': ['bro-disputa-chat'],
-            '#r': [orderId],
-            'limit': 100,
-          }]));
+          final subId =
+              'dchat_${orderId.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
+          channel.sink.add(jsonEncode([
+            'REQ',
+            subId,
+            {
+              'kinds': [1],
+              '#t': ['bro-disputa-chat'],
+              '#r': [orderId],
+              'limit': 100,
+            }
+          ]));
 
-          await for (final msg in channel.stream.timeout(const Duration(seconds: 8), onTimeout: (sink) => sink.close())) {
+          await for (final msg in channel.stream.timeout(
+              const Duration(seconds: 8),
+              onTimeout: (sink) => sink.close())) {
             final data = jsonDecode(msg.toString());
             if (data is List && data.length >= 3 && data[0] == 'EVENT') {
               try {
@@ -6331,13 +7136,17 @@ class NostrOrderService {
                 if (!_isEventSignatureValid(eventData)) continue; // v662
                 final eventId = eventData['id'] as String? ?? '';
                 final createdAt = eventData['created_at'] as int? ?? 0;
-                final content = jsonDecode(eventData['content'] as String) as Map<String, dynamic>;
+                final content = jsonDecode(eventData['content'] as String)
+                    as Map<String, dynamic>;
                 if (content['type'] != 'bro_dispute_chat') continue;
                 if (content['orderId'] != orderId) continue;
                 if (messages.any((m) => m['eventId'] == eventId)) continue;
 
-                final senderPubkey = (content['senderPubkey'] as String?) ?? (eventData['pubkey'] as String? ?? '');
-                final payloads = (content['payloads'] as Map?)?.cast<String, dynamic>() ?? const <String, dynamic>{};
+                final senderPubkey = (content['senderPubkey'] as String?) ??
+                    (eventData['pubkey'] as String? ?? '');
+                final payloads =
+                    (content['payloads'] as Map?)?.cast<String, dynamic>() ??
+                        const <String, dynamic>{};
                 final isMine = senderPubkey == myPub;
 
                 String? plain;
@@ -6345,7 +7154,8 @@ class NostrOrderService {
                   // Remetente: descriptografa qualquer payload (priv própria + chave do destinatário).
                   for (final entry in payloads.entries) {
                     try {
-                      plain = _nip44.decryptBetween(entry.value as String, keychain.private, entry.key);
+                      plain = _nip44.decryptBetween(
+                          entry.value as String, keychain.private, entry.key);
                       break;
                     } catch (_) {}
                   }
@@ -6354,7 +7164,8 @@ class NostrOrderService {
                   final mine = payloads[myPub] as String?;
                   if (mine != null && mine.isNotEmpty) {
                     try {
-                      plain = _nip44.decryptBetween(mine, keychain.private, senderPubkey);
+                      plain = _nip44.decryptBetween(
+                          mine, keychain.private, senderPubkey);
                     } catch (_) {}
                   }
                 }
@@ -6368,7 +7179,10 @@ class NostrOrderService {
                   'sentAt': (content['sentAt'] as String?)?.isNotEmpty == true
                       ? content['sentAt']
                       : (createdAt > 0
-                          ? DateTime.fromMillisecondsSinceEpoch(createdAt * 1000, isUtc: true).toIso8601String()
+                          ? DateTime.fromMillisecondsSinceEpoch(
+                                  createdAt * 1000,
+                                  isUtc: true)
+                              .toIso8601String()
                           : ''),
                   'eventCreatedAt': createdAt,
                   'isMine': isMine,
@@ -6382,8 +7196,10 @@ class NostrOrderService {
         } catch (_) {}
       }
 
-      messages.sort((a, b) => (a['eventCreatedAt'] as int? ?? 0).compareTo(b['eventCreatedAt'] as int? ?? 0));
-      broLog('💬 fetchDisputeChatMessages: ${messages.length} msgs para ${orderId.substring(0, 8)}');
+      messages.sort((a, b) => (a['eventCreatedAt'] as int? ?? 0)
+          .compareTo(b['eventCreatedAt'] as int? ?? 0));
+      broLog(
+          '💬 fetchDisputeChatMessages: ${messages.length} msgs para ${orderId.substring(0, 8)}');
       return messages;
     } catch (e) {
       broLog('❌ fetchDisputeChatMessages EXCEPTION: $e');
@@ -6396,14 +7212,15 @@ class NostrOrderService {
   /// Retorna Map com 'proofImage' (plaintext ou null) e 'encrypted' (bool)
   /// CORREÇÃO build 216: Usar tags single-letter (#d, #r, #t) suportadas por relays
   /// em vez de #orderId que é multi-char e NÃO é suportada por relays
-  Future<Map<String, dynamic>> fetchProofForOrder(String orderId, {String? providerPubkey, String? privateKey}) async {
+  Future<Map<String, dynamic>> fetchProofForOrder(String orderId,
+      {String? providerPubkey, String? privateKey}) async {
     try {
       final result = <String, dynamic>{
         'proofImage': null,
         'encrypted': false,
         'providerPubkey': providerPubkey,
       };
-      
+
       // v645: consultar TODOS os relays principais + fallback (antes era só
       // `_relays.take(3)` = damus/nos.lol/primal). O comprovante (88KB) às
       // vezes é aceito por UM único relay (ex.: damus na ordem 3dd5cb49) — se
@@ -6414,32 +7231,33 @@ class NostrOrderService {
       for (final relay in allRelays) {
         try {
           final channel = WebSocketChannel.connect(Uri.parse(relay));
-          final subId = 'proof_${orderId.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
-          
+          final subId =
+              'proof_${orderId.substring(0, 8)}_${DateTime.now().millisecondsSinceEpoch % 10000}';
+
           // Buscar kind 30081 (complete) e kind 30080 (payment proof)
           final filters = <Map<String, dynamic>>[];
-          
+
           // Filter 1: kind 30081 complete por #d tag = '{orderId}_complete'
           filters.add({
             'kinds': [kindBroComplete],
             '#d': ['${orderId}_complete'],
             'limit': 10,
           });
-          
+
           // Filter 2: kind 30080 por #r tag (reference ao orderId) - funciona!
           filters.add({
             'kinds': [kindBroPaymentProof],
             '#r': [orderId],
             'limit': 10,
           });
-          
+
           // Filter 3: por #t bro-complete (fallback mais amplo, filtrar por content)
           filters.add({
             'kinds': [kindBroComplete],
             '#t': ['bro-complete'],
             'limit': 20,
           });
-          
+
           // Filter 4: se conhecemos o provedor, buscar por autor
           if (providerPubkey != null && providerPubkey.isNotEmpty) {
             filters.add({
@@ -6448,7 +7266,7 @@ class NostrOrderService {
               'limit': 20,
             });
           }
-          
+
           // Filter 5 (v645e): cópia do comprovante cifrada PARA O ADMIN,
           // publicada pelo provedor num kind 1 (bro-disputa-evidencia) quando a
           // ordem entra em disputa. O evento bro_complete omite a cópia do admin
@@ -6460,123 +7278,154 @@ class NostrOrderService {
             '#r': [orderId],
             'limit': 20,
           });
-          
+
           // Enviar todos os filters
           for (int i = 0; i < filters.length; i++) {
             channel.sink.add(jsonEncode(['REQ', '${subId}_$i', filters[i]]));
           }
-          
+
           int eoseCount = 0;
-          await for (final msg in channel.stream.timeout(const Duration(seconds: 10), onTimeout: (sink) => sink.close())) {
+          await for (final msg in channel.stream.timeout(
+              const Duration(seconds: 10),
+              onTimeout: (sink) => sink.close())) {
             final data = jsonDecode(msg.toString());
             if (data is List && data.length >= 3 && data[0] == 'EVENT') {
               final eventData = data[2] as Map<String, dynamic>;
               if (!_isEventSignatureValid(eventData)) continue; // v662
               try {
-                final content = jsonDecode(eventData['content'] as String) as Map<String, dynamic>;
+                final content = jsonDecode(eventData['content'] as String)
+                    as Map<String, dynamic>;
                 final eventOrderId = content['orderId'] as String?;
-                
+
                 // Filtrar pelo orderId correto
                 if (eventOrderId != orderId) continue;
-                
+
                 // Extrair providerId se disponível
                 final eventProviderId = content['providerId'] as String?;
                 if (eventProviderId != null && eventProviderId.isNotEmpty) {
                   result['providerPubkey'] = eventProviderId;
                 }
-                
+
                 // v236: Extrair E2E ID do PIX se disponível
                 final e2eId = content['e2eId'] as String?;
                 if (e2eId != null && e2eId.isNotEmpty) {
                   result['e2eId'] = e2eId;
                 }
-                
+
                 // Verificar proofImage
                 final proofImage = content['proofImage'] as String?;
                 final proofImageNip44 = content['proofImage_nip44'] as String?;
-                
+
                 // v645e: cópia cifrada PARA O ADMIN num kind 1 de disputa
                 // (provedor re-publicou). Descriptografar direto aqui.
                 if (privateKey != null) {
-                  final adminCopyDirect = content['proofImage_nip44_admin'] as String?;
-                  if (adminCopyDirect != null && adminCopyDirect.isNotEmpty && result['proofImage'] == null) {
+                  final adminCopyDirect =
+                      content['proofImage_nip44_admin'] as String?;
+                  if (adminCopyDirect != null &&
+                      adminCopyDirect.isNotEmpty &&
+                      result['proofImage'] == null) {
                     try {
-                      final senderPk = content['senderPubkey'] as String? ?? (eventData['pubkey'] as String?);
+                      final senderPk = content['senderPubkey'] as String? ??
+                          (eventData['pubkey'] as String?);
                       if (senderPk != null) {
-                        final dec = _nip44.decryptBetween(adminCopyDirect, privateKey, senderPk);
+                        final dec = _nip44.decryptBetween(
+                            adminCopyDirect, privateKey, senderPk);
                         result['proofImage'] = dec;
                         result['encrypted'] = false;
-                        broLog('🔓 Comprovante descriptografado (cópia admin kind1) para ${orderId.substring(0, 8)}');
+                        broLog(
+                            '🔓 Comprovante descriptografado (cópia admin kind1) para ${orderId.substring(0, 8)}');
                       }
                     } catch (e) {
                       broLog('⚠️ Falha decrypt cópia admin kind1: $e');
                     }
                   }
                 }
-                
-                if (proofImage != null && proofImage.isNotEmpty && proofImage != '[encrypted:nip44v2]') {
+
+                if (proofImage != null &&
+                    proofImage.isNotEmpty &&
+                    proofImage != '[encrypted:nip44v2]') {
                   // Plaintext - perfeito
                   result['proofImage'] = proofImage;
                   result['encrypted'] = false;
-                  broLog('✅ Comprovante plaintext encontrado para ${orderId.substring(0, 8)}');
+                  broLog(
+                      '✅ Comprovante plaintext encontrado para ${orderId.substring(0, 8)}');
                 } else if (privateKey != null) {
                   // Tentar descriptografar com a chave privada fornecida
-                  final proofImageNip44Admin = content['proofImage_nip44_admin'] as String?;
-                  final senderPubkey = content['providerId'] as String? ?? (eventData['pubkey'] as String?);
+                  final proofImageNip44Admin =
+                      content['proofImage_nip44_admin'] as String?;
+                  final senderPubkey = content['providerId'] as String? ??
+                      (eventData['pubkey'] as String?);
                   bool decrypted = false;
-                  
+
                   // Tentar primeiro a cópia do admin
-                  if (proofImageNip44Admin != null && proofImageNip44Admin.isNotEmpty && senderPubkey != null) {
+                  if (proofImageNip44Admin != null &&
+                      proofImageNip44Admin.isNotEmpty &&
+                      senderPubkey != null) {
                     try {
-                      final decryptedProof = _nip44.decryptBetween(proofImageNip44Admin, privateKey, senderPubkey);
+                      final decryptedProof = _nip44.decryptBetween(
+                          proofImageNip44Admin, privateKey, senderPubkey);
                       result['proofImage'] = decryptedProof;
                       result['encrypted'] = false;
                       decrypted = true;
-                      broLog('🔓 Comprovante descriptografado (admin copy) para ${orderId.substring(0, 8)}');
+                      broLog(
+                          '🔓 Comprovante descriptografado (admin copy) para ${orderId.substring(0, 8)}');
                     } catch (e) {
                       broLog('⚠️ Falha decrypt admin copy: $e');
                     }
                   }
-                  
+
                   // Tentar cópia do provedor (self-encrypted)
-                  final proofImageNip44Provider = content['proofImage_nip44_provider'] as String?;
-                  if (!decrypted && proofImageNip44Provider != null && proofImageNip44Provider.isNotEmpty) {
+                  final proofImageNip44Provider =
+                      content['proofImage_nip44_provider'] as String?;
+                  if (!decrypted &&
+                      proofImageNip44Provider != null &&
+                      proofImageNip44Provider.isNotEmpty) {
                     try {
                       final myPubkey = Keychain(privateKey).public;
-                      final decryptedProof = _nip44.decryptFromSelf(proofImageNip44Provider, privateKey, myPubkey);
+                      final decryptedProof = _nip44.decryptFromSelf(
+                          proofImageNip44Provider, privateKey, myPubkey);
                       result['proofImage'] = decryptedProof;
                       result['encrypted'] = false;
                       decrypted = true;
-                      broLog('🔓 Comprovante descriptografado (provider self copy) para ${orderId.substring(0, 8)}');
+                      broLog(
+                          '🔓 Comprovante descriptografado (provider self copy) para ${orderId.substring(0, 8)}');
                     } catch (e) {
                       broLog('⚠️ Falha decrypt provider self copy: $e');
                     }
                   }
-                  
+
                   // Fallback: tentar a cópia do usuário
-                  if (!decrypted && proofImageNip44 != null && proofImageNip44.isNotEmpty && senderPubkey != null) {
+                  if (!decrypted &&
+                      proofImageNip44 != null &&
+                      proofImageNip44.isNotEmpty &&
+                      senderPubkey != null) {
                     try {
-                      final decryptedProof = _nip44.decryptBetween(proofImageNip44, privateKey, senderPubkey);
+                      final decryptedProof = _nip44.decryptBetween(
+                          proofImageNip44, privateKey, senderPubkey);
                       result['proofImage'] = decryptedProof;
                       result['encrypted'] = false;
                       decrypted = true;
-                      broLog('🔓 Comprovante descriptografado (user copy) para ${orderId.substring(0, 8)}');
+                      broLog(
+                          '🔓 Comprovante descriptografado (user copy) para ${orderId.substring(0, 8)}');
                     } catch (e) {
                       broLog('⚠️ Falha decrypt user copy: $e');
                     }
                   }
-                  
+
                   if (!decrypted) {
                     result['encrypted'] = true;
-                    if (proofImageNip44 != null) result['proofImage_nip44'] = proofImageNip44;
+                    if (proofImageNip44 != null)
+                      result['proofImage_nip44'] = proofImageNip44;
                   }
-                } else if (proofImageNip44 != null && proofImageNip44.isNotEmpty) {
+                } else if (proofImageNip44 != null &&
+                    proofImageNip44.isNotEmpty) {
                   // Existe mas é criptografado e sem chave para descriptografar
                   if (result['proofImage'] == null) {
                     result['encrypted'] = true;
                     result['proofImage_nip44'] = proofImageNip44;
                   }
-                  broLog('🔐 Comprovante NIP-44 criptografado para ${orderId.substring(0, 8)}');
+                  broLog(
+                      '🔐 Comprovante NIP-44 criptografado para ${orderId.substring(0, 8)}');
                 } else if (proofImage == '[encrypted:nip44v2]') {
                   if (result['proofImage'] == null) {
                     result['encrypted'] = true;
@@ -6589,12 +7438,12 @@ class NostrOrderService {
               if (eoseCount >= filters.length) break;
             }
           }
-          
+
           for (int i = 0; i < filters.length; i++) {
             channel.sink.add(jsonEncode(['CLOSE', '${subId}_$i']));
           }
           channel.sink.close();
-          
+
           // v645: não quebrar o loop ao achar a prova — continuar agregando os
           // demais relays (antes um break aqui fazia o método depender do
           // primeiro relay que respondesse, e a prova sumia se ela estivesse só
@@ -6603,8 +7452,9 @@ class NostrOrderService {
           broLog('⚠️ fetchProofForOrder relay error: $e');
         }
       }
-      
-      broLog('🔍 fetchProofForOrder: orderId=${orderId.substring(0, 8)}, found=${result['proofImage'] != null}, encrypted=${result['encrypted']}');
+
+      broLog(
+          '🔍 fetchProofForOrder: orderId=${orderId.substring(0, 8)}, found=${result['proofImage'] != null}, encrypted=${result['encrypted']}');
       return result;
     } catch (e) {
       broLog('❌ fetchProofForOrder EXCEPTION: $e');
@@ -6621,7 +7471,8 @@ class NostrOrderService {
   /// caminho crítico do ACEITE passam 3s — a agregação de todos os relays
   /// (v648) continua, mas o wall time do aceite não paga 8s de relay morto.
   /// Fora do aceite (sync, ghost-check, telas) o default 8s se mantém.
-  Future<String?> fetchOrderProviderPubkey(String orderId, {Duration perRelayTimeout = const Duration(seconds: 8)}) async {
+  Future<String?> fetchOrderProviderPubkey(String orderId,
+      {Duration perRelayTimeout = const Duration(seconds: 8)}) async {
     try {
       // v648: consultar TODOS os relays + fallback (antes: `_relays.take(3)` e
       // parava no 1º que respondesse). No duplo-aceite (ordem 72fd7667), o 2º
@@ -6639,7 +7490,9 @@ class NostrOrderService {
           var events = await _fetchFromRelay(
             relay,
             kinds: [kindBroAccept],
-            tags: {'#d': ['${orderId}_accept']},
+            tags: {
+              '#d': ['${orderId}_accept']
+            },
             limit: 5,
           ).timeout(perRelayTimeout, onTimeout: () => <Map<String, dynamic>>[]);
 
@@ -6648,32 +7501,46 @@ class NostrOrderService {
             events = await _fetchFromRelay(
               relay,
               kinds: [kindBroAccept],
-              tags: {'#t': ['bro-accept']},
+              tags: {
+                '#t': ['bro-accept']
+              },
               limit: 30,
-            ).timeout(perRelayTimeout, onTimeout: () => <Map<String, dynamic>>[]);
+            ).timeout(perRelayTimeout,
+                onTimeout: () => <Map<String, dynamic>>[]);
           }
-          
+
           for (final event in events) {
             final evId = event['id'] as String?;
             if (evId == null || seenEventIds.contains(evId)) continue;
             seenEventIds.add(evId);
             try {
-              final content = event['parsedContent'] ?? jsonDecode(event['content']);
+              final content =
+                  event['parsedContent'] ?? jsonDecode(event['content']);
               if (content['orderId'] == orderId) {
                 // v679: preferir content.acceptedAt (IMUTÁVEL) ao created_at
                 // do evento (renova a cada republish e quebrava a corrida).
                 int ts = event['created_at'] as int? ?? 0x7FFFFFFFFFFFFFFF;
                 final accStr = content['acceptedAt'] as String?;
-                final accParsed = accStr != null ? DateTime.tryParse(accStr) : null;
-                if (accParsed != null) ts = (accParsed.millisecondsSinceEpoch / 1000).round();
+                final accParsed =
+                    accStr != null ? DateTime.tryParse(accStr) : null;
+                if (accParsed != null)
+                  ts = (accParsed.millisecondsSinceEpoch / 1000).round();
                 final providerId = content['providerId'] as String?;
                 if (providerId != null && providerId.isNotEmpty) {
-                  candidates.add({'pubkey': providerId, 'created_at': ts, 'relay_ts': event['created_at'] as int? ?? ts});
+                  candidates.add({
+                    'pubkey': providerId,
+                    'created_at': ts,
+                    'relay_ts': event['created_at'] as int? ?? ts
+                  });
                   continue;
                 }
                 final eventPubkey = event['pubkey'] as String?;
                 if (eventPubkey != null && eventPubkey.isNotEmpty) {
-                  candidates.add({'pubkey': eventPubkey, 'created_at': ts, 'relay_ts': event['created_at'] as int? ?? ts});
+                  candidates.add({
+                    'pubkey': eventPubkey,
+                    'created_at': ts,
+                    'relay_ts': event['created_at'] as int? ?? ts
+                  });
                 }
               }
             } catch (_) {}
@@ -6687,15 +7554,17 @@ class NostrOrderService {
       // passar do corte (relay_ts protege aceite genuíno de device com
       // relógio atrasado — ver v819 em fetchAllAcceptsForOrder).
       try {
-        final republishTs = await fetchLatestRepublishTimestamp(orderId, perRelayTimeout: perRelayTimeout);
+        final republishTs = await fetchLatestRepublishTimestamp(orderId,
+            perRelayTimeout: perRelayTimeout);
         if (republishTs != null) {
           final cutoff = republishTs - _republishGraceSeconds;
           final before = candidates.length;
           candidates.removeWhere((c) =>
-            (c['created_at'] as int) < cutoff &&
-            ((c['relay_ts'] as int?) ?? (c['created_at'] as int)) < cutoff);
+              (c['created_at'] as int) < cutoff &&
+              ((c['relay_ts'] as int?) ?? (c['created_at'] as int)) < cutoff);
           if (candidates.length < before) {
-            broLog('v819: ${before - candidates.length} aceite(s) anterior(es) à republicação de ${orderId.substring(0, 8)} ignorado(s) (providerPubkey)');
+            broLog(
+                'v819: ${before - candidates.length} aceite(s) anterior(es) à republicação de ${orderId.substring(0, 8)} ignorado(s) (providerPubkey)');
           }
         }
       } catch (_) {}
@@ -6708,12 +7577,15 @@ class NostrOrderService {
         });
         final winner = candidates.first['pubkey'] as String;
         if (candidates.length > 1) {
-          broLog('⚠️ fetchOrderProviderPubkey: ${candidates.length} accepts concorrentes — vencedor canônico: ${winner.substring(0, 8)}');
+          broLog(
+              '⚠️ fetchOrderProviderPubkey: ${candidates.length} accepts concorrentes — vencedor canônico: ${winner.substring(0, 8)}');
         }
-        broLog('✅ fetchOrderProviderPubkey: ${winner.substring(0, 8)} para ordem ${orderId.substring(0, 8)}');
+        broLog(
+            '✅ fetchOrderProviderPubkey: ${winner.substring(0, 8)} para ordem ${orderId.substring(0, 8)}');
         return winner;
       }
-      broLog('🔍 fetchOrderProviderPubkey: não encontrado para ${orderId.substring(0, 8)}');
+      broLog(
+          '🔍 fetchOrderProviderPubkey: não encontrado para ${orderId.substring(0, 8)}');
       return null;
     } catch (e) {
       broLog('❌ fetchOrderProviderPubkey EXCEPTION: $e');

@@ -226,6 +226,8 @@
         return 'Cancelado';
       case 'disputed':
         return 'Em Disputa';
+      case 'accept_expired':
+        return 'Aguardando republicação';
       default:
         return status;
     }

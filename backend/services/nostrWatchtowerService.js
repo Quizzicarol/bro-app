@@ -606,12 +606,20 @@ class NostrWatchtowerService {
         this._orderUsers.set(orderId, sender);
       }
       this._cacheOrderMeta(orderId, content);
-      // vR5: registra snapshot para o endpoint de listagem.
-      this._recordOrderSnapshot(orderId, content, event.created_at);
+      // Uma republicação após aceite expirado abre uma nova rodada pública.
+      if (content.status === 'pending' && content.republishedAt) {
+        this._recordOrderSnapshot(orderId, content, event.created_at, null, 'pending');
+      } else {
+        this._recordOrderSnapshot(orderId, content, event.created_at);
+      }
       return;
     }
 
     if (eventType === 'bro_accept') {
+      const snap = this._orderSnapshots.get(orderId);
+      if (snap && ['accept_expired', 'completed', 'liquidated', 'cancelled'].includes(snap.lastStatus)) {
+        return;
+      }
       const userPk = this._orderUsers.get(orderId)
         || (isHexPubkey(content.userPubkey) ? content.userPubkey : null);
       if (userPk !== sender) {
@@ -657,7 +665,9 @@ class NostrWatchtowerService {
     if (eventType === 'bro_order_update' && typeof content.status === 'string') {
       const st = content.status;
       if (st === 'completed' || st === 'liquidated' || st === 'cancelled' ||
-          st === 'payment_submitted' || st === 'awaiting_confirmation' || st === 'disputed') {
+          st === 'payment_submitted' || st === 'awaiting_confirmation' ||
+          st === 'disputed' || st === 'accept_expired' ||
+          (st === 'pending' && content.republishedAt)) {
         if (st !== 'disputed') {
           this._terminalOrders.set(orderId, Date.now());
           if (this._terminalOrders.size > 5000) {
@@ -830,6 +840,11 @@ class NostrWatchtowerService {
         }
 
         case 'bro_accept': {
+          const currentSnapshot = this._orderSnapshots.get(orderId);
+          if (currentSnapshot && ['accept_expired', 'completed', 'liquidated', 'cancelled'].includes(currentSnapshot.lastStatus)) {
+            console.log(`⏭️ [Watchtower] Aceite ignorado após ${currentSnapshot.lastStatus} em ${shortId}`);
+            break;
+          }
           // Provider accepted — notify the order creator
           // v512: Fallback to cached userPubkey (provider's accept event may omit userPubkey from content)
           // SECURITY v577: PREFER cache over content.userPubkey. The cache
@@ -1035,6 +1050,14 @@ class NostrWatchtowerService {
             }
           }
 
+          // R3: registra a expiração e a abertura explícita de nova rodada
+          // também no caminho em tempo real (não apenas no knowledge pass).
+          if (status === 'accept_expired' ||
+              (status === 'pending' && content.republishedAt)) {
+            this._recordOrderSnapshot(orderId, content, event.created_at, null, status);
+            this._scheduleStateSave();
+          }
+
           // v688: marca estado terminal — republicações futuras não re-empurram
           if (status === 'completed' || status === 'liquidated' || status === 'cancelled') {
             this._terminalOrders.set(orderId, Date.now());
@@ -1051,7 +1074,8 @@ class NostrWatchtowerService {
           // tentar acordar o criador pro billCode. Cancela retries.
           if (status === 'payment_submitted' || status === 'awaiting_confirmation' ||
               status === 'completed' || status === 'liquidated' ||
-              status === 'cancelled' || status === 'disputed') {
+              status === 'cancelled' || status === 'disputed' ||
+              status === 'accept_expired') {
             this._cancelBillcodeRelayRetries(orderId, `status=${status}`);
           }
           break;
@@ -1347,6 +1371,10 @@ class NostrWatchtowerService {
    * empurrar push.
    */
   getProviderForOrder(orderId) {
+    const snap = this._orderSnapshots.get(orderId);
+    if (snap && ['accept_expired', 'completed', 'liquidated', 'cancelled'].includes(snap.lastStatus)) {
+      return null;
+    }
     // v712: CANÔNICO = menor acceptedAt. Antes devolvia o ÚLTIMO aceite visto
     // (o cache sobrescrevia a cada bro_accept) — o fallback de billCode podia
     // empurrar o código pro PERDEDOR da corrida (caso 58ebf198, 06/11).
@@ -1620,7 +1648,7 @@ class NostrWatchtowerService {
       }
       const snap = this._orderSnapshots.get(orderId);
       if (snap && snap.lastStatus && ['payment_submitted', 'awaiting_confirmation',
-        'completed', 'liquidated', 'cancelled', 'disputed'].includes(snap.lastStatus)) {
+        'completed', 'liquidated', 'cancelled', 'disputed', 'accept_expired'].includes(snap.lastStatus)) {
         toDelete.push(orderId);
         console.log(`🧹 [Watchtower] billCode wakeup fantasma removido ${orderId.substring(0, 8)} (lastStatus=${snap.lastStatus})`);
         continue;
@@ -1816,6 +1844,10 @@ class NostrWatchtowerService {
    * perdedor, que pagou R$ de verdade). O app consulta ANTES de revelar.
    */
   getCanonicalInfo(orderId) {
+    const snap = this._orderSnapshots.get(orderId);
+    if (snap && ['accept_expired', 'completed', 'liquidated', 'cancelled'].includes(snap.lastStatus)) {
+      return { known: false, reason: snap.lastStatus };
+    }
     const list = this._orderAccepts.get(orderId);
     if (!list || list.length === 0) return { known: false };
     const sorted = [...list].sort((a, b) => a.acceptedAt - b.acceptedAt);
@@ -2325,9 +2357,16 @@ class NostrWatchtowerService {
         if (snap.lastStatus === 'pending') snap.lastStatus = 'accepted';
       }
 
-      // Terminal status.
+      // Expiração encerra apenas a rodada atual. Uma republicação explícita
+      // limpa o aceite antigo para a ordem voltar à lista pública.
       if (terminalStatus) {
         snap.lastStatus = terminalStatus;
+        if (terminalStatus === 'pending' && content && content.republishedAt) {
+          snap.acceptedBy = null;
+          snap.firstAcceptedAt = null;
+          this._orderAccepts.delete(orderId);
+          this._orderProviders.delete(orderId);
+        }
       }
 
       this._orderSnapshots.set(orderId, snap);
@@ -2365,10 +2404,10 @@ class NostrWatchtowerService {
         const iAccepted = myAccepts.some(a => a && a.pubkey === providerPubkey);
         if (snap.acceptedBy !== providerPubkey && !iAccepted) continue;
       } else {
-        // Público: só ordens pending e não terminais.
-        if (snap.acceptedBy) continue;
+        // Público: somente uma nova rodada pendente, nunca um aceite expirado.
+        if (snap.acceptedBy || snap.lastStatus !== 'pending') continue;
       }
-      const terminal = new Set(['completed', 'liquidated', 'cancelled']);
+      const terminal = new Set(['completed', 'liquidated', 'cancelled', 'accept_expired']);
       if (terminal.has(snap.lastStatus)) continue;
 
       // R5c: resultado da corrida — quem aceitou precisa saber se ganhou

@@ -15,7 +15,7 @@ congelada; rollback tag antes de cada merge.
 | `test/v823` | certificação de entrega (preimage + recibo + verificador) | em teste no USB (825) |
 | `test/perf-ui` | cache da Home e reconciliação única | publicado em `a985eb1` |
 | `test/perf-sync` | sync coalescido, fases e proof-fetch limitado | publicado em `3252f16` |
-| `test/r3-perf-integration` | R3 + PERF + recuperação tardia | `96c140a` + alterações locais em validação |
+| `test/r3-perf-integration` | R3 + PERF + expiração/republicação | `ca4ddbd` + reparo do limbo local em validação |
 
 ## Trilha 1 — Certificação de entrega (v823) — MAIS CURTA
 
@@ -71,6 +71,30 @@ Evidências:
   regra de expiração alterada para encerrar o aceite sem recuperação tardia.
   Gate focado **39/39** e suíte `test/race` **124/124**.
 
+Reparo funcional solicitado em 23/11/2026 após inspeção do USB:
+
+- A ordem `876115f4` tinha `accept_expired` no relay, mas o cache local ficou
+  em `pending`; a tela mostrava **Aguardando Bro** e escondia as ações.
+- Recuperar esse cache exige aceite antigo (>1h), mesmo provedor e nenhuma
+  prova. O comprador passa a ver **Aguardando republicação**, com
+  **Republicar ordem** acima de **Cancelar e sacar**.
+- A republicação grava `republishedAt`, publica `pending` no kind 30080,
+  limpa `providerId`/`acceptedAt`, remove a ordem da blocklist local e impede
+  que a expiração/aceite antigos contaminem a nova rodada. Prova anterior à
+  expiração continua protegida e não pode ser apagada pela republicação.
+- O watchtower precisa aplicar a mesma rodada no snapshot: `accept_expired`
+  fecha a rodada; `pending` com `republishedAt` abre outra e limpa o aceite
+  canônico anterior. Não basta corrigir somente a UI.
+- Em 23/11, o teste real confirmou que o aceite antigo era reutilizado pelo
+  sync, snapshot, histórico, auto-repair e migração de billcode. Foram
+  adicionados guards nesses caminhos e no ponto comum do Nostr. A Home passou
+  a traduzir `accept_expired` como **Aguardando republicação**.
+- **Deploy pendente:** `backend-deploy-flyio` só escuta `main`/`master`, não
+  a branch de teste. O deploy manual autorizado foi tentado, mas o Fly
+  respondeu `unauthorized` para `bro-api`. É necessário usar uma credencial
+  autorizada ou publicar somente após a revisão/merge aprovado pela dona.
+  Não declarar o watchtower como implantado antes disso.
+
 Pendências antes de publicar/mergear:
 
 1. Confirmação final da revisão independente e suíte completa. O smoke test
@@ -82,8 +106,36 @@ Pendências antes de publicar/mergear:
 4. Não declarar recebimento Lightning de `4e2c858a` sem payment hash,
    preimage ou recibo correspondente. A confirmação manual e `proof=true`
    comprovam a recuperação do fluxo, não a liquidação.
-5. BRIX claim/fee permanece em trilha separada (`test/brix-claim-fee`), com
-   requisitos em `PROMPT_BRIX_CLAIM_FEE.md`; não foi implementado aqui.
+5. BRIX claim/fee e a taxa de ordem seguem no pacote prioritário abaixo; não
+   foram implementados neste reparo de expiração.
+
+## Pacote prioritário seguinte — BRIX e taxa de ordem
+
+Estes itens entram no roadmap dos agentes para implementação junto com as
+correções priorizadas pela dona, com revisão independente e sem misturar
+pagamentos ao teste de expiração:
+
+1. **Transparência do resgate BRIX (app):** no momento do resgate, mostrar
+   `bruto − taxa = líquido`, usando `gross_amount_sats`, `fee_sats` e o
+   `amount_sats` líquido já entregues pelo endpoint. O valor exibido deve ser
+   exatamente o valor esperado no claim.
+2. **Histórico da carteira BRIX:** entrada “BRIX recebido +líquido (taxa X
+   sats)” e linha de taxa no detalhe da transação. Preservar o bruto e a taxa
+   como evidência, sem apresentar o líquido como se fosse o bruto.
+3. **Taxa de ordem — fenda AutoPay/Main:** corrigir a fenda ainda aberta no
+   `main`, aplicando a correção curta já repassada pela dona ao agente
+   responsável. O diff exato de seis linhas não está neste worktree; o agente
+   deve recuperá-lo da conversa original e anexá-lo à revisão, sem inventar
+   uma variante. Testar o caminho “already paid” para comprovar que a taxa da
+   plataforma é enviada uma única vez e que nenhum novo pagamento é disparado
+   em duplicidade.
+4. **Base BRIX já especificada:** manter `PROMPT_BRIX_CLAIM_FEE.md` como
+   referência local para claim-quote, desconto da taxa e `needs_funding`; o
+   arquivo é intencionalmente ignorado pelo Git e não deve ser commitado.
+
+Critérios de aceite: testes de apresentação bruto/taxa/líquido, histórico e
+compatibilidade; teste da taxa de ordem com evidência de invoice/hash e
+idempotência; double review antes de qualquer merge.
 
 QA/execução de testes: **Nemotron 3.5 Lightning**. Revisão de corrida/estado:
 **Nemotron 3 Ultra**. Decisão de merge: dona + assento do integrador.

@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -145,7 +145,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   String get _amountDisplay =>
       '$_currencySymbol ${widget.amountBrl.toStringAsFixed(2)}';
-  
+
   Map<String, dynamic>? _orderDetails;
   String _currentStatus = 'pending';
   bool _isLoading = true;
@@ -155,20 +155,20 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   // de até 15s). Usado para mostrar o spinner "Carregando comprovante".
   bool _fetchingProofDirectly = false;
   final ProofFetchCoordinator _proofFetch = ProofFetchCoordinator();
-  
+
   // Dados da disputa para exibição no relatório
   String? _disputeReason;
   String? _disputeDescription;
   DateTime? _disputeCreatedAt;
   String? _userEvidence; // v236: evidência foto do usuário (base64)
-  
+
   // Dados de resolução de disputa (vindo do mediador)
   Map<String, dynamic>? _disputeResolution;
-  
+
   // v337: Pagamento pendente pós-resolução de disputa a favor do provedor
   bool _disputePaymentPending = false;
   bool _isPayingDisputeResolution = false;
-  
+
   // v237: Mensagens do mediador para o usuário
   List<Map<String, dynamic>> _mediatorMessages = [];
   bool _loadingMediatorMessages = false;
@@ -217,19 +217,19 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   OrderProvider? _orderProvider;
-  
-  /// v490: Assina mudanças no OrderProvider para reagir automaticamente 
+
+  /// v490: Assina mudanças no OrderProvider para reagir automaticamente
   /// quando o sync Nostr traz dados novos (proofImage, status, etc.)
   void _setupProviderListener() {
     _orderProvider = Provider.of<OrderProvider>(context, listen: false);
     _orderProvider!.addListener(_onProviderUpdated);
   }
-  
+
   void _onProviderUpdated() {
     if (!mounted) return;
     final order = _orderProvider?.getOrderById(widget.orderId);
     if (order == null) return;
-    
+
     final orderMap = order.toJson();
     final newStatus = order.status;
     final metadata = order.metadata;
@@ -238,18 +238,25 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         metadata?['proofReceivedAt']?.toString() ??
         metadata?['receipt_submitted_at']?.toString();
     _proofFetch.noteProofHint(proofHint);
-    
+
     // Atualizar dados na tela se houver mudança
     final statusChanged = newStatus != _currentStatus;
-    final hasNewProof = order.metadata?['proofImage'] != null && 
+    final hasNewProof = order.metadata?['proofImage'] != null &&
         order.metadata!['proofImage'] is String &&
         !(order.metadata!['proofImage'] as String).startsWith('[encrypted:') &&
-        (_orderDetails?['metadata'] == null || 
-         (_orderDetails!['metadata'] as Map<String, dynamic>?)?.containsKey('proofImage') != true ||
-         ((_orderDetails!['metadata'] as Map<String, dynamic>?)?['proofImage'] as String?)?.startsWith('[encrypted:') == true);
-    
+        (_orderDetails?['metadata'] == null ||
+            (_orderDetails!['metadata'] as Map<String, dynamic>?)
+                    ?.containsKey('proofImage') !=
+                true ||
+            ((_orderDetails!['metadata']
+                        as Map<String, dynamic>?)?['proofImage'] as String?)
+                    ?.startsWith('[encrypted:') ==
+                true);
+
     if (statusChanged || hasNewProof) {
-      final bestStatus = _isStatusMoreRecent(newStatus, _currentStatus) ? newStatus : _currentStatus;
+      final bestStatus = _isStatusMoreRecent(newStatus, _currentStatus)
+          ? newStatus
+          : _currentStatus;
       setState(() {
         _orderDetails = orderMap;
         _currentStatus = bestStatus;
@@ -268,7 +275,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       // (30081 chega depois do 30080 — caso 3f49da19). Tentar fetch direto —
       // sem isso a tela fica sem comprovante até o próximo ciclo de sync.
       final p = order.metadata?['proofImage'] as String?;
-      final hasDecryptedProof = p != null && p.isNotEmpty && !p.startsWith('[encrypted:');
+      final hasDecryptedProof =
+          p != null && p.isNotEmpty && !p.startsWith('[encrypted:');
       if (!hasDecryptedProof) {
         _fetchProofDirectly();
       }
@@ -283,7 +291,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         order.metadata?['disputeProviderPaid'] != true &&
         !_isPayingDisputeResolution &&
         !ProviderPaymentGuard.isPaid(widget.orderId)) {
-      broLog('🤖 [AutoPay v801] Resolução detectada via listener — pagamento automático ao provedor');
+      broLog(
+          '🤖 [AutoPay v801] Resolução detectada via listener — pagamento automático ao provedor');
       _handleDisputePayment(autoMode: true);
     }
   }
@@ -292,17 +301,37 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   bool _isStatusMoreRecent(String newStatus, String currentStatus) {
     if (newStatus == currentStatus) return false;
     if (currentStatus == 'cancelled') return newStatus == 'disputed';
-    // v708: cancel SO de estados iniciais — disputa resolvida NUNCA vira cancelled
-    if (newStatus == 'cancelled') return currentStatus.isEmpty || currentStatus == 'draft' || currentStatus == 'pending';
-    // v719: disputed → cancelled volta a valer (resolução resolved_user);
-    // o botão de cancelar continua bloqueado (guarda em _handleCancelOrder).
-    if (currentStatus == 'disputed') return newStatus == 'completed' || newStatus == 'cancelled';
+    if (newStatus == 'cancelled') {
+      return currentStatus.isEmpty ||
+          currentStatus == 'draft' ||
+          currentStatus == 'pending' ||
+          currentStatus == 'accept_expired';
+    }
+    if (currentStatus == 'disputed') {
+      return newStatus == 'completed' || newStatus == 'cancelled';
+    }
+    if (currentStatus == 'accept_expired') return newStatus == 'pending';
+    if (newStatus == 'accept_expired') {
+      return NostrOrderService.canRecoverExpiredAccept(
+            _orderDetails ?? const <String, dynamic>{},
+            {'status': 'accept_expired'},
+          ) ||
+          currentStatus == 'accepted' ||
+          currentStatus == 'processing';
+    }
     const finalStatuses = ['completed', 'liquidated'];
     if (finalStatuses.contains(currentStatus)) return false;
-    if (newStatus == 'disputed') return true;
+    if (newStatus == 'disputed') return currentStatus != 'accept_expired';
     const statusOrder = [
-      'draft', 'pending', 'payment_received', 'accepted', 
-      'processing', 'awaiting_confirmation', 'completing', 'completed', 'liquidated',
+      'draft',
+      'pending',
+      'payment_received',
+      'accepted',
+      'processing',
+      'awaiting_confirmation',
+      'completing',
+      'completed',
+      'liquidated',
     ];
     final currentIndex = statusOrder.indexOf(currentStatus);
     final newIndex = statusOrder.indexOf(newStatus);
@@ -313,33 +342,38 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   Future<void> _loadOrderDetails({bool forceProofRefresh = false}) async {
     try {
       Map<String, dynamic>? order;
-      
+
       // Renderiza dados locais imediatamente; o sync segue em background e o
       // listener atualiza a tela quando os eventos chegarem.
       if (mounted) {
-        final orderProvider = Provider.of<OrderProvider>(context, listen: false);
-        unawaited(orderProvider.syncOrdersFromNostr(force: true).catchError((e) {
+        final orderProvider =
+            Provider.of<OrderProvider>(context, listen: false);
+        unawaited(
+            orderProvider.syncOrdersFromNostr(force: true).catchError((e) {
           broLog('⚠️ Sync falhou no _loadOrderDetails: $e');
         }));
       }
-      
+
       // v450: Buscar do OrderProvider PRIMEIRO (memória, mais recente)
       // O OrderProvider tem os dados atualizados via Nostr sync em memória.
       // SharedPreferences (OrderService) pode ter status desatualizado.
       if (mounted) {
         try {
-          final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+          final orderProvider =
+              Provider.of<OrderProvider>(context, listen: false);
           final orderFromProvider = orderProvider.orders.firstWhere(
             (o) => o.id == widget.orderId,
             orElse: () => throw Exception('not found'),
           );
           order = orderFromProvider.toJson();
-          broLog('✅ Ordem carregada do OrderProvider: ${widget.orderId.substring(0, 8)} status=${order['status']}');
+          broLog(
+              '✅ Ordem carregada do OrderProvider: ${widget.orderId.substring(0, 8)} status=${order['status']}');
         } catch (_) {
-          broLog('⚠️ Ordem não encontrada no OrderProvider, tentando OrderService...');
+          broLog(
+              '⚠️ Ordem não encontrada no OrderProvider, tentando OrderService...');
         }
       }
-      
+
       // Fallback: buscar do OrderService (SharedPreferences/API)
       if (order == null) {
         try {
@@ -348,18 +382,18 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           broLog('⚠️ OrderService também falhou: $serviceError');
         }
       }
-      
+
       if (order != null) {
         if (!mounted) return;
-        
+
         // v450: Usar o status MAIS RECENTE entre o que já temos (do OrderProvider em memória)
         // e o que veio do OrderService (SharedPreferences, que pode estar desatualizado).
         // Isso evita regredir de "awaiting_confirmation" para "pending".
         final loadedStatus = order['status'] as String? ?? 'pending';
-        final bestStatus = _isStatusMoreRecent(loadedStatus, _currentStatus) 
-            ? loadedStatus 
+        final bestStatus = _isStatusMoreRecent(loadedStatus, _currentStatus)
+            ? loadedStatus
             : _currentStatus;
-        
+
         setState(() {
           _orderDetails = order;
           _currentStatus = bestStatus;
@@ -372,7 +406,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         if (_currentStatus == 'awaiting_confirmation' && _expiresAt != null) {
           _startCountdownTimer();
         }
-        
+
         // v490: FALLBACK — Se a ordem está em awaiting_confirmation ou completed
         // mas NÃO tem proof, buscar diretamente do relay via fetchProofForOrder
         // v806: incluir 'accepted' — comprovante pode chegar enquanto o status
@@ -380,11 +414,17 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         // buscava o proof em accepted e ficava presa em "bro encontrado".
         final metadata = order?['metadata'] as Map<String, dynamic>?;
         final proofImg = metadata?['proofImage'] as String?;
-        final hasValidProof = proofImg != null && proofImg.isNotEmpty && !proofImg.startsWith('[encrypted:');
-        if (!hasValidProof && (bestStatus == 'accepted' || bestStatus == 'awaiting_confirmation' || bestStatus == 'completed' || bestStatus == 'liquidated')) {
+        final hasValidProof = proofImg != null &&
+            proofImg.isNotEmpty &&
+            !proofImg.startsWith('[encrypted:');
+        if (!hasValidProof &&
+            (bestStatus == 'accepted' ||
+                bestStatus == 'awaiting_confirmation' ||
+                bestStatus == 'completed' ||
+                bestStatus == 'liquidated')) {
           _fetchProofDirectly(force: forceProofRefresh);
         }
-        
+
         // Auto-pagamento de ordens liquidadas é feito pelo OrderProvider no sync
       } else {
         if (!mounted) return;
@@ -402,12 +442,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       });
     }
   }
-  
+
   /// v490: Busca proof diretamente dos relays quando sync normal não trouxe
   /// Isso acontece com proofs grandes (~65KB) que podem causar timeout no sync batch
   Future<void> _fetchProofDirectly({bool force = false}) {
     if (!mounted) return Future.value();
-    return _proofFetch.fetch(_fetchProofDirectlyOnce, force: force).catchError((_) {});
+    return _proofFetch
+        .fetch(_fetchProofDirectlyOnce, force: force)
+        .catchError((_) {});
   }
 
   Future<bool> _fetchProofDirectlyOnce() async {
@@ -417,21 +459,25 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       final orderProvider = Provider.of<OrderProvider>(context, listen: false);
       final privateKey = orderProvider.nostrPrivateKey;
       final providerId = _orderDetails?['providerId'] as String?;
-      
-      broLog('🔍 [PROOF] Buscando proof diretamente dos relays para ${widget.orderId.substring(0, 8)}...');
-      
+
+      broLog(
+          '🔍 [PROOF] Buscando proof diretamente dos relays para ${widget.orderId.substring(0, 8)}...');
+
       final nostrService = NostrOrderService();
-      final result = await nostrService.fetchProofForOrder(
-        widget.orderId,
-        providerPubkey: providerId,
-        privateKey: privateKey,
-      ).timeout(const Duration(seconds: 15));
-      
+      final result = await nostrService
+          .fetchProofForOrder(
+            widget.orderId,
+            providerPubkey: providerId,
+            privateKey: privateKey,
+          )
+          .timeout(const Duration(seconds: 15));
+
       final proof = result['proofImage'] as String?;
       final encrypted = result['encrypted'] as bool? ?? false;
-      
+
       if (proof != null && proof.isNotEmpty && !encrypted && mounted) {
-        broLog('✅ [PROOF] Comprovante obtido diretamente do relay (${proof.length} chars)');
+        broLog(
+            '✅ [PROOF] Comprovante obtido diretamente do relay (${proof.length} chars)');
         orderProvider.cacheProofImage(widget.orderId, proof);
         orderProvider.updateOrderMetadataLocal(widget.orderId, {
           'proofImage': proof,
@@ -451,7 +497,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         }
         return true;
       }
-      broLog('⚠️ [PROOF] Fetch direto não retornou proof válido (proof=${proof?.length}, encrypted=$encrypted)');
+      broLog(
+          '⚠️ [PROOF] Fetch direto não retornou proof válido (proof=${proof?.length}, encrypted=$encrypted)');
       return false;
     } catch (e) {
       broLog('⚠️ [PROOF] Erro ao buscar proof diretamente: $e');
@@ -461,16 +508,17 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     }
   }
 
-/// Busca resolução de disputa do Nostr (se a ordem tiver passado por disputa)
+  /// Busca resolução de disputa do Nostr (se a ordem tiver passado por disputa)
   Future<void> _fetchResolutionIfNeeded() async {
     // Aguardar dados da ordem carregarem
     await Future.delayed(const Duration(seconds: 2));
     if (!mounted) return;
-    
+
     // Buscar resolução para qualquer ordem (pode ter sido disputada e já resolvida)
     try {
       final nostrService = NostrOrderService();
-      final resolution = await nostrService.fetchDisputeResolution(widget.orderId);
+      final resolution =
+          await nostrService.fetchDisputeResolution(widget.orderId);
       if (resolution != null && mounted) {
         // v337: Verificar se pagamento ao provedor ainda é necessário
         bool paymentNeeded = false;
@@ -480,21 +528,25 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           final alreadyPaid = order?.metadata?['disputeProviderPaid'] == true;
           if (!alreadyPaid) {
             paymentNeeded = true;
-            broLog('⚠️ Disputa resolvida a favor do provedor - pagamento pendente!');
+            broLog(
+                '⚠️ Disputa resolvida a favor do provedor - pagamento pendente!');
           }
         }
         setState(() {
           _disputeResolution = resolution;
           _disputePaymentPending = paymentNeeded;
         });
-        broLog('✅ Resolução de disputa encontrada para ${widget.orderId.substring(0, 8)}');
-        
+        broLog(
+            '✅ Resolução de disputa encontrada para ${widget.orderId.substring(0, 8)}');
+
         // v390: Atualizar status da ordem se ainda está 'disputed' — corrige dashboard
         try {
           final orderProvider = context.read<OrderProvider>();
           final order = orderProvider.getOrderById(widget.orderId);
           if (order != null && order.status == 'disputed') {
-            final newStatus = resolution['resolution'] == 'resolved_user' ? 'cancelled' : 'completed';
+            final newStatus = resolution['resolution'] == 'resolved_user'
+                ? 'cancelled'
+                : 'completed';
             final updatedMetadata = {
               ...?order.metadata,
               'wasDisputed': true,
@@ -505,12 +557,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               status: newStatus,
               metadata: updatedMetadata,
             );
-            broLog('⚖️ Ordem ${widget.orderId.substring(0, 8)} atualizada: disputed → $newStatus (wasDisputed=true)');
+            broLog(
+                '⚖️ Ordem ${widget.orderId.substring(0, 8)} atualizada: disputed → $newStatus (wasDisputed=true)');
           }
         } catch (e) {
           broLog('⚠️ Erro ao atualizar status da disputa resolvida: $e');
         }
-        
+
         // v338: AUTO-PAY — pagar provedor automaticamente sem interação do usuário
         if (paymentNeeded && mounted) {
           broLog('🤖 [AutoPay] Iniciando pagamento automático ao provedor...');
@@ -525,15 +578,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       broLog('⚠️ Erro ao buscar resolução: $e');
     }
   }
-  
+
   /// v237: Busca mensagens do mediador direcionadas a este usuário para esta ordem
   Future<void> _fetchMediatorMessagesForUser() async {
     // Aguardar dados da ordem carregarem
     await Future.delayed(const Duration(seconds: 3));
     if (!mounted) return;
-    
+
     setState(() => _loadingMediatorMessages = true);
-    
+
     try {
       final orderProvider = context.read<OrderProvider>();
       final userPubkey = orderProvider.currentUserPubkey;
@@ -541,20 +594,21 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         if (mounted) setState(() => _loadingMediatorMessages = false);
         return;
       }
-      
+
       final nostrService = NostrOrderService();
       final messages = await nostrService.fetchMediatorMessages(
-        userPubkey, 
+        userPubkey,
         orderId: widget.orderId,
       );
-      
+
       if (mounted) {
         setState(() {
           _mediatorMessages = messages;
           _loadingMediatorMessages = false;
         });
         if (messages.isNotEmpty) {
-          broLog('📨 Usuário: ${messages.length} mensagens do mediador para ordem ${widget.orderId.substring(0, 8)}');
+          broLog(
+              '📨 Usuário: ${messages.length} mensagens do mediador para ordem ${widget.orderId.substring(0, 8)}');
         }
       }
     } catch (e) {
@@ -562,8 +616,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       if (mounted) setState(() => _loadingMediatorMessages = false);
     }
   }
-  
-  
+
   /// Trata mudancas de status e envia notificacoes
   void _handleStatusChange(String newStatus) {
     // v540: Nao disparar notificacao local para ordens antigas (>30 min).
@@ -631,8 +684,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     // 2. Tentar proofReceivedAt ou receipt_submitted_at do metadata
     final metadata = order['metadata'] as Map<String, dynamic>?;
     if (metadata != null) {
-      final submittedAt = metadata['receipt_submitted_at'] as String?
-          ?? metadata['proofReceivedAt'] as String?;
+      final submittedAt = metadata['receipt_submitted_at'] as String? ??
+          metadata['proofReceivedAt'] as String?;
       if (submittedAt != null) {
         try {
           return DateTime.parse(submittedAt).add(const Duration(hours: 36));
@@ -642,7 +695,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     // 3. Fallback: updatedAt + 36h
     if (order['updatedAt'] != null) {
       try {
-        return DateTime.parse(order['updatedAt']).add(const Duration(hours: 36));
+        return DateTime.parse(order['updatedAt'])
+            .add(const Duration(hours: 36));
       } catch (_) {}
     }
     // 4. Último recurso
@@ -660,16 +714,17 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   void _startStatusPolling() {
     // PERFORMANCE: Intervalo aumentado de 5s para 15s
     // O syncOrdersFromNostr tem throttle interno que evita syncs < 10s
-    _statusCheckTimer = Timer.periodic(const Duration(seconds: 15), (timer) async {
+    _statusCheckTimer =
+        Timer.periodic(const Duration(seconds: 15), (timer) async {
       // CORREÇÃO: Verificar se a tela ainda está montada antes de fazer qualquer coisa
       if (!mounted) {
         timer.cancel();
         return;
       }
-      
+
       // CORREÇÃO: Sincronizar com Nostr para buscar atualizações (aceites, comprovantes)
       final orderProvider = Provider.of<OrderProvider>(context, listen: false);
-      
+
       // O timer continua ativo, mas não alimenta uma fila enquanto outro
       // passe global está ativo. RT/FCM mantêm o force urgente no provider.
       if (orderProvider.isSyncingUser) {
@@ -681,12 +736,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           broLog('⚠️ Erro ao sincronizar Nostr no polling: $e');
         }
       }
-      
+
       if (!mounted) return;
-      
+
       final order = orderProvider.getOrderById(widget.orderId);
       final status = order?.status ?? _currentStatus;
-      
+
       // Atualizar orderDetails com dados mais recentes (incluindo metadata/proofImage)
       if (order != null && mounted) {
         final orderMap = order.toJson();
@@ -695,7 +750,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           _expiresAt = _calculateExpiresAt(orderMap);
         });
       }
-      
+
       if (status != _currentStatus) {
         // v533: So disparar notificacao em transicoes para FRENTE no fluxo.
         // Quando a usuaria toca Confirmar, _currentStatus vira 'completing'
@@ -707,7 +762,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         if (isForward) {
           _handleStatusChange(status);
         } else {
-          broLog('[ORDER] Transicao para tras ignorada: $_currentStatus -> $status (sem notificacao)');
+          broLog(
+              '[ORDER] Transicao para tras ignorada: $_currentStatus -> $status (sem notificacao)');
         }
         if (!mounted) return;
         setState(() {
@@ -726,7 +782,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         if (status == 'accepted' && mounted) {
           final meta = order?.metadata;
           final p = meta?['proofImage'] as String?;
-          final hasProofNow = p != null && p.isNotEmpty && !p.startsWith('[encrypted:');
+          final hasProofNow =
+              p != null && p.isNotEmpty && !p.startsWith('[encrypted:');
           if (!hasProofNow) {
             _fetchProofDirectly();
           }
@@ -734,7 +791,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
         // v490: Parar polling em estados FINAIS apenas se proof já foi carregado
         // Se proof ainda não chegou, continuar polling para buscar do relay
-        if (status == 'completed' || status == 'cancelled' || status == 'liquidated') {
+        if (status == 'completed' ||
+            status == 'cancelled' ||
+            status == 'liquidated') {
           // v579: Always dismiss the "Processando confirmação..." loading
           // snackbar when we observe a terminal status from background sync.
           // Without this, if the local _handleConfirmPayment finished setState
@@ -749,7 +808,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
           final hasProof = order?.metadata?['proofImage'] != null &&
               (order!.metadata!['proofImage'] as String).isNotEmpty &&
-              !(order.metadata!['proofImage'] as String).startsWith('[encrypted:');
+              !(order.metadata!['proofImage'] as String)
+                  .startsWith('[encrypted:');
           if (hasProof || status == 'cancelled') {
             timer.cancel();
             _countdownTimer?.cancel();
@@ -757,7 +817,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             // v809: terminal sem proof — buscar direto do relay em vez de só
             // logar e esperar o próximo ciclo (caso 3f49da19: ordem concluída
             // sem comprovante). _fetchProofDirectly é idempotente.
-            broLog('🔄 [POLLING] Status terminal ($status) mas proof ainda não carregado — fetch direto (v809)');
+            broLog(
+                '🔄 [POLLING] Status terminal ($status) mas proof ainda não carregado — fetch direto (v809)');
             _fetchProofDirectly();
           }
         }
@@ -767,11 +828,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       // Só expiram após Bro aceitar e usuário demorar 36h para confirmar
       // A expiração só deve ocorrer no status 'awaiting_confirmation'
       if (!mounted) return;
-      if (_currentStatus == 'awaiting_confirmation' && _expiresAt != null && _orderService.isOrderExpired(_expiresAt!)) {
+      if (_currentStatus == 'awaiting_confirmation' &&
+          _expiresAt != null &&
+          _orderService.isOrderExpired(_expiresAt!)) {
         timer.cancel();
         _showExpiredDialog();
       }
-      
     });
   }
 
@@ -814,7 +876,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     final guardProvider = Provider.of<OrderProvider>(context, listen: false);
     final guardOrder = guardProvider.getOrderById(widget.orderId);
     final guardStatus = guardOrder?.status ?? '';
-    const nonCancellable = ['accepted', 'payment_received', 'processing', 'awaiting_confirmation', 'completing', 'completed', 'liquidated', 'disputed'];
+    const nonCancellable = [
+      'accepted',
+      'payment_received',
+      'processing',
+      'awaiting_confirmation',
+      'completing',
+      'completed',
+      'liquidated',
+      'disputed'
+    ];
     if (nonCancellable.contains(guardStatus)) {
       await showDialog(
         context: context,
@@ -822,7 +893,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           title: Text(l.t('order_cancel_blocked_title')),
           content: Text(l.t('order_cancel_blocked_content')),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: Text(l.t('understood'))),
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(l.t('understood'))),
           ],
         ),
       );
@@ -831,7 +904,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     try {
       final accepts = await NostrOrderService()
           .fetchAllAcceptsForOrder(widget.orderId)
-          .timeout(const Duration(seconds: 10), onTimeout: () => <String>['__timeout__']);
+          .timeout(const Duration(seconds: 10),
+              onTimeout: () => <String>['__timeout__']);
       if (accepts.isNotEmpty) {
         if (!mounted) return;
         await showDialog(
@@ -840,7 +914,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             title: Text(l.t('order_cancel_blocked_title')),
             content: Text(l.t('order_cancel_blocked_content')),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: Text(l.t('understood'))),
+              TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(l.t('understood'))),
             ],
           ),
         );
@@ -880,39 +956,45 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
     if (confirm == true) {
       setState(() => _isLoading = true);
-      
+
       bool success = false;
-      
+
       // SEMPRE cancelar localmente primeiro (modo P2P via Nostr)
       // Isso garante que funciona mesmo sem backend
       try {
-        final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+        final orderProvider =
+            Provider.of<OrderProvider>(context, listen: false);
         await orderProvider.updateOrderStatusLocal(widget.orderId, 'cancelled');
         success = true;
         broLog('✅ Ordem ${widget.orderId} cancelada localmente');
       } catch (e) {
         broLog('⚠️ Erro ao cancelar ordem local: $e');
       }
-      
+
       // Se não está em modo teste, também tentar notificar backend (com timeout)
       if (!AppConfig.testMode && !success) {
         try {
-          success = await _orderService.cancelOrder(
+          success = await _orderService
+              .cancelOrder(
             orderId: widget.orderId,
             userId: widget.userId ?? '',
             reason: l.t('order_cancelled_by_user'),
-          ).timeout(
+          )
+              .timeout(
             const Duration(seconds: 5),
             onTimeout: () {
-              broLog('⚠️ Timeout ao cancelar no backend, usando cancelamento local');
+              broLog(
+                  '⚠️ Timeout ao cancelar no backend, usando cancelamento local');
               return false;
             },
           );
-          
+
           // Se backend falhou mas temos acesso local, cancelar local mesmo assim
           if (!success) {
-            final orderProvider = Provider.of<OrderProvider>(context, listen: false);
-            await orderProvider.updateOrderStatusLocal(widget.orderId, 'cancelled');
+            final orderProvider =
+                Provider.of<OrderProvider>(context, listen: false);
+            await orderProvider.updateOrderStatusLocal(
+                widget.orderId, 'cancelled');
             success = true;
             broLog('✅ Ordem ${widget.orderId} cancelada localmente (fallback)');
           }
@@ -920,8 +1002,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           broLog('⚠️ Erro ao cancelar no backend: $e');
           // Tentar cancelar local como fallback
           try {
-            final orderProvider = Provider.of<OrderProvider>(context, listen: false);
-            await orderProvider.updateOrderStatusLocal(widget.orderId, 'cancelled');
+            final orderProvider =
+                Provider.of<OrderProvider>(context, listen: false);
+            await orderProvider.updateOrderStatusLocal(
+                widget.orderId, 'cancelled');
             success = true;
             broLog('✅ Ordem ${widget.orderId} cancelada localmente (fallback)');
           } catch (e2) {
@@ -971,9 +1055,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     // Obter saldo real da carteira
     final breezProvider = Provider.of<BreezProvider>(context, listen: false);
     final balanceInfo = await breezProvider.getBalance();
-    final realBalance = int.tryParse(balanceInfo?['balance']?.toString() ?? '0') ?? 0;
-    
-    final amountController = TextEditingController(text: realBalance.toString());
+    final realBalance =
+        int.tryParse(balanceInfo?['balance']?.toString() ?? '0') ?? 0;
+
+    final amountController =
+        TextEditingController(text: realBalance.toString());
     final destinationController = TextEditingController();
     bool isSending = false;
     bool isResolvingLnAddress = false;
@@ -981,9 +1067,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     String? infoMessage;
     int? minSats;
     int? maxSats;
-    
+
     if (!mounted) return;
-    
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1031,9 +1117,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                               ),
                             ),
                             Text(
-                              l.tp('order_wallet_balance', {'balance': realBalance.toString()}),
+                              l.tp('order_wallet_balance',
+                                  {'balance': realBalance.toString()}),
                               style: TextStyle(
-                                color: realBalance > 0 ? Colors.green : Colors.red,
+                                color:
+                                    realBalance > 0 ? Colors.green : Colors.red,
                                 fontSize: 14,
                               ),
                             ),
@@ -1047,7 +1135,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     ],
                   ),
                   const SizedBox(height: 24),
-                  
+
                   // Campo de valor
                   Text(
                     l.t('order_withdraw_amount'),
@@ -1061,7 +1149,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     enabled: !isSending && !isResolvingLnAddress,
                     decoration: InputDecoration(
                       hintText: l.t('order_amount_hint'),
-                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                      hintStyle:
+                          TextStyle(color: Colors.white.withOpacity(0.3)),
                       prefixIcon: const Icon(Icons.bolt, color: Colors.orange),
                       suffixText: 'sats',
                       suffixStyle: const TextStyle(color: Colors.orange),
@@ -1088,12 +1177,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         amountController.text = realBalance.toString();
                       },
                       child: Text(
-                        l.tp('order_max_balance', {'balance': realBalance.toString()}),
-                        style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+                        l.tp('order_max_balance',
+                            {'balance': realBalance.toString()}),
+                        style: const TextStyle(
+                            color: Colors.orange, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ),
-                  
+
                   // Info sobre limites do destino
                   if (infoMessage != null) ...[
                     Container(
@@ -1105,12 +1196,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.info_outline, color: Colors.blue, size: 20),
+                          const Icon(Icons.info_outline,
+                              color: Colors.blue, size: 20),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               infoMessage!,
-                              style: const TextStyle(color: Colors.blue, fontSize: 13),
+                              style: const TextStyle(
+                                  color: Colors.blue, fontSize: 13),
                             ),
                           ),
                         ],
@@ -1118,9 +1211,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     ),
                     const SizedBox(height: 12),
                   ],
-                  
+
                   const SizedBox(height: 4),
-                  
+
                   // Campo de destino
                   Text(
                     l.t('order_destination_label'),
@@ -1134,7 +1227,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     enabled: !isSending && !isResolvingLnAddress,
                     decoration: InputDecoration(
                       hintText: l.t('order_destination_hint'),
-                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                      hintStyle:
+                          TextStyle(color: Colors.white.withOpacity(0.3)),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: const BorderSide(color: Color(0xFF333333)),
@@ -1150,18 +1244,22 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  
+
                   // Botões Colar e Escanear
                   Row(
                     children: [
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: (isSending || isResolvingLnAddress) ? null : () async {
-                            final clipboard = await Clipboard.getData('text/plain');
-                            if (clipboard?.text != null) {
-                              destinationController.text = clipboard!.text!.trim();
-                            }
-                          },
+                          onPressed: (isSending || isResolvingLnAddress)
+                              ? null
+                              : () async {
+                                  final clipboard =
+                                      await Clipboard.getData('text/plain');
+                                  if (clipboard?.text != null) {
+                                    destinationController.text =
+                                        clipboard!.text!.trim();
+                                  }
+                                },
                           icon: const Icon(Icons.paste, size: 18),
                           label: Text(l.t('order_paste')),
                           style: OutlinedButton.styleFrom(
@@ -1174,14 +1272,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: (isSending || isResolvingLnAddress) ? null : () async {
-                            final scanned = await _showQRScannerModal();
-                            if (scanned != null && scanned.isNotEmpty) {
-                              setModalState(() {
-                                destinationController.text = scanned;
-                              });
-                            }
-                          },
+                          onPressed: (isSending || isResolvingLnAddress)
+                              ? null
+                              : () async {
+                                  final scanned = await _showQRScannerModal();
+                                  if (scanned != null && scanned.isNotEmpty) {
+                                    setModalState(() {
+                                      destinationController.text = scanned;
+                                    });
+                                  }
+                                },
                           icon: const Icon(Icons.qr_code_scanner, size: 18),
                           label: Text(l.t('order_scan')),
                           style: OutlinedButton.styleFrom(
@@ -1193,7 +1293,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       ),
                     ],
                   ),
-                  
+
                   // Mensagem de erro
                   if (errorMessage != null) ...[
                     const SizedBox(height: 12),
@@ -1206,214 +1306,260 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.error_outline, color: Colors.red, size: 20),
+                          const Icon(Icons.error_outline,
+                              color: Colors.red, size: 20),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               errorMessage!,
-                              style: const TextStyle(color: Colors.red, fontSize: 13),
+                              style: const TextStyle(
+                                  color: Colors.red, fontSize: 13),
                             ),
                           ),
                         ],
                       ),
                     ),
                   ],
-                  
+
                   const SizedBox(height: 20),
-                  
+
                   // Botão Enviar
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      onPressed: (isSending || isResolvingLnAddress) ? null : () async {
-                        final destination = destinationController.text.trim();
-                        final amountText = amountController.text.trim();
-                        
-                        // Validar valor
-                        final amount = int.tryParse(amountText);
-                        if (amount == null || amount <= 0) {
-                          setModalState(() => errorMessage = l.t('order_enter_valid_amount'));
-                          return;
-                        }
-                        
-                        if (amount > realBalance) {
-                          setModalState(() => errorMessage = l.tp('order_insufficient_balance', {'balance': realBalance.toString()}));
-                          return;
-                        }
-                        
-                        // Validar destino
-                        if (destination.isEmpty) {
-                          setModalState(() => errorMessage = l.t('order_paste_or_scan'));
-                          return;
-                        }
-                        
-                        setModalState(() {
-                          errorMessage = null;
-                          infoMessage = null;
-                        });
-                        
-                        String invoiceToSend = destination;
-                        
-                        // Verificar se é Lightning Address ou LNURL
-                        if (LnAddressService.isLightningAddress(destination) || 
-                            LnAddressService.isLnurl(destination)) {
-                          setModalState(() {
-                            isResolvingLnAddress = true;
-                            infoMessage = l.t('order_checking_limits');
-                          });
-                          
-                          final lnService = LnAddressService();
-                          
-                          // Primeiro resolver para ver os limites
-                          Map<String, dynamic> resolved;
-                          if (LnAddressService.isLnurl(destination)) {
-                            resolved = await lnService.resolveLnurl(destination);
-                          } else {
-                            resolved = await lnService.resolveLnAddress(destination);
-                          }
-                          
-                          if (resolved['success'] != true) {
-                            setModalState(() {
-                              isResolvingLnAddress = false;
-                              infoMessage = null;
-                              errorMessage = resolved['error'] ?? l.t('order_resolve_error');
-                            });
-                            return;
-                          }
-                          
-                          minSats = resolved['minSats'] as int?;
-                          maxSats = resolved['maxSats'] as int?;
-                          
-                          // Verificar se o valor está nos limites
-                          if (minSats != null && amount < minSats!) {
-                            setModalState(() {
-                              isResolvingLnAddress = false;
-                              infoMessage = l.tp('order_destination_range', {'min': minSats.toString(), 'max': maxSats.toString()});
-                              errorMessage = l.tp('order_min_amount', {'min': minSats.toString(), 'amount': amount.toString()});
-                            });
-                            return;
-                          }
-                          
-                          if (maxSats != null && amount > maxSats!) {
-                            setModalState(() {
-                              isResolvingLnAddress = false;
-                              infoMessage = l.tp('order_destination_range', {'min': minSats.toString(), 'max': maxSats.toString()});
-                              errorMessage = l.tp('order_max_amount', {'max': maxSats.toString(), 'amount': amount.toString()});
-                            });
-                            return;
-                          }
-                          
-                          setModalState(() {
-                            infoMessage = l.tp('order_getting_invoice', {'amount': amount.toString()});
-                          });
-                          
-                          final result = await lnService.getInvoice(
-                            lnAddress: destination,
-                            amountSats: amount,
-                            comment: 'Saque Bro App',
-                          );
-                          
-                          if (result['success'] != true) {
-                            setModalState(() {
-                              isResolvingLnAddress = false;
-                              infoMessage = null;
-                              errorMessage = result['error'] ?? l.t('order_error_get_invoice');
-                            });
-                            return;
-                          }
-                          
-                          invoiceToSend = result['invoice'] as String;
-                          setModalState(() {
-                            isResolvingLnAddress = false;
-                            infoMessage = null;
-                          });
-                        } else if (!destination.toLowerCase().startsWith('lnbc') && 
-                                   !destination.toLowerCase().startsWith('lntb')) {
-                          setModalState(() => errorMessage = l.t('order_invalid_destination'));
-                          return;
-                        }
-                        
-                        // Determinar tipo de destino
-                        String destType = 'invoice';
-                        if (LnAddressService.isLnurl(destination)) {
-                          destType = 'lnurl';
-                        } else if (LnAddressService.isLightningAddress(destination)) {
-                          destType = 'lnaddress';
-                        }
-                        
-                        // Enviar pagamento
-                        setModalState(() {
-                          isSending = true;
-                          infoMessage = l.tp('order_sending_amount', {'amount': amount.toString()});
-                        });
-                        
-                        try {
-                          final breezProvider = Provider.of<BreezProvider>(context, listen: false);
-                          final result = await breezProvider.payInvoice(invoiceToSend);
-                          
-                          if (result != null && result['success'] == true) {
-                            // Registrar saque bem-sucedido
-                            final withdrawalService = WithdrawalService();
-                            await withdrawalService.saveWithdrawal(
-                              orderId: widget.orderId,
-                              amountSats: amount,
-                              destination: destination,
-                              destinationType: destType,
-                              status: 'success',
-                              txId: result['paymentHash'] ?? result['txId'],
-                              userPubkey: widget.userId ?? 'anonymous',
-                            );
-                            
-                            if (context.mounted) {
-                              Navigator.pop(context); // Fechar modal
-                              ScaffoldMessenger.of(this.context).showSnackBar(
-                                SnackBar(
-                                  content: Text(l.tp('order_withdraw_success', {'amount': amount.toString()})),
-                                  backgroundColor: Colors.green,
-                                ),
-                              );
-                              // Recarregar a tela para mostrar o saque registrado
-                              setState(() {});
-                            }
-                          } else {
-                            final errMsg = result?['error'] ?? l.t('order_payment_failed_msg');
-                            
-                            // Registrar saque que falhou
-                            final withdrawalService = WithdrawalService();
-                            await withdrawalService.saveWithdrawal(
-                              orderId: widget.orderId,
-                              amountSats: amount,
-                              destination: destination,
-                              destinationType: destType,
-                              status: 'failed',
-                              error: errMsg,
-                              userPubkey: widget.userId ?? 'anonymous',
-                            );
-                            
-                            setModalState(() {
-                              isSending = false;
-                              errorMessage = errMsg;
-                            });
-                          }
-                        } catch (e) {
-                          // Registrar erro
-                          final withdrawalService = WithdrawalService();
-                          await withdrawalService.saveWithdrawal(
-                            orderId: widget.orderId,
-                            amountSats: amount,
-                            destination: destination,
-                            destinationType: destType,
-                            status: 'failed',
-                            error: e.toString(),
-                            userPubkey: widget.userId ?? 'anonymous',
-                          );
-                          
-                          setModalState(() {
-                            isSending = false;
-                            errorMessage = l.tp('order_error_generic', {'error': e.toString()});
-                          });
-                        }
-                      },
+                      onPressed: (isSending || isResolvingLnAddress)
+                          ? null
+                          : () async {
+                              final destination =
+                                  destinationController.text.trim();
+                              final amountText = amountController.text.trim();
+
+                              // Validar valor
+                              final amount = int.tryParse(amountText);
+                              if (amount == null || amount <= 0) {
+                                setModalState(() => errorMessage =
+                                    l.t('order_enter_valid_amount'));
+                                return;
+                              }
+
+                              if (amount > realBalance) {
+                                setModalState(() => errorMessage = l.tp(
+                                    'order_insufficient_balance',
+                                    {'balance': realBalance.toString()}));
+                                return;
+                              }
+
+                              // Validar destino
+                              if (destination.isEmpty) {
+                                setModalState(() =>
+                                    errorMessage = l.t('order_paste_or_scan'));
+                                return;
+                              }
+
+                              setModalState(() {
+                                errorMessage = null;
+                                infoMessage = null;
+                              });
+
+                              String invoiceToSend = destination;
+
+                              // Verificar se é Lightning Address ou LNURL
+                              if (LnAddressService.isLightningAddress(
+                                      destination) ||
+                                  LnAddressService.isLnurl(destination)) {
+                                setModalState(() {
+                                  isResolvingLnAddress = true;
+                                  infoMessage = l.t('order_checking_limits');
+                                });
+
+                                final lnService = LnAddressService();
+
+                                // Primeiro resolver para ver os limites
+                                Map<String, dynamic> resolved;
+                                if (LnAddressService.isLnurl(destination)) {
+                                  resolved =
+                                      await lnService.resolveLnurl(destination);
+                                } else {
+                                  resolved = await lnService
+                                      .resolveLnAddress(destination);
+                                }
+
+                                if (resolved['success'] != true) {
+                                  setModalState(() {
+                                    isResolvingLnAddress = false;
+                                    infoMessage = null;
+                                    errorMessage = resolved['error'] ??
+                                        l.t('order_resolve_error');
+                                  });
+                                  return;
+                                }
+
+                                minSats = resolved['minSats'] as int?;
+                                maxSats = resolved['maxSats'] as int?;
+
+                                // Verificar se o valor está nos limites
+                                if (minSats != null && amount < minSats!) {
+                                  setModalState(() {
+                                    isResolvingLnAddress = false;
+                                    infoMessage = l.tp(
+                                        'order_destination_range', {
+                                      'min': minSats.toString(),
+                                      'max': maxSats.toString()
+                                    });
+                                    errorMessage = l.tp('order_min_amount', {
+                                      'min': minSats.toString(),
+                                      'amount': amount.toString()
+                                    });
+                                  });
+                                  return;
+                                }
+
+                                if (maxSats != null && amount > maxSats!) {
+                                  setModalState(() {
+                                    isResolvingLnAddress = false;
+                                    infoMessage = l.tp(
+                                        'order_destination_range', {
+                                      'min': minSats.toString(),
+                                      'max': maxSats.toString()
+                                    });
+                                    errorMessage = l.tp('order_max_amount', {
+                                      'max': maxSats.toString(),
+                                      'amount': amount.toString()
+                                    });
+                                  });
+                                  return;
+                                }
+
+                                setModalState(() {
+                                  infoMessage = l.tp('order_getting_invoice',
+                                      {'amount': amount.toString()});
+                                });
+
+                                final result = await lnService.getInvoice(
+                                  lnAddress: destination,
+                                  amountSats: amount,
+                                  comment: 'Saque Bro App',
+                                );
+
+                                if (result['success'] != true) {
+                                  setModalState(() {
+                                    isResolvingLnAddress = false;
+                                    infoMessage = null;
+                                    errorMessage = result['error'] ??
+                                        l.t('order_error_get_invoice');
+                                  });
+                                  return;
+                                }
+
+                                invoiceToSend = result['invoice'] as String;
+                                setModalState(() {
+                                  isResolvingLnAddress = false;
+                                  infoMessage = null;
+                                });
+                              } else if (!destination
+                                      .toLowerCase()
+                                      .startsWith('lnbc') &&
+                                  !destination
+                                      .toLowerCase()
+                                      .startsWith('lntb')) {
+                                setModalState(() => errorMessage =
+                                    l.t('order_invalid_destination'));
+                                return;
+                              }
+
+                              // Determinar tipo de destino
+                              String destType = 'invoice';
+                              if (LnAddressService.isLnurl(destination)) {
+                                destType = 'lnurl';
+                              } else if (LnAddressService.isLightningAddress(
+                                  destination)) {
+                                destType = 'lnaddress';
+                              }
+
+                              // Enviar pagamento
+                              setModalState(() {
+                                isSending = true;
+                                infoMessage = l.tp('order_sending_amount',
+                                    {'amount': amount.toString()});
+                              });
+
+                              try {
+                                final breezProvider =
+                                    Provider.of<BreezProvider>(context,
+                                        listen: false);
+                                final result = await breezProvider
+                                    .payInvoice(invoiceToSend);
+
+                                if (result != null &&
+                                    result['success'] == true) {
+                                  // Registrar saque bem-sucedido
+                                  final withdrawalService = WithdrawalService();
+                                  await withdrawalService.saveWithdrawal(
+                                    orderId: widget.orderId,
+                                    amountSats: amount,
+                                    destination: destination,
+                                    destinationType: destType,
+                                    status: 'success',
+                                    txId:
+                                        result['paymentHash'] ?? result['txId'],
+                                    userPubkey: widget.userId ?? 'anonymous',
+                                  );
+
+                                  if (context.mounted) {
+                                    Navigator.pop(context); // Fechar modal
+                                    ScaffoldMessenger.of(this.context)
+                                        .showSnackBar(
+                                      SnackBar(
+                                        content: Text(l.tp(
+                                            'order_withdraw_success',
+                                            {'amount': amount.toString()})),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+                                    // Recarregar a tela para mostrar o saque registrado
+                                    setState(() {});
+                                  }
+                                } else {
+                                  final errMsg = result?['error'] ??
+                                      l.t('order_payment_failed_msg');
+
+                                  // Registrar saque que falhou
+                                  final withdrawalService = WithdrawalService();
+                                  await withdrawalService.saveWithdrawal(
+                                    orderId: widget.orderId,
+                                    amountSats: amount,
+                                    destination: destination,
+                                    destinationType: destType,
+                                    status: 'failed',
+                                    error: errMsg,
+                                    userPubkey: widget.userId ?? 'anonymous',
+                                  );
+
+                                  setModalState(() {
+                                    isSending = false;
+                                    errorMessage = errMsg;
+                                  });
+                                }
+                              } catch (e) {
+                                // Registrar erro
+                                final withdrawalService = WithdrawalService();
+                                await withdrawalService.saveWithdrawal(
+                                  orderId: widget.orderId,
+                                  amountSats: amount,
+                                  destination: destination,
+                                  destinationType: destType,
+                                  status: 'failed',
+                                  error: e.toString(),
+                                  userPubkey: widget.userId ?? 'anonymous',
+                                );
+
+                                setModalState(() {
+                                  isSending = false;
+                                  errorMessage = l.tp('order_error_generic',
+                                      {'error': e.toString()});
+                                });
+                              }
+                            },
                       icon: (isSending || isResolvingLnAddress)
                           ? const SizedBox(
                               width: 20,
@@ -1425,9 +1571,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                             )
                           : const Icon(Icons.bolt),
                       label: Text(
-                        isResolvingLnAddress 
-                            ? l.t('order_resolving_address') 
-                            : (isSending ? l.t('order_sending') : l.t('order_send_sats')),
+                        isResolvingLnAddress
+                            ? l.t('order_resolving_address')
+                            : (isSending
+                                ? l.t('order_sending')
+                                : l.t('order_send_sats')),
                       ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.orange,
@@ -1439,9 +1587,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       ),
                     ),
                   ),
-                  
+
                   const SizedBox(height: 16),
-                  
+
                   // Outras opções
                   Center(
                     child: TextButton(
@@ -1469,7 +1617,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   Future<String?> _showQRScannerModal() async {
     final l = AppLocalizations.of(context)!;
     String? scannedCode;
-    
+
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1490,7 +1638,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.qr_code_scanner, color: Colors.green, size: 28),
+                  const Icon(Icons.qr_code_scanner,
+                      color: Colors.green, size: 28),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -1521,22 +1670,22 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 ],
               ),
             ),
-            
+
             // Scanner
             Expanded(
               child: MobileScanner(
                 onDetect: (capture) {
                   final List<Barcode> barcodes = capture.barcodes;
                   broLog('📷 QR Scanner detectou ${barcodes.length} códigos');
-                  
+
                   for (final barcode in barcodes) {
                     final code = barcode.rawValue;
                     broLog('📷 Código raw: $code');
-                    
+
                     if (code != null && code.isNotEmpty) {
                       String cleaned = code.trim();
                       broLog('📷 Código limpo: $cleaned');
-                      
+
                       // Remover prefixos comuns de URI
                       final lowerCleaned = cleaned.toLowerCase();
                       if (lowerCleaned.startsWith('lightning:')) {
@@ -1546,16 +1695,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       } else if (lowerCleaned.startsWith('lnurl:')) {
                         cleaned = cleaned.substring(6);
                       }
-                      
+
                       // Remover parâmetros de query string se houver
                       if (cleaned.contains('?')) {
                         cleaned = cleaned.split('?')[0];
                       }
-                      
+
                       broLog('📷 Código após limpeza: $cleaned');
-                      
+
                       // BOLT11 Invoice - aceitar qualquer coisa que comece com ln
-                      if (cleaned.toLowerCase().startsWith('lnbc') || 
+                      if (cleaned.toLowerCase().startsWith('lnbc') ||
                           cleaned.toLowerCase().startsWith('lntb') ||
                           cleaned.toLowerCase().startsWith('lnurl')) {
                         scannedCode = cleaned;
@@ -1563,24 +1712,27 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         Navigator.pop(ctx);
                         return;
                       }
-                      
+
                       // Lightning Address (user@domain.com)
                       if (cleaned.contains('@') && cleaned.contains('.')) {
                         // Limpar e validar
-                        final cleanedAddress = LnAddressService.cleanAddress(cleaned);
-                        if (LnAddressService.isLightningAddress(cleanedAddress)) {
+                        final cleanedAddress =
+                            LnAddressService.cleanAddress(cleaned);
+                        if (LnAddressService.isLightningAddress(
+                            cleanedAddress)) {
                           scannedCode = cleanedAddress;
                           broLog('✅ LN Address detectado: $scannedCode');
                           Navigator.pop(ctx);
                           return;
                         }
                       }
-                      
+
                       // Se não reconheceu, mas tem conteúdo, aceitar mesmo assim
                       // O usuário pode ter escaneado algo que o app não conhece
                       if (cleaned.length > 10) {
                         scannedCode = cleaned;
-                        broLog('⚠️ Código não reconhecido, aceitando: $scannedCode');
+                        broLog(
+                            '⚠️ Código não reconhecido, aceitando: $scannedCode');
                         Navigator.pop(ctx);
                         return;
                       }
@@ -1589,14 +1741,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 },
               ),
             ),
-            
+
             // Dica
             Container(
               padding: const EdgeInsets.all(20),
               color: const Color(0xFF1A1A1A),
               child: Column(
                 children: [
-                  const Icon(Icons.lightbulb_outline, color: Colors.amber, size: 24),
+                  const Icon(Icons.lightbulb_outline,
+                      color: Colors.amber, size: 24),
                   const SizedBox(height: 8),
                   Text(
                     l.t('order_scan_instruction'),
@@ -1613,7 +1766,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         ),
       ),
     );
-    
+
     return scannedCode;
   }
 
@@ -1718,7 +1871,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           backgroundColor: const Color(0xFF1A1A1A),
           foregroundColor: Colors.orange,
         ),
-        body: const Center(child: CircularProgressIndicator(color: Color(0xFFFF6B6B))),
+        body: const Center(
+            child: CircularProgressIndicator(color: Color(0xFFFF6B6B))),
       );
     }
 
@@ -1736,7 +1890,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             children: [
               const Icon(Icons.error_outline, size: 64, color: Colors.red),
               const SizedBox(height: 16),
-              Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white)),
+              Text(_error!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white)),
               const SizedBox(height: 24),
               ElevatedButton(
                 onPressed: () => Navigator.pop(context),
@@ -1752,7 +1908,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
-        title: Text(_currentStatus == 'pending' ? l.t('order_status_pending_title') : l.t('order_status_title')),
+        title: Text(
+          _currentStatus == 'pending'
+              ? l.t('order_status_pending_title')
+              : _currentStatus == 'accept_expired'
+                  ? 'Aguardando republicação'
+                  : l.t('order_status_title'),
+        ),
         backgroundColor: const Color(0xFF1A1A1A),
         foregroundColor: Colors.orange,
       ),
@@ -1770,7 +1932,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 const SizedBox(height: 10),
                 _buildOrderDetailsCard(),
                 const SizedBox(height: 10),
-                if (_currentStatus == 'awaiting_confirmation' || _currentStatus == 'completed') ...[
+                if (_currentStatus == 'awaiting_confirmation' ||
+                    _currentStatus == 'completed') ...[
                   _buildReceiptCard(),
                   const SizedBox(height: 10),
                 ],
@@ -1783,7 +1946,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   _buildCancelButton(),
                 ],
                 // Botão cancelar para confirmed e payment_received (aguardando Bro aceitar)
-                if (_currentStatus == 'confirmed' || _currentStatus == 'payment_received') ...[
+                if (_currentStatus == 'confirmed' ||
+                    _currentStatus == 'payment_received') ...[
                   _buildCancelButton(),
                 ],
                 if (_currentStatus == 'accept_expired') ...[
@@ -1797,35 +1961,35 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 ],
                 // Botão de disputa também disponível para status 'accepted' (provedor aceitou mas não enviou comprovante)
                 if (_currentStatus == 'accepted') ...[
-                const SizedBox(height: 16),
-                _buildDisputeButton(),
+                  const SizedBox(height: 16),
+                  _buildDisputeButton(),
+                ],
+                // Status de disputa
+                if (_currentStatus == 'disputed') ...[
+                  const SizedBox(height: 16),
+                  _buildDisputedCard(),
+                  _buildDisputeChatSection(),
+                ],
+                // Card de resolução de disputa (para completed/cancelled/disputed com resolução)
+                if (_disputeResolution != null) ...[
+                  const SizedBox(height: 16),
+                  _buildDisputeResolutionCard(),
+                ],
+                // v337: Botão de pagamento pós-resolução de disputa a favor do provedor
+                if (_disputePaymentPending) ...[
+                  const SizedBox(height: 10),
+                  _buildDisputePaymentButton(),
+                ],
+                // Botão de saque para ordens canceladas
+                if (_currentStatus == 'cancelled') ...[
+                  const SizedBox(height: 16),
+                  _buildWithdrawSatsButton(),
+                ],
+                // Espaço extra para navegação do sistema
+                const SizedBox(height: 24),
               ],
-              // Status de disputa
-              if (_currentStatus == 'disputed') ...[
-                const SizedBox(height: 16),
-                _buildDisputedCard(),
-                _buildDisputeChatSection(),
-              ],
-              // Card de resolução de disputa (para completed/cancelled/disputed com resolução)
-              if (_disputeResolution != null) ...[
-                const SizedBox(height: 16),
-                _buildDisputeResolutionCard(),
-              ],
-              // v337: Botão de pagamento pós-resolução de disputa a favor do provedor
-              if (_disputePaymentPending) ...[
-                const SizedBox(height: 10),
-                _buildDisputePaymentButton(),
-              ],
-              // Botão de saque para ordens canceladas
-              if (_currentStatus == 'cancelled') ...[
-                const SizedBox(height: 16),
-                _buildWithdrawSatsButton(),
-              ],
-              // Espaço extra para navegação do sistema
-              const SizedBox(height: 24),
-            ],
+            ),
           ),
-        ),
         ),
       ),
     );
@@ -1884,7 +2048,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             Expanded(
               child: Text(
                 message,
-                style: const TextStyle(color: Colors.orange, fontSize: 13, fontWeight: FontWeight.w500),
+                style: const TextStyle(
+                    color: Colors.orange,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500),
               ),
             ),
           ],
@@ -1896,12 +2063,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   Widget _buildStatusCard() {
     final l = AppLocalizations.of(context)!;
     final statusInfo = _getStatusInfo(l);
-    
+
     return Card(
       color: const Color(0xFF1A1A1A),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: (statusInfo['color'] as Color).withOpacity(0.3)),
+        side:
+            BorderSide(color: (statusInfo['color'] as Color).withOpacity(0.3)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -1939,10 +2107,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               textAlign: TextAlign.center,
             ),
             // Mostrar data de criação da ordem (importante para rastreamento)
-            if (_orderDetails != null && _orderDetails!['createdAt'] != null) ...[
+            if (_orderDetails != null &&
+                _orderDetails!['createdAt'] != null) ...[
               const SizedBox(height: 16),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(20),
@@ -1950,10 +2120,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.calendar_today, color: Colors.white, size: 18),
+                    const Icon(Icons.calendar_today,
+                        color: Colors.white, size: 18),
                     const SizedBox(width: 8),
                     Text(
-                      l.tp('order_created_at', {'date': _formatCreatedAt(_orderDetails!['createdAt'], l)}),
+                      l.tp('order_created_at', {
+                        'date': _formatCreatedAt(_orderDetails!['createdAt'], l)
+                      }),
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w600,
@@ -1989,23 +2162,29 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   const SizedBox(width: 4),
                   GestureDetector(
                     onTap: () async {
-                      await Clipboard.setData(ClipboardData(text: widget.orderId));
+                      await Clipboard.setData(
+                          ClipboardData(text: widget.orderId));
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(l.t('order_id_copied')), duration: const Duration(seconds: 1)),
+                          SnackBar(
+                              content: Text(l.t('order_id_copied')),
+                              duration: const Duration(seconds: 1)),
                         );
                       }
                     },
-                    child: const Icon(Icons.copy, color: Colors.white54, size: 14),
+                    child:
+                        const Icon(Icons.copy, color: Colors.white54, size: 14),
                   ),
                 ],
               ),
             ),
             // Mostrar expiração SOMENTE quando estiver aguardando confirmação do usuário
-            if (_currentStatus == 'awaiting_confirmation' && _expiresAt != null) ...[
+            if (_currentStatus == 'awaiting_confirmation' &&
+                _expiresAt != null) ...[
               const SizedBox(height: 10),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
                   color: Colors.orange.withOpacity(0.3),
                   borderRadius: BorderRadius.circular(20),
@@ -2031,7 +2210,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       ),
     );
   }
-  
+
   String _formatCreatedAt(dynamic createdAt, AppLocalizations l) {
     try {
       DateTime date;
@@ -2042,10 +2221,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       } else {
         return l.t('order_unknown_date');
       }
-      
+
       final now = DateTime.now();
       final diff = now.difference(date);
-      
+
       if (diff.inMinutes < 1) {
         return l.t('order_now');
       } else if (diff.inMinutes < 60) {
@@ -2130,14 +2309,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       case 'accept_expired':
         return {
           'icon': Icons.timer_off,
-          'title': 'Aceite expirado',
-          'subtitle': 'O Bro não pagou dentro de 1 hora. Republicar a ordem ou cancelar e sacar seus sats.',
+          'title': 'Aguardando republicação',
+          'subtitle':
+              'O prazo do Bro terminou sem comprovante. Ele não pode mais enviar comprovante nem abrir disputa. Você pode republicar para um novo Bro ou cancelar e sacar seus sats.',
           'color': Colors.redAccent,
         };
       case 'disputed':
         // v233: Se há resolução, mostrar como resolvida
         if (_disputeResolution != null) {
-          final isUserFavor = _disputeResolution!['resolution'] == 'resolved_user';
+          final isUserFavor =
+              _disputeResolution!['resolution'] == 'resolved_user';
           return {
             'icon': Icons.gavel,
             'title': l.t('order_resolved_mediation'),
@@ -2172,11 +2353,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   Widget _buildOrderDetailsCard() {
     final l = AppLocalizations.of(context)!;
-    
+
     // v406: Buscar dados completos do OrderProvider para fees e billCode
     final orderProvider = Provider.of<OrderProvider>(context, listen: false);
     final fullOrder = orderProvider.getOrderById(widget.orderId);
-    
+
     // Calcular fees e valores
     final rawBillCode = fullOrder?.billCode ?? _orderDetails?['billCode'] ?? '';
     final billCode = rawBillCode; // v760: BRO1 morto (zero legado nos relays)
@@ -2195,7 +2376,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     var totalFeesSats = (baseSats * AppConfig.totalFeePercent).round();
     if (totalFeesSats < 1 && baseSats > 0) totalFeesSats = 1;
     final totalSats = baseSats + totalFeesSats;
-    
+
     return Card(
       color: const Color(0xFF1A1A1A),
       shape: RoundedRectangleBorder(
@@ -2204,7 +2385,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
-          child: Column(
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
@@ -2216,7 +2397,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               ),
             ),
             Divider(height: 20, color: Colors.grey.withOpacity(0.2)),
-            _buildDetailRow(l.t('order_detail_id'), widget.orderId.substring(0, 8)),
+            _buildDetailRow(
+                l.t('order_detail_id'), widget.orderId.substring(0, 8)),
             const SizedBox(height: 12),
             _buildDetailRow(
               l.t('order_detail_payment_type'),
@@ -2226,11 +2408,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               const SizedBox(height: 12),
               _buildDetailRowWrap(l.t('order_detail_code'), billCode),
             ],
-            if (_currentStatus == 'accepted' || _currentStatus == 'accept_expired') ...[
+            if (_currentStatus == 'accepted' ||
+                _currentStatus == 'accept_expired') ...[
               const SizedBox(height: 16),
               buildAcceptExpiryNotice(
                 acceptedAt: fullOrder?.acceptedAt ??
-                    DateTime.tryParse(_orderDetails?['acceptedAt']?.toString() ?? ''),
+                    DateTime.tryParse(
+                        _orderDetails?['acceptedAt']?.toString() ?? ''),
               ),
             ],
             const SizedBox(height: 16),
@@ -2255,13 +2439,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               l.t('order_detail_total_paid'),
               '$totalSats sats',
             ),
-            if (_orderDetails?['provider_id'] != null || fullOrder?.providerId != null) ...[
+            if (_orderDetails?['provider_id'] != null ||
+                fullOrder?.providerId != null) ...[
               const SizedBox(height: 16),
               Divider(height: 1, color: Colors.grey.withOpacity(0.15)),
               const SizedBox(height: 16),
               _buildDetailRow(
                 l.t('order_detail_provider'),
-                (fullOrder?.providerId ?? _orderDetails!['provider_id']).substring(0, 8),
+                (fullOrder?.providerId ?? _orderDetails!['provider_id'])
+                    .substring(0, 8),
               ),
             ],
           ],
@@ -2329,7 +2515,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
-          child: Column(
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
@@ -2352,21 +2538,33 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               number: '2',
               title: l.t('order_step_awaiting'),
               subtitle: l.t('order_step_awaiting_sub'),
-              isActive: _currentStatus == 'pending' || _currentStatus == 'confirmed' || _currentStatus == 'payment_received',
-              isCompleted: ['accepted', 'awaiting_confirmation', 'payment_submitted', 'completed'].contains(_currentStatus),
+              isActive: _currentStatus == 'pending' ||
+                  _currentStatus == 'confirmed' ||
+                  _currentStatus == 'payment_received',
+              isCompleted: [
+                'accepted',
+                'awaiting_confirmation',
+                'payment_submitted',
+                'completed'
+              ].contains(_currentStatus),
             ),
             _buildTimelineStep(
               number: '3',
               title: l.t('order_step_bro_pays'),
               subtitle: l.t('order_step_bro_pays_sub'),
               isActive: _currentStatus == 'accepted',
-              isCompleted: ['awaiting_confirmation', 'payment_submitted', 'completed'].contains(_currentStatus),
+              isCompleted: [
+                'awaiting_confirmation',
+                'payment_submitted',
+                'completed'
+              ].contains(_currentStatus),
             ),
             _buildTimelineStep(
               number: '4',
               title: l.t('order_step_completed'),
               subtitle: l.t('order_step_completed_sub'),
-              isActive: _currentStatus == 'awaiting_confirmation' || _currentStatus == 'payment_submitted',
+              isActive: _currentStatus == 'awaiting_confirmation' ||
+                  _currentStatus == 'payment_submitted',
               isCompleted: _currentStatus == 'completed',
               isLast: true,
             ),
@@ -2460,7 +2658,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
-          child: Column(
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
@@ -2522,7 +2720,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       if (orderProvider.getProofImageFromCache(widget.orderId) != null) return;
       final privateKey = orderProvider.nostrPrivateKey;
       if (privateKey == null) return;
-      final res = await NostrOrderService().fetchProofFromRelay(widget.orderId)
+      final res = await NostrOrderService()
+          .fetchProofFromRelay(widget.orderId)
           .timeout(const Duration(seconds: 15), onTimeout: () => null);
       if (res == null) return;
       // v820a: prova plaintext (fallback do provedor em ordem API-sourced)
@@ -2549,11 +2748,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     final l = AppLocalizations.of(context)!;
     // Tentar pegar metadata da ordem
     Map<String, dynamic>? metadata;
-    
+
     if (_orderDetails != null && _orderDetails!['metadata'] != null) {
-      metadata = Map<String, dynamic>.from(_orderDetails!['metadata'] as Map<String, dynamic>);
+      metadata = Map<String, dynamic>.from(
+          _orderDetails!['metadata'] as Map<String, dynamic>);
     }
-    
+
     // v406: SEMPRE mesclar dados do OrderProvider — não só quando metadata é null
     // O OrderProvider pode ter dados mais recentes (proofImage decriptografado)
     // que _orderDetails (carregado do SharedPreferences) não tem
@@ -2569,9 +2769,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           final existingVal = metadata[key];
           final providerVal = orderFromProvider.metadata![key];
           // Substituir se local é null, vazio, ou marcador encriptado
-          if (existingVal == null || 
+          if (existingVal == null ||
               (existingVal is String && existingVal.isEmpty) ||
-              (key == 'proofImage' && existingVal is String && existingVal.startsWith('[encrypted:'))) {
+              (key == 'proofImage' &&
+                  existingVal is String &&
+                  existingVal.startsWith('[encrypted:'))) {
             if (providerVal != null) {
               metadata[key] = providerVal;
             }
@@ -2586,36 +2788,39 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     if (metadata?['proofImage'] != null) {
       final pi = metadata!['proofImage'] as String;
       broLog('   proofImage length: ${pi.length}');
-      broLog('   proofImage preview: ${pi.substring(0, pi.length > 50 ? 50 : pi.length)}');
+      broLog(
+          '   proofImage preview: ${pi.substring(0, pi.length > 50 ? 50 : pi.length)}');
     }
     if (metadata?['paymentProof'] != null) {
       final pp = metadata!['paymentProof'] as String;
       broLog('   paymentProof length: ${pp.length}');
-      broLog('   paymentProof preview: ${pp.substring(0, pp.length > 50 ? 50 : pp.length)}');
+      broLog(
+          '   paymentProof preview: ${pp.substring(0, pp.length > 50 ? 50 : pp.length)}');
     }
 
     // Compatibilidade com TODOS os formatos de comprovante
     // Antigo: receipt_url, confirmation_code, receipt_submitted_at
     // Novo (via Nostr): proofImage, proofReceivedAt
     // Bro: paymentProof (usado pelo provider_order_detail_screen)
-    String? receiptUrl = metadata?['receipt_url'] as String? 
-        ?? metadata?['proofImage'] as String?
-        ?? metadata?['paymentProof'] as String?;
-    
+    String? receiptUrl = metadata?['receipt_url'] as String? ??
+        metadata?['proofImage'] as String? ??
+        metadata?['paymentProof'] as String?;
+
     // Filtrar marcador de criptografia — não é uma imagem válida
     if (receiptUrl != null && receiptUrl.startsWith('[encrypted:')) {
       receiptUrl = null;
     }
-    
+
     // Tentar re-descriptografar on-demand se temos dados NIP-44
     if (receiptUrl == null && metadata?['proofImage_nip44'] != null) {
       try {
-        final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+        final orderProvider =
+            Provider.of<OrderProvider>(context, listen: false);
         final privateKey = orderProvider.nostrPrivateKey;
         // v403: Fallback para providerId se proofImage_senderPubkey não estiver disponível
-        final senderPubkey = metadata?['proofImage_senderPubkey'] as String?
-            ?? metadata?['providerId'] as String?
-            ?? _orderDetails?['providerId'] as String?;
+        final senderPubkey = metadata?['proofImage_senderPubkey'] as String? ??
+            metadata?['providerId'] as String? ??
+            _orderDetails?['providerId'] as String?;
         if (privateKey != null && senderPubkey != null) {
           final nip44 = Nip44Service();
           receiptUrl = nip44.decryptBetween(
@@ -2625,24 +2830,29 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           );
           broLog('🔓 proofImage re-descriptografado on-demand na UI');
         } else {
-          broLog('⚠️ proofImage NIP-44: privateKey=${privateKey != null}, senderPubkey=${senderPubkey != null}');
+          broLog(
+              '⚠️ proofImage NIP-44: privateKey=${privateKey != null}, senderPubkey=${senderPubkey != null}');
         }
       } catch (e) {
         broLog('⚠️ Falha ao re-descriptografar proofImage na UI: $e');
       }
     }
-    
+
     // v406: Se on-demand decryption funcionou, salvar no cache write-once
-    if (receiptUrl != null && receiptUrl.isNotEmpty && !receiptUrl.startsWith('[encrypted:')) {
+    if (receiptUrl != null &&
+        receiptUrl.isNotEmpty &&
+        !receiptUrl.startsWith('[encrypted:')) {
       final cached = orderProvider.getProofImageFromCache(widget.orderId);
       if (cached == null) {
         orderProvider.cacheProofImage(widget.orderId, receiptUrl);
       }
     }
-    
+
     // v406: FALLBACK FINAL — Tentar cache persistente write-once
     // Este cache sobrevive QUALQUER bug de sync/merge
-    if (receiptUrl == null || receiptUrl.isEmpty || receiptUrl.startsWith('[encrypted:')) {
+    if (receiptUrl == null ||
+        receiptUrl.isEmpty ||
+        receiptUrl.startsWith('[encrypted:')) {
       final cachedProof = orderProvider.getProofImageFromCache(widget.orderId);
       if (cachedProof != null && cachedProof.isNotEmpty) {
         receiptUrl = cachedProof;
@@ -2653,12 +2863,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     // v696: ainda sem prova? Buscar DIRETO nos relays (o sync local pode ter
     // perdido o evento na hora — a prova EXISTE mas o usuário via o aviso de
     // "versão antiga" injustamente; caso real 04/11, ordem 2ee6ddd0).
-    if (receiptUrl == null || receiptUrl.isEmpty || receiptUrl.startsWith('[encrypted:')) {
+    if (receiptUrl == null ||
+        receiptUrl.isEmpty ||
+        receiptUrl.startsWith('[encrypted:')) {
       _fetchProofFromRelayOnce();
     }
-    
+
     final confirmationCode = metadata?['confirmation_code'] as String?;
-    final submittedAt = metadata?['receipt_submitted_at'] as String? ?? metadata?['proofReceivedAt'] as String?;
+    final submittedAt = metadata?['receipt_submitted_at'] as String? ??
+        metadata?['proofReceivedAt'] as String?;
 
     return Card(
       color: const Color(0xFF1A1A1A),
@@ -2668,7 +2881,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
-          child: Column(
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
@@ -2686,7 +2899,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            
             if (confirmationCode != null && confirmationCode.isNotEmpty) ...[
               Container(
                 padding: const EdgeInsets.all(12),
@@ -2700,7 +2912,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.confirmation_number, color: Colors.orange, size: 20),
+                        Icon(Icons.confirmation_number,
+                            color: Colors.orange, size: 20),
                         const SizedBox(width: 8),
                         Text(
                           l.t('order_confirmation_code'),
@@ -2727,7 +2940,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               ),
               const SizedBox(height: 12),
             ],
-
             if (receiptUrl != null && receiptUrl.isNotEmpty) ...[
               Container(
                 padding: const EdgeInsets.all(12),
@@ -2754,7 +2966,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-            ] else if (orderProvider.isSyncing(widget.orderId) || _fetchingProofDirectly) ...[
+            ] else if (orderProvider.isSyncing(widget.orderId) ||
+                _fetchingProofDirectly) ...[
               // v552: Comprovante anunciado por push mas relay ainda nao
               // entregou o evento. Mostrar placeholder para o usuario
               // entender que esta carregando, nao que esta quebrado.
@@ -2788,14 +3001,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               ),
               const SizedBox(height: 12),
             ],
-
             if (submittedAt != null) ...[
               Row(
                 children: [
                   Icon(Icons.access_time, size: 16, color: Colors.grey[600]),
                   const SizedBox(width: 6),
                   Text(
-                    l.tp('order_sent_at', {'date': _formatDateTime(submittedAt, l)}),
+                    l.tp('order_sent_at',
+                        {'date': _formatDateTime(submittedAt, l)}),
                     style: TextStyle(
                       fontSize: 12,
                       color: Colors.grey[600],
@@ -2804,7 +3017,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 ],
               ),
             ],
-
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),
@@ -2888,7 +3100,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               right: 0,
               child: Center(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   decoration: BoxDecoration(
                     color: Colors.black54,
                     borderRadius: BorderRadius.circular(20),
@@ -2910,8 +3123,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     final l = AppLocalizations.of(context)!;
     broLog('🖼️ _buildReceiptImageWidget chamado');
     broLog('   imageUrl length: ${imageUrl.length}');
-    broLog('   imageUrl starts with: ${imageUrl.substring(0, imageUrl.length > 20 ? 20 : imageUrl.length)}');
-    
+    broLog(
+        '   imageUrl starts with: ${imageUrl.substring(0, imageUrl.length > 20 ? 20 : imageUrl.length)}');
+
     // Verificar se é base64 (vindo do Nostr proofImage)
     if (imageUrl.startsWith('data:image')) {
       // Data URI format: data:image/png;base64,xxxxx
@@ -2922,10 +3136,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return Image.memory(
           bytes,
           fit: BoxFit.contain,
-          errorBuilder: (context, error, stackTrace) => _buildImageError(l.tp('order_error_decode_base64', {'error': error.toString()})),
+          errorBuilder: (context, error, stackTrace) => _buildImageError(
+              l.tp('order_error_decode_base64', {'error': error.toString()})),
         );
       } catch (e) {
-        return _buildImageError(l.tp('order_error_process_base64', {'error': e.toString()}));
+        return _buildImageError(
+            l.tp('order_error_process_base64', {'error': e.toString()}));
       }
     } else if (_isBase64Image(imageUrl)) {
       // Base64 puro (sem prefixo data:) - pode ser JPEG (/9j/), PNG (iVBOR), etc
@@ -2936,13 +3152,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return Image.memory(
           bytes,
           fit: BoxFit.contain,
-          errorBuilder: (context, error, stackTrace) => _buildImageError(l.tp('order_error_decode', {'error': error.toString()})),
+          errorBuilder: (context, error, stackTrace) => _buildImageError(
+              l.tp('order_error_decode', {'error': error.toString()})),
         );
       } catch (e) {
         broLog('   Erro ao decodificar base64: $e');
-        return _buildImageError(l.tp('order_error_process_image', {'error': e.toString()}));
+        return _buildImageError(
+            l.tp('order_error_process_image', {'error': e.toString()}));
       }
-    } else if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+    } else if (imageUrl.startsWith('http://') ||
+        imageUrl.startsWith('https://')) {
       // URL HTTP/HTTPS
       return Image.network(
         imageUrl,
@@ -2952,13 +3171,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           return Center(
             child: CircularProgressIndicator(
               value: loadingProgress.expectedTotalBytes != null
-                  ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                  ? loadingProgress.cumulativeBytesLoaded /
+                      loadingProgress.expectedTotalBytes!
                   : null,
               color: const Color(0xFFFF6B6B),
             ),
           );
         },
-        errorBuilder: (context, error, stackTrace) => _buildImageError(error.toString()),
+        errorBuilder: (context, error, stackTrace) =>
+            _buildImageError(error.toString()),
       );
     } else {
       // Caminho local - carregar como arquivo
@@ -2967,7 +3188,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return Image.file(
           file,
           fit: BoxFit.contain,
-          errorBuilder: (context, error, stackTrace) => _buildImageError(l.tp('order_error_load_file', {'error': error.toString()})),
+          errorBuilder: (context, error, stackTrace) => _buildImageError(
+              l.tp('order_error_load_file', {'error': error.toString()})),
         );
       } else {
         // O valor recebido não é imagem/base64/URL nem um arquivo local existente.
@@ -2985,7 +3207,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.image_not_supported_outlined, color: Colors.white54, size: 64),
+        const Icon(Icons.image_not_supported_outlined,
+            color: Colors.white54, size: 64),
         const SizedBox(height: 16),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -3002,27 +3225,27 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   /// Verifica se uma string parece ser base64 de imagem
   bool _isBase64Image(String str) {
     if (str.length < 100) return false;
-    
+
     // Prefixos comuns de imagens em base64:
     // JPEG: /9j/
     // PNG: iVBOR
     // GIF: R0lGOD
     // WebP: UklGR
     final base64Prefixes = ['/9j/', 'iVBOR', 'R0lGOD', 'UklGR'];
-    
+
     for (final prefix in base64Prefixes) {
       if (str.startsWith(prefix)) {
         return true;
       }
     }
-    
+
     // Se tem mais de 1000 chars e é só caracteres base64 válidos, provavelmente é base64
     if (str.length > 1000) {
       final base64Regex = RegExp(r'^[A-Za-z0-9+/=]+$');
       // Testar só os primeiros 100 chars para performance
       return base64Regex.hasMatch(str.substring(0, 100));
     }
-    
+
     return false;
   }
 
@@ -3062,7 +3285,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           children: [
             const Icon(Icons.gavel, color: Color(0xFFFF6B6B)),
             const SizedBox(width: 12),
-            Text(l.t('order_open_dispute'), style: const TextStyle(color: Colors.white)),
+            Text(l.t('order_open_dispute'),
+                style: const TextStyle(color: Colors.white)),
           ],
         ),
         content: SingleChildScrollView(
@@ -3090,7 +3314,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     SizedBox(height: 8),
                     Text(
                       l.t('order_dispute_explanation'),
-                      style: const TextStyle(color: Color(0xB3FFFFFF), fontSize: 13, height: 1.4),
+                      style: const TextStyle(
+                          color: Color(0xB3FFFFFF), fontSize: 13, height: 1.4),
                     ),
                   ],
                 ),
@@ -3098,7 +3323,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               const SizedBox(height: 16),
               Text(
                 l.t('order_dispute_common_reasons'),
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14),
               ),
               const SizedBox(height: 8),
               _buildDisputeReason('💸', l.t('order_dispute_not_received')),
@@ -3116,12 +3344,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.warning_amber, color: Color(0xFFFFC107), size: 20),
+                    const Icon(Icons.warning_amber,
+                        color: Color(0xFFFFC107), size: 20),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         l.t('order_dispute_escrow_held'),
-                        style: const TextStyle(color: Color(0xB3FFFFFF), fontSize: 12),
+                        style: const TextStyle(
+                            color: Color(0xB3FFFFFF), fontSize: 12),
                       ),
                     ),
                   ],
@@ -3133,7 +3363,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text(l.t('cancel'), style: const TextStyle(color: Colors.grey)),
+            child:
+                Text(l.t('cancel'), style: const TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -3143,7 +3374,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFFF6B6B),
             ),
-            child: Text(l.t('order_dispute_continue'), style: const TextStyle(color: Colors.white)),
+            child: Text(l.t('order_dispute_continue'),
+                style: const TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -3188,7 +3420,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             left: 20,
             right: 20,
             top: 20,
-            bottom: MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom + 24,
+            bottom: MediaQuery.of(context).viewInsets.bottom +
+                MediaQuery.of(context).viewPadding.bottom +
+                24,
           ),
           child: SingleChildScrollView(
             child: Column(
@@ -3216,13 +3450,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  l.tp('order_order_id_short', {'id': widget.orderId.substring(0, 8)}),
-                  style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 14),
+                  l.tp('order_order_id_short',
+                      {'id': widget.orderId.substring(0, 8)}),
+                  style:
+                      const TextStyle(color: Color(0x99FFFFFF), fontSize: 14),
                 ),
                 const SizedBox(height: 20),
                 Text(
                   l.t('order_dispute_reason_label'),
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
                 ...<String>[
@@ -3232,18 +3469,20 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   l.t('order_dispute_opt_no_response'),
                   l.t('order_dispute_opt_other'),
                 ].map((reason) => RadioListTile<String>(
-                  title: Text(reason, style: const TextStyle(color: Colors.white)),
-                  value: reason,
-                  groupValue: selectedReason,
-                  activeColor: const Color(0xFFFF6B6B),
-                  onChanged: (value) {
-                    setModalState(() => selectedReason = value);
-                  },
-                )),
+                      title: Text(reason,
+                          style: const TextStyle(color: Colors.white)),
+                      value: reason,
+                      groupValue: selectedReason,
+                      activeColor: const Color(0xFFFF6B6B),
+                      onChanged: (value) {
+                        setModalState(() => selectedReason = value);
+                      },
+                    )),
                 const SizedBox(height: 16),
                 Text(
                   l.t('order_dispute_describe_label'),
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
                 TextField(
@@ -3287,22 +3526,28 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     children: [
                       Text(
                         l.t('order_dispute_tips_title'),
-                        style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 13),
+                        style: const TextStyle(
+                            color: Colors.blue,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13),
                       ),
                       const SizedBox(height: 8),
                       Text(
                         l.t('order_dispute_tip_check'),
-                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 12),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         l.t('order_dispute_tip_registrato'),
-                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 12),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         l.t('order_dispute_tip_evidence'),
-                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 12),
                       ),
                     ],
                   ),
@@ -3310,15 +3555,17 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 const SizedBox(height: 16),
                 Text(
                   l.t('order_dispute_evidence_photo'),
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   l.t('order_dispute_evidence_hint'),
-                  style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 12),
+                  style:
+                      const TextStyle(color: Color(0x99FFFFFF), fontSize: 12),
                 ),
                 const SizedBox(height: 8),
-                if (_evidencePhoto != null) ...[                  
+                if (_evidencePhoto != null) ...[
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: Stack(
@@ -3345,7 +3592,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                                 color: Colors.black54,
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(Icons.close, color: Colors.white, size: 18),
+                              child: const Icon(Icons.close,
+                                  color: Colors.white, size: 18),
                             ),
                           ),
                         ),
@@ -3375,7 +3623,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                               final bytes = await file.readAsBytes();
                               setModalState(() {
                                 _evidencePhoto = file;
-                                _evidenceBase64 = compressImageToBase64ForNip44(bytes);
+                                _evidenceBase64 =
+                                    compressImageToBase64ForNip44(bytes);
                               });
                             }
                           },
@@ -3404,7 +3653,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                               final bytes = await file.readAsBytes();
                               setModalState(() {
                                 _evidencePhoto = file;
-                                _evidenceBase64 = compressImageToBase64ForNip44(bytes);
+                                _evidenceBase64 =
+                                    compressImageToBase64ForNip44(bytes);
                               });
                             }
                           },
@@ -3422,10 +3672,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: selectedReason != null && reasonController.text.trim().isNotEmpty
+                    onPressed: selectedReason != null &&
+                            reasonController.text.trim().isNotEmpty
                         ? () {
                             Navigator.pop(context);
-                            _submitDispute(selectedReason!, reasonController.text.trim(), userEvidence: _evidenceBase64);
+                            _submitDispute(
+                                selectedReason!, reasonController.text.trim(),
+                                userEvidence: _evidenceBase64);
                           }
                         : null,
                     style: ElevatedButton.styleFrom(
@@ -3435,7 +3688,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     ),
                     child: Text(
                       l.t('order_submit_dispute'),
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                      style: const TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.w600),
                     ),
                   ),
                 ),
@@ -3447,7 +3701,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     );
   }
 
-  Future<void> _submitDispute(String reason, String description, {String? userEvidence}) async {
+  Future<void> _submitDispute(String reason, String description,
+      {String? userEvidence}) async {
     final l = AppLocalizations.of(context)!;
     // Mostrar loading
     showDialog(
@@ -3459,7 +3714,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           children: [
             const CircularProgressIndicator(color: Color(0xFFFF6B6B)),
             const SizedBox(width: 16),
-            Text(l.t('order_sending_dispute'), style: const TextStyle(color: Colors.white)),
+            Text(l.t('order_sending_dispute'),
+                style: const TextStyle(color: Colors.white)),
           ],
         ),
       ),
@@ -3469,19 +3725,21 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       // Criar disputa usando o serviço
       final disputeService = DisputeService();
       await disputeService.initialize();
-      
+
       // Preparar detalhes da ordem para o suporte
       // v253: Incluir provider_id para que a disputa seja descoberta pelo provedor
-      final existingOrder = context.read<OrderProvider>().getOrderById(widget.orderId);
+      final existingOrder =
+          context.read<OrderProvider>().getOrderById(widget.orderId);
       final orderDetails = {
         'amount_brl': widget.amountBrl,
         'amount_sats': widget.amountSats,
         'status': _currentStatus,
         'payment_type': _orderDetails?['payment_type'],
         'pix_key': _orderDetails?['pix_key'],
-        'provider_id': existingOrder?.providerId ?? _orderDetails?['providerId'],
+        'provider_id':
+            existingOrder?.providerId ?? _orderDetails?['providerId'],
       };
-      
+
       // Criar a disputa
       await disputeService.createDispute(
         orderId: widget.orderId,
@@ -3493,10 +3751,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
       if (mounted) {
         Navigator.pop(context); // Fechar loading IMEDIATAMENTE
-        
+
         final orderProvider = context.read<OrderProvider>();
-        final previousStatus = _currentStatus; // v684: capturar ANTES do setState
-        
+        final previousStatus =
+            _currentStatus; // v684: capturar ANTES do setState
+
         // v684: FEEDBACK IMEDIATO — status local + snackbar + popup de
         // confirmação ANTES de qualquer await de Nostr. Antes o popup ficava
         // refém do updateOrderStatus (publicação em relay lento/travado) e a
@@ -3517,7 +3776,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           ),
         );
         _showDisputeConfirmationDialog();
-        
+
         // Atualizar status local + publicar no Nostr EM BACKGROUND.
         // v630: embute motivo/descrição/valor/ponto do fluxo no próprio status
         // update (kind 30080) para o admin ver os dados mesmo se o kind 1
@@ -3535,7 +3794,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             'previous_status': previousStatus,
           },
         ).catchError((e) {
-          broLog('⚠️ v684: updateOrderStatus(disputed) falhou em background: $e');
+          broLog(
+              '⚠️ v684: updateOrderStatus(disputed) falhou em background: $e');
         });
 
         // v541: Nao envia push manualmente. Watchtower detecta o evento
@@ -3547,7 +3807,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           final nostrOrderService = NostrOrderService();
           final privateKey = orderProvider.nostrPrivateKey;
           if (privateKey != null) {
-            nostrOrderService.publishDisputeNotification(
+            nostrOrderService
+                .publishDisputeNotification(
               privateKey: privateKey,
               orderId: widget.orderId,
               reason: reason,
@@ -3555,7 +3816,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               openedBy: 'user',
               orderDetails: orderDetails,
               userEvidence: userEvidence,
-            ).then((_) {
+            )
+                .then((_) {
               broLog('📤 Disputa publicada no Nostr com sucesso');
             }).catchError((e) {
               broLog('⚠️ Erro ao publicar disputa no Nostr: $e');
@@ -3570,7 +3832,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         Navigator.pop(context); // Fechar loading
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(l.tp('order_dispute_open_error', {'error': e.toString()})),
+            content:
+                Text(l.tp('order_dispute_open_error', {'error': e.toString()})),
             backgroundColor: Colors.red,
           ),
         );
@@ -3595,7 +3858,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             Expanded(
               child: Text(
                 l.t('order_dispute_confirm_title'),
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.bold),
               ),
             ),
           ],
@@ -3610,19 +3874,23 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             ),
             const SizedBox(height: 16),
             Text(l.t('order_dispute_confirm_step1'),
-                style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.4)),
+                style: const TextStyle(
+                    color: Colors.white, fontSize: 13, height: 1.4)),
             const SizedBox(height: 10),
             Text(l.t('order_dispute_confirm_step2'),
-                style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.4)),
+                style: const TextStyle(
+                    color: Colors.white, fontSize: 13, height: 1.4)),
             const SizedBox(height: 10),
             Text(l.t('order_dispute_confirm_step3'),
-                style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.4)),
+                style: const TextStyle(
+                    color: Colors.white, fontSize: 13, height: 1.4)),
           ],
         ),
         actions: [
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx),
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF6B6B)),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFF6B6B)),
             child: Text(l.t('order_dispute_confirm_ok'),
                 style: const TextStyle(color: Colors.white)),
           ),
@@ -3651,8 +3919,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   Widget _buildTalkToBroButton() {
     final l = AppLocalizations.of(context)!;
     final providerId = _orderDetails?['provider_id'] ?? '';
-    final broName = providerId.isNotEmpty && providerId.length >= 8 ? providerId.substring(0, 8) : (providerId.isNotEmpty ? providerId : 'Bro');
-    
+    final broName = providerId.isNotEmpty && providerId.length >= 8
+        ? providerId.substring(0, 8)
+        : (providerId.isNotEmpty ? providerId : 'Bro');
+
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
@@ -3744,24 +4014,27 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              
+
               // Lightning Network (Recomendado)
               Card(
                 color: const Color(0xFF2A2A2A),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
                 child: ListTile(
                   onTap: () {
                     Navigator.pop(context);
                     _createLightningInvoiceAndShow();
                   },
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   leading: Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
                       color: const Color(0xFFFF6B6B),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.bolt, color: Colors.white, size: 24),
+                    child:
+                        const Icon(Icons.bolt, color: Colors.white, size: 24),
                   ),
                   title: Row(
                     children: [
@@ -3778,45 +4051,54 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       ),
                       const SizedBox(width: 6),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
                           color: Colors.green,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
                           l.t('order_fast_badge'),
-                          style: TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.w600),
+                          style: TextStyle(
+                              fontSize: 9,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600),
                         ),
                       ),
                     ],
                   ),
                   subtitle: Text(
                     l.t('order_lightning_subtitle'),
-                    style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 12),
+                    style:
+                        const TextStyle(color: Color(0x99FFFFFF), fontSize: 12),
                   ),
-                  trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
+                  trailing: const Icon(Icons.arrow_forward_ios,
+                      color: Colors.white, size: 16),
                 ),
               ),
-              
+
               const SizedBox(height: 12),
-              
+
               // Bitcoin On-Chain
               Card(
                 color: const Color(0xFF2A2A2A),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
                 child: ListTile(
                   onTap: () {
                     Navigator.pop(context);
                     _showOnChainPaymentDialog();
                   },
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   leading: Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
                       color: const Color(0xFFF7931A),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.currency_bitcoin, color: Colors.white, size: 24),
+                    child: const Icon(Icons.currency_bitcoin,
+                        color: Colors.white, size: 24),
                   ),
                   title: const Text(
                     'Bitcoin On-Chain',
@@ -3828,20 +4110,23 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   ),
                   subtitle: Text(
                     l.t('order_onchain_subtitle'),
-                    style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 12),
+                    style:
+                        const TextStyle(color: Color(0x99FFFFFF), fontSize: 12),
                   ),
-                  trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
+                  trailing: const Icon(Icons.arrow_forward_ios,
+                      color: Colors.white, size: 16),
                 ),
               ),
-              
+
               const SizedBox(height: 20),
-              
+
               // Botão cancelar
               TextButton(
                 onPressed: () => Navigator.pop(context),
                 child: Text(
                   l.t('cancel'),
-                  style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 16),
+                  style:
+                      const TextStyle(color: Color(0x99FFFFFF), fontSize: 16),
                 ),
               ),
               const SizedBox(height: 8),
@@ -3856,23 +4141,26 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   Future<void> _createLightningInvoiceAndShow() async {
     final l = AppLocalizations.of(context)!;
     broLog('🔵 _createLightningInvoiceAndShow chamado');
-    
+
     // Mostrar loading com feedback progressivo
     final stopwatch = Stopwatch()..start();
     final statusNotifier = ValueNotifier<String>('Conectando ao Spark...');
     Timer? feedbackTimer;
-    
+
     feedbackTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
       final elapsed = stopwatch.elapsed.inSeconds;
       if (elapsed >= 30) {
-        statusNotifier.value = l.tp('order_retrying', {'elapsed': elapsed.toString()});
+        statusNotifier.value =
+            l.tp('order_retrying', {'elapsed': elapsed.toString()});
       } else if (elapsed >= 15) {
-        statusNotifier.value = l.tp('order_waiting_response', {'elapsed': elapsed.toString()});
+        statusNotifier.value =
+            l.tp('order_waiting_response', {'elapsed': elapsed.toString()});
       } else {
-        statusNotifier.value = l.tp('order_connecting_spark', {'elapsed': elapsed.toString()});
+        statusNotifier.value =
+            l.tp('order_connecting_spark', {'elapsed': elapsed.toString()});
       }
     });
-    
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -3903,14 +4191,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     // Usar LightningProvider (backend Spark)
     final lightningProvider = context.read<LightningProvider>();
     final breezProvider = context.read<BreezProvider>();
-    
+
     try {
       broLog('🔵 Criando Lightning invoice para ${widget.amountSats} sats...');
-      
-      final invoiceData = await lightningProvider.createInvoice(
+
+      final invoiceData = await lightningProvider
+          .createInvoice(
         amountSats: widget.amountSats,
         description: 'Bro ${widget.orderId}',
-      ).timeout(
+      )
+          .timeout(
         const Duration(seconds: 45),
         onTimeout: () {
           broLog('⏰ Timeout ao criar invoice Lightning');
@@ -3924,18 +4214,19 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       if (mounted) Navigator.pop(context);
 
       broLog('🔵 Invoice data recebido: $invoiceData');
-      
+
       if (invoiceData != null && invoiceData['success'] == true) {
         final invoice = invoiceData['invoice'] as String;
         final paymentHash = invoiceData['paymentHash'] as String? ?? '';
         broLog('🔵 Invoice criada: ${invoice.substring(0, 50)}...');
-        
+
         if (mounted) {
           _showLightningPaymentDialog(invoice, paymentHash);
         }
       } else {
         broLog('❌ Falha ao criar invoice: ${invoiceData?['error']}');
-        _showError(l.tp('order_error_create_invoice', {'error': invoiceData?['error']?.toString() ?? 'Unknown'}));
+        _showError(l.tp('order_error_create_invoice',
+            {'error': invoiceData?['error']?.toString() ?? 'Unknown'}));
       }
     } catch (e) {
       // Fechar loading e limpar timer
@@ -3970,20 +4261,22 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     // Registrar callback para pagamento recebido
     final breezProvider = context.read<BreezProvider>();
     breezProvider.onPaymentReceived = (paymentId, amountSats, pHash) {
-      broLog('🎉 Callback de pagamento recebido! ID: $paymentId, Amount: $amountSats, Hash: $pHash');
+      broLog(
+          '🎉 Callback de pagamento recebido! ID: $paymentId, Amount: $amountSats, Hash: $pHash');
       _onPaymentReceived();
     };
-    
+
     // Iniciar monitoramento de pagamento (backup via polling)
     _startPaymentMonitoring(paymentHash);
-    
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: const Color(0xFF1E1E1E),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: Row(
             children: [
               const Icon(Icons.bolt, color: Color(0xFFFF6B6B), size: 28),
@@ -4004,7 +4297,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 children: [
                   // Status de aguardando
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
                       color: Colors.orange.withAlpha(40),
                       borderRadius: BorderRadius.circular(20),
@@ -4020,10 +4314,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                             color: Color(0xFFFF6B6B),
                           ),
                         ),
-                      const SizedBox(width: 8),
+                        const SizedBox(width: 8),
                         Text(
                           l.t('order_waiting_payment'),
-                          style: const TextStyle(color: Colors.orange, fontSize: 13, fontWeight: FontWeight.w500),
+                          style: const TextStyle(
+                              color: Colors.orange,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500),
                         ),
                       ],
                     ),
@@ -4072,8 +4369,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       children: [
                         Expanded(
                           child: Text(
-                            invoice.length > 40 
-                                ? '${invoice.substring(0, 40)}...' 
+                            invoice.length > 40
+                                ? '${invoice.substring(0, 40)}...'
                                 : invoice,
                             style: const TextStyle(
                               color: Color(0x99FFFFFF),
@@ -4083,7 +4380,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.copy, color: Color(0xFFFF6B6B), size: 20),
+                          icon: const Icon(Icons.copy,
+                              color: Color(0xFFFF6B6B), size: 20),
                           onPressed: () {
                             Clipboard.setData(ClipboardData(text: invoice));
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -4116,7 +4414,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 _stopPaymentMonitoring();
                 Navigator.pop(context);
               },
-              child: Text(l.t('cancel'), style: const TextStyle(color: Colors.grey)),
+              child: Text(l.t('cancel'),
+                  style: const TextStyle(color: Colors.grey)),
             ),
           ],
         ),
@@ -4125,18 +4424,19 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   Timer? _paymentCheckTimer;
-  
+
   void _startPaymentMonitoring(String paymentHash) {
     broLog('🔍 Iniciando monitoramento de pagamento: $paymentHash');
-    
+
     _paymentCheckTimer?.cancel();
-    _paymentCheckTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+    _paymentCheckTimer =
+        Timer.periodic(const Duration(seconds: 3), (timer) async {
       try {
         final breezProvider = context.read<BreezProvider>();
         final status = await breezProvider.checkPaymentStatus(paymentHash);
-        
+
         broLog('📊 Status do pagamento: $status');
-        
+
         if (status != null && status['paid'] == true) {
           timer.cancel();
           _onPaymentReceived();
@@ -4146,11 +4446,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       }
     });
   }
-  
+
   void _stopPaymentMonitoring() {
     _paymentCheckTimer?.cancel();
     _paymentCheckTimer = null;
-    
+
     // Limpar callback do BreezProvider
     try {
       final breezProvider = context.read<BreezProvider>();
@@ -4159,23 +4459,26 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       // Context pode não estar mais disponível
     }
   }
-  
+
   void _onPaymentReceived() {
     final l = AppLocalizations.of(context)!;
     broLog('✅ PAGAMENTO RECEBIDO!');
-    
+
     // Fechar dialog atual
     if (mounted) Navigator.of(context).pop();
-    
+
     // IMPORTANTE: Atualizar status no OrderProvider para persistir
     final orderProvider = context.read<OrderProvider>();
-    orderProvider.updateOrderStatus(
+    orderProvider
+        .updateOrderStatus(
       orderId: widget.orderId,
       status: 'payment_received',
-    ).then((_) {
-      broLog('💾 Status da ordem ${widget.orderId} atualizado para payment_received');
+    )
+        .then((_) {
+      broLog(
+          '💾 Status da ordem ${widget.orderId} atualizado para payment_received');
     });
-    
+
     // Mostrar dialog de sucesso
     showDialog(
       context: context,
@@ -4192,7 +4495,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 color: Colors.green.withAlpha(40),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.check_circle, color: Colors.green, size: 60),
+              child:
+                  const Icon(Icons.check_circle, color: Colors.green, size: 60),
             ),
             const SizedBox(height: 20),
             Text(
@@ -4236,9 +4540,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
               ),
-              child: Text(l.t('order_ok'), style: const TextStyle(color: Colors.white, fontSize: 16)),
+              child: Text(l.t('order_ok'),
+                  style: const TextStyle(color: Colors.white, fontSize: 16)),
             ),
           ),
         ],
@@ -4259,7 +4565,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           children: [
             const CircularProgressIndicator(color: Color(0xFFFF6B6B)),
             const SizedBox(width: 16),
-            Text(l.t('order_generating_address'), style: const TextStyle(color: Colors.white)),
+            Text(l.t('order_generating_address'),
+                style: const TextStyle(color: Colors.white)),
           ],
         ),
       ),
@@ -4268,22 +4575,23 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     try {
       final breezProvider = context.read<BreezProvider>();
       final addressData = await breezProvider.createOnchainAddress();
-      
+
       if (!mounted) return;
       Navigator.pop(context); // Fechar loading
-      
+
       if (addressData != null && addressData['success'] == true) {
         final address = addressData['address'] as String;
-        
+
         // Calcular valor em BTC (aproximado baseado nos sats)
         final btcAmount = widget.amountSats / 100000000;
-        
+
         showDialog(
           context: context,
           barrierDismissible: false,
           builder: (context) => AlertDialog(
             backgroundColor: const Color(0xFF1E1E1E),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: Text(
               l.t('order_pay_bitcoin_title'),
               style: const TextStyle(color: Colors.white),
@@ -4348,11 +4656,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                             ),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.copy, color: Colors.white, size: 20),
+                            icon: const Icon(Icons.copy,
+                                color: Colors.white, size: 20),
                             onPressed: () {
                               Clipboard.setData(ClipboardData(text: address));
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text(l.t('order_address_copied'))),
+                                SnackBar(
+                                    content: Text(l.t('order_address_copied'))),
                               );
                             },
                           ),
@@ -4365,11 +4675,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       decoration: BoxDecoration(
                         color: Colors.orange.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.orange.withOpacity(0.5)),
+                        border:
+                            Border.all(color: Colors.orange.withOpacity(0.5)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.info_outline, color: Colors.orange, size: 20),
+                          const Icon(Icons.info_outline,
+                              color: Colors.orange, size: 20),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
@@ -4409,14 +4721,24 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   // REMOVIDO: _buildVerifyPaymentButton - não deve existir no fluxo Bro
   // O usuário não paga a ordem, ele RESERVA garantia. O Bro é quem paga a conta.
 
+  bool _isRepublishing = false;
+
   Widget _buildExpiredOrderActions() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         ElevatedButton.icon(
-          onPressed: _republishExpiredOrder,
-          icon: const Icon(Icons.refresh),
-          label: const Text('Republicar ordem'),
+          onPressed: _isRepublishing ? null : _republishExpiredOrder,
+          icon: _isRepublishing
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.refresh),
+          label: Text(
+            _isRepublishing ? 'Republicando...' : 'Republicar ordem',
+          ),
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.blue,
             foregroundColor: Colors.white,
@@ -4437,18 +4759,42 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   Future<void> _republishExpiredOrder() async {
+    if (_isRepublishing) return;
+    setState(() => _isRepublishing = true);
     final provider = context.read<OrderProvider>();
     final success = await provider.republicarOrderExpirada(widget.orderId);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(success
-            ? 'Ordem republicada. Aguardando novo Bro.'
-            : 'Não foi possível republicar. Tente novamente.'),
-        backgroundColor: success ? Colors.green : Colors.redAccent,
+    setState(() => _isRepublishing = false);
+    if (success) setState(() => _currentStatus = 'pending');
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        icon: Icon(
+          success ? Icons.check_circle_outline : Icons.error_outline,
+          color: success ? Colors.green : Colors.redAccent,
+          size: 40,
+        ),
+        title: Text(
+          success ? 'Ordem republicada' : 'Falha ao republicar',
+          style: TextStyle(
+            color: success ? Colors.green : Colors.redAccent,
+          ),
+        ),
+        content: Text(
+          success
+              ? 'A ordem foi republicada e está disponível novamente para outros provedores aceitarem.'
+              : 'Não foi possível confirmar a republicação nos relays. Verifique a conexão e tente novamente.',
+          style: const TextStyle(color: Colors.white),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('OK'),
+          ),
+        ],
       ),
     );
-    if (success) setState(() => _currentStatus = 'pending');
   }
 
   Future<void> _cancelExpiredOrder() async {
@@ -4504,7 +4850,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  l.tp('order_sats_in_wallet', {'sats': widget.amountSats.toString()}),
+                  l.tp('order_sats_in_wallet',
+                      {'sats': widget.amountSats.toString()}),
                   style: const TextStyle(
                     color: Colors.blue,
                     fontSize: 14,
@@ -4535,7 +4882,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       ],
     );
   }
-  
+
   Widget _buildWithdrawalHistory() {
     final l = AppLocalizations.of(context)!;
     return FutureBuilder<List<Withdrawal>>(
@@ -4547,12 +4894,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const SizedBox.shrink();
         }
-        
+
         final withdrawals = snapshot.data ?? [];
         if (withdrawals.isEmpty) {
           return const SizedBox.shrink();
         }
-        
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -4571,13 +4918,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       },
     );
   }
-  
+
   Widget _buildWithdrawalItem(Withdrawal withdrawal) {
     final l = AppLocalizations.of(context)!;
     final isSuccess = withdrawal.status == 'success';
     final statusColor = isSuccess ? Colors.green : Colors.red;
     final statusIcon = isSuccess ? Icons.check_circle : Icons.error;
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
@@ -4595,7 +4942,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  l.tp('order_withdrawal_item', {'amount': withdrawal.amountSats.toString(), 'status': withdrawal.statusText}),
+                  l.tp('order_withdrawal_item', {
+                    'amount': withdrawal.amountSats.toString(),
+                    'status': withdrawal.statusText
+                  }),
                   style: TextStyle(
                     color: statusColor,
                     fontWeight: FontWeight.bold,
@@ -4604,7 +4954,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  l.tp('order_withdrawal_destination', {'dest': withdrawal.destinationShort}),
+                  l.tp('order_withdrawal_destination',
+                      {'dest': withdrawal.destinationShort}),
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.7),
                     fontSize: 12,
@@ -4620,7 +4971,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 if (withdrawal.error != null) ...[
                   const SizedBox(height: 4),
                   Text(
-                    l.tp('order_withdrawal_error', {'error': withdrawal.error!}),
+                    l.tp(
+                        'order_withdrawal_error', {'error': withdrawal.error!}),
                     style: const TextStyle(
                       color: Colors.red,
                       fontSize: 11,
@@ -4641,14 +4993,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       width: double.infinity,
       child: ElevatedButton.icon(
         onPressed: _isConfirming ? null : _handleConfirmPayment,
-        icon: _isConfirming 
+        icon: _isConfirming
             ? const SizedBox(
-                width: 20, 
-                height: 20, 
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)
-              )
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: Colors.white))
             : const Icon(Icons.check_circle),
-        label: Text(_isConfirming ? l.t('order_processing') : l.t('order_confirm_payment_received')),
+        label: Text(_isConfirming
+            ? l.t('order_processing')
+            : l.t('order_confirm_payment_received')),
         style: ElevatedButton.styleFrom(
           backgroundColor: _isConfirming ? Colors.grey : Colors.green,
           foregroundColor: Colors.white,
@@ -4670,7 +5024,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     final orderProvider = context.read<OrderProvider>();
     final order = orderProvider.getOrderById(widget.orderId);
     final providerId = order?.providerId;
-    orderProvider.updateOrderStatusLocalOnly(orderId: widget.orderId, status: 'completed');
+    orderProvider.updateOrderStatusLocalOnly(
+        orderId: widget.orderId, status: 'completed');
     try {
       await orderProvider.updateOrderStatus(
         orderId: widget.orderId,
@@ -4733,8 +5088,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           : widget.orderId;
       final List<Map<String, dynamic>> history;
       try {
-        history = await breez.listPayments()
-            .timeout(const Duration(seconds: 15));
+        history =
+            await breez.listPayments().timeout(const Duration(seconds: 15));
       } catch (_) {
         return null; // timeout/erro = incerteza, não ausência
       }
@@ -4763,8 +5118,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     try {
       final breez = context.read<BreezProvider>();
       if (!breez.isInitialized) return null;
-      final history = await breez.listPayments()
-          .timeout(const Duration(seconds: 10), onTimeout: () => <Map<String, dynamic>>[]);
+      final history = await breez.listPayments().timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => <Map<String, dynamic>>[]);
       for (final p in history) {
         if (p['type'] != 'sent') continue;
         if (p['paymentHash'] != paymentHash) continue;
@@ -4799,7 +5155,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         await _forceCompletedNoPayment();
         return;
       }
-      broLog('⚠️ v820e: flag isPaid SEM evidência de envio liquidado (verificado) — limpando flag obsoleta e seguindo pro pagamento real');
+      broLog(
+          '⚠️ v820e: flag isPaid SEM evidência de envio liquidado (verificado) — limpando flag obsoleta e seguindo pro pagamento real');
       await ProviderPaymentGuard.clearPaid(widget.orderId);
       // NÃO retorna — segue o fluxo normal de pagamento abaixo
     }
@@ -4812,8 +5169,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         if (breez.isInitialized) {
           final status = await breez.checkPaymentStatus(priorHash);
           if (status['paid'] == true) {
-            broLog('🛡️ Pagamento anterior (hash ${priorHash.substring(0, 8)}) já LIQUIDADO — não pagar de novo');
-            await ProviderPaymentGuard.markPaid(widget.orderId, paymentHash: priorHash);
+            broLog(
+                '🛡️ Pagamento anterior (hash ${priorHash.substring(0, 8)}) já LIQUIDADO — não pagar de novo');
+            await ProviderPaymentGuard.markPaid(widget.orderId,
+                paymentHash: priorHash);
             await _forceCompletedNoPayment();
             return;
           }
@@ -4855,7 +5214,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       _isConfirming = true;
       _currentStatus = 'completing'; // Estado transitório visual
     });
-    
+
     // Mostrar snackbar de feedback imediato
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -4864,40 +5223,44 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             const SizedBox(
               width: 20,
               height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: Colors.white),
             ),
             const SizedBox(width: 12),
             Text(l.t('order_processing_confirmation')),
           ],
         ),
         backgroundColor: const Color(0xFFFF6B6B),
-        duration: Duration(seconds: 30), // v579: 30s is enough; we hide explicitly on success/failure/terminal-sync
+        duration: Duration(
+            seconds:
+                30), // v579: 30s is enough; we hide explicitly on success/failure/terminal-sync
       ),
     );
 
     try {
       final orderProvider = context.read<OrderProvider>();
-      
+
       // Buscar informações completas da ordem PRIMEIRO
       Map<String, dynamic>? orderDetails = _orderDetails;
-      
+
       // Tentar obter do OrderProvider local primeiro
       var order = orderProvider.getOrderById(widget.orderId);
       if (order != null) {
         orderDetails = order.toJson();
       }
-      
+
       // Verificar se já temos providerId localmente
       String? providerId = orderDetails?['providerId'] as String?;
       providerId ??= orderDetails?['provider_id'] as String?;
       providerId ??= order?.providerId;
-      
+
       // Só fazer sync se NÃO temos providerId (sync com timeout de 10s para iOS)
       if (providerId == null || providerId.isEmpty) {
-        broLog('🔄 Sincronizando ordem antes de confirmar (providerId não encontrado localmente)...');
+        broLog(
+            '🔄 Sincronizando ordem antes de confirmar (providerId não encontrado localmente)...');
         try {
           await orderProvider.syncOrdersFromNostr().timeout(
-            const Duration(seconds: 10),  // iOS precisa de mais tempo
+            const Duration(seconds: 10), // iOS precisa de mais tempo
             onTimeout: () {
               broLog('⏱️ Timeout no sync (10s) - continuando com dados locais');
             },
@@ -4912,9 +5275,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           broLog('⚠️ Erro no sync: $e - continuando com dados locais');
         }
       } else {
-        broLog('✅ providerId já disponível localmente: ${providerId.substring(0, 16)}');
+        broLog(
+            '✅ providerId já disponível localmente: ${providerId.substring(0, 16)}');
       }
-      
+
       // Atualizar providerId de múltiplas fontes se ainda não temos
       if (providerId == null || providerId.isEmpty) {
         providerId = orderDetails?['provider_id'] as String?;
@@ -4923,25 +5287,29 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         providerId = order?.metadata?['providerId'] as String?;
         providerId ??= order?.metadata?['provider_id'] as String?;
       }
-      
+
       // FALLBACK CRÍTICO: Se ainda não temos providerId, buscar diretamente do Nostr
       // Isso acontece quando o provedor aceitou mas o sync local não atualizou
       if (providerId == null || providerId.isEmpty) {
         broLog('🔍 providerId ainda é null, buscando diretamente do Nostr...');
         final nostrService = NostrOrderService();
-        final nostrOrder = await nostrService.fetchOrderFromNostr(widget.orderId);
+        final nostrOrder =
+            await nostrService.fetchOrderFromNostr(widget.orderId);
         if (nostrOrder != null) {
           providerId = nostrOrder['providerId'] as String?;
           providerId ??= nostrOrder['provider_id'] as String?;
-          broLog('   Nostr retornou providerId: ${providerId?.substring(0, 16) ?? "NULL"}');
+          broLog(
+              '   Nostr retornou providerId: ${providerId?.substring(0, 16) ?? "NULL"}');
         }
       }
-      
+
       broLog('📤 Confirmando ordem ${widget.orderId.substring(0, 8)}');
-      broLog('   providerId: ${providerId?.substring(0, 16) ?? "NULL - PROBLEMA!"}');
-      
+      broLog(
+          '   providerId: ${providerId?.substring(0, 16) ?? "NULL - PROBLEMA!"}');
+
       if (providerId == null || providerId.isEmpty) {
-        broLog('⚠️ AVISO: providerId é null - o Bro pode não receber a notificação!');
+        broLog(
+            '⚠️ AVISO: providerId é null - o Bro pode não receber a notificação!');
         // NOVO: Mostrar aviso ao usuário mas continuar
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -4960,30 +5328,34 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       String? providerInvoice;
       String? providerInvoicePaymentHash;
       if (orderDetails != null) {
-        providerInvoice = orderDetails['metadata']?['providerInvoice'] as String?;
+        providerInvoice =
+            orderDetails['metadata']?['providerInvoice'] as String?;
         providerInvoice ??= orderDetails['providerInvoice'] as String?;
       }
       if (providerInvoice == null && order != null) {
         providerInvoice = order.metadata?['providerInvoice'] as String?;
       }
-      
+
       // FALLBACK: Se não encontrou invoice no cache local, buscar do evento COMPLETE no Nostr
       if (providerInvoice == null || providerInvoice.isEmpty) {
-        broLog('🔍 providerInvoice não encontrado no cache, buscando evento COMPLETE no Nostr...');
+        broLog(
+            '🔍 providerInvoice não encontrado no cache, buscando evento COMPLETE no Nostr...');
         try {
           final nostrService = NostrOrderService();
-          final completeData = await nostrService.fetchOrderCompleteEvent(widget.orderId);
+          final completeData =
+              await nostrService.fetchOrderCompleteEvent(widget.orderId);
           if (completeData != null) {
             providerInvoice = completeData['providerInvoice'] as String?;
             if (providerInvoice != null && providerInvoice.isNotEmpty) {
-              broLog('✅ Invoice encontrado no evento COMPLETE: ${providerInvoice.substring(0, 30)}...');
+              broLog(
+                  '✅ Invoice encontrado no evento COMPLETE: ${providerInvoice.substring(0, 30)}...');
             }
           }
         } catch (e) {
           broLog('⚠️ Erro ao buscar invoice do Nostr: $e');
         }
       }
-      
+
       // Se não tem invoice, BLOQUEAR a confirmação
       if (providerInvoice == null || providerInvoice.isEmpty) {
         broLog('🚨 BLOQUEANDO confirmação: Nenhum providerInvoice encontrado!');
@@ -5003,7 +5375,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         }
         return;
       }
-      
+
       // v679: GUARDA ANTI-FRAUDE DE CORRIDA — o comprovante TEM que vir do
       // provedor que o app está rastreando (o mesmo que recebeu o billCode).
       // Caso real 28/out (e32e493e): o billCode foi revelado ao PERDEDOR da
@@ -5016,25 +5388,32 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       // perdedor e1e326ba — o guarda bloquearia o pagamento LEGÍTIMO).
       // Fonte da verdade = aceites ordenados por acceptedAt (imutável).
       try {
-        var trackedProvider = order?.providerId ?? orderDetails?['provider_id']?.toString() ?? '';
+        var trackedProvider =
+            order?.providerId ?? orderDetails?['provider_id']?.toString() ?? '';
         var accepts = <String>[];
         // v807: os 3 fetches da guarda são INDEPENDENTES entre si — rodar em
         // paralelo (Future.wait) em vez de sequencial (8s + 10s + 6s → max ~10s).
         // Semântica v679/v713/v767/v768 preservada: aceites canônicos, complete
         // sem self-assinatura, desempate pelo watchtower.
-        final orderOwnerPk = order?.userPubkey ?? orderDetails?['userPubkey']?.toString();
+        final orderOwnerPk =
+            order?.userPubkey ?? orderDetails?['userPubkey']?.toString();
         final results = await Future.wait<dynamic>([
-          NostrOrderService().fetchAllAcceptsForOrder(widget.orderId)
+          NostrOrderService()
+              .fetchAllAcceptsForOrder(widget.orderId)
               .timeout(const Duration(seconds: 8), onTimeout: () => <String>[]),
-          NostrOrderService().fetchOrderCompleteEvent(widget.orderId, excludeAuthorPubkey: orderOwnerPk)
+          NostrOrderService()
+              .fetchOrderCompleteEvent(widget.orderId,
+                  excludeAuthorPubkey: orderOwnerPk)
               .timeout(const Duration(seconds: 10), onTimeout: () => null),
-          ApiService().get('/canonical/${widget.orderId}')
+          ApiService()
+              .get('/canonical/${widget.orderId}')
               .timeout(const Duration(seconds: 6), onTimeout: () => null),
         ]).catchError((_) => <dynamic>[<String>[], null, null]);
         try {
           accepts = (results[0] as List?)?.cast<String>() ?? <String>[];
           if (accepts.isNotEmpty) {
-            trackedProvider = accepts.first; // canônico = acceptedAt mais antigo
+            trackedProvider =
+                accepts.first; // canônico = acceptedAt mais antigo
           }
         } catch (_) {}
         final completeEvt = results[1] as Map<String, dynamic>?;
@@ -5049,11 +5428,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             // a corrida mas não fez o trabalho. Só bloqueia se o autor do
             // comprovante NEM participou da corrida (fraude de verdade).
             if (accepts.contains(completerId)) {
-              broLog('🏁 [ConfirmPayment] comprovante de ${completerId.substring(0, 8)} (participante não-canônico) — pagando QUEM PROVOU o pagamento (v713)');
+              broLog(
+                  '🏁 [ConfirmPayment] comprovante de ${completerId.substring(0, 8)} (participante não-canônico) — pagando QUEM PROVOU o pagamento (v713)');
               trackedProvider = completerId;
               // v713: a invoice paga TEM que ser a de quem comprovou — o cache
               // local pode estar com a invoice do canônico (invoice_refresh).
-              final completerInvoice = completeEvt?['providerInvoice']?.toString();
+              final completerInvoice =
+                  completeEvt?['providerInvoice']?.toString();
               if (completerInvoice != null && completerInvoice.isNotEmpty) {
                 providerInvoice = completerInvoice;
               }
@@ -5078,14 +5459,17 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 }
               } catch (_) {}
               if (serverVouched) {
-                broLog('✅ v767: watchtower confirma completer ${completerId.substring(0, 8)} como canônico — pagando ele (dado local estava corrompido/fetch vazio)');
+                broLog(
+                    '✅ v767: watchtower confirma completer ${completerId.substring(0, 8)} como canônico — pagando ele (dado local estava corrompido/fetch vazio)');
                 trackedProvider = completerId;
-                final completerInvoice = completeEvt?['providerInvoice']?.toString();
+                final completerInvoice =
+                    completeEvt?['providerInvoice']?.toString();
                 if (completerInvoice != null && completerInvoice.isNotEmpty) {
                   providerInvoice = completerInvoice;
                 }
               } else {
-                broLog('🚨 [ConfirmPayment] comprovante de ${completerId.substring(0, 8)} que NÃO participou da corrida — BLOQUEANDO pagamento');
+                broLog(
+                    '🚨 [ConfirmPayment] comprovante de ${completerId.substring(0, 8)} que NÃO participou da corrida — BLOQUEANDO pagamento');
                 if (mounted) {
                   ScaffoldMessenger.of(context).hideCurrentSnackBar();
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -5107,7 +5491,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       } catch (e) {
         broLog('⚠️ guarda de corrida falhou (seguindo): $e');
       }
-      
+
       // SEGURANÇA v449: Validar que o valor da invoice corresponde ao esperado da ordem
       // Invoice deve ser base + 3% provider fee. Tolerância de 5% para arredondamentos.
       try {
@@ -5115,10 +5499,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         if (breezForDecode.isInitialized) {
           final decoded = await breezForDecode.decodeInvoice(providerInvoice!);
           if (decoded != null && decoded['success'] == true) {
-            providerInvoicePaymentHash = decoded['invoice']?['paymentHash']?.toString();
+            providerInvoicePaymentHash =
+                decoded['invoice']?['paymentHash']?.toString();
             final invoiceAmountSats = int.tryParse(
-              decoded['invoice']?['amountSats']?.toString() ?? '0'
-            ) ?? 0;
+                    decoded['invoice']?['amountSats']?.toString() ?? '0') ??
+                0;
             // Expected: base + 3% provider fee
             // v621: base = order.btcAmount (fonte canônica — mesma usada pelo Bro
             // ao gerar o invoice e pelo AutoPay em main.dart). widget.amountSats
@@ -5127,19 +5512,25 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             final baseSats = (order != null && order.btcAmount > 0)
                 ? (order.btcAmount * 100000000).round()
                 : widget.amountSats;
-            final expectedWithFee = baseSats + (baseSats * AppConfig.providerFeePercent).round();
+            final expectedWithFee =
+                baseSats + (baseSats * AppConfig.providerFeePercent).round();
             final maxAllowed = (expectedWithFee * 1.03).ceil();
-            final minAllowed = (expectedWithFee * 0.97).floor(); // referência p/ log
+            final minAllowed =
+                (expectedWithFee * 0.97).floor(); // referência p/ log
             // v621: bloquear SÓ invoice inflado (ataque) ou 0. Um invoice ABAIXO do
             // esperado é assinado pelo provedor e só beneficia o comprador — bloquear
             // deixava o provedor sem receber quando order.btcAmount ficou poluído com
             // base+5% (bug de taxa composta). Pagamos o valor que o provedor pediu.
-            if (invoiceAmountSats < minAllowed && invoiceAmountSats > 0 && invoiceAmountSats <= maxAllowed) {
-              broLog('⚠️ Invoice abaixo do esperado ($invoiceAmountSats < $minAllowed) — pagando mesmo assim (valor autorizado pelo provedor).');
+            if (invoiceAmountSats < minAllowed &&
+                invoiceAmountSats > 0 &&
+                invoiceAmountSats <= maxAllowed) {
+              broLog(
+                  '⚠️ Invoice abaixo do esperado ($invoiceAmountSats < $minAllowed) — pagando mesmo assim (valor autorizado pelo provedor).');
             }
             if (invoiceAmountSats <= 0 || invoiceAmountSats > maxAllowed) {
               final isInflated = invoiceAmountSats > maxAllowed;
-              broLog('🚨 SEGURANÇA: Invoice com valor ${isInflated ? "inflado" : "incorreto"}! invoice=$invoiceAmountSats esperado=$expectedWithFee');
+              broLog(
+                  '🚨 SEGURANÇA: Invoice com valor ${isInflated ? "inflado" : "incorreto"}! invoice=$invoiceAmountSats esperado=$expectedWithFee');
               if (mounted) {
                 ScaffoldMessenger.of(context).hideCurrentSnackBar();
                 final retry = await showDialog<bool>(
@@ -5149,25 +5540,32 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     backgroundColor: const Color(0xFF1A1A1A),
                     title: Row(
                       children: [
-                        Icon(Icons.warning_amber_rounded, color: isInflated ? Colors.red : Colors.orange),
+                        Icon(Icons.warning_amber_rounded,
+                            color: isInflated ? Colors.red : Colors.orange),
                         const SizedBox(width: 8),
-                        const Expanded(child: Text('Invoice com valor incorreto', style: TextStyle(color: Colors.white, fontSize: 16))),
+                        const Expanded(
+                            child: Text('Invoice com valor incorreto',
+                                style: TextStyle(
+                                    color: Colors.white, fontSize: 16))),
                       ],
                     ),
                     content: Text(
-                      isInflated 
-                        ? 'O provedor enviou um invoice de $invoiceAmountSats sats, mas o esperado é ~$expectedWithFee sats. O valor está acima do permitido.\n\nPor segurança, o pagamento foi bloqueado. Tente novamente — o provedor pode gerar um novo invoice.'
-                        : 'O provedor enviou um invoice de $invoiceAmountSats sats, mas o esperado é ~$expectedWithFee sats. O valor está abaixo do correto.\n\nIsso pode significar que o provedor está usando uma versão antiga do app. Tente novamente em alguns minutos.',
-                      style: const TextStyle(color: Colors.white70, fontSize: 14),
+                      isInflated
+                          ? 'O provedor enviou um invoice de $invoiceAmountSats sats, mas o esperado é ~$expectedWithFee sats. O valor está acima do permitido.\n\nPor segurança, o pagamento foi bloqueado. Tente novamente — o provedor pode gerar um novo invoice.'
+                          : 'O provedor enviou um invoice de $invoiceAmountSats sats, mas o esperado é ~$expectedWithFee sats. O valor está abaixo do correto.\n\nIsso pode significar que o provedor está usando uma versão antiga do app. Tente novamente em alguns minutos.',
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 14),
                     ),
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.of(ctx).pop(false),
-                        child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
+                        child: const Text('Cancelar',
+                            style: TextStyle(color: Colors.white54)),
                       ),
                       ElevatedButton(
                         onPressed: () => Navigator.of(ctx).pop(true),
-                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF6B6B)),
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFFF6B6B)),
                         child: const Text('Tentar novamente'),
                       ),
                     ],
@@ -5190,11 +5588,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               }
               return;
             }
-            broLog('✅ Invoice validado: $invoiceAmountSats sats (esperado ~$expectedWithFee, range $minAllowed-$maxAllowed)');
+            broLog(
+                '✅ Invoice validado: $invoiceAmountSats sats (esperado ~$expectedWithFee, range $minAllowed-$maxAllowed)');
           }
         }
       } catch (e) {
-        broLog('🚨 Erro ao validar invoice — bloqueando pagamento por segurança: $e');
+        broLog(
+            '🚨 Erro ao validar invoice — bloqueando pagamento por segurança: $e');
         if (mounted) {
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
           ScaffoldMessenger.of(context).showSnackBar(
@@ -5211,7 +5611,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         }
         return;
       }
-      
+
       // 🛡️ v766: JÁ PAGO? Antes de qualquer pagamento, olha o histórico da
       // carteira: se já existe um ENVIO concluído com o paymentHash desta
       // invoice (ou a descrição desta ordem), os sats JÁ foram pro provedor
@@ -5221,9 +5621,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       try {
         final breezHist = context.read<BreezProvider>();
         if (breezHist.isInitialized) {
-          final shortId = widget.orderId.length > 8 ? widget.orderId.substring(0, 8) : widget.orderId;
-          final history = await breezHist.listPayments()
-              .timeout(const Duration(seconds: 15), onTimeout: () => <Map<String, dynamic>>[]);
+          final shortId = widget.orderId.length > 8
+              ? widget.orderId.substring(0, 8)
+              : widget.orderId;
+          final history = await breezHist.listPayments().timeout(
+              const Duration(seconds: 15),
+              onTimeout: () => <Map<String, dynamic>>[]);
           final alreadyPaid = history.any((p) {
             if (p['type'] != 'sent') return false;
             final st = p['status']?.toString().toLowerCase() ?? '';
@@ -5235,14 +5638,17 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             return desc.contains(shortId);
           });
           if (alreadyPaid) {
-            broLog('🛡️ v766: ordem $shortId JÁ PAGA (achado no histórico da carteira) — finalizando SEM pagar de novo');
-            await ProviderPaymentGuard.recordAttempt(widget.orderId, providerInvoicePaymentHash);
+            broLog(
+                '🛡️ v766: ordem $shortId JÁ PAGA (achado no histórico da carteira) — finalizando SEM pagar de novo');
+            await ProviderPaymentGuard.recordAttempt(
+                widget.orderId, providerInvoicePaymentHash);
             await _forceCompletedNoPayment();
             return;
           }
         }
       } catch (e) {
-        broLog('⚠️ v766: checagem de já-pago falhou (seguindo com guardas normais): $e');
+        broLog(
+            '⚠️ v766: checagem de já-pago falhou (seguindo com guardas normais): $e');
       }
 
       // 🛡️ v634: lock síncrono (antes de qualquer await de pagamento) + registro
@@ -5252,7 +5658,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         // v820e: chegar aqui = outro fluxo está pagando AGORA (o isPaid já foi
         // verificado com evidência acima). Sem 2º pagamento E sem
         // force-complete: quem completa a ordem é o fluxo que liquidar.
-        broLog('🛡️ Pagamento em andamento para ${widget.orderId.substring(0, 8)} — aguardando o fluxo ativo (sem 2º pagamento, sem force-complete)');
+        broLog(
+            '🛡️ Pagamento em andamento para ${widget.orderId.substring(0, 8)} — aguardando o fluxo ativo (sem 2º pagamento, sem force-complete)');
         if (mounted) {
           setState(() {
             _isConfirming = false;
@@ -5260,26 +5667,33 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         }
         return;
       }
-      await ProviderPaymentGuard.recordAttempt(widget.orderId, providerInvoicePaymentHash);
+      await ProviderPaymentGuard.recordAttempt(
+          widget.orderId, providerInvoicePaymentHash);
 
       // PAGAR O PROVEDOR
-      broLog('⚡ Pagando invoice do provedor: ${providerInvoice!.substring(0, 30)}...');
+      broLog(
+          '⚡ Pagando invoice do provedor: ${providerInvoice!.substring(0, 30)}...');
       bool paymentSuccess = false;
       String paymentError = '';
-      String? settledPreimage; // v823a: prova verificável de entrega (vai pro relay)
-      
+      String?
+          settledPreimage; // v823a: prova verificável de entrega (vai pro relay)
+
       try {
         final breezProvider = context.read<BreezProvider>();
 
         Future<bool> verifyPendingSparkPayment() async {
-          if (!breezProvider.isInitialized || providerInvoicePaymentHash == null || providerInvoicePaymentHash!.isEmpty) {
+          if (!breezProvider.isInitialized ||
+              providerInvoicePaymentHash == null ||
+              providerInvoicePaymentHash!.isEmpty) {
             return false;
           }
 
           for (int check = 1; check <= 6; check++) {
             try {
-              broLog('🔎 Verificando pagamento pendente no Breez ($check/6)...');
-              final status = await breezProvider.checkPaymentStatus(providerInvoicePaymentHash!);
+              broLog(
+                  '🔎 Verificando pagamento pendente no Breez ($check/6)...');
+              final status = await breezProvider
+                  .checkPaymentStatus(providerInvoicePaymentHash!);
               if (status['paid'] == true) {
                 broLog('✅ Pagamento confirmado via paymentHash após timeout');
                 return true;
@@ -5295,10 +5709,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
           return false;
         }
-        
+
         broLog('🔍 DEBUG PAY INVOICE:');
-        broLog('   breezProvider.isInitialized: ${breezProvider.isInitialized}');
-        
+        broLog(
+            '   breezProvider.isInitialized: ${breezProvider.isInitialized}');
+
         if (!breezProvider.isInitialized) {
           paymentError = l.t('order_wallet_not_initialized');
         } else {
@@ -5312,31 +5727,39 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             if (attempt > 1) {
               try {
                 final nostrService = NostrOrderService();
-                final latest = await nostrService.fetchOrderCompleteEvent(widget.orderId)
+                final latest = await nostrService
+                    .fetchOrderCompleteEvent(widget.orderId)
                     .timeout(const Duration(seconds: 8), onTimeout: () => null);
                 final freshInvoice = latest?['providerInvoice'] as String?;
-                if (freshInvoice != null && freshInvoice.isNotEmpty && freshInvoice != currentInvoice) {
-                  broLog('🔄 Invoice atualizada recebida do Nostr — usando nova para tentativa $attempt');
+                if (freshInvoice != null &&
+                    freshInvoice.isNotEmpty &&
+                    freshInvoice != currentInvoice) {
+                  broLog(
+                      '🔄 Invoice atualizada recebida do Nostr — usando nova para tentativa $attempt');
                   currentInvoice = freshInvoice;
                   // Redecode to update paymentHash so verifyPendingSparkPayment checa o hash certo
                   try {
-                    final decoded = await breezProvider.decodeInvoice(freshInvoice);
-                    final newHash = decoded?['invoice']?['paymentHash']?.toString();
+                    final decoded =
+                        await breezProvider.decodeInvoice(freshInvoice);
+                    final newHash =
+                        decoded?['invoice']?['paymentHash']?.toString();
                     if (newHash != null && newHash.isNotEmpty) {
                       providerInvoicePaymentHash = newHash;
                       // v634: registrar o novo hash tentado (para re-checagem futura)
-                      await ProviderPaymentGuard.recordAttempt(widget.orderId, newHash);
+                      await ProviderPaymentGuard.recordAttempt(
+                          widget.orderId, newHash);
                     }
                   } catch (_) {}
                 }
               } catch (e) {
-                broLog('⚠️ Falha ao refetch invoice antes da tentativa $attempt: $e');
+                broLog(
+                    '⚠️ Falha ao refetch invoice antes da tentativa $attempt: $e');
               }
             }
             try {
               Map<String, dynamic>? payResult;
               String usedBackend = 'none';
-              
+
               // v645c: se o comprador já pagou o escrow desta ordem (e o provedor
               // ainda não foi pago), reconhecer esse valor como cobertura da
               // liberação. O saldo da carteira = sats livres + sats travados em
@@ -5345,33 +5768,38 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               // tendo pago o escrow (caso 3dd5cb49). Guard anti-gasto-duplo acima
               // já bloqueia re-pagamento se o provedor já recebeu.
               int escrowCover = 0;
-              final escrowOrder = order ?? orderProvider.getOrderById(widget.orderId);
+              final escrowOrder =
+                  order ?? orderProvider.getOrderById(widget.orderId);
               if (escrowOrder != null &&
                   escrowOrder.userPubkey == orderProvider.currentUserPubkey &&
                   escrowOrder.hasPaymentBeenReceived &&
                   !ProviderPaymentGuard.isPaid(widget.orderId)) {
                 escrowCover = escrowOrder.totalInvoiceSats;
               }
-              
+
               if (breezProvider.isInitialized) {
                 broLog('⚡ Tentativa $attempt/3: Pagando via Breez Spark...');
                 // v514: NO outer timeout — payInvoice() has internal 30s prepare + 60s send timeouts.
                 // Outer timeout was killing payments mid-flight, causing "timeout" errors.
-                payResult = await breezProvider.payInvoice(currentInvoice, escrowCoverSats: escrowCover);
+                payResult = await breezProvider.payInvoice(currentInvoice,
+                    escrowCoverSats: escrowCover);
                 usedBackend = 'Spark';
               }
-              
+
               if (payResult != null && payResult['success'] == true) {
-                broLog('✅ Invoice do provedor pago com sucesso via $usedBackend na tentativa $attempt!');
+                broLog(
+                    '✅ Invoice do provedor pago com sucesso via $usedBackend na tentativa $attempt!');
                 paymentSuccess = true;
                 // v823a: capturar o preimage — a prova criptográfica de que o
                 // pagamento liquidou (vai pro update completed no relay).
                 settledPreimage = payResult['payment']?['preimage'] as String?;
                 break;
               } else {
-                paymentError = payResult?['error']?.toString() ?? l.t('order_unknown_failure');
+                paymentError = payResult?['error']?.toString() ??
+                    l.t('order_unknown_failure');
                 final errorType = payResult?['errorType']?.toString();
-                final mayStillSucceed = payResult?['mayStillSucceed'] == true || errorType == 'TIMEOUT_PENDING';
+                final mayStillSucceed = payResult?['mayStillSucceed'] == true ||
+                    errorType == 'TIMEOUT_PENDING';
                 // Detectar invoice já pago — v820e: só tratar como sucesso
                 // com o hash LIQUIDADO. O 'already paid' do SDK também cobre
                 // tentativa PENDENTE-pra-sempre, que nunca vira dinheiro.
@@ -5380,7 +5808,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     paymentError.toLowerCase().contains('invoice already') ||
                     paymentError.toLowerCase().contains('duplicate payment') ||
                     paymentError.toLowerCase().contains('alreadyexists') ||
-                    paymentError.toLowerCase().contains('preimage request already exists')) {
+                    paymentError
+                        .toLowerCase()
+                        .contains('preimage request already exists')) {
                   var settled = false;
                   try {
                     if (providerInvoicePaymentHash != null &&
@@ -5391,7 +5821,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     }
                   } catch (_) {}
                   if (settled) {
-                    broLog('✅ Invoice já foi pago anteriormente E liquidado (hash verificado) — tratando como sucesso');
+                    broLog(
+                        '✅ Invoice já foi pago anteriormente E liquidado (hash verificado) — tratando como sucesso');
                     paymentSuccess = true;
                     break;
                   }
@@ -5399,7 +5830,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   // em voo. NUNCA seguir o loop (a tentativa 2/3 pagaria uma
                   // invoice NOVA → gasto duplo quando a pendente liquidar).
                   // Esperar a pendente liquidar; se não, sair sem sucesso.
-                  broLog('⚠️ v820e: SDK reportou "já pago" sem hash liquidado — aguardando a tentativa pendente (não pagar de novo)');
+                  broLog(
+                      '⚠️ v820e: SDK reportou "já pago" sem hash liquidado — aguardando a tentativa pendente (não pagar de novo)');
                   if (await verifyPendingSparkPayment()) {
                     paymentSuccess = true;
                   }
@@ -5420,7 +5852,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   paymentError.toLowerCase().contains('invoice already') ||
                   paymentError.toLowerCase().contains('duplicate payment') ||
                   paymentError.toLowerCase().contains('alreadyexists') ||
-                  paymentError.toLowerCase().contains('preimage request already exists')) {
+                  paymentError
+                      .toLowerCase()
+                      .contains('preimage request already exists')) {
                 var settled = false;
                 try {
                   if (providerInvoicePaymentHash != null &&
@@ -5431,26 +5865,29 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   }
                 } catch (_) {}
                 if (settled) {
-                  broLog('✅ Invoice já foi pago anteriormente E liquidado (exception, hash verificado)');
+                  broLog(
+                      '✅ Invoice já foi pago anteriormente E liquidado (exception, hash verificado)');
                   paymentSuccess = true;
                   break;
                 }
                 // v820e: mesma regra do ramo acima — pendente em voo não é
                 // sucesso nem licença pra invoice nova. Esperar e sair.
-                broLog('⚠️ v820e: "já pago" (exception) sem hash liquidado — aguardando pendente (não pagar de novo)');
+                broLog(
+                    '⚠️ v820e: "já pago" (exception) sem hash liquidado — aguardando pendente (não pagar de novo)');
                 if (await verifyPendingSparkPayment()) {
                   paymentSuccess = true;
                 }
                 break;
               }
-              if ((paymentError.contains('timeout') || paymentError.contains('Timeout')) &&
+              if ((paymentError.contains('timeout') ||
+                      paymentError.contains('Timeout')) &&
                   await verifyPendingSparkPayment()) {
                 paymentSuccess = true;
                 break;
               }
               broLog('⚠️ Tentativa $attempt erro: $paymentError');
             }
-            
+
             if (attempt < 3) {
               broLog('⏳ Aguardando 2s antes da próxima tentativa...');
               await Future.delayed(const Duration(seconds: 2));
@@ -5461,16 +5898,19 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         paymentError = e.toString();
         broLog('⚠️ Erro geral ao pagar invoice: $e');
       }
-      
+
       // Se o pagamento falhou, NÃO marcar como completed
       if (!paymentSuccess) {
-        if (providerInvoicePaymentHash != null && providerInvoicePaymentHash!.isNotEmpty) {
+        if (providerInvoicePaymentHash != null &&
+            providerInvoicePaymentHash!.isNotEmpty) {
           try {
             final breezProvider = context.read<BreezProvider>();
             if (breezProvider.isInitialized) {
-              final status = await breezProvider.checkPaymentStatus(providerInvoicePaymentHash!);
+              final status = await breezProvider
+                  .checkPaymentStatus(providerInvoicePaymentHash!);
               if (status['paid'] == true) {
-                broLog('✅ Pagamento confirmado na checagem final por paymentHash');
+                broLog(
+                    '✅ Pagamento confirmado na checagem final por paymentHash');
                 paymentSuccess = true;
               }
             }
@@ -5485,12 +5925,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         // O hash tentado permanece registrado — se na verdade liquidou, a próxima
         // entrada em _handleConfirmPayment detecta e bloqueia o 2º pagamento.
         ProviderPaymentGuard.release(widget.orderId);
-        broLog('❌ Pagamento ao provedor FALHOU após 3 tentativas: $paymentError');
+        broLog(
+            '❌ Pagamento ao provedor FALHOU após 3 tentativas: $paymentError');
         if (mounted) {
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(l.tp('order_payment_failure_detail', {'error': paymentError})),
+              content: Text(l
+                  .tp('order_payment_failure_detail', {'error': paymentError})),
               backgroundColor: Colors.red,
               duration: const Duration(seconds: 8),
             ),
@@ -5507,7 +5949,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       // liquidação confirma DEPOIS (pending→settled no verifyPending) ou o
       // caminho foi "já pago", o capture inicial sai vazio. Recuperar do
       // histórico da carteira (pagamento settled por hash) antes de publicar.
-      settledPreimage ??= await _resolvePreimageFromHistory(providerInvoicePaymentHash);
+      settledPreimage ??=
+          await _resolvePreimageFromHistory(providerInvoicePaymentHash);
 
       // v823a: persistir o preimage LOCALMENTE também — as republicações
       // (v436/v779/reattest) re-publicam o update e, sem ele no metadata,
@@ -5520,8 +5963,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
       // 🛡️ v634: pagamento CONFIRMADO — travar a ordem de forma PERSISTENTE para
       // que nenhum fluxo futuro (revert de status, reabertura de tela) pague de novo.
-      await ProviderPaymentGuard.markPaid(widget.orderId, paymentHash: providerInvoicePaymentHash);
-      broLog('✅ Pagamento ao provedor confirmado! Agora marcando ordem como completed...');
+      await ProviderPaymentGuard.markPaid(widget.orderId,
+          paymentHash: providerInvoicePaymentHash);
+      broLog(
+          '✅ Pagamento ao provedor confirmado! Agora marcando ordem como completed...');
 
       // ========== ETAPA 2: MARCAR COMO COMPLETED ==========
       // CRÍTICO: Salvar localmente PRIMEIRO para evitar desync se Nostr falhar
@@ -5538,9 +5983,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         providerId: providerId,
         paymentProof: settledPreimage, // v823a: atestado de entrega
       );
-      
+
       if (!updateSuccess) {
-        broLog('⚠️ Pagamento feito mas falha ao publicar status no Nostr - tentando novamente...');
+        broLog(
+            '⚠️ Pagamento feito mas falha ao publicar status no Nostr - tentando novamente...');
         await Future.delayed(const Duration(seconds: 2));
         final retrySuccess = await orderProvider.updateOrderStatus(
           orderId: widget.orderId,
@@ -5549,15 +5995,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           paymentProof: settledPreimage, // v823a
         );
         if (!retrySuccess) {
-          broLog('⚠️ Segunda tentativa de publicar status falhou - pagamento foi feito, status atualizado localmente');
+          broLog(
+              '⚠️ Segunda tentativa de publicar status falhou - pagamento foi feito, status atualizado localmente');
         }
       }
-      
+
       broLog('✅ Ordem marcada como completed com sucesso');
 
       // v541: Nao envia push manualmente. Watchtower detecta o evento
       // bro_complete no Nostr e envia 'Ordem concluida!' automaticamente.
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
@@ -5574,26 +6021,30 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       // quando o SDK Breez detecta o pagamento recebido via invoice Lightning
       {
         final platformBalanceProvider = context.read<PlatformBalanceProvider>();
-        
+
         // Calcular taxas usando constantes centralizadas do AppConfig
         final totalSats = widget.amountSats.toDouble();
-        
+
         // Taxa da plataforma: 2% do valor total (manutenção da plataforma)
         // Mínimo de 1 sat para garantir que a taxa sempre seja enviada
         final platformFeeRaw = totalSats * AppConfig.platformFeePercent;
-        final platformFeeSats = platformFeeRaw.round() < 1 ? 1 : platformFeeRaw.round();
+        final platformFeeSats =
+            platformFeeRaw.round() < 1 ? 1 : platformFeeRaw.round();
         final platformFee = platformFeeSats.toDouble();
-        
-        final orderDescription = 'Ordem ${widget.orderId.substring(0, 8)} - R\$ ${widget.amountBrl.toStringAsFixed(2)}';
+
+        final orderDescription =
+            'Ordem ${widget.orderId.substring(0, 8)} - R\$ ${widget.amountBrl.toStringAsFixed(2)}';
 
         // ========== PAGAR TAXA DA PLATAFORMA VIA LIGHTNING ==========
         // Usar serviço centralizado que já tem fallback Spark/Liquid
         broLog('💼 Preparando envio de taxa da plataforma...');
-        broLog('   platformLightningAddress: "${AppConfig.platformLightningAddress}"');
+        broLog(
+            '   platformLightningAddress: "${AppConfig.platformLightningAddress}"');
         broLog('   platformFeeSats: $platformFeeSats');
         broLog('   widget.amountSats: ${widget.amountSats}');
-        
-        if (AppConfig.platformLightningAddress.isNotEmpty && platformFeeSats > 0) {
+
+        if (AppConfig.platformLightningAddress.isNotEmpty &&
+            platformFeeSats > 0) {
           // v807: envio da taxa NÃO bloqueia mais o feedback final — o usuário
           // já esperou o pagamento do provedor; a taxa roda em background
           // (fire-and-forget) e só loga o resultado. Registro local
@@ -5611,7 +6062,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             broLog('⚠️ Erro ao enviar taxa da plataforma: $e');
           }));
         } else {
-          broLog('⚠️ Taxa da plataforma não enviada: address=${AppConfig.platformLightningAddress.isNotEmpty}, sats=$platformFeeSats');
+          broLog(
+              '⚠️ Taxa da plataforma não enviada: address=${AppConfig.platformLightningAddress.isNotEmpty}, sats=$platformFeeSats');
         }
 
         // Registrar taxa da plataforma (para tracking local)
@@ -5622,13 +6074,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         );
 
         broLog('💼 Taxa de $platformFee sats registrada para a plataforma');
-        broLog('ℹ️ Ganho do provedor será registrado no dispositivo do provedor via SDK Breez');
+        broLog(
+            'ℹ️ Ganho do provedor será registrado no dispositivo do provedor via SDK Breez');
       }
 
       if (mounted) {
         // Esconder snackbar de loading
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(l.t('order_payment_confirmed')),
@@ -5665,7 +6118,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         );
         setState(() {
           _isConfirming = false;
-          _currentStatus = 'awaiting_confirmation'; // Reverter para status anterior
+          _currentStatus =
+              'awaiting_confirmation'; // Reverter para status anterior
         });
       }
     }
@@ -5682,14 +6136,17 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             ? const SizedBox(
                 width: 20,
                 height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: Colors.white),
               )
             : const Icon(Icons.bolt),
         label: Text(_isPayingDisputeResolution
             ? l.t('order_sending_payment')
             : l.t('order_pay_provider_mediation')),
         style: ElevatedButton.styleFrom(
-          backgroundColor: _isPayingDisputeResolution ? Colors.grey : const Color(0xFFFF6B6B),
+          backgroundColor: _isPayingDisputeResolution
+              ? Colors.grey
+              : const Color(0xFFFF6B6B),
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 16),
         ),
@@ -5707,11 +6164,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     // (providerInvoice na confirmação/liquidação OU reembolso ao admin na disputa).
     // Se a guarda persistente já marcou esta ordem como paga, NÃO pagar de novo.
     if (ProviderPaymentGuard.isPaid(widget.orderId)) {
-      broLog('🛡️ [DisputePay] Ordem ${widget.orderId.substring(0, 8)} já paga — bloqueando 2º pagamento');
+      broLog(
+          '🛡️ [DisputePay] Ordem ${widget.orderId.substring(0, 8)} já paga — bloqueando 2º pagamento');
       final op = context.read<OrderProvider>();
       final o = op.getOrderById(widget.orderId);
       if (o != null && o.metadata?['disputeProviderPaid'] != true) {
-        op.updateOrderMetadataLocal(widget.orderId, {...?o.metadata, 'disputeProviderPaid': true});
+        op.updateOrderMetadataLocal(
+            widget.orderId, {...?o.metadata, 'disputeProviderPaid': true});
       }
       if (!autoMode && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -5731,7 +6190,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         builder: (context) => AlertDialog(
           title: Text(l.t('order_mediation_payment_title')),
           content: Text(
-            l.tp('order_mediation_payment_content', {'sats': widget.amountSats.toString()}),
+            l.tp('order_mediation_payment_content',
+                {'sats': widget.amountSats.toString()}),
           ),
           actions: [
             TextButton(
@@ -5740,7 +6200,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(context, true),
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF6B6B)),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFF6B6B)),
               child: Text(l.t('order_mediation_confirm')),
             ),
           ],
@@ -5762,14 +6223,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       // ========== VERIFICAR SE ADMIN JÁ PAGOU (reembolso) ==========
       String? invoiceToPay;
       String paymentTarget = 'provedor';
-      
+
       final nostrService = NostrOrderService();
-      
+
       // Primeiro: verificar se existe invoice de reembolso do admin
       try {
-        final adminInvoice = await nostrService.fetchAdminReimbursementInvoice(widget.orderId);
+        final adminInvoice =
+            await nostrService.fetchAdminReimbursementInvoice(widget.orderId);
         if (adminInvoice != null && adminInvoice.isNotEmpty) {
-          broLog('🧾 [DisputePay] Admin já pagou o provedor — pagando reembolso ao admin');
+          broLog(
+              '🧾 [DisputePay] Admin já pagou o provedor — pagando reembolso ao admin');
           invoiceToPay = adminInvoice;
           paymentTarget = 'admin (reembolso)';
         }
@@ -5780,7 +6243,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       // Se não há reembolso do admin, buscar invoice do provedor normalmente
       if (invoiceToPay == null) {
         if (orderDetails != null) {
-          invoiceToPay = orderDetails['metadata']?['providerInvoice'] as String?;
+          invoiceToPay =
+              orderDetails['metadata']?['providerInvoice'] as String?;
           invoiceToPay ??= orderDetails['providerInvoice'] as String?;
         }
         if (invoiceToPay == null && order != null) {
@@ -5789,9 +6253,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
         // Fallback: buscar do evento COMPLETE no Nostr
         if (invoiceToPay == null || invoiceToPay.isEmpty) {
-          broLog('🔍 [DisputePay] providerInvoice não encontrado no cache, buscando evento COMPLETE no Nostr...');
+          broLog(
+              '🔍 [DisputePay] providerInvoice não encontrado no cache, buscando evento COMPLETE no Nostr...');
           try {
-            final completeData = await nostrService.fetchOrderCompleteEvent(widget.orderId);
+            final completeData =
+                await nostrService.fetchOrderCompleteEvent(widget.orderId);
             if (completeData != null) {
               invoiceToPay = completeData['providerInvoice'] as String?;
               if (invoiceToPay != null && invoiceToPay.isNotEmpty) {
@@ -5810,11 +6276,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           SnackBar(
             content: Row(
               children: [
-                const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white)),
                 const SizedBox(width: 12),
                 Text(paymentTarget == 'provedor'
-                  ? l.t('order_processing_provider_payment')
-                  : l.t('order_processing_admin_refund')),
+                    ? l.t('order_processing_provider_payment')
+                    : l.t('order_processing_admin_refund')),
               ],
             ),
             backgroundColor: const Color(0xFFFF6B6B),
@@ -5824,7 +6294,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       }
 
       if (invoiceToPay == null || invoiceToPay.isEmpty) {
-        broLog('🚨 [DisputePay] BLOQUEANDO: Nenhum providerInvoice encontrado!');
+        broLog(
+            '🚨 [DisputePay] BLOQUEANDO: Nenhum providerInvoice encontrado!');
         if (mounted) {
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
           ScaffoldMessenger.of(context).showSnackBar(
@@ -5841,7 +6312,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
       // ========== PAGAR O INVOICE ==========
       if (!mounted) return;
-      broLog('⚡ [DisputePay] Pagando invoice ($paymentTarget): ${invoiceToPay.substring(0, 30)}...');
+      broLog(
+          '⚡ [DisputePay] Pagando invoice ($paymentTarget): ${invoiceToPay.substring(0, 30)}...');
       bool paymentSuccess = false;
       String paymentError = '';
 
@@ -5850,7 +6322,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       // 🛡️ v634: lock síncrono (antes de qualquer await de pagamento). tryAcquire
       // retorna false se a ordem já foi paga ou se outro fluxo está pagando agora.
       if (!ProviderPaymentGuard.tryAcquire(widget.orderId)) {
-        broLog('🛡️ [DisputePay] Pagamento já em andamento/concluído para ${widget.orderId.substring(0, 8)} — abortando');
+        broLog(
+            '🛡️ [DisputePay] Pagamento já em andamento/concluído para ${widget.orderId.substring(0, 8)} — abortando');
         if (mounted) {
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
           setState(() => _isPayingDisputeResolution = false);
@@ -5877,21 +6350,25 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             String usedBackend = 'none';
 
             if (breezProvider.isInitialized) {
-              broLog('⚡ [DisputePay] Tentativa $attempt/3: Pagando via Breez Spark...');
+              broLog(
+                  '⚡ [DisputePay] Tentativa $attempt/3: Pagando via Breez Spark...');
               payResult = await breezProvider.payInvoice(invoiceToPay).timeout(
-                const Duration(seconds: 30),
-                onTimeout: () => {'success': false, 'error': 'timeout'},
-              );
+                    const Duration(seconds: 30),
+                    onTimeout: () => {'success': false, 'error': 'timeout'},
+                  );
               usedBackend = 'Spark';
             }
 
             if (payResult != null && payResult['success'] == true) {
-              broLog('✅ [DisputePay] Invoice pago com sucesso via $usedBackend na tentativa $attempt!');
+              broLog(
+                  '✅ [DisputePay] Invoice pago com sucesso via $usedBackend na tentativa $attempt!');
               paymentSuccess = true;
               break;
             } else {
-              paymentError = payResult?['error']?.toString() ?? l.t('order_unknown_failure');
-              broLog('⚠️ [DisputePay] Tentativa $attempt falhou: $paymentError');
+              paymentError = payResult?['error']?.toString() ??
+                  l.t('order_unknown_failure');
+              broLog(
+                  '⚠️ [DisputePay] Tentativa $attempt falhou: $paymentError');
             }
           } catch (e) {
             paymentError = e.toString();
@@ -5907,12 +6384,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       if (!paymentSuccess) {
         // v634: liberar o lock para permitir nova tentativa legítima depois.
         ProviderPaymentGuard.release(widget.orderId);
-        broLog('❌ [DisputePay] Pagamento FALHOU após 3 tentativas: $paymentError');
+        broLog(
+            '❌ [DisputePay] Pagamento FALHOU após 3 tentativas: $paymentError');
         if (mounted) {
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(l.tp('order_payment_failed_detail', {'error': paymentError})),
+              content: Text(
+                  l.tp('order_payment_failed_detail', {'error': paymentError})),
               backgroundColor: Colors.red,
               duration: const Duration(seconds: 8),
             ),
@@ -5941,10 +6420,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       final platformBalanceProvider = context.read<PlatformBalanceProvider>();
       final totalSats = widget.amountSats.toDouble();
       final platformFeeRaw = totalSats * AppConfig.platformFeePercent;
-      final platformFeeSats = platformFeeRaw.round() < 1 ? 1 : platformFeeRaw.round();
-      final orderDescription = 'Ordem ${widget.orderId.substring(0, 8)} - R\$ ${widget.amountBrl.toStringAsFixed(2)}';
+      final platformFeeSats =
+          platformFeeRaw.round() < 1 ? 1 : platformFeeRaw.round();
+      final orderDescription =
+          'Ordem ${widget.orderId.substring(0, 8)} - R\$ ${widget.amountBrl.toStringAsFixed(2)}';
 
-      if (AppConfig.platformLightningAddress.isNotEmpty && platformFeeSats > 0) {
+      if (AppConfig.platformLightningAddress.isNotEmpty &&
+          platformFeeSats > 0) {
         broLog('💼 [DisputePay] Enviando taxa da plataforma...');
         final feeSuccess = await PlatformFeeService.sendPlatformFee(
           orderId: widget.orderId,
@@ -5966,8 +6448,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(paymentTarget == 'provedor'
-              ? l.t('order_payment_to_provider_success')
-              : l.t('order_refund_admin_success')),
+                ? l.t('order_payment_to_provider_success')
+                : l.t('order_refund_admin_success')),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 4),
           ),
@@ -5987,7 +6469,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(l.tp('order_error_pay_provider', {'error': e.toString()})),
+            content:
+                Text(l.tp('order_error_pay_provider', {'error': e.toString()})),
             backgroundColor: Colors.red,
           ),
         );
@@ -6003,20 +6486,24 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     final isUserFavor = resolution['resolution'] == 'resolved_user';
     final notes = resolution['notes'] as String? ?? '';
     final resolvedAt = resolution['resolvedAt'] as String? ?? '';
-    
+
     String dateStr = '';
     try {
       final dt = DateTime.parse(resolvedAt);
-      dateStr = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      dateStr =
+          '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
     } catch (_) {
       dateStr = resolvedAt;
     }
-    
+
     return Card(
       color: const Color(0xFF1A1A1A),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: isUserFavor ? Colors.blue.withOpacity(0.3) : Colors.green.withOpacity(0.3)),
+        side: BorderSide(
+            color: isUserFavor
+                ? Colors.blue.withOpacity(0.3)
+                : Colors.green.withOpacity(0.3)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -6028,10 +6515,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: (isUserFavor ? Colors.blue : Colors.green).withOpacity(0.15),
+                    color: (isUserFavor ? Colors.blue : Colors.green)
+                        .withOpacity(0.15),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(Icons.gavel, color: isUserFavor ? Colors.blue : Colors.green, size: 22),
+                  child: Icon(Icons.gavel,
+                      color: isUserFavor ? Colors.blue : Colors.green,
+                      size: 22),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -6041,7 +6531,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       Text(
                         l.t('order_mediator_decision'),
                         style: TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
                           color: isUserFavor ? Colors.blue : Colors.green,
                         ),
                       ),
@@ -6052,7 +6543,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                             : _disputePaymentPending
                                 ? l.t('order_resolved_provider_pending')
                                 : l.t('order_resolved_provider_paid'),
-                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 12),
                       ),
                     ],
                   ),
@@ -6072,9 +6564,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(l.t('order_mediator_message'), style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                    Text(l.t('order_mediator_message'),
+                        style: const TextStyle(
+                            color: Colors.white54, fontSize: 11)),
                     const SizedBox(height: 6),
-                    Text(notes, style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.4)),
+                    Text(notes,
+                        style: const TextStyle(
+                            color: Colors.white, fontSize: 13, height: 1.4)),
                   ],
                 ),
               ),
@@ -6083,7 +6579,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               const SizedBox(height: 8),
               Align(
                 alignment: Alignment.centerRight,
-                child: Text('📅 $dateStr', style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                child: Text('📅 $dateStr',
+                    style:
+                        const TextStyle(color: Colors.white38, fontSize: 11)),
               ),
             ],
           ],
@@ -6120,7 +6618,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             : ((_orderDetails?['provider_id'] as String?)?.isNotEmpty == true
                 ? _orderDetails!['provider_id'] as String
                 : '');
-    final providerPk = fromDetails.isNotEmpty ? fromDetails : (_chatProviderPubkey ?? '');
+    final providerPk =
+        fromDetails.isNotEmpty ? fromDetails : (_chatProviderPubkey ?? '');
     if (providerPk.isEmpty) {
       _resolveChatProviderPubkey();
     }
@@ -6141,20 +6640,22 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     // Carregar dados da disputa se não tivermos
     final disputeService = DisputeService();
     final dispute = disputeService.getDisputeByOrderId(widget.orderId);
-    final reason = _disputeReason ?? dispute?.reason ?? l.t('order_not_informed');
+    final reason =
+        _disputeReason ?? dispute?.reason ?? l.t('order_not_informed');
     final desc = _disputeDescription ?? dispute?.description ?? '';
     final createdAt = _disputeCreatedAt ?? dispute?.createdAt ?? DateTime.now();
-    final providerId = _orderDetails?['providerId'] ?? _orderDetails?['provider_id'] ?? '';
+    final providerId =
+        _orderDetails?['providerId'] ?? _orderDetails?['provider_id'] ?? '';
     final proofImage = _orderDetails?['metadata']?['proofImage'] as String?;
     final userPubkey = _orderDetails?['userPubkey'] ?? widget.userId ?? '';
-    
+
     final day = createdAt.day.toString().padLeft(2, '0');
     final month = createdAt.month.toString().padLeft(2, '0');
     final year = createdAt.year;
     final hour = createdAt.hour.toString().padLeft(2, '0');
     final minute = createdAt.minute.toString().padLeft(2, '0');
     final dateStr = '$day/$month/$year $hour:$minute';
-    
+
     return Card(
       color: const Color(0xFF1A1A1A),
       shape: RoundedRectangleBorder(
@@ -6175,7 +6676,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     color: Colors.orange.withOpacity(0.15),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.gavel, color: Colors.orange, size: 20),
+                  child:
+                      const Icon(Icons.gavel, color: Colors.orange, size: 20),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -6183,7 +6685,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        dispute?.status == 'in_review' ? l.t('order_dispute_in_review') : l.t('order_dispute_open'),
+                        dispute?.status == 'in_review'
+                            ? l.t('order_dispute_in_review')
+                            : l.t('order_dispute_open'),
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -6195,7 +6699,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         dispute?.status == 'in_review'
                             ? l.t('order_mediator_reviewing')
                             : l.t('order_awaiting_mediator'),
-                        style: const TextStyle(fontSize: 14, color: Colors.white70),
+                        style: const TextStyle(
+                            fontSize: 14, color: Colors.white70),
                       ),
                     ],
                   ),
@@ -6203,7 +6708,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            
+
             // Relatório detalhado da ordem
             Container(
               width: double.infinity,
@@ -6225,42 +6730,53 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  
+
                   // ID da Ordem
-                  _disputeReportRow(l.t('order_dispute_order_label'), widget.orderId.length > 16 
-                      ? '${widget.orderId.substring(0, 16)}...' 
-                      : widget.orderId, isMonospace: true),
+                  _disputeReportRow(
+                      l.t('order_dispute_order_label'),
+                      widget.orderId.length > 16
+                          ? '${widget.orderId.substring(0, 16)}...'
+                          : widget.orderId,
+                      isMonospace: true),
                   const SizedBox(height: 6),
-                  
+
                   // Data e hora
                   _disputeReportRow(l.t('order_dispute_date_label'), dateStr),
                   const SizedBox(height: 6),
-                  
+
                   // Valor
-                  _disputeReportRow(l.t('order_dispute_value_label'), _amountDisplay),
+                  _disputeReportRow(
+                      l.t('order_dispute_value_label'), _amountDisplay),
                   const SizedBox(height: 6),
-                  _disputeReportRow(l.t('order_dispute_sats_label'), '${widget.amountSats}'),
+                  _disputeReportRow(
+                      l.t('order_dispute_sats_label'), '${widget.amountSats}'),
                   const SizedBox(height: 6),
-                  
+
                   // Usuários
                   if (userPubkey.isNotEmpty) ...[
-                    _disputeReportRow(l.t('order_dispute_user_label'), '${userPubkey.toString().substring(0, 16)}...', isMonospace: true),
+                    _disputeReportRow(l.t('order_dispute_user_label'),
+                        '${userPubkey.toString().substring(0, 16)}...',
+                        isMonospace: true),
                     const SizedBox(height: 6),
                   ],
                   if (providerId.isNotEmpty) ...[
-                    _disputeReportRow(l.t('order_dispute_provider_label'), '${providerId.toString().substring(0, 16)}...', isMonospace: true),
+                    _disputeReportRow(l.t('order_dispute_provider_label'),
+                        '${providerId.toString().substring(0, 16)}...',
+                        isMonospace: true),
                     const SizedBox(height: 6),
                   ],
-                  
+
                   const Divider(color: Colors.white24, height: 20),
-                  
+
                   // Motivo
                   _disputeReportRow(l.t('order_dispute_motive_label'), reason),
                   const SizedBox(height: 6),
-                  
+
                   // Descrição
                   if (desc.isNotEmpty) ...[
-                    Text(l.t('order_dispute_description'), style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                    Text(l.t('order_dispute_description'),
+                        style: const TextStyle(
+                            color: Colors.white54, fontSize: 12)),
                     const SizedBox(height: 4),
                     Container(
                       width: double.infinity,
@@ -6271,12 +6787,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       ),
                       child: Text(
                         desc,
-                        style: const TextStyle(color: Colors.white70, fontSize: 13),
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 13),
                       ),
                     ),
                     const SizedBox(height: 6),
                   ],
-                  
+
                   // Foto do comprovante (se disponível)
                   if (proofImage != null && proofImage.isNotEmpty) ...[
                     const Divider(color: Colors.white24, height: 20),
@@ -6297,7 +6814,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                                 height: 100,
                                 color: Colors.black26,
                                 child: Center(
-                                  child: Text(l.t('order_image_unavailable'), style: const TextStyle(color: Colors.white38)),
+                                  child: Text(l.t('order_image_unavailable'),
+                                      style: const TextStyle(
+                                          color: Colors.white38)),
                                 ),
                               ),
                             )
@@ -6305,7 +6824,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                               height: 100,
                               color: Colors.black26,
                               child: Center(
-                                child: Text(l.t('order_proof_attached'), style: const TextStyle(color: Colors.white38)),
+                                child: Text(l.t('order_proof_attached'),
+                                    style:
+                                        const TextStyle(color: Colors.white38)),
                               ),
                             ),
                     ),
@@ -6347,7 +6868,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           height: 60,
                           color: Colors.black26,
                           child: Center(
-                            child: Text(l.t('order_image_attached'), style: const TextStyle(color: Colors.blue)),
+                            child: Text(l.t('order_image_attached'),
+                                style: const TextStyle(color: Colors.blue)),
                           ),
                         ),
                       ),
@@ -6357,7 +6879,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               ),
             ],
             const SizedBox(height: 12),
-            
+
             // Tempo estimado
             Container(
               padding: const EdgeInsets.all(12),
@@ -6372,16 +6894,19 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   Expanded(
                     child: Text(
                       l.t('order_estimated_time'),
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.white70),
+                      style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white70),
                     ),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 12),
-            
+
             // v237: Mensagens do mediador
-            if (_mediatorMessages.isNotEmpty) ...[            
+            if (_mediatorMessages.isNotEmpty) ...[
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(14),
@@ -6395,10 +6920,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.message, color: Colors.purple, size: 18),
+                        const Icon(Icons.message,
+                            color: Colors.purple, size: 18),
                         const SizedBox(width: 8),
                         Text(
-                          l.tp('order_mediator_messages', {'count': _mediatorMessages.length.toString()}),
+                          l.tp('order_mediator_messages',
+                              {'count': _mediatorMessages.length.toString()}),
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
@@ -6413,7 +6940,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       String dateStr = '';
                       try {
                         final dt = DateTime.parse(sentAt);
-                        dateStr = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+                        dateStr =
+                            '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
                       } catch (_) {}
                       final message = msg['message'] as String? ?? '';
                       return Container(
@@ -6423,25 +6951,34 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         decoration: BoxDecoration(
                           color: Colors.purple.withOpacity(0.08),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.purple.withOpacity(0.15)),
+                          border: Border.all(
+                              color: Colors.purple.withOpacity(0.15)),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
                               children: [
-                                const Icon(Icons.admin_panel_settings, color: Colors.purple, size: 14),
+                                const Icon(Icons.admin_panel_settings,
+                                    color: Colors.purple, size: 14),
                                 const SizedBox(width: 6),
-                                Text(l.t('order_mediator'), style: const TextStyle(color: Colors.purple, fontSize: 11, fontWeight: FontWeight.bold)),
+                                Text(l.t('order_mediator'),
+                                    style: const TextStyle(
+                                        color: Colors.purple,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold)),
                                 const Spacer(),
                                 if (dateStr.isNotEmpty)
-                                  Text(dateStr, style: const TextStyle(color: Colors.white38, fontSize: 10)),
+                                  Text(dateStr,
+                                      style: const TextStyle(
+                                          color: Colors.white38, fontSize: 10)),
                               ],
                             ),
                             const SizedBox(height: 6),
                             Text(
                               message,
-                              style: const TextStyle(color: Colors.white70, fontSize: 13),
+                              style: const TextStyle(
+                                  color: Colors.white70, fontSize: 13),
                             ),
                           ],
                         ),
@@ -6461,12 +6998,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     foregroundColor: Colors.purple,
                     side: const BorderSide(color: Colors.purple),
                     padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
                   ),
                 ),
               ),
               const SizedBox(height: 12),
-            ] else if (_loadingMediatorMessages) ...[            
+            ] else if (_loadingMediatorMessages) ...[
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(14),
@@ -6478,15 +7016,21 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purple)),
+                    const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.purple)),
                     const SizedBox(width: 10),
-                    Text(l.t('order_fetching_messages'), style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                    Text(l.t('order_fetching_messages'),
+                        style: const TextStyle(
+                            color: Colors.white38, fontSize: 12)),
                   ],
                 ),
               ),
               const SizedBox(height: 12),
             ],
-            
+
             // v236: Botão para enviar evidência adicional
             SizedBox(
               width: double.infinity,
@@ -6498,7 +7042,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   foregroundColor: Colors.blue,
                   side: const BorderSide(color: Colors.blue),
                   padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
                 ),
               ),
             ),
@@ -6507,8 +7052,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       ),
     );
   }
-  
-  Widget _disputeReportRow(String label, String value, {bool isMonospace = false}) {
+
+  Widget _disputeReportRow(String label, String value,
+      {bool isMonospace = false}) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -6550,8 +7096,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) => Padding(
           padding: EdgeInsets.only(
-            left: 20, right: 20, top: 20,
-            bottom: MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom + 24,
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(context).viewInsets.bottom +
+                MediaQuery.of(context).viewPadding.bottom +
+                24,
           ),
           child: SingleChildScrollView(
             child: Column(
@@ -6559,15 +7109,27 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Center(
-                  child: Container(width: 40, height: 4,
-                    decoration: BoxDecoration(color: Colors.grey[600], borderRadius: BorderRadius.circular(2))),
+                  child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                          color: Colors.grey[600],
+                          borderRadius: BorderRadius.circular(2))),
                 ),
                 const SizedBox(height: 20),
-                Text(l.t('order_send_evidence_title'), style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                Text(l.t('order_send_evidence_title'),
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                Text(l.tp('order_order_id_short', {'id': widget.orderId.substring(0, 8)}), style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 14)),
+                Text(
+                    l.tp('order_order_id_short',
+                        {'id': widget.orderId.substring(0, 8)}),
+                    style: const TextStyle(
+                        color: Color(0x99FFFFFF), fontSize: 14)),
                 const SizedBox(height: 16),
-                
+
                 // Dicas
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -6579,22 +7141,36 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(l.t('order_accepted_evidence'), style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 13)),
+                      Text(l.t('order_accepted_evidence'),
+                          style: const TextStyle(
+                              color: Colors.blue,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13)),
                       const SizedBox(height: 6),
-                      Text(l.t('order_evidence_tip_site'), style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                      Text(l.t('order_evidence_tip_site'),
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 12)),
                       const SizedBox(height: 3),
-                      Text(l.t('order_evidence_tip_registrato'), style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                      Text(l.t('order_evidence_tip_registrato'),
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 12)),
                       const SizedBox(height: 3),
-                      Text(l.t('order_evidence_tip_e2e'), style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                      Text(l.t('order_evidence_tip_e2e'),
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 12)),
                       const SizedBox(height: 3),
-                      Text(l.t('order_evidence_tip_any'), style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                      Text(l.t('order_evidence_tip_any'),
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 12)),
                     ],
                   ),
                 ),
                 const SizedBox(height: 16),
-                
+
                 // Descrição
-                Text(l.t('order_evidence_description'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                Text(l.t('order_evidence_description'),
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
                 TextField(
                   controller: descController,
@@ -6603,31 +7179,50 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   decoration: InputDecoration(
                     hintText: l.t('order_evidence_description_hint'),
                     hintStyle: const TextStyle(color: Color(0x66FFFFFF)),
-                    filled: true, fillColor: const Color(0x0DFFFFFF),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0x33FFFFFF))),
-                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0x33FFFFFF))),
-                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.blue)),
+                    filled: true,
+                    fillColor: const Color(0x0DFFFFFF),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0x33FFFFFF))),
+                    enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0x33FFFFFF))),
+                    focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Colors.blue)),
                   ),
                 ),
                 const SizedBox(height: 16),
-                
+
                 // Foto
-                Text(l.t('order_evidence_photo'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                Text(l.t('order_evidence_photo'),
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
                 if (evidencePhoto != null) ...[
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: Stack(
                       children: [
-                        Image.file(evidencePhoto!, height: 150, width: double.infinity, fit: BoxFit.cover),
+                        Image.file(evidencePhoto!,
+                            height: 150,
+                            width: double.infinity,
+                            fit: BoxFit.cover),
                         Positioned(
-                          top: 4, right: 4,
+                          top: 4,
+                          right: 4,
                           child: GestureDetector(
-                            onTap: () => setModalState(() { evidencePhoto = null; evidenceBase64 = null; }),
+                            onTap: () => setModalState(() {
+                              evidencePhoto = null;
+                              evidenceBase64 = null;
+                            }),
                             child: Container(
                               padding: const EdgeInsets.all(4),
-                              decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-                              child: const Icon(Icons.close, color: Colors.white, size: 18),
+                              decoration: const BoxDecoration(
+                                  color: Colors.black54,
+                                  shape: BoxShape.circle),
+                              child: const Icon(Icons.close,
+                                  color: Colors.white, size: 18),
                             ),
                           ),
                         ),
@@ -6645,16 +7240,26 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                             // evidência ficava ilegível (motivo de disputas reais).
                             // Captura em alta + escada do image_compress encaixa no
                             // teto NIP-44 mantendo a imagem nítida.
-                            final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 1920, maxHeight: 1920, imageQuality: 90);
+                            final picked = await picker.pickImage(
+                                source: ImageSource.gallery,
+                                maxWidth: 1920,
+                                maxHeight: 1920,
+                                imageQuality: 90);
                             if (picked != null) {
                               final file = File(picked.path);
                               final bytes = await file.readAsBytes();
-                              setModalState(() { evidencePhoto = file; evidenceBase64 = compressImageToBase64ForNip44(bytes); });
+                              setModalState(() {
+                                evidencePhoto = file;
+                                evidenceBase64 =
+                                    compressImageToBase64ForNip44(bytes);
+                              });
                             }
                           },
                           icon: const Icon(Icons.photo_library, size: 18),
                           label: Text(l.t('order_gallery')),
-                          style: OutlinedButton.styleFrom(foregroundColor: Colors.blue, side: const BorderSide(color: Colors.blue)),
+                          style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.blue,
+                              side: const BorderSide(color: Colors.blue)),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -6666,60 +7271,94 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                             // evidência ficava ilegível (motivo de disputas reais).
                             // Captura em alta + escada do image_compress encaixa no
                             // teto NIP-44 mantendo a imagem nítida.
-                            final picked = await picker.pickImage(source: ImageSource.camera, maxWidth: 1920, maxHeight: 1920, imageQuality: 90);
+                            final picked = await picker.pickImage(
+                                source: ImageSource.camera,
+                                maxWidth: 1920,
+                                maxHeight: 1920,
+                                imageQuality: 90);
                             if (picked != null) {
                               final file = File(picked.path);
                               final bytes = await file.readAsBytes();
-                              setModalState(() { evidencePhoto = file; evidenceBase64 = compressImageToBase64ForNip44(bytes); });
+                              setModalState(() {
+                                evidencePhoto = file;
+                                evidenceBase64 =
+                                    compressImageToBase64ForNip44(bytes);
+                              });
                             }
                           },
                           icon: const Icon(Icons.camera_alt, size: 18),
                           label: Text(l.t('order_camera')),
-                          style: OutlinedButton.styleFrom(foregroundColor: Colors.blue, side: const BorderSide(color: Colors.blue)),
+                          style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.blue,
+                              side: const BorderSide(color: Colors.blue)),
                         ),
                       ),
                     ],
                   ),
                 const SizedBox(height: 20),
-                
+
                 // Botão enviar
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: ((evidenceBase64 == null && descController.text.trim().isEmpty) || sending) ? null : () async {
-                      setModalState(() => sending = true);
-                      try {
-                        final orderProvider = context.read<OrderProvider>();
-                        final privateKey = orderProvider.nostrPrivateKey;
-                        if (privateKey == null) throw Exception('Chave não disponível');
-                        
-                        final nostrService = NostrOrderService();
-                        final success = await nostrService.publishDisputeEvidence(
-                          privateKey: privateKey,
-                          orderId: widget.orderId,
-                          senderRole: role,
-                          imageBase64: evidenceBase64,
-                          description: descController.text.trim(),
-                        );
-                        
-                        if (mounted) {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                            content: Text(success ? l.t('order_evidence_sent') : l.t('order_evidence_error')),
-                            backgroundColor: success ? Colors.green : Colors.red,
-                          ));
-                        }
-                      } catch (e) {
-                        setModalState(() => sending = false);
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l.tp('order_error_generic', {'error': e.toString()})), backgroundColor: Colors.red));
-                        }
-                      }
-                    },
+                    onPressed: ((evidenceBase64 == null &&
+                                descController.text.trim().isEmpty) ||
+                            sending)
+                        ? null
+                        : () async {
+                            setModalState(() => sending = true);
+                            try {
+                              final orderProvider =
+                                  context.read<OrderProvider>();
+                              final privateKey = orderProvider.nostrPrivateKey;
+                              if (privateKey == null)
+                                throw Exception('Chave não disponível');
+
+                              final nostrService = NostrOrderService();
+                              final success =
+                                  await nostrService.publishDisputeEvidence(
+                                privateKey: privateKey,
+                                orderId: widget.orderId,
+                                senderRole: role,
+                                imageBase64: evidenceBase64,
+                                description: descController.text.trim(),
+                              );
+
+                              if (mounted) {
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context)
+                                    .showSnackBar(SnackBar(
+                                  content: Text(success
+                                      ? l.t('order_evidence_sent')
+                                      : l.t('order_evidence_error')),
+                                  backgroundColor:
+                                      success ? Colors.green : Colors.red,
+                                ));
+                              }
+                            } catch (e) {
+                              setModalState(() => sending = false);
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                        content: Text(l.tp(
+                                            'order_error_generic',
+                                            {'error': e.toString()})),
+                                        backgroundColor: Colors.red));
+                              }
+                            }
+                          },
                     icon: sending
-                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
                         : const Icon(Icons.send),
-                    label: Text(sending ? l.t('order_evidence_sending') : (evidenceBase64 != null ? l.t('order_submit_evidence') : l.t('order_submit_message'))),
+                    label: Text(sending
+                        ? l.t('order_evidence_sending')
+                        : (evidenceBase64 != null
+                            ? l.t('order_submit_evidence')
+                            : l.t('order_submit_message'))),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue,
                       disabledBackgroundColor: Colors.grey[700],

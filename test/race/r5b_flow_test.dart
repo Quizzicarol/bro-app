@@ -33,6 +33,7 @@ void main() {
 
   tearDown(() async {
     await NostrOrderService().pendingOrdersReconcileInFlight;
+    await NostrOrderService().providerOrdersReconcileInFlight;
     NostrOrderService.apiGetOverride = null;
     NostrOrderService.relaysOverride = null;
     NostrOrderService.applyRelaysOverride();
@@ -127,8 +128,16 @@ void main() {
           .fetchProviderOrders('pk-provider-test', onBackgroundReconcile: () {});
       sw.stop();
 
-      expect(orders.map((o) => o.id), contains('flow-e-1'));
-      expect(sw.elapsed, lessThan(const Duration(seconds: 2)));
+      expect(
+        orders.map((o) => o.id).toList(),
+        contains('flow-e-1'),
+        reason: 'snapshot do provider deve conter flow-e-1; recebido=${orders.map((o) => '${o.id}:${o.status}').toList()}',
+      );
+      expect(
+        sw.elapsed,
+        lessThan(const Duration(seconds: 2)),
+        reason: 'snapshot do provider demorou ${sw.elapsedMilliseconds}ms com relays mortos',
+      );
       broLog('⏱️ R5b teste (e): provider orders via API em ${sw.elapsedMilliseconds}ms');
     });
   });

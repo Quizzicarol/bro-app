@@ -1706,9 +1706,15 @@ class NostrOrderService {
       broLog(
           '⏱️ R5b: provider orders renderizadas via API em ${sw.elapsedMilliseconds}ms (${orders.length} ordens)');
       // Relay fan-out em background reconcilia (aditivo) e avisa o provider.
-      unawaited(_reconcileProviderOrdersInBackground(providerPubkey,
+      final reconcile = _reconcileProviderOrdersInBackground(providerPubkey,
           skipOrderIds: skipOrderIds,
-          onBackgroundReconcile: onBackgroundReconcile));
+          onBackgroundReconcile: onBackgroundReconcile);
+      providerOrdersReconcileInFlight = reconcile;
+      unawaited(reconcile.whenComplete(() {
+        if (identical(providerOrdersReconcileInFlight, reconcile)) {
+          providerOrdersReconcileInFlight = null;
+        }
+      }));
       return orders;
     }
     // Fallback: API vazia/falhou → fluxo relay antigo (bloqueante), intacto.
@@ -3368,6 +3374,9 @@ class NostrOrderService {
   /// background (aditivo). API vazia/falha → fallback relay síncrono intacto.
   @visibleForTesting
   Future<void>? pendingOrdersReconcileInFlight;
+
+  @visibleForTesting
+  Future<void>? providerOrdersReconcileInFlight;
 
   Future<List<Order>> fetchPendingOrders(
       {void Function()? onBackgroundReconcile}) async {

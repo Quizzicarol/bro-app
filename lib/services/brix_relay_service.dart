@@ -466,6 +466,8 @@ class BrixRelayService {
             if (claimed) {
               persistBrixPayment(
                 amountSats: payment.amountSats,
+                grossAmountSats: payment.displayGross,
+                feeSats: payment.feeSats,
                 description: offlineDesc,
                 paymentHash: invoiceResult['paymentHash'] as String?,
               );
@@ -606,6 +608,8 @@ class BrixRelayService {
     required String description,
     String? paymentHash,
     DateTime? timestamp,
+    int grossAmountSats = 0,
+    int feeSats = 0,
   }) async {
     try {
       await _migrateIfNeeded();
@@ -615,6 +619,8 @@ class BrixRelayService {
       if (paymentHash != null && list.any((p) => p['paymentHash'] == paymentHash)) return;
       list.add({
         'amountSats': amountSats,
+        'grossAmountSats': grossAmountSats > 0 ? grossAmountSats : amountSats + feeSats,
+        'feeSats': feeSats,
         'description': description,
         'paymentHash': paymentHash,
         'createdAt': (timestamp ?? DateTime.now()).toIso8601String(),
@@ -624,7 +630,7 @@ class BrixRelayService {
         'isBrix': true,
       });
       await _secureStorage.write(key: _brixPaymentsKey, value: json.encode(list));
-      broLog('💾 [BRIX] Persisted local: $amountSats sats, hash=${paymentHash?.substring(0, 8) ?? "N/A"}');
+      broLog('💾 [BRIX] Persisted local: $amountSats sats (fee=$feeSats), hash=${paymentHash?.substring(0, 8) ?? "N/A"}');
     } catch (e) {
       broLog('❌ [BRIX] Failed to persist: $e');
     }

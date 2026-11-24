@@ -343,6 +343,8 @@ class BrixService {
           .map((p) => BrixPendingPayment(
                 id: p['id'] as String,
                 amountSats: p['amount_sats'] as int,
+                grossAmountSats: (p['gross_amount_sats'] as num?)?.toInt() ?? 0,
+                feeSats: (p['fee_sats'] as num?)?.toInt() ?? 0,
                 senderNote: p['sender_note'] as String?,
                 createdAt: p['created_at'] as String,
               ))
@@ -592,16 +594,23 @@ class BrixAddressResult {
 
 class BrixPendingPayment {
   final String id;
-  final int amountSats;
+  final int amountSats; // líquido (o que o recebedor recebe)
+  final int grossAmountSats; // bruto (antes da taxa)
+  final int feeSats; // taxa cobrada pelo servidor BRIX
   final String? senderNote;
   final String createdAt;
 
   BrixPendingPayment({
     required this.id,
     required this.amountSats,
+    this.grossAmountSats = 0,
+    this.feeSats = 0,
     this.senderNote,
     required this.createdAt,
   });
+
+  /// Bruto − taxa = líquido. Se o servidor não enviar gross, usa amount+fee.
+  int get displayGross => grossAmountSats > 0 ? grossAmountSats : amountSats + feeSats;
 }
 
 class BrixResolveResult {

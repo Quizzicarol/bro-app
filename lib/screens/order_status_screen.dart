@@ -2912,14 +2912,41 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   /// para que a UI tente o NIP-44 em vez de mostrar "versão antiga".
   bool _isPlausibleImage(String value) {
     if (value.isEmpty) return false;
-    if (value.startsWith('data:image')) return true;
     if (value.startsWith('http://') || value.startsWith('https://')) return true;
-    if (_isBase64Image(value)) return true;
+    // Validar bytes reais para data URI e base64 — um data:image truncado ou
+    // base64 corrompido NÃO é plausível e deve acionar o fallback NIP-44.
+    if (value.startsWith('data:image') || _isBase64Image(value)) {
+      return _hasValidImageBytes(value);
+    }
     // Caminho de arquivo local existente (comprovante salvo no aparelho).
     try {
       if (File(value).existsSync()) return true;
     } catch (_) {}
     return false;
+  }
+
+  /// Decodifica os bytes e verifica se formam uma imagem válida (JPEG/PNG/
+  /// GIF/WebP). Retorna false para dados truncados ou corrompidos.
+  bool _hasValidImageBytes(String value) {
+    try {
+      final base64String = value.startsWith('data:image')
+          ? value.split(',').last
+          : value;
+      final bytes = base64Decode(base64String);
+      if (bytes.length < 12) return false;
+      // JPEG: FF D8 FF
+      if (bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) return true;
+      // PNG: 89 50 4E 47 0D 0A 1A 0A
+      if (bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47) return true;
+      // GIF: 47 49 46 38
+      if (bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x38) return true;
+      // WebP: 52 49 46 46 ... 57 45 42 50
+      if (bytes[0] == 0x52 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x46 &&
+          bytes[8] == 0x57 && bytes[9] == 0x45 && bytes[10] == 0x42 && bytes[11] == 0x50) return true;
+      return false;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Verifica se uma string parece ser base64 de imagem

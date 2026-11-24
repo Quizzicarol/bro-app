@@ -3193,7 +3193,11 @@ class _WalletScreenState extends State<WalletScreen> {
     } else if (description == 'BRIX Payment' || description.toLowerCase().contains('brix payment') || description.startsWith('BRIX: ') ||
                (!isReceived && (description.toLowerCase().contains('@brostr.app') || description.toLowerCase().contains('@brix.app')))) {
       if (isReceived) {
-        label = '⚡ brix recebido';
+        final feeSats = (payment['feeSats'] as num?)?.toInt() ?? 0;
+        final netSats = (amount is int) ? amount : (amount as num).toInt();
+        label = feeSats > 0
+            ? '⚡ brix recebido +$netSats sats (taxa $feeSats sats)'
+            : '⚡ brix recebido';
         iconColor = Colors.green;
         icon = Icons.flash_on;
       } else {
@@ -3761,6 +3765,24 @@ class _WalletScreenState extends State<WalletScreen> {
                       ),
                       const SizedBox(height: 8),
                       _buildDetailRow(feeLabel, feeValue),
+                      // BRIX: mostrar bruto − taxa = líquido quando disponível
+                      if (isReceived && (payment['isBrix'] == true || description.startsWith('BRIX'))) ...[
+                        Builder(builder: (context) {
+                          final feeSats = (payment['feeSats'] as num?)?.toInt() ?? 0;
+                          if (feeSats <= 0) return const SizedBox.shrink();
+                          final grossSats = (payment['grossAmountSats'] as num?)?.toInt() ?? (baseSats + feeSats);
+                          final netSats = baseSats;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 8),
+                              _buildDetailRow('⚡ BRIX bruto', '$grossSats sats'),
+                              _buildDetailRow('⚡ BRIX taxa', '−$feeSats sats'),
+                              _buildDetailRow('⚡ BRIX líquido', '$netSats sats'),
+                            ],
+                          );
+                        }),
+                      ],
                       // v706: TODAS as taxas condensadas aqui — Bro provedor
                       // (3%), app Bro (2%) e Spark. A nota embaixo virou uma
                       // linha só; o detalhamento é que explica (pedido Carol).

@@ -81,6 +81,28 @@ void main() {
       provider.dispose();
     });
 
+    test('relógio local adiantado NÃO antecipa autopay (clock skew)', () async {
+      final provider = OrderProvider();
+      provider.debugSetCurrentUserPubkeyForR5c('buyer-pk');
+      var payCalls = 0;
+      provider.onAutoPayLiquidation = (id, order) async {
+        payCalls++;
+        return true;
+      };
+      // Prova de 1h atrás — dentro da janela de 36h, não deve pagar.
+      final proofAt = DateTime.now().subtract(const Duration(hours: 1));
+      // Relógio da rede está 2h ATRASADO vs local (local adiantado >15min).
+      final networkNow = DateTime.now().subtract(const Duration(hours: 2));
+      provider.debugSetNetworkTimeSec(networkNow.millisecondsSinceEpoch ~/ 1000);
+      provider.debugSeedOrdersForR5c([
+        _order('clock-skew', 'awaiting_confirmation', proofAt: proofAt),
+      ]);
+      await provider.debugAutoPayLiquidatedOrders();
+      expect(payCalls, 0,
+          reason: 'relógio local adiantado não pode antecipar o autopay');
+      provider.dispose();
+    });
+
     test('awaiting_confirmation sem timestamp de prova NÃO paga (fail-closed)',
         () async {
       final provider = OrderProvider();

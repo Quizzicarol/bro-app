@@ -80,6 +80,8 @@ class OrderProvider with ChangeNotifier {
   // do device pode estar adiantado/atrasado, e liquidar CEDO por clock skew
   // rouba o prazo de confirmação do usuário.
   int _lastNetworkTimeSec = 0;
+  @visibleForTesting
+  void debugSetNetworkTimeSec(int sec) => _lastNetworkTimeSec = sec;
   void _noteNetworkTime(int? createdAtSec) {
     if (createdAtSec != null && createdAtSec > _lastNetworkTimeSec) {
       _lastNetworkTimeSec = createdAtSec;
@@ -4294,7 +4296,17 @@ class OrderProvider with ChangeNotifier {
           if (proofTs == null) return false; // sem âncora de tempo → não paga
           try {
             final proofTime = DateTime.parse(proofTs.toString());
-            if (DateTime.now().difference(proofTime) < const Duration(hours: 36)) {
+            // Mesma proteção contra clock skew de _checkAutoLiquidation:
+            // relógio local adiantado >15min vs rede → usar tempo da rede.
+            var now = DateTime.now();
+            if (_lastNetworkTimeSec > 0) {
+              final networkNow = DateTime.fromMillisecondsSinceEpoch(
+                  _lastNetworkTimeSec * 1000);
+              if (now.difference(networkNow) > const Duration(minutes: 15)) {
+                now = networkNow;
+              }
+            }
+            if (now.difference(proofTime) < const Duration(hours: 36)) {
               return false; // ainda dentro da janela de confirmação manual
             }
           } catch (_) {

@@ -145,6 +145,43 @@ class NostrOrderService {
   /// ordens zumbis da lista visível mesmo quando API+relays falham.
   bool isOrderBlocklisted(String orderId) => _blockedOrderIds.contains(orderId);
 
+  @visibleForTesting
+  static bool hasRecentCanonicalAcceptForExpiry(
+    Iterable<Map<String, dynamic>> events,
+    Map<String, dynamic> expiry,
+    int expiryCreatedAt,
+  ) {
+    if (expiry['status'] != 'accept_expired') return false;
+    final expiredAcceptAt = DateTime.tryParse(
+      expiry['expiredAcceptAt']?.toString() ?? '',
+    );
+    if (expiredAcceptAt == null) return false;
+    final expiredSeconds = expiredAcceptAt.millisecondsSinceEpoch ~/ 1000;
+    final expiredProvider = expiry['providerId']?.toString();
+    for (final event in events) {
+      if (event['kind'] != 30079 || event['pubkey'] != expiredProvider) {
+        continue;
+      }
+      final content = event['parsedContent'] ?? jsonDecode(event['content']);
+      if (content['orderId'] != expiry['orderId']) continue;
+      final acceptedAt = DateTime.tryParse(
+        content['acceptedAt']?.toString() ?? '',
+      );
+      if (acceptedAt == null) continue;
+      final declaredSeconds = acceptedAt.millisecondsSinceEpoch ~/ 1000;
+      final relaySeconds = event['created_at'] as int? ?? 0;
+      if (relaySeconds <= 0 || relaySeconds > expiryCreatedAt) continue;
+      // A expiração usou um aceite com relógio divergente, mas o aceite do
+      // provedor canônico era recente pelo timestamp assinado do relay.
+      if ((declaredSeconds - relaySeconds).abs() <= 300 &&
+          (expiredSeconds - relaySeconds).abs() > 300 &&
+          expiryCreatedAt - relaySeconds < 3600) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// Helper: Verifica se newStatus é progressão válida em relação a currentStatus
   /// Mesma lógica de _isStatusMoreRecent do OrderProvider, mas local
   /// REGRA DE OURO: Status NUNCA regride. cancelled/completed/liquidated/disputed são terminais.
@@ -3967,6 +4004,44 @@ class NostrOrderService {
     }
 
     broLog('🔍 fetchOrderUpdatesForUser: ${allEvents.length} eventos (parallel relays v806)');
+    final selected = selectOrderUpdatesForUserEvents(
+      allEvents,
+      activeOrderIdSet: activeOrderIdSet,
+      userPubkey: userPubkey,
+    );
+    for (final event in allEvents) {
+      try {
+        final content = event['parsedContent'] ?? jsonDecode(event['content']);
+        if (content['type'] != 'bro_republish_request') continue;
+        final orderId = content['orderId']?.toString();
+        if (orderId == null ||
+            selected[orderId]?['recoveredFromPrematureExpiry'] == true) {
+          continue;
+        }
+        _pendingRepublishRequests.add(orderId);
+        final reqAuthor = event['pubkey']?.toString();
+        if (reqAuthor != null) {
+          _pendingRepublishRequestAuthors[orderId] = reqAuthor;
+        }
+      } catch (_) {}
+    }
+    updates.addAll(selected);
+
+    broLog('🔍 fetchOrderUpdatesForUser: ${updates.length} updates encontrados');
+    for (final entry in updates.entries) {
+      broLog('   📋 ${entry.key.substring(0, 8)}: status=${entry.value['status']}, kind=${entry.value['eventKind']}, proof=${entry.value['proofImage'] != null || entry.value['proofImage_nip44'] != null}');
+    }
+    return updates;
+  }
+
+  @visibleForTesting
+  static Map<String, Map<String, dynamic>> selectOrderUpdatesForUserEvents(
+    Iterable<Map<String, dynamic>> events, {
+    Set<String>? activeOrderIdSet,
+    String? userPubkey,
+  }) {
+    final updates = <String, Map<String, dynamic>>{};
+    final allEvents = events.toList();
     
     // v406: CORREÇÃO DEFINITIVA — Acumular proof de TODOS os eventos por orderId
     // antes de processar. Garante que proof do kind 30081 (provider complete) NUNCA
@@ -3992,6 +4067,26 @@ class NostrOrderService {
       } catch (_) {}
     }
     
+    // Expiração prematura gerada por relógio divergente não pode esconder o
+    // comprovante do provedor canônico. Não publica nem altera pagamentos.
+    final prematureExpiries = <String, String?>{};
+    for (final event in allEvents) {
+      try {
+        final content = Map<String, dynamic>.from(
+          event['parsedContent'] ?? jsonDecode(event['content']),
+        );
+        final orderId = content['orderId']?.toString();
+        if (orderId != null &&
+            hasRecentCanonicalAcceptForExpiry(
+              allEvents,
+              content,
+              event['created_at'] as int? ?? 0,
+            )) {
+          prematureExpiries[orderId] = content['providerId']?.toString();
+        }
+      } catch (_) {}
+    }
+
     // Processar todos os eventos
     for (final event in allEvents) {
           try {
@@ -4001,6 +4096,10 @@ class NostrOrderService {
             final createdAt = event['created_at'] as int? ?? 0;
             
             if (orderId == null) continue;
+            if (content['status'] == 'accept_expired' &&
+                prematureExpiries.containsKey(orderId)) {
+              continue;
+            }
             
             // PERFORMANCE v1.0.129+218: Ignorar eventos de ordens que não estão na lista ativa
             // Isso filtra eventos de ordens já terminais (completed/cancelled/liquidated)
@@ -4016,15 +4115,7 @@ class NostrOrderService {
             // v437: Detectar pedidos de republish do provider
             // Provider publica bro_republish_request quando ordem está presa em awaiting_confirmation
             // Customer re-publica o completed se existir localmente
-            if (contentType == 'bro_republish_request') {
-              if (orderId != null) {
-                _pendingRepublishRequests.add(orderId);
-                final reqAuthor = event['pubkey']?.toString();
-                if (reqAuthor != null) _pendingRepublishRequestAuthors[orderId] = reqAuthor; // v774
-                broLog('📩 fetchOrderUpdatesForUser: bro_republish_request recebido para ${orderId.substring(0, 8)}');
-              }
-              continue;
-            }
+            if (contentType == 'bro_republish_request') continue;
             if (contentType == 'bro_dispute_resolution') {
               // Se este usuário é o mediador (adminPubkey == userPubkey),
               // ignorar o evento para não poluir a lista do mediador
@@ -4082,8 +4173,17 @@ class NostrOrderService {
             // tinha timestamp mais recente (publicado por outra parte)
             final isNewer = existingUpdate == null || createdAt > existingCreatedAt;
             final isValidProgression = existingStatus != null && _isStatusProgression(newStatus, existingStatus);
+            final recoversPrematureExpiry = newStatus == 'awaiting_confirmation' &&
+                existingStatus == 'accept_expired' &&
+                prematureExpiries.containsKey(orderId) &&
+                eventPubkey == prematureExpiries[orderId] &&
+                (content['proofImage'] != null || content['proofImage_nip44'] != null);
             
-            if (isNewer) {
+            if (recoversPrematureExpiry) {
+              // A prova assinada pelo provedor da expiração prematura prevalece.
+            } else if (existingStatus == 'accept_expired') {
+              continue;
+            } else if (isNewer) {
               // Evento mais recente: aceitar se não regredir
               if (existingStatus != null && !_isStatusProgression(newStatus, existingStatus)) {
                 continue; // Não regredir
@@ -4118,16 +4218,13 @@ class NostrOrderService {
               // complete visível (buraco irmão do #p vazio).
               'providerInvoice': content['providerInvoice'] ?? previousUpdate?['providerInvoice'],
               'eventAuthorPubkey': event['pubkey'] as String? ?? previousUpdate?['eventAuthorPubkey'] as String? ?? accum?['eventAuthorPubkey'] as String?,
+              if (recoversPrematureExpiry) 'recoveredFromPrematureExpiry': true,
               'created_at': createdAt,
             };
           } catch (e) {
           }
     }
 
-    broLog('🔍 fetchOrderUpdatesForUser: ${updates.length} updates encontrados');
-    for (final entry in updates.entries) {
-      broLog('   📋 ${entry.key.substring(0, 8)}: status=${entry.value['status']}, kind=${entry.value['eventKind']}, proof=${entry.value['proofImage'] != null || entry.value['proofImage_nip44'] != null}');
-    }
     return updates;
   }
   

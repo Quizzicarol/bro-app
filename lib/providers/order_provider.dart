@@ -5985,7 +5985,10 @@ class OrderProvider with ChangeNotifier {
           }
           
           // Verificar se o novo status �?© mais avan�?§ado
-          if (_isStatusMoreRecent(statusToUse, existing.status)) {
+          if (_isStatusMoreRecent(statusToUse, existing.status) ||
+              (existing.status == 'accept_expired' &&
+                  statusToUse == 'awaiting_confirmation' &&
+                  update['recoveredFromPrematureExpiry'] == true)) {
             needsUpdate = true;
           }
           
@@ -6011,7 +6014,10 @@ class OrderProvider with ChangeNotifier {
           }
           
           if (needsUpdate) {
-            final isStatusAdvancing = _isStatusMoreRecent(statusToUse, existing.status);
+            final isStatusAdvancing = _isStatusMoreRecent(statusToUse, existing.status) ||
+                (existing.status == 'accept_expired' &&
+                    statusToUse == 'awaiting_confirmation' &&
+                    update['recoveredFromPrematureExpiry'] == true);
             // TRACKING v233: Marcar ordem como 'wasDisputed' quando transiciona de disputed para completed/cancelled
             final wasDisputeResolution = existing.status == 'disputed' && 
                 (statusToUse == 'completed' || statusToUse == 'cancelled') && isStatusAdvancing;

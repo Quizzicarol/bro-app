@@ -400,8 +400,9 @@ workflows:
           failure: true
 
   # ============================================
-  # BUILD DE TESTE INTERNO (Android APK + iOS TestFlight)
-  # v790: dispara em push para test/* (ex: test/v790).
+  # BUILD DE TESTE INTERNO MANUAL (Android APK + iOS TestFlight)
+  # Sem trigger: push em test/* não gera cobrança. Use Start new build somente
+  # depois da validação local e escolha explicitamente branch + internal-test.
   # NAO publica no GitHub Release, NAO toca no Zapstore — usuários
   # externos NUNCA veem esse build (incidente 13/11: v789 quebrado
   # foi parar no release público antes de ser testado).
@@ -438,13 +439,6 @@ workflows:
       xcode: 26.5
       cocoapods: default
       java: 17
-
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: 'test/*'
-          include: true
 
     scripts:
       - name: Generate env.json from CI variables

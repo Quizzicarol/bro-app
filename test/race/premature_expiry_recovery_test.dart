@@ -27,13 +27,13 @@ void main() {
     content: {
       'type': 'bro_accept',
       'providerId': provider,
-      'acceptedAt': '2026-11-23T18:18:32.792536',
+      'acceptedAt': '2026-11-23T18:18:32.792536-03:00',
     },
   );
 
   Map<String, dynamic> expiry({
     String expiredAt = '2026-11-23T21:21:10.765946Z',
-    String acceptedAt = '2026-11-23T20:18:41.638537Z',
+    String acceptedAt = '2026-11-23T20:18:41.638537Z', // UTC explícito
   }) =>
       event(
         kind: 30080,
@@ -77,7 +77,7 @@ void main() {
         content(
           expiry(
             expiredAt: '2026-11-23T22:00:00.000000Z',
-            acceptedAt: '2026-11-23T18:18:32.792536',
+            acceptedAt: '2026-11-23T18:18:32.792536-03:00',
           ),
         ),
         1795468870,
@@ -102,7 +102,7 @@ void main() {
   test('expiração válida não recebe marcação de recuperação indevida', () {
     final validExpiry = expiry(
       expiredAt: '2026-11-23T22:00:00.000000Z',
-      acceptedAt: '2026-11-23T18:18:32.792536',
+      acceptedAt: '2026-11-23T18:18:32.792536-03:00',
     );
     expect(
       NostrOrderService.hasRecentCanonicalAcceptForExpiry(

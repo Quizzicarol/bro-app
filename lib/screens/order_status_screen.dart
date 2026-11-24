@@ -2506,6 +2506,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     if (receiptUrl != null && receiptUrl.startsWith('[encrypted:')) {
       receiptUrl = null;
     }
+    // vSEC-proof: proofImage pode chegar truncado/corrompido (ex.: fragmento
+    // de poucos caracteres que NÃO é imagem). Nesse caso, NÃO mostrar "versão
+    // antiga" — tentar descriptografar o NIP-44 que contém a imagem real.
+    // Bug real 90800cdf: proofImage tinha 10 chars e a tela ficava preta.
+    if (receiptUrl != null && !_isPlausibleImage(receiptUrl)) {
+      broLog('⚠️ proofImage não parece imagem válida (len=${receiptUrl.length}) — tentando NIP-44');
+      receiptUrl = null;
+    }
     
     // Tentar re-descriptografar on-demand se temos dados NIP-44
     if (receiptUrl == null && metadata?['proofImage_nip44'] != null) {
@@ -2897,6 +2905,21 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         ),
       ],
     );
+  }
+
+  /// Verifica se o valor é uma imagem exibível (base64, data URI, URL ou
+  /// arquivo local existente). Fragmentos curtos/corrompidos retornam false
+  /// para que a UI tente o NIP-44 em vez de mostrar "versão antiga".
+  bool _isPlausibleImage(String value) {
+    if (value.isEmpty) return false;
+    if (value.startsWith('data:image')) return true;
+    if (value.startsWith('http://') || value.startsWith('https://')) return true;
+    if (_isBase64Image(value)) return true;
+    // Caminho de arquivo local existente (comprovante salvo no aparelho).
+    try {
+      if (File(value).existsSync()) return true;
+    } catch (_) {}
+    return false;
   }
 
   /// Verifica se uma string parece ser base64 de imagem

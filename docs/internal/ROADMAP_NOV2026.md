@@ -5,22 +5,6 @@
 
 Prazo: tudo entregue e aprovado até **30/nov**.
 
-## Decisão de 23/nov — expiração de aceite abandonada
-
-- A expiração automática de aceites (R3) foi retirada do roadmap de entrega. A
-  branch `test/v827-no-expiry` parte da 827 (`6e36f59`), preservando preimage,
-  recibo do provedor e certificação de entrega, sem o R3 e sem as mudanças PERF
-  experimentais da branch anterior.
-- `90800cdf` recebeu `accept_expired` porque o app usou um aceite com relógio
-  divergente, embora o aceite canônico tivesse poucos minutos pelo timestamp do
-  relay. A recuperação excepcional reconhece essa divergência e permite que o
-  comprovante assinado pelo mesmo provedor volte para `awaiting_confirmation`.
-  Ela não publica `completed`, não inicia pagamento e não apaga eventos; a
-  confirmação e a certificação seguem o fluxo normal da 827.
-- Builds internos passam a ser manuais: push em `test/*` não dispara cobrança.
-  BRIX bruto/taxa/líquido e a fenda AutoPay/Main da taxa seguem em etapas
-  separadas, sem misturar pagamentos com esta recuperação.
-
 ---
 
 ## R5 — Lista de ordens do provedor via watchtower (PERF, produção) 🚨

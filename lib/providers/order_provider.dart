@@ -4218,6 +4218,9 @@ class OrderProvider with ChangeNotifier {
   }
 
   bool _isAutoPayingLiquidations = false;
+
+  @visibleForTesting
+  Future<void> debugAutoPayLiquidatedOrders() => _autoPayLiquidatedOrders();
   
   Future<void> _autoPayLiquidatedOrders() async {
     if (onAutoPayLiquidation == null) return;
@@ -4276,6 +4279,27 @@ class OrderProvider with ChangeNotifier {
               || (meta['paymentProof'] != null && meta['paymentProof'].toString().isNotEmpty);
           final hasInvoiceCandidate = (meta['providerInvoice'] != null && meta['providerInvoice'].toString().isNotEmpty);
           if (!hasProof) return false; // v727: SÓ comprovante autoriza pagamento (invoice sozinha NÃO — caso 43b789c7: canônico pago sem ninguém ter pago o Pix)
+        }
+        // vSEC-autopay: awaiting_confirmation NUNCA paga antes de 36h. O
+        // comprovante recém-chegado deve esperar a confirmação manual do
+        // comprador. Só depois de 36h (quando _checkAutoLiquidation já
+        // deveria ter liquidado) o autopay pode agir como rede de segurança.
+        // Bug real 90800cdf: proof chegou e o autopay pagou em 355ms, sem
+        // dar janela de revisão manual.
+        if (order.status == 'awaiting_confirmation') {
+          final proofTs = order.metadata?['receipt_submitted_at']
+              ?? order.metadata?['proofReceivedAt']
+              ?? order.metadata?['proofSentAt']
+              ?? order.metadata?['completedAt'];
+          if (proofTs == null) return false; // sem âncora de tempo → não paga
+          try {
+            final proofTime = DateTime.parse(proofTs.toString());
+            if (DateTime.now().difference(proofTime) < const Duration(hours: 36)) {
+              return false; // ainda dentro da janela de confirmação manual
+            }
+          } catch (_) {
+            return false; // timestamp inválido → fail-closed, não paga
+          }
         }
         // v622: REMOVIDO o corte de 48h que abandonava o provedor.
         // Antes: ordens > 48h eram marcadas 'reconciled/stale' e nunca mais
@@ -5985,10 +6009,7 @@ class OrderProvider with ChangeNotifier {
           }
           
           // Verificar se o novo status �?© mais avan�?§ado
-          if (_isStatusMoreRecent(statusToUse, existing.status) ||
-              (existing.status == 'accept_expired' &&
-                  statusToUse == 'awaiting_confirmation' &&
-                  update['recoveredFromPrematureExpiry'] == true)) {
+          if (_isStatusMoreRecent(statusToUse, existing.status)) {
             needsUpdate = true;
           }
           
@@ -6014,10 +6035,7 @@ class OrderProvider with ChangeNotifier {
           }
           
           if (needsUpdate) {
-            final isStatusAdvancing = _isStatusMoreRecent(statusToUse, existing.status) ||
-                (existing.status == 'accept_expired' &&
-                    statusToUse == 'awaiting_confirmation' &&
-                    update['recoveredFromPrematureExpiry'] == true);
+            final isStatusAdvancing = _isStatusMoreRecent(statusToUse, existing.status);
             // TRACKING v233: Marcar ordem como 'wasDisputed' quando transiciona de disputed para completed/cancelled
             final wasDisputeResolution = existing.status == 'disputed' && 
                 (statusToUse == 'completed' || statusToUse == 'cancelled') && isStatusAdvancing;
